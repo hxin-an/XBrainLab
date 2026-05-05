@@ -26,10 +26,37 @@ def test_normalizes_standard_preprocess_bandpass_arguments_from_user_intent():
     assert params["h_freq"] == 30
 
 
+def test_normalizes_bandpass_frequency_alias_arguments():
+    tool_name, params = normalize_tool_call(
+        "apply_bandpass_filter",
+        {"low_frequency": 8, "frequency_high": 30},
+        latest_user_text="Apply 8 to 30 Hz bandpass.",
+    )
+
+    assert tool_name == "apply_bandpass_filter"
+    assert params == {"low_freq": 8, "high_freq": 30}
+
+
 def test_normalizes_generate_dataset_defaults_and_training_mode_alias():
     tool_name, params = normalize_tool_call(
         "generate_dataset",
         {"split_strategy": "individual", "test_ratio": 0.2},
+    )
+
+    assert tool_name == "generate_dataset"
+    assert params == {
+        "split_strategy": "trial",
+        "training_mode": "individual",
+        "test_ratio": 0.2,
+        "val_ratio": 0.2,
+    }
+
+
+def test_generate_dataset_extracts_missing_test_ratio_from_user_text():
+    tool_name, params = normalize_tool_call(
+        "generate_dataset",
+        {"split_strategy": "trial", "training_mode": "individual"},
+        latest_user_text="Generate an individual training dataset with 20% test split.",
     )
 
     assert tool_name == "generate_dataset"
@@ -109,7 +136,10 @@ def test_moves_preview_label_fields_into_choices_and_drops_empty_values():
             "anchor": "onset_seconds",
             "selected_eeg_files": [],
         },
-        latest_user_text="Preview with subject S04 session ses-02.",
+        latest_user_text=(
+            "Preview with subject S04 session ses-02 and label carrier "
+            "anchor onset_seconds."
+        ),
     )
 
     assert tool_name == "preview_interpretation"
@@ -121,6 +151,66 @@ def test_moves_preview_label_fields_into_choices_and_drops_empty_values():
             "anchor": "onset_seconds",
         }
     }
+
+
+def test_preview_drops_unrequested_label_review_choices_from_metadata_turn():
+    tool_name, params = normalize_tool_call(
+        "preview_interpretation",
+        {
+            "scan_id": "latest",
+            "subject": "S02",
+            "choices": {
+                "label_carrier": "external_file",
+                "event_role": "stimulus",
+                "class_map": {},
+                "anchor": "onset_seconds",
+                "granularity": "trial",
+                "role": "class cue labels",
+            },
+        },
+        latest_user_text="Use subject S02 and preview again.",
+    )
+
+    assert tool_name == "preview_interpretation"
+    assert params == {"choices": {"subject": "S02"}}
+
+
+def test_preview_simplifies_string_metadata_overrides():
+    tool_name, params = normalize_tool_call(
+        "preview_interpretation",
+        {
+            "subject": "S04",
+            "session": "ses-02",
+            "metadata_overrides": {
+                "subject": "S04",
+                "session": "ses-02",
+            },
+        },
+        latest_user_text="Preview with subject S04 session ses-02.",
+    )
+
+    assert tool_name == "preview_interpretation"
+    assert params == {"choices": {"subject": "S04", "session": "ses-02"}}
+
+
+def test_preview_normalizes_task_run_values_from_latest_text():
+    tool_name, params = normalize_tool_call(
+        "preview_interpretation",
+        {
+            "choices": {
+                "label_carrier": "external_file",
+                "event_role": "stimulus",
+                "subject": "subject1",
+                "session": "session1",
+                "task": "task_imagery",
+                "run": "run03",
+            }
+        },
+        latest_user_text="Use task imagery run 03 and preview again.",
+    )
+
+    assert tool_name == "preview_interpretation"
+    assert params == {"choices": {"task": "imagery", "run": "03"}}
 
 
 def test_moves_preview_recipe_remap_fields_into_choices():
@@ -155,6 +245,96 @@ def test_moves_preview_recipe_remap_fields_into_choices():
             },
         }
     }
+
+
+def test_normalizes_eeg_file_remap_field_alias_tool_into_preview_choices():
+    tool_name, params = normalize_tool_call(
+        "choices.eeg_file_remap",
+        {
+            "saved_item": "/recipe/old_raw.fif",
+            "replacement": "/data/new_raw.fif",
+        },
+        latest_user_text=(
+            "Remap saved EEG file /recipe/old_raw.fif to /data/new_raw.fif."
+        ),
+    )
+
+    assert tool_name == "preview_interpretation"
+    assert params == {
+        "choices": {"eeg_file_remap": {"/recipe/old_raw.fif": "/data/new_raw.fif"}}
+    }
+
+
+def test_replaces_unmentioned_recipe_remap_paths_with_missing_input_placeholder():
+    tool_name, params = normalize_tool_call(
+        "preview_interpretation",
+        {
+            "eeg_file_remap": {
+                "/missing/saved_eeg.fif": "/data/current_eeg.fif",
+            }
+        },
+        latest_user_text="Remap the missing saved EEG file before applying.",
+    )
+
+    assert tool_name == "preview_interpretation"
+    assert params == {
+        "choices": {
+            "eeg_file_remap": {"missing saved item": "current replacement remap target"}
+        }
+    }
+
+
+def test_normalizes_label_carrier_remap_field_alias_tool_into_preview_choices():
+    tool_name, params = normalize_tool_call(
+        "choices.label_carrier_remap",
+        {
+            "saved": "/recipe/events.tsv",
+            "replacement": "/data/events.tsv",
+        },
+        latest_user_text=(
+            "Remap label carrier /recipe/events.tsv to /data/events.tsv."
+        ),
+    )
+
+    assert tool_name == "preview_interpretation"
+    assert params == {
+        "choices": {"label_carrier_remap": {"/recipe/events.tsv": "/data/events.tsv"}}
+    }
+
+
+def test_preview_drops_source_path_when_latest_turn_requests_existing_preview():
+    tool_name, params = normalize_tool_call(
+        "preview_interpretation",
+        {"source_path": "/data/bids_mi"},
+        latest_user_text="Now preview the interpretation.",
+    )
+
+    assert tool_name == "preview_interpretation"
+    assert params == {}
+
+
+def test_preview_drops_unrequested_placeholder_choices():
+    tool_name, params = normalize_tool_call(
+        "preview_interpretation",
+        {
+            "choices": {
+                "subject": "subject_id",
+                "session": "session_id",
+                "task": "task_id",
+                "run": "run_id",
+                "eeg_file_remap": {"/recipe/old_raw.fif": "/data/current_raw.fif"},
+                "label_carrier_remap": {"/recipe/events.tsv": "/data/events.tsv"},
+                "required_label_carriers": [
+                    "/data/label1.tsv",
+                    "/data/label2.tsv",
+                ],
+            }
+        },
+        latest_user_text="Preview the interpretation.",
+    )
+
+    assert tool_name == "preview_interpretation"
+    assert params == {}
 
 
 def test_extracts_recipe_eeg_remap_from_latest_preview_text():

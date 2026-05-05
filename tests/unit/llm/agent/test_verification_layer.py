@@ -422,6 +422,25 @@ class TestPlaceholderArgumentValidator:
         r = v.validate("scan_source", {"source_path": r"C:\data\S01.gdf"})
         assert r.is_valid
 
+    def test_rejects_placeholder_preview_recipe_remap_target(self):
+        v = PlaceholderArgumentValidator()
+        r = v.validate(
+            "preview_interpretation",
+            {
+                "choices": {
+                    "eeg_file_remap": {
+                        "missing saved EEG file": (
+                            "current replacement EEG file path/name"
+                        )
+                    }
+                }
+            },
+        )
+
+        assert not r.is_valid
+        assert r.error_message is not None
+        assert "remap target" in r.error_message
+
     def test_ignores_non_path_values(self):
         v = PlaceholderArgumentValidator()
         r = v.validate("epoch_data", {"event_id": ["BAD_EVENT"]})

@@ -406,6 +406,11 @@ class PlaceholderArgumentValidator(ValidatorStrategy):
         "placeholder",
         "replace_with",
         "replace/",
+        "missing saved",
+        "current replacement",
+        "replacement eeg file path",
+        "replacement label",
+        "path/name",
     )
     PLACEHOLDER_EXACT: ClassVar[set[str]] = {
         "",
@@ -417,6 +422,17 @@ class PlaceholderArgumentValidator(ValidatorStrategy):
     }
 
     def validate(self, name: str, params: dict[str, Any]) -> VerificationResult:
+        if name == "preview_interpretation":
+            placeholder = self._first_preview_remap_placeholder(params)
+            if placeholder is not None:
+                return VerificationResult(
+                    is_valid=False,
+                    error_message=(
+                        "Required remap target is missing. Provide the saved "
+                        "recipe item and current replacement remap target, got "
+                        f"placeholder {placeholder!r}."
+                    ),
+                )
         if name not in self.PATH_TOOLS:
             return VerificationResult(is_valid=True)
 
@@ -455,6 +471,20 @@ class PlaceholderArgumentValidator(ValidatorStrategy):
                     )
 
         return VerificationResult(is_valid=True)
+
+    @classmethod
+    def _first_preview_remap_placeholder(cls, params: dict[str, Any]) -> str | None:
+        choices = params.get("choices")
+        if not isinstance(choices, dict):
+            return None
+        for key in ("eeg_file_remap", "label_carrier_remap"):
+            remap = choices.get(key)
+            if not isinstance(remap, dict):
+                continue
+            placeholder = cls._first_placeholder(remap)
+            if placeholder is not None:
+                return placeholder
+        return None
 
     @classmethod
     def _first_placeholder(cls, value: Any) -> str | None:

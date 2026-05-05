@@ -59,6 +59,13 @@
 - 最新 UI runtime bypass audit 修掉 Dataset direct file import 和 Preprocess reset 的
   service-success fallback：successful `LoadDataCommand` / `ResetPreprocessCommand` 不再再呼叫
   controller mutation，controller fallback 只留給 mock / legacy `None` adapter 情境。
+- Reviewer follow-up：UI refresh 目前仍是 controller observer events、panel-local manual
+  refresh、tab switch refresh、command-result local refresh 和 ChatPanel / agent Qt signal 的
+  混合模式。這是可用 baseline，不是 target closure。下一個 architecture cleanup 應建立
+  `UI Command Refresh Coordinator + Controller Fallback Audit`，讓 mutating command 成功後依
+  `CommandResult.changed_state` 集中刷新 dataset / preprocess / training / analysis /
+  assistant capability state，並把 product runtime controller fallback 與 mock / legacy
+  compatibility fallback 明確分離。
 - 後續 Training sidebar bypass cleanup 修掉重新 split 前清 datasets 和 Clear History 的 direct
   controller mutation；destructive cleanup 會走 `ClearDatasetsCommand` /
   `ClearTrainingHistoryCommand`，且 Clear History 現在有 user confirmation。
@@ -186,11 +193,11 @@
   import wizard 驗收。
 - 2026-05-05 follow-up 已把 downstream-locked `apply_interpretation` wrong-tool temptation case
   納入 deterministic、primary 和 fallback local rerun；dashboard 已同步刷新。
-- 2026-05-05 remap schema follow-up 又把 deterministic suite 擴到 `121` cases：
-  recipe reload EEG file remap、label carrier remap、missing remap target clarification 全部進
+- 2026-05-05 remap schema follow-up 又把 suite 擴到 `121` cases：recipe reload EEG file
+  remap、label carrier remap、missing remap target clarification 全部進
   `artifacts/agent_evals/latest.json` / `.md`，deterministic `121 / 121` x `3` pass。primary /
-  fallback 真 local model x3 尚未對新的 `121` case suite 重跑；在重跑前不能宣稱 remap-expanded
-  local LLM thesis-ready。
+  fallback 真 local model也已用 cached non-China models 各重跑 `3` 次，兩者都是 `121 / 121`；
+  dashboard 已刷新為 deterministic / primary / fallback 同套 cases。
 - MCP stdio external-client walkthrough 已新增：
   - `scripts/dev/capture_mcp_stdio_walkthrough.py` 是只依賴 Python standard library 的 client。
   - client 會啟動 prepared XBrainLab runtime 內的 `scripts/dev/run_mcp_server.py`，並保存
@@ -534,8 +541,8 @@ Goal 1 至少要包含：
      autonomy boundary、blocked、confirmation、missing parameter、recipe reload。
      （目前 deterministic baseline 已擴為 `121 / 121` pass；新增三個 recipe remap cases。）
    - local LLM runner 使用同一份 cases 接 primary / fallback raw output，各重跑 `3` 次；
-     目前 primary `118 / 118` pass、fallback `118 / 118` pass，尚未覆蓋新的 `121` case remap
-     suite。apply-lock case 的 local raw output 仍可能提出 direct blocked
+     目前 deterministic / primary / fallback 都是 `121 / 121`。apply-lock case 的 local raw output
+     仍可能提出 direct blocked
      `apply_interpretation`，但 scorer / verifier 只把它當 capability-policy blocked response；
      任何 scan / reset / configure 等替代工具會被計為 failure。
    - dashboard 必須能顯示 overall pass rate、case family、metric breakdown、failure taxonomy、
@@ -660,9 +667,8 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
 - 不能宣稱 agent 已達理想架構，除非它已遷移到新 tool taxonomy 並受 autonomy policy 約束。
 - 不能把 prompt smoke 當成真 local LLM ChatPanel walkthrough。
 - 不能把 deterministic eval 當成 local LLM 真實 tool-call accuracy；目前 primary / fallback
-  真模型 `118` case runner 已有 `118 / 118` x `3` evidence，但新的 remap-expanded `121`
-  case suite 尚未重跑 local x3。這只支撐已重跑 tool-call benchmark slice，不代表 ChatPanel /
-  launcher / import wizard 產品驗收完成。
+  真模型已用同一 `121` case suite 各重跑 `3` 次並得到 `121 / 121` evidence。這只支撐已重跑
+  tool-call benchmark slice，不代表 ChatPanel / launcher / import wizard 產品驗收完成。
 - 不能把 backend scripted replay 的文字報告當成 UI 行為正確；UI replay 要有人眼可審查 artifact。
 - 不能把 mock-heavy tests 當成真實 workflow evidence。
 - 不能把 dashboard PASS 當成產品完成或 thesis claim 成立。
@@ -675,10 +681,13 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
 現在最應該做的是：
 
 ```text
-1. 繼續 backend architecture cleanup：ApplicationService 已拆出 Data Interpretation、
+1. 繼續 backend / UI architecture cleanup：ApplicationService 已拆出 Data Interpretation、
    Analysis、Training、Dataset Generation、Lifecycle、Data Compatibility 和 Data Table command
-   services、Preprocess command service，以及 State / Query services。下一步檢查 UI / agent /
-   MCP 是否還有產品主路徑旁路，並保持 legacy compatibility 不回到產品主心智模型。
+   services、Preprocess command service，以及 State / Query services。下一個高價值 milestone 是
+   `UI Command Refresh Coordinator + Controller Fallback Audit`：集中處理
+   `CommandResult.changed_state -> panel / capability / assistant status refresh`，並確認 real
+   `Study` mutating workflow 不 silent fallback 到 controller mutation；controller fallback 只能留在
+   explicit mock / unit-test compatibility 或 isolated legacy adapter。
 2. Data Interpretation mature wizard：embedded label / anchor / MAT variable editor，避免
    post-load compatibility label import 繼續主導心智模型。
 3. 進入下一輪 UI polish：mature import wizard editing、assistant main-window narrow composition、

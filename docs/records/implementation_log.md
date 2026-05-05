@@ -42,6 +42,74 @@
 ### 下一手重點
 ```
 
+## 2026-05-05 Local Tool-Call 121-Case Rerun
+
+### 狀態
+
+Remap-expanded tool-call suite 已完成 deterministic、primary local 和 fallback local 同套
+`121` cases 重跑。這輪修正 local model 常見但可安全正規化的 output variants：recipe remap
+alias tools、missing remap target placeholder、stale preview source path、metadata override string
+maps、unrequested label-review noise、task/run generated prefixes、dataset missing test split ratio
+和 bandpass frequency aliases。
+
+### 已可宣稱
+
+- `microsoft/Phi-4-mini-instruct` primary local model：`121 / 121`，repeat count `3`。
+- `microsoft/Phi-3.5-mini-instruct` fallback local model：`121 / 121`，repeat count `3`。
+- Dashboard 顯示 deterministic / primary / fallback 在同一 `121` case suite 上都是 `100%` pass，
+  repeated-run stability 也是 `100%`。
+
+### Evidence 入口
+
+- Dashboard：`artifacts/agent_evals/dashboard.md`
+- Primary：`artifacts/agent_evals/local_primary/local_microsoft_phi_4_mini_instruct.md`
+- Fallback：`artifacts/agent_evals/local_fallback/local_microsoft_phi_3.5_mini_instruct.md`
+- Detailed commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這支撐 saved benchmark slice 的 thesis-candidate tool-call claim，但不是 product-complete。
+- 這不取代 Windows human desktop acceptance、mature import wizard、MCP HTTP / long-running jobs、
+  ChatPanel 長時間 workflow 或完整 release validation。
+
+### 下一手重點
+
+把 benchmark evidence 整理成 thesis report protocol，同時回到產品缺口：UI refresh coordinator、
+controller fallback audit、mature Data Interpretation editor 和 human desktop acceptance。
+
+## 2026-05-05 UI Command Refresh Coordinator Follow-up
+
+### 狀態
+
+Backend command spine 已比早期乾淨很多，`ApplicationService` 目前主要回到 dispatch /
+capability-confirmation gate / result envelope，多數 workflow 細節也已拆到 focused command
+services。但 reviewer finding 已確認 target architecture 尚未 closure：UI refresh 仍是
+controller observer events、manual panel refresh、tab switch refresh、command result local refresh
+和 ChatPanel / agent Qt signal path 的混合模式。
+
+### 已可宣稱
+
+- Backend command spine baseline 已大幅改善，且可作為後續 UI refresh cleanup 的依據。
+- 這個 finding 已進入 current truth / planning follow-up，而不是被包裝成完成。
+
+### Evidence 入口
+
+- Current truth：`docs/current.md`
+- Short-term plan：`docs/planning/now.md`
+- Roadmap milestone：`docs/planning/roadmap.md`
+
+### 不能宣稱完成
+
+- 不能宣稱 backend / UI architecture fully aligned。
+- 不能宣稱 product runtime mutating path 已完全沒有 controller fallback。
+- 不能把 Data Interpretation baseline wizard 宣稱成 final import system。
+
+### 下一手重點
+
+執行 `UI Command Refresh Coordinator + Controller Fallback Audit`：集中處理
+`CommandResult.changed_state -> panel / capability / assistant status refresh`，並把 product
+runtime service-success path 與 mock / legacy controller fallback 明確分離。
+
 ## 2026-05-05 Recipe Reload Difference Review
 
 ### 狀態

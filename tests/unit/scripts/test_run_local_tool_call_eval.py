@@ -61,6 +61,7 @@ def test_prompt_includes_recipe_remap_choices_for_preview():
 
     assert "choices.eeg_file_remap" in messages[0]["content"]
     assert "choices.label_carrier_remap" in messages[0]["content"]
+    assert "never as tool_name" in messages[0]["content"]
     assert '"eeg_file_remap"' in messages[-1]["content"]
     assert '"label_carrier_remap"' in messages[-1]["content"]
 
@@ -163,6 +164,81 @@ def test_generate_dataset_default_val_ratio_is_counted():
     assert score.parsed_tool_calls[0]["arguments"]["val_ratio"] == 0.2
 
 
+def test_scores_generate_dataset_missing_test_ratio_from_latest_text():
+    case = _case("epoched-generate-dataset")
+    raw_output = (
+        '{"tool_name":"generate_dataset",'
+        '"parameters":{"split_strategy":"trial",'
+        '"training_mode":"individual"}}'
+    )
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert score.parsed_tool_calls[0]["arguments"]["test_ratio"] == 0.2
+
+
+def test_scores_preview_metadata_overrides_string_map_as_choices():
+    case = _case("scanned-preview-session-override")
+    raw_output = (
+        '{"tool_name":"preview_interpretation","parameters":{'
+        '"subject":"subject-01","session":"ses-01",'
+        '"metadata_overrides":{"subject":"subject-01","session":"ses-01"}}}'
+    )
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert score.verification_result == "allowed"
+    assert score.parsed_tool_calls == [
+        {
+            "tool_name": "preview_interpretation",
+            "arguments": {"choices": {"session": "ses-01"}},
+        }
+    ]
+
+
+def test_scores_preview_unrequested_label_review_noise_as_metadata_choice():
+    case = _case("multi-turn-preview-metadata-choice")
+    raw_output = (
+        '{"tool_name":"preview_interpretation","parameters":{'
+        '"scan_id":"latest","subject":"S02","choices":{'
+        '"label_carrier":"external_file","event_role":"stimulus",'
+        '"class_map":{},"anchor":"onset_seconds","granularity":"trial",'
+        '"role":"class cue labels"}}}'
+    )
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert score.parsed_tool_calls == [
+        {
+            "tool_name": "preview_interpretation",
+            "arguments": {"choices": {"subject": "S02"}},
+        }
+    ]
+
+
+def test_scores_preview_task_run_with_generated_prefix_noise():
+    case = _case("multi-turn-preview-task-run-choice")
+    raw_output = (
+        '{"tool_name":"preview_interpretation","parameters":{"choices":{'
+        '"label_carrier":"external_file","event_role":"stimulus",'
+        '"subject":"subject1","session":"session1",'
+        '"task":"task_imagery","run":"run03"}}}'
+    )
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert score.parsed_tool_calls == [
+        {
+            "tool_name": "preview_interpretation",
+            "arguments": {"choices": {"task": "imagery", "run": "03"}},
+        }
+    ]
+
+
 def test_scores_command_only_json_as_tool_call_when_available():
     case = _case("previewed-safe-validate")
     raw_output = '{"command": "validate_interpretation", "reasons": []}'
@@ -208,6 +284,84 @@ def test_scores_recipe_remap_missing_target_as_clarification():
     assert score.passed
     assert score.verification_result == "missing_input"
     assert score.score_breakdown["clarification_behavior"]
+
+
+def test_scores_placeholder_recipe_remap_alias_tool_as_clarification():
+    case = _case("recipe-preview-remap-missing-target")
+    raw_output = (
+        '{"tool_name":"choices.eeg_file_remap","parameters":{'
+        '"saved_item":"missing saved EEG file",'
+        '"replacement":"current replacement EEG file path/name"}}'
+    )
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert score.verification_result == "missing_input"
+    assert score.parsed_tool_calls == []
+    assert "remap target" in score.visible_response.lower()
+
+
+def test_scores_hallucinated_recipe_remap_paths_as_clarification():
+    case = _case("recipe-preview-remap-missing-target")
+    raw_output = (
+        '{"tool_name":"preview_interpretation","parameters":{'
+        '"eeg_file_remap":{"/missing/saved_eeg.fif":"/data/current_eeg.fif"}}}'
+    )
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert score.verification_result == "missing_input"
+    assert score.parsed_tool_calls == []
+    assert "remap target" in score.visible_response.lower()
+
+
+def test_scores_preview_with_stale_source_path_as_latest_preview():
+    case = _case("multi-turn-scan-preview")
+    raw_output = (
+        '{"tool_name":"preview_interpretation",'
+        '"parameters":{"source_path":"/data/bids_mi"}}'
+    )
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert score.parsed_tool_calls == [
+        {"tool_name": "preview_interpretation", "arguments": {}}
+    ]
+
+
+def test_scores_preview_with_unrequested_placeholder_choices_as_plain_preview():
+    case = _case("scanned-preview-auto")
+    raw_output = (
+        '{"tool":"preview_interpretation","parameters":{"choices":{'
+        '"subject":"subject_id","session":"session_id","task":"task_id",'
+        '"run":"run_id",'
+        '"eeg_file_remap":{"/recipe/old_raw.fif":"/data/current_raw.fif"},'
+        '"label_carrier_remap":{"/recipe/events.tsv":"/data/events.tsv"},'
+        '"required_label_carriers":["/data/label1.tsv","/data/label2.tsv"]'
+        "}}}"
+    )
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert score.verification_result == "allowed"
+    assert score.parsed_tool_calls == [
+        {"tool_name": "preview_interpretation", "arguments": {}}
+    ]
+
+
+def test_scores_policy_reason_subset_as_blocked_command_handling():
+    case = _case("zh-blocked-train-empty")
+    raw_output = '{"reason":"Load raw data before training.","action":"No tool call"}'
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert score.verification_result == "blocked"
+    assert score.parsed_tool_calls == []
 
 
 def test_scores_latest_turn_intent_not_joined_history():

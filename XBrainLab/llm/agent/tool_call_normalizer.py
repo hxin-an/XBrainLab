@@ -18,6 +18,17 @@ _TOOL_ALIASES: dict[str, str] = {
     "get_dataset_info": "query_state",
     "get_state": "query_state",
     "state_query": "query_state",
+    "choices.eeg_file_remap": "preview_interpretation",
+    "choices.label_carrier_remap": "preview_interpretation",
+    "recipe_reload_remap": "preview_interpretation",
+    "recipe_reload_remaps": "preview_interpretation",
+}
+
+_REMAP_ALIAS_KEYS: dict[str, str] = {
+    "choices.eeg_file_remap": "eeg_file_remap",
+    "choices.label_carrier_remap": "label_carrier_remap",
+    "recipe_reload_remap": "eeg_file_remap",
+    "recipe_reload_remaps": "eeg_file_remap",
 }
 
 
@@ -30,6 +41,9 @@ def normalize_tool_call(
     """Return a verifier-ready tool call without bypassing backend policy."""
     normalized_name = _TOOL_ALIASES.get(tool_name, tool_name)
     normalized_params = _drop_none_values(dict(params))
+    remap_alias_key = _REMAP_ALIAS_KEYS.get(tool_name)
+    if remap_alias_key:
+        normalized_params.setdefault("_remap_choice_key", remap_alias_key)
     normalized_name, normalized_params = _apply_latest_intent_override(
         normalized_name,
         normalized_params,
@@ -46,9 +60,17 @@ def normalize_tool_call(
         normalized_params = {}
 
     if normalized_name == "apply_bandpass_filter":
+        _rename_key(normalized_params, "low_frequency", "low_freq")
+        _rename_key(normalized_params, "frequency_low", "low_freq")
+        _rename_key(normalized_params, "high_frequency", "high_freq")
+        _rename_key(normalized_params, "frequency_high", "high_freq")
         _fill_bandpass_args(normalized_params, latest_user_text)
 
     if normalized_name == "apply_standard_preprocess":
+        _rename_key(normalized_params, "low_frequency", "l_freq")
+        _rename_key(normalized_params, "frequency_low", "l_freq")
+        _rename_key(normalized_params, "high_frequency", "h_freq")
+        _rename_key(normalized_params, "frequency_high", "h_freq")
         _rename_key(normalized_params, "low_freq", "l_freq")
         _rename_key(normalized_params, "high_freq", "h_freq")
         _fill_standard_preprocess_filter_args(normalized_params, latest_user_text)
@@ -204,7 +226,9 @@ def _normalize_scan_args(params: dict[str, Any], latest_user_text: str) -> None:
 
 
 def _normalize_preview_args(params: dict[str, Any], latest_user_text: str) -> None:
-    choices = params.get("choices")
+    params.pop("source_path", None)
+    params.pop("source_hint", None)
+    choices = params.pop("choices", None)
     normalized_choices = dict(choices) if isinstance(choices, dict) else {}
     for key, value in list(normalized_choices.items()):
         if isinstance(value, str):
@@ -245,16 +269,25 @@ def _normalize_preview_args(params: dict[str, Any], latest_user_text: str) -> No
         params.pop("scan_id", None)
     elif _is_invalid_generated_id(scan_id, "scan"):
         params.pop("scan_id", None)
-    for key in ("subject", "session", "task", "run"):
-        value = _extract_named_value(latest_user_text, key)
-        if value:
-            normalized_choices.setdefault(key, value)
+    _simplify_metadata_overrides(normalized_choices)
+    latest_metadata = _extract_metadata_choices(latest_user_text)
+    for key, value in latest_metadata.items():
+        normalized_choices[key] = value
+    _drop_unrequested_metadata_choices(normalized_choices, latest_metadata)
     _repair_preview_choice_confusions(normalized_choices, latest_user_text)
     event_role = _extract_event_role(latest_user_text)
     if event_role:
-        normalized_choices.setdefault("event_role", event_role)
+        normalized_choices["event_role"] = event_role
     for key, value in _extract_recipe_remap_choices(latest_user_text).items():
         normalized_choices.setdefault(key, value)
+    remap_alias = _remap_alias_choice(params)
+    if remap_alias:
+        key, value = remap_alias
+        normalized_choices.setdefault(key, value)
+    _drop_generated_choice_placeholders(normalized_choices)
+    _guard_unmentioned_choice_paths(normalized_choices, latest_user_text)
+    _guard_unrequested_label_review_choices(normalized_choices, latest_user_text)
+    _guard_unmentioned_recipe_remaps(normalized_choices, latest_user_text)
     normalized_choices = {
         key: value
         for key, value in normalized_choices.items()
@@ -262,6 +295,197 @@ def _normalize_preview_args(params: dict[str, Any], latest_user_text: str) -> No
     }
     if normalized_choices:
         params["choices"] = normalized_choices
+
+
+def _drop_generated_choice_placeholders(choices: dict[str, Any]) -> None:
+    for key in ("subject", "session", "task", "run"):
+        value = choices.get(key)
+        if isinstance(value, str) and _looks_like_generated_choice_placeholder(
+            key,
+            value,
+        ):
+            choices.pop(key, None)
+
+
+def _simplify_metadata_overrides(choices: dict[str, Any]) -> None:
+    metadata_overrides = choices.get("metadata_overrides")
+    if not isinstance(metadata_overrides, dict):
+        return
+    structured: dict[str, Any] = {}
+    for key, value in metadata_overrides.items():
+        if isinstance(value, dict):
+            structured[str(key)] = value
+            continue
+        if key in {"subject", "session", "task", "run"} and isinstance(value, str):
+            choices.setdefault(key, value.strip())
+    if structured:
+        choices["metadata_overrides"] = structured
+    else:
+        choices.pop("metadata_overrides", None)
+
+
+def _extract_metadata_choices(latest_user_text: str) -> dict[str, str]:
+    extracted: dict[str, str] = {}
+    for key in ("subject", "session", "task", "run"):
+        value = _extract_named_value(latest_user_text, key)
+        if value:
+            extracted[key] = value
+    return extracted
+
+
+def _drop_unrequested_metadata_choices(
+    choices: dict[str, Any],
+    latest_metadata: dict[str, str],
+) -> None:
+    if not latest_metadata:
+        return
+    for key in ("subject", "session", "task", "run"):
+        if key not in latest_metadata:
+            choices.pop(key, None)
+
+
+def _looks_like_generated_choice_placeholder(key: str, value: str) -> bool:
+    text = value.strip().lower()
+    return text in {
+        f"{key}_id",
+        f"{key}-id",
+        f"{key} id",
+        f"{key}_name",
+        f"{key}-name",
+        f"{key} name",
+    }
+
+
+def _guard_unmentioned_choice_paths(
+    choices: dict[str, Any],
+    latest_user_text: str,
+) -> None:
+    if not latest_user_text.strip():
+        return
+    for key in ("required_label_carriers", "selected_eeg_files"):
+        values = choices.get(key)
+        if not isinstance(values, list):
+            continue
+        latest = latest_user_text.lower()
+        if any(str(value).strip().lower() not in latest for value in values):
+            choices.pop(key, None)
+
+
+def _guard_unrequested_label_review_choices(
+    choices: dict[str, Any],
+    latest_user_text: str,
+) -> None:
+    lowered = latest_user_text.lower()
+    explicit_label_review = any(
+        marker in lowered
+        for marker in (
+            "label carrier",
+            "label field",
+            "event role",
+            "class map",
+            "anchor",
+            "time model",
+            "granularity",
+        )
+    )
+    always_drop = {"granularity", "role"}
+    if explicit_label_review:
+        for key in always_drop:
+            choices.pop(key, None)
+        return
+    for key in (
+        "label_carrier",
+        "event_role",
+        "class_map",
+        "anchor",
+        "granularity",
+        "role",
+    ):
+        choices.pop(key, None)
+
+
+def _guard_unmentioned_recipe_remaps(
+    choices: dict[str, Any],
+    latest_user_text: str,
+) -> None:
+    """Replace invented remap paths with an explicit missing-input placeholder."""
+    if not latest_user_text.strip():
+        return
+    lowered = latest_user_text.lower()
+    remap_requested = "remap" in lowered or "map" in lowered
+    for key in ("eeg_file_remap", "label_carrier_remap"):
+        remap = choices.get(key)
+        if not isinstance(remap, dict):
+            continue
+        if not remap_requested:
+            choices.pop(key, None)
+            continue
+        for saved, replacement in remap.items():
+            if not _remap_pair_mentioned(saved, replacement, latest_user_text):
+                choices[key] = {
+                    "missing saved item": "current replacement remap target"
+                }
+                break
+
+
+def _remap_pair_mentioned(saved: Any, replacement: Any, latest_user_text: str) -> bool:
+    text = latest_user_text.lower()
+    saved_text = str(saved).strip().lower()
+    replacement_text = str(replacement).strip().lower()
+    return bool(saved_text and replacement_text) and (
+        saved_text in text and replacement_text in text
+    )
+
+
+def _remap_alias_choice(params: dict[str, Any]) -> tuple[str, dict[str, str]] | None:
+    remap_key = params.pop("_remap_choice_key", None)
+    if remap_key not in {"eeg_file_remap", "label_carrier_remap"}:
+        return None
+    saved = _pop_first_string_param(
+        params,
+        (
+            "saved",
+            "saved_item",
+            "saved_file",
+            "old",
+            "old_path",
+            "from",
+            "source",
+        ),
+    )
+    replacement = _pop_first_string_param(
+        params,
+        (
+            "replacement",
+            "replacement_path",
+            "new",
+            "new_path",
+            "to",
+            "target",
+            "current",
+        ),
+    )
+    if not saved and not replacement:
+        remaps = params.get("remaps")
+        if isinstance(remaps, dict):
+            cleaned = {
+                str(key): str(value)
+                for key, value in remaps.items()
+                if str(key).strip() and str(value).strip()
+            }
+            return (remap_key, cleaned) if cleaned else None
+    if saved or replacement:
+        return (remap_key, {saved or "missing saved item": replacement or ""})
+    return None
+
+
+def _pop_first_string_param(params: dict[str, Any], keys: tuple[str, ...]) -> str:
+    result = ""
+    for key in keys:
+        value = params.pop(key, None)
+        if not result and isinstance(value, str) and value.strip():
+            result = value.strip()
+    return result
 
 
 def _usable_choice_value(value: Any) -> bool:
@@ -426,9 +650,24 @@ def _normalize_dataset_args(params: dict[str, Any], latest_user_text: str) -> No
         params["split_strategy"] = "session"
     elif "trial" in text and "split" in text:
         params["split_strategy"] = "trial"
+    if "test_ratio" not in params:
+        test_ratio = _extract_percent_ratio(text, "test")
+        if test_ratio is not None:
+            params["test_ratio"] = test_ratio
     params.setdefault("split_strategy", "trial")
     params.setdefault("training_mode", "individual")
     params.setdefault("val_ratio", 0.2)
+
+
+def _extract_percent_ratio(text: str, label: str) -> float | None:
+    match = re.search(
+        rf"(\d+(?:\.\d+)?)\s*%\s+{re.escape(label)}",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        return float(match.group(1)) / 100.0
+    return None
 
 
 def _should_promote_to_start_training(

@@ -37,6 +37,70 @@
 
 ## 2026-05-05
 
+### 16:25 Local tool-call 121-case primary / fallback rerun
+
+- 做了什麼：
+  - 接續 remap-expanded deterministic `121` cases，跑 primary / fallback 真 local model x3。
+  - Primary rerun 先完成 `121 / 121`。
+  - Fallback 首輪正式 artifact 是 `115 / 121`，失敗集中在可安全修復的 output variants：
+    missing `test_ratio`、string-shaped `metadata_overrides`、unrequested label-review fields、
+    generated `task_` / `run` prefixes，以及 bandpass frequency aliases。
+  - 先加紅燈 unit/scorer tests，再修 `tool_call_normalizer` / verifier / local eval prompt-scorer。
+  - 用同一批 fallback raw outputs rescore 為 `121 / 121` 後，重跑正式 fallback local eval 寫出 artifact。
+- 結果：
+  - `artifacts/agent_evals/dashboard.md` 顯示 deterministic / primary
+    `microsoft/Phi-4-mini-instruct` / fallback `microsoft/Phi-3.5-mini-instruct` 都是
+    `121 / 121`，local repeat count `3`，stability `100%`。
+  - resource boundary：primary / fallback 都使用已存在 cache，`HF_HUB_OFFLINE=1` /
+    `TRANSFORMERS_OFFLINE=1`；未下載新模型。
+- 證據：
+  - `artifacts/agent_evals/local_primary/local_microsoft_phi_4_mini_instruct.json` /
+    `.md` -> `121 / 121`。
+  - `artifacts/agent_evals/local_fallback/local_microsoft_phi_3.5_mini_instruct.json` /
+    `.md` -> `121 / 121`。
+  - `artifacts/agent_evals/dashboard.md` -> deterministic / primary / fallback same-suite
+    comparison。
+  - Focused red-to-green tests：
+    `poetry run pytest --capture=sys tests/unit/llm/agent/test_tool_call_normalizer.py::test_normalizes_bandpass_frequency_alias_arguments tests/unit/llm/agent/test_tool_call_normalizer.py::test_generate_dataset_extracts_missing_test_ratio_from_user_text tests/unit/llm/agent/test_tool_call_normalizer.py::test_preview_drops_unrequested_label_review_choices_from_metadata_turn tests/unit/llm/agent/test_tool_call_normalizer.py::test_preview_simplifies_string_metadata_overrides tests/unit/llm/agent/test_tool_call_normalizer.py::test_preview_normalizes_task_run_values_from_latest_text tests/unit/scripts/test_run_local_tool_call_eval.py::test_scores_generate_dataset_missing_test_ratio_from_latest_text tests/unit/scripts/test_run_local_tool_call_eval.py::test_scores_preview_metadata_overrides_string_map_as_choices tests/unit/scripts/test_run_local_tool_call_eval.py::test_scores_preview_unrequested_label_review_noise_as_metadata_choice tests/unit/scripts/test_run_local_tool_call_eval.py::test_scores_preview_task_run_with_generated_prefix_noise -q`
+    -> `9 passed`。
+  - Focused final gate:
+    `poetry run pytest --capture=sys tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/agent/test_verification_layer.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `134 passed`。
+  - Broad LLM / agent gate:
+    `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/scripts/test_run_local_tool_call_eval.py tests/integration/agent -q`
+    -> `529 passed`。
+  - Quality gates:
+    `git diff --check` -> pass；
+    `timeout 300s poetry run ruff check .` -> pass；
+    `timeout 300s poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`；
+    `timeout 300s poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`；
+    `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+- 接續 / 本輪剩餘：
+  - Commit 本輪 tool-call hardening + documentation update；不要標記 product complete。
+
+### 15:45 UI refresh / controller fallback reviewer finding captured
+
+- 做了什麼：
+  - 在目前 local fallback eval 繼續跑的同時，先把 reviewer finding 轉成文件 truth，不中斷
+    validation runner。
+  - 更新 `docs/current.md`、`docs/planning/now.md`、`docs/planning/roadmap.md` 和
+    `docs/records/implementation_log.md`，加入 `UI Command Refresh Coordinator + Controller
+    Fallback Audit` follow-up milestone。
+- 結果：
+  - 文件現在明確說明 backend command spine 已大幅改善，但 UI refresh 仍是 observer /
+    manual refresh / command-result local refresh / ChatPanel signal 的混合模式。
+  - 文件也明確標記 product runtime mutating path 不應 silent fallback 到 controller mutation；
+    fallback 只能留在 explicit mock / unit-test compatibility 或 isolated legacy adapter。
+  - Data Interpretation 仍是 baseline wizard，不是 final import system；embedded label editor、
+    raw trigger selector、complex GDF / MAT anchor reconciliation、XDF / LSL parser 和 full real-data
+    manual certification 仍是 follow-up。
+- 證據：
+  - Docs pending validation：`docs/current.md`、`docs/planning/now.md`、
+    `docs/planning/roadmap.md`、`docs/records/implementation_log.md`。
+- 接續 / 本輪剩餘：
+  - 等目前 fallback local eval 正式 artifact 寫完後，再跑 mkdocs / lint / targeted tests 並 commit
+    本輪 tool-call hardening + documentation slice。
+
 ### 12:36 Recipe reload backend label-carrier remap
 
 - 做了什麼：

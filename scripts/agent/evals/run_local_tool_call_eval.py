@@ -112,9 +112,12 @@ def build_prompt_messages(case: EvalCase) -> list[dict[str, str]]:
         "instead of repeating an earlier scan or load step. Use "
         "preview_interpretation with choices for subject, session, task, run, "
         "event_role metadata overrides, and recipe reload remaps. Use "
-        "choices.eeg_file_remap to map a saved EEG file path/name to a current "
-        "replacement EEG file path/name. Use choices.label_carrier_remap to map "
-        "a saved label/event carrier path/name to a current replacement carrier. "
+        "parameters.choices.eeg_file_remap to map a saved EEG file path/name to "
+        "a current replacement EEG file path/name; use "
+        "parameters.choices.label_carrier_remap to map a saved label/event "
+        "carrier path/name to a current replacement carrier. These choices.* "
+        "paths are JSON argument fields under preview_interpretation, never as "
+        "tool_name. "
         "If a remap request does not name both the saved item and replacement, "
         "ask for clarification instead of guessing. Use validate_interpretation with "
         "empty parameters when the latest request is validation. Do not claim "
@@ -229,6 +232,17 @@ def prediction_from_model_output(case: EvalCase, raw_output: str) -> Prediction:
             for marker in ("blocked", "cannot", "can't", "not available")
         )
         if blocked_intent_reason and has_blocked_marker:
+            return Prediction(
+                intent=requested_intent,
+                tool_calls=[],
+                blocked=True,
+                blocked_reason=blocked_intent_reason,
+                final_message=blocked_intent_reason,
+            )
+        if blocked_intent_reason and _mentions_policy_reason(
+            text,
+            blocked_intent_reason,
+        ):
             return Prediction(
                 intent=requested_intent,
                 tool_calls=[],
@@ -665,6 +679,15 @@ def _visualization_tool_substitute(intent: str, tool_name: str) -> bool:
         "saliency",
         "visualize",
     }
+
+
+def _mentions_policy_reason(text: str, policy_reason: str) -> bool:
+    lower = text.lower()
+    for reason in policy_reason.split(";"):
+        reason_text = reason.strip().lower()
+        if reason_text and reason_text in lower:
+            return True
+    return False
 
 
 def _blocked_requested_intent_reason(state_name: str, intent: str) -> str:

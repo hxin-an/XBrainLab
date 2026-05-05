@@ -675,8 +675,8 @@ UI baseline capture 結果：
   人工桌面驗收。
 - true local LLM ChatPanel 已有一輪真模型 UI 回覆 walkthrough、一輪單步 `query_state`
   tool-command walkthrough，以及兩 turn workflow walkthrough；長時間 tool-command chain 仍未完成。
-- local LLM primary / fallback tool-call runner 已有 `118` thesis-candidate cases x `3`
-  score report；primary / fallback 都是 `118 / 118` pass，dashboard 已列 model comparison、
+- local LLM primary / fallback tool-call runner 已有 `121` thesis-candidate cases x `3`
+  score report；primary / fallback 都是 `121 / 121` pass，dashboard 已列 model comparison、
   metric pass rate、case family pass rate 和 failure taxonomy。這支撐 tool-call benchmark
   evidence，但不代表 launcher / UI 產品 walkthrough 已完成。
 - external EEG dataset experiment / statistical reporting 只是 pipeline support，不是 thesis 主評分。
@@ -3456,10 +3456,10 @@ tool-call thesis evidence 核心要求：
 
 目前最新 evidence：
 
-- deterministic cases：`118`
-- deterministic baseline：`118 / 118`
-- primary local model：`118 / 118` x `3`
-- fallback local model：`118 / 118` x `3`
+- deterministic cases：`121`
+- deterministic baseline：`121 / 121`
+- primary local model：`121 / 121` x `3`
+- fallback local model：`121 / 121` x `3`
 - dashboard：`artifacts/agent_evals/dashboard.md`
 
 EEG pipeline support 要求：
@@ -3552,14 +3552,33 @@ thesis evidence 需要一套可重跑的 agent tool-call 評分工具。
   clarification/no-call boundary.
 - Artifact: `artifacts/agent_evals/latest.json` / `.md` refreshed with repeat count `3`,
   `121 / 121` deterministic pass, recipe_reload family `3 / 3`, and no failures.
-  `artifacts/agent_evals/dashboard.md` now shows deterministic `121` cases beside local `118`
-  cases and explicitly flags that local models must be rerun before claiming the new cases.
+  `artifacts/agent_evals/dashboard.md` now shows deterministic, primary local, and fallback local
+  all on the same `121` cases with `100%` pass and `100%` repeated-run stability.
 - Focused tests:
   `env QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_definitions.py tests/unit/backend/application/test_automation.py tests/unit/llm/agent/test_verification_layer.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/integration/agent/test_tool_call_eval.py -q`
   -> `277 passed`.
-- Claim boundary: this refresh proves deterministic schema/scorer/planner coverage. The primary /
-  fallback local model x3 artifacts are still the previous `118` case suite and must be rerun before
-  claiming local LLM thesis readiness for the remap-expanded `121` case suite.
+- Claim boundary: this refresh supports a thesis-candidate local tool-call benchmark claim for this
+  saved `121` case suite. It still does not prove full UI usability, Windows launcher coverage,
+  mature import wizard completion, MCP HTTP / long-running jobs, or product completion.
+
+2026-05-05 local 121-case scorer / normalizer hardening:
+
+- Hardened local output handling for recipe-remap alias tools, missing remap targets, stale preview
+  source paths, string-shaped metadata overrides, unrequested label-review noise, generated task/run
+  prefixes, missing test split ratios, bandpass frequency aliases, and policy-reason subset blocked
+  replies.
+- Focused final gate:
+  `poetry run pytest --capture=sys tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/agent/test_verification_layer.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/integration/agent/test_tool_call_eval.py -q`
+  -> `134 passed`.
+- Broad LLM / agent gate:
+  `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/scripts/test_run_local_tool_call_eval.py tests/integration/agent -q`
+  -> `529 passed`.
+- Quality gates:
+  `git diff --check` -> pass;
+  `timeout 300s poetry run ruff check .` -> pass;
+  `timeout 300s poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`;
+  `timeout 300s poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`;
+  `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
 
 舊 `scripts/agent/benchmarks/*` 可以作為歷史參考，但不能直接視為新的 thesis evidence。新的 scoring system 需要對齊 local-only runtime、State Manager、Verification Layer 和未來 Application Service / Command API。
 
