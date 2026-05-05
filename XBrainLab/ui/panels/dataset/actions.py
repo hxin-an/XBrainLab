@@ -659,11 +659,11 @@ class DatasetActionHandler:
             )
             return
 
-        if controller.is_locked():
+        if smart_parse_capability is None and controller.is_locked():
             QMessageBox.warning(self.panel, "Blocked", "Dataset is locked.")
             return
 
-        if not controller.has_data():
+        if smart_parse_capability is None and not controller.has_data():
             QMessageBox.warning(self.panel, "Warning", "No data loaded.")
             return
 

@@ -857,6 +857,43 @@ class TestDatasetActionHandler:
             in (mock_mb.warning.call_args.args[2])
         )
 
+    def test_open_smart_parser_prefers_backend_capability_over_stale_controller(
+        self,
+        handler,
+    ):
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        raw = MagicMock()
+        raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
+        raw.get_filepath.return_value = "/tmp/sub-01_task-mi_raw.fif"
+        study.data_manager.loaded_data_list = [raw]
+        handler.panel.study = study
+        handler.panel.controller.is_locked.return_value = True
+        handler.panel.controller.has_data.return_value = False
+        handler.panel.controller.get_filenames.return_value = ["sub-01_task-mi_raw.fif"]
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.SmartParserDialog",
+            ) as mock_dialog,
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                return_value=_command_result(success_count=1),
+            ) as mock_execute,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            mock_dialog.return_value.get_result.return_value = {
+                "/tmp/sub-01_task-mi_raw.fif": ("S01", "session-01")
+            }
+            handler.open_smart_parser()
+
+        mock_dialog.assert_called_once()
+        mock_execute.assert_called_once()
+        handler.panel.controller.apply_smart_parse.assert_not_called()
+        mock_mb.warning.assert_not_called()
+
     def test_import_label_returns_early_no_files(self, handler):
         """import_label calls _get_target_files_for_import first; if empty, returns."""
         handler.panel.table.selectedIndexes.return_value = []

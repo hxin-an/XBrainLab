@@ -6191,3 +6191,56 @@
     acceptance.
   - It does not prove long-running training resource cleanup, Windows launcher click-through, or
     complete UI-observable walkthrough coverage.
+
+### 2026-05-05 Dataset Smart Parse source-of-truth cleanup
+
+- scope：
+  - UI command truth alignment for Dataset Smart Parse dialog gating。
+  - No backend command schema, agent tool, MCP tool, or screenshot artifact change.
+- problem：
+  - `DatasetActionHandler.open_smart_parser()` first read backend `apply_smart_parse`
+    capability, but after capability passed it still used controller-local `is_locked()` /
+    `has_data()` checks before opening `SmartParserDialog`.
+  - A stale controller state could therefore block a real `Study` path even when backend capability
+    said Smart Parse was available.
+- red test：
+  - `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_open_smart_parser_prefers_backend_capability_over_stale_controller -q`
+    initially failed because the dialog did not open.
+- 做了什麼：
+  - Limited controller-local locked / has-data checks to mock / legacy non-Study paths.
+  - Kept real `Study` blocked behavior on backend `apply_smart_parse` capability.
+  - Kept controller fallback execution only when `execute_application_command()` returns `None`.
+- validation：
+  - focused red + stale-controller boundary:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_open_smart_parser_prefers_backend_capability_over_stale_controller -q`
+    -> red before implementation, then passed.
+  - Smart Parse regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_open_smart_parser_prefers_backend_capability_over_stale_controller tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_open_smart_parser_uses_backend_capability tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_open_smart_parser_success -q`
+    -> `3 passed`.
+  - Dataset action regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `59 passed`.
+  - required backend/agent gates:
+    `poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `104 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+    `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `470 passed`.
+    `poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - `git diff --check`
+    -> pass.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> pass.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+- 不能宣稱：
+  - This is one Smart Parse source-of-truth cleanup, not full metadata editor or Data Interpretation
+    wizard UX acceptance.
+  - It does not prove Windows human desktop click-through or complete UI-observable walkthrough
+    coverage.

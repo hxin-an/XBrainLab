@@ -1138,3 +1138,26 @@ capability 也補上 training running 時不可 generate / clear datasets 的 bo
 ### 不能宣稱完成
 
 - 這不是完整 training workflow human acceptance 或 long-running training resource validation。
+
+## 2026-05-05 Dataset Smart Parse Source-Of-Truth Cleanup
+
+### 狀態
+
+Dataset Smart Parse 現在在 real `Study` path 以 backend `apply_smart_parse` capability 作為
+開 dialog 的 source of truth。controller-local `is_locked()` / `has_data()` checks 僅保留給
+mock / legacy non-Study compatibility。
+
+### 已可宣稱
+
+- Smart Parse dialog gate 不再被 stale controller state 蓋過 backend capability truth。
+- blocked real `Study` path 仍顯示 shared backend blocked reason。
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/actions.py`
+- Tests：`tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是完整 metadata editor / Data Interpretation wizard UX acceptance。

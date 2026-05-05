@@ -2426,6 +2426,41 @@ long-running training human acceptance。
 這批 evidence 支撐 Training data-splitting UI gate 與 backend dataset-generation capability policy
 對齊。它仍不是完整 long-running training workflow 或 resource cleanup acceptance。
 
+2026-05-05 Dataset Smart Parse source-of-truth follow-up：
+
+- UI/action:
+  - `DatasetActionHandler.open_smart_parser()` now treats backend `apply_smart_parse` capability as
+    the real `Study` source of truth before opening `SmartParserDialog`.
+  - Controller-local `is_locked()` / `has_data()` checks are limited to mock / legacy non-Study
+    compatibility paths.
+  - Controller fallback execution remains limited to `execute_application_command() is None`.
+- targeted gates:
+  - focused red + stale-controller boundary:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_open_smart_parser_prefers_backend_capability_over_stale_controller -q`
+    -> first run failed, implementation run passed.
+  - Smart Parse regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_open_smart_parser_prefers_backend_capability_over_stale_controller tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_open_smart_parser_uses_backend_capability tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_open_smart_parser_success -q`
+    -> `3 passed`.
+  - Dataset action regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `59 passed`.
+  - required backend/agent gates:
+    `poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `104 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+    `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `470 passed`.
+    `poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - full quality gates:
+    `git diff --check`, `poetry run ruff check .`, `poetry run basedpyright`,
+    `poetry run python tests/architecture_compliance.py`, and
+    `poetry run mkdocs build --strict` passed. MkDocs emitted the existing Material warning only.
+
+這批 evidence 支撐 Smart Parse dialog gate 不再被 stale controller state 蓋過 backend
+capability truth。它仍不是完整 metadata editor 或 Data Interpretation wizard UX acceptance。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:

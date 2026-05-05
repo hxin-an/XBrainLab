@@ -292,7 +292,9 @@ sidebar 直接讀 backend `import_labels` 和 `preprocess` capability：button d
 tooltip 和 Channel Selection preflight 不再只靠 controller-local `has_data` / lock 判斷。它仍
 不是完整 Data Interpretation 內嵌 label editor。後續 Smart Parse capability slice 也讓
 `open_smart_parser()` 在 real Study path 先讀 backend `apply_smart_parse` capability；沒有 raw data
-時不會打開 parser dialog，而會顯示 shared blocked reason。後續 remove-files preflight 也讓
+時不會打開 parser dialog，而會顯示 shared blocked reason。latest follow-up 也把 Smart Parse
+的 controller-local locked / has-data checks 限縮到 mock / legacy path；real `Study` path 以
+backend capability 為準，不再被 stale controller 狀態擋掉。後續 remove-files preflight 也讓
 context-menu remove 在 backend `remove_files` capability disabled 時先顯示 shared blocked
 reason，不再先要求使用者確認不可執行的 raw-data mutation。後續 batch metadata preflight 同樣
 改讀 backend `update_metadata` capability，blocked 時不再先開 subject/session input dialog。recipe
