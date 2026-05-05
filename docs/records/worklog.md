@@ -8357,3 +8357,42 @@
 - 不能宣稱：
   - This is one aggregate info observer deduplication. It does not close all observer callbacks,
     product runtime fallback audit, or human desktop acceptance.
+
+### 2026-05-05 21:31 Import-finished observer refresh guard
+
+- scope：
+  - Static architecture guard for the duplicate `import_finished` refresh pattern.
+- current gap：
+  - Dataset / Preprocess / Training / InfoPanelService duplicate refresh paths were cleaned up, but
+    architecture compliance did not prevent a future simple refresh bridge from reintroducing
+    `import_finished` as another success refresh source.
+- red / focused tests：
+  - Added tests requiring `check_ui_observer_direct_update_bridges()` to fail:
+    `_create_refresh_bridge(self.controller, "import_finished")`
+    and direct `QtObserverBridge(..., "import_finished", ...)`.
+  - Red result:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_observer_bridge_guard_flags_import_finished_simple_refresh tests/unit/test_architecture_compliance.py::test_observer_bridge_guard_flags_direct_import_finished_bridge -q`
+    -> `2 failed`; no violations were reported.
+- 做了什麼：
+  - Added `_observer_bridge_uses_import_finished_simple_refresh()` and `_call_has_string_arg()` to
+    `tests/architecture_compliance.py`.
+  - The guard now reports that successful import state refresh is owned by `data_changed`, and that
+    `import_finished` should use a named callback handler for warnings / event-specific behavior.
+  - Named callback handlers such as DatasetPanel `on_import_finished` remain allowed.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_observer_bridge_guard_flags_import_finished_simple_refresh tests/unit/test_architecture_compliance.py::test_observer_bridge_guard_flags_direct_import_finished_bridge tests/unit/test_architecture_compliance.py::test_observer_bridge_guard_allows_callback_handlers -q`
+    -> `3 passed`.
+  - `poetry run ruff check tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> pass.
+  - `poetry run basedpyright tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `13 passed`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `git diff --check` -> pass.
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+  - `poetry run ruff check .` -> pass.
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+- 不能宣稱：
+  - This is a regression guard for one duplicate observer pattern. It does not close the full UI
+    refresh coordinator audit, remove controller observer events, or complete product acceptance.

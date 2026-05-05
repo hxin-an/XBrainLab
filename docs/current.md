@@ -804,7 +804,8 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   PreprocessPanel / TrainingPanel 對 dataset `import_finished` 的 simple refresh listener；legacy import
   success refresh 只由 dataset `data_changed` 擁有。InfoPanelService 也不再訂閱 dataset
   `import_finished`；aggregate info success refresh 只由 `data_changed` / `preprocess_changed`
-  驅動。最新 helper cleanup 又把 Dataset / Preprocess / Training / Evaluation /
+  驅動。最新 architecture guard follow-up 也會阻止新的 `import_finished` simple refresh bridge：
+  若需要處理 import warnings 或特殊 event 語意，必須用 named callback handler。最新 helper cleanup 又把 Dataset / Preprocess / Training / Evaluation /
   Visualization 的 simple observer bridge call sites 改成 `BasePanel._create_refresh_bridge()`，
   讓後續 panel 不必重複拼 `_create_bridge(..., refresh_from_observer)`。最新 architecture guard
   已把 `_create_bridge(..., self.update_panel)` 和 direct

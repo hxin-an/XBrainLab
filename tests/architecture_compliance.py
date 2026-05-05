@@ -405,6 +405,14 @@ def check_ui_observer_direct_update_bridges(root_dir: Path) -> list[str]:
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
+            if _observer_bridge_uses_import_finished_simple_refresh(node):
+                violations.append(
+                    f"{py_file.relative_to(root_dir)}:{node.lineno} wires "
+                    "import_finished as a simple refresh event; successful import "
+                    "state refresh is owned by data_changed. Use a named callback "
+                    "handler for import warnings or event-specific behavior."
+                )
+                continue
             if _call_name(node.func) != "_create_bridge":
                 continue
             if _observer_bridge_uses_direct_update_panel(node):
@@ -425,6 +433,21 @@ def check_ui_observer_direct_update_bridges(root_dir: Path) -> list[str]:
                     "refresh_from_observer); use _create_refresh_bridge() instead."
                 )
     return violations
+
+
+def _observer_bridge_uses_import_finished_simple_refresh(call: ast.Call) -> bool:
+    call_name = _call_name(call.func)
+    if call_name == "_create_refresh_bridge":
+        return _call_has_string_arg(call, "import_finished")
+    if call_name == "QtObserverBridge":
+        return _call_has_string_arg(call, "import_finished")
+    return False
+
+
+def _call_has_string_arg(call: ast.Call, value: str) -> bool:
+    return any(
+        isinstance(arg, ast.Constant) and arg.value == value for arg in call.args
+    )
 
 
 def _observer_bridge_uses_direct_update_panel(call: ast.Call) -> bool:

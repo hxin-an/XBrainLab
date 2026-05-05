@@ -137,6 +137,42 @@ def _setup_bridges(self):
     assert check_ui_observer_direct_update_bridges(tmp_path) == []
 
 
+def test_observer_bridge_guard_flags_import_finished_simple_refresh(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def _setup_bridges(self):
+    self._create_refresh_bridge(self.controller, "import_finished")
+""",
+    )
+
+    violations = check_ui_observer_direct_update_bridges(tmp_path)
+
+    assert len(violations) == 1
+    assert "import_finished" in violations[0]
+    assert "named callback" in violations[0]
+
+
+def test_observer_bridge_guard_flags_direct_import_finished_bridge(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def _setup_bridges(self):
+    self.import_bridge = QtObserverBridge(
+        self.controller,
+        "import_finished",
+        self,
+    )
+""",
+    )
+
+    violations = check_ui_observer_direct_update_bridges(tmp_path)
+
+    assert len(violations) == 1
+    assert "import_finished" in violations[0]
+    assert "named callback" in violations[0]
+
+
 def test_observer_bridge_guard_allows_callback_handlers(tmp_path):
     _write_ui_file(
         tmp_path,

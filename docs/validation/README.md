@@ -127,6 +127,8 @@ UI baseline capture 結果：
   - architecture compliance now fails new direct `_create_bridge(..., self.update_panel)` and
     `_create_bridge(..., self.refresh_from_observer)` panel call sites; simple observer refresh must
     use `BasePanel._create_refresh_bridge()`.
+  - architecture compliance also fails new `import_finished` simple refresh bridges; import-finished
+    handling must use a named callback for warnings or event-specific behavior.
   - `BasePanel.refresh_from_observer()` now delegates to `refresh_after_observer()`, which refreshes
     the event source panel plus aggregate info and assistant backend status.
   - focused gate:
@@ -134,7 +136,7 @@ UI baseline capture 結果：
     -> `32 passed`.
   - architecture guard gate:
     `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
-    -> `9 passed`.
+    -> `13 passed`.
 - missing-result legacy refresh guard:
   - architecture compliance now distinguishes `result.failed` UI restore from `result is None`
     compatibility branches. Missing-result branches may not directly call panel-local refresh

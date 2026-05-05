@@ -2316,3 +2316,27 @@ import warning presentation.
 ### 不能宣稱完成
 
 - This is one aggregate-info observer cleanup, not full UI refresh target closure.
+
+## 2026-05-05 Import-Finished Refresh Guard
+
+### 狀態
+
+Architecture compliance now rejects new `import_finished` simple refresh bridges. Successful import
+state refresh is owned by `data_changed`; `import_finished` must use a named callback handler for
+warnings or event-specific behavior.
+
+### 已可宣稱
+
+- The duplicate refresh pattern removed from Dataset / Preprocess / Training / InfoPanelService is
+  now protected against straightforward regression.
+
+### Evidence 入口
+
+- Source：`tests/architecture_compliance.py`
+- Tests：`tests/unit/test_architecture_compliance.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is a guardrail only; it does not classify every callback-specific observer handler or close
+  full command-driven UI refresh.
