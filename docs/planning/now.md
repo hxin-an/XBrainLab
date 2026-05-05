@@ -243,7 +243,8 @@
   real `Study` Evaluation panel 有 service payload 時不再回讀 stale injected
   `EvaluationController.get_plans()` / `get_pooled_eval_result()` /
   `get_model_summary_str()`。`include_objects` 是 UI-only，automation / MCP `evaluate` schema
-  不暴露也不接受它。
+  不暴露也不接受它。最新 query-none fallback boundary 也讓 real `Study` `EvaluateCommand`
+  意外回 `None` 時清成 no-data，不再回讀 stale `EvaluationController.get_plans()`。
 - 最新 Visualization panel query cleanup 已讓 real `Study` `VisualizeCommand` result gate controls /
   render：visualization blocked / unavailable 時不再讀 stale injected controller trainers，而是保留
   `Select a plan` 並顯示 user-facing readiness message。最新 object-payload follow-up 也讓

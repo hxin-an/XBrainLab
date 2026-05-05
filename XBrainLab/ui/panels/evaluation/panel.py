@@ -16,7 +16,11 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.backend.application import EvaluateCommand
 from XBrainLab.backend.training.record.wrappers import PooledRecordWrapper
-from XBrainLab.ui.application_capabilities import execute_application_command
+from XBrainLab.ui.application_capabilities import (
+    LegacyControllerFallbackUnavailableError,
+    execute_application_command,
+    run_legacy_controller_fallback,
+)
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.panels.evaluation.confusion_matrix import ConfusionMatrixWidget
@@ -136,7 +140,7 @@ class EvaluationPanel(BasePanel):
 
         plans = self._plans_from_application_query()
         if plans is None:
-            plans = [] if self.controller is None else self.controller.get_plans()
+            plans = self._legacy_plans_for_render()
         if plans:
             for i, plan in enumerate(plans):
                 self.model_combo.addItem(f"Fold {i + 1}: {plan.get_name()}", plan)
@@ -198,6 +202,14 @@ class EvaluationPanel(BasePanel):
         if payload is None:
             return None
         return list(payload.get("plan_objects") or [])
+
+    def _legacy_plans_for_render(self):
+        if self.controller is None:
+            return []
+        try:
+            return run_legacy_controller_fallback(self, self.controller.get_plans)
+        except LegacyControllerFallbackUnavailableError:
+            return []
 
     def _show_no_data_available(self) -> None:
         self.model_combo.blockSignals(True)

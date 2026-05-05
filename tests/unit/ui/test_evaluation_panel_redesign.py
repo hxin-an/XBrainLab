@@ -292,6 +292,41 @@ def test_evaluation_panel_uses_application_payload_before_stale_controller(
     assert panel.summary_text.toPlainText() == "Service plan summary"
 
 
+def test_evaluation_panel_refuses_real_study_query_none_controller_fallback(
+    qtbot,
+    monkeypatch,
+):
+    """Real Study query-none rendering should not recover stale controller plans."""
+
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.evaluation.panel.execute_application_command",
+        lambda *_args, **_kwargs: None,
+    )
+    stale_controller = MagicMock()
+    stale_controller.get_plans.side_effect = AssertionError(
+        "stale evaluation plans should not be read",
+    )
+    stale_controller.get_model_summary_str.side_effect = AssertionError(
+        "stale evaluation summary should not be read",
+    )
+
+    panel = EvaluationPanel(controller=stale_controller, parent=RealMainWindow())
+    qtbot.addWidget(panel)
+
+    panel.update_panel()
+
+    stale_controller.get_plans.assert_not_called()
+    stale_controller.get_model_summary_str.assert_not_called()
+    assert panel.model_combo.count() == 1
+    assert panel.model_combo.itemText(0) == "No Data Available"
+    assert panel.run_combo.count() == 0
+
+
 def test_evaluation_panel_clears_stale_plans_on_preprocess_change(qtbot):
     """Preprocess invalidation should clear stale evaluation plan selections."""
     main_window = MockMainWindow()

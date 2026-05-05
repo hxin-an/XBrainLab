@@ -169,6 +169,36 @@ fallback branches are forced.
 Continue auditing remaining query-unavailable fallback branches and visualization lifecycle
 evidence.
 
+## 2026-05-06 Evaluation Query-None Render Fallback Boundary
+
+### 狀態
+
+Evaluation panel rendering now treats missing ApplicationService query results as a mock/legacy-only
+fallback. If a real `Study` `EvaluateCommand(include_objects=True)` call unexpectedly returns no
+result, the panel renders `No Data Available` instead of reading stale
+`EvaluationController.get_plans()`.
+
+### 已可宣稱
+
+- Real `Study` Evaluation query-none render fallback no longer reads stale controller plans or
+  summaries.
+- Mock / legacy panel rendering still keeps controller-plan compatibility through the explicit
+  fallback helper.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/evaluation/panel.py`
+- Tests: `tests/unit/ui/test_evaluation_panel_redesign.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not complete all Evaluation UX or every controller read fallback path.
+
+### 下一手重點
+
+Continue auditing remaining query-unavailable read fallbacks and UI refresh coordinator debt.
+
 ## 2026-05-06 Data Splitting Dialog Context Boundary
 
 ### 狀態
