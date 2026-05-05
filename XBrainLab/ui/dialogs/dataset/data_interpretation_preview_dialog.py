@@ -400,17 +400,17 @@ class DataInterpretationPreviewDialog(BaseDialog):
             has_eeg_remap = self._has_eeg_file_remap_options()
             has_label_remap = self._has_label_carrier_remap_options()
             if has_eeg_remap and has_label_remap:
-                return "Validation needs recipe remaps before applying."
+                return "Choose replacement recipe files before applying."
             if has_eeg_remap:
-                return "Validation needs an EEG file remap before applying."
+                return "Choose the replacement EEG file before applying."
             if has_label_remap:
-                return "Validation needs a label carrier remap before applying."
-            return "Validation blocked: this source cannot be applied yet."
+                return "Choose the replacement label/event carrier before applying."
+            return "This source cannot be applied yet. Review the blocked items below."
         if self.decision == "needs_confirmation":
-            return "Validation needs confirmation before applying."
+            return "Review and confirm these choices before applying."
         if self.decision == "safe":
-            return "Validation passed: ready to apply."
-        return f"Validation status: {self.decision}"
+            return "Ready to apply."
+        return "Review status is unavailable."
 
     def _populate_files(self) -> None:
         metadata_preview = self.preview.get("metadata_preview") or []

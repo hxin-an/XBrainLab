@@ -59,7 +59,7 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
     group_titles = {group.title() for group in dialog.findChildren(QGroupBox)}
     assert "Label and Event Interpretation" in group_titles
     assert "Found 1 EEG file" in dialog.summary_label.text()
-    assert "Validation needs confirmation" in dialog.decision_label.text()
+    assert "Review and confirm" in dialog.decision_label.text()
     review_text = _tree_text(dialog.review_tree)
     assert dialog.confirmation_label.text() == (
         "Review the items marked Needs confirmation, then confirm and apply."
@@ -300,6 +300,43 @@ def test_data_interpretation_preview_dialog_humanizes_event_role_names(qtbot):
         "label_carrier": "ignored",
         "trial_type": "class cue",
     }
+
+
+def test_data_interpretation_preview_dialog_uses_user_facing_decision_copy(qtbot):
+    needs_review = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={"source_path": "/tmp/source"},
+        preview={},
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    ready = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={"source_path": "/tmp/source"},
+        preview={},
+        validation_decision={"decision": "safe"},
+    )
+    blocked = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={"source_path": "/tmp/source"},
+        preview={},
+        validation_decision={
+            "decision": "blocked",
+            "blocked_reasons": ["No supported EEG data files were found."],
+        },
+    )
+    qtbot.addWidget(needs_review)
+    qtbot.addWidget(ready)
+    qtbot.addWidget(blocked)
+
+    assert needs_review.decision_label.text() == (
+        "Review and confirm these choices before applying."
+    )
+    assert ready.decision_label.text() == "Ready to apply."
+    assert blocked.decision_label.text() == (
+        "This source cannot be applied yet. Review the blocked items below."
+    )
+    assert "Validation" not in needs_review.decision_label.text()
+    assert "safe" not in ready.decision_label.text().lower()
 
 
 def test_data_interpretation_preview_dialog_returns_label_carrier_review(qtbot):
@@ -679,7 +716,10 @@ def test_data_interpretation_preview_dialog_returns_label_carrier_remap(qtbot):
     assert ok_button is not None
     assert ok_button.isEnabled()
     assert ok_button.text() == "Apply Remap"
-    assert "needs a label carrier remap" in dialog.decision_label.text()
+    assert (
+        dialog.decision_label.text()
+        == "Choose the replacement label/event carrier before applying."
+    )
     assert "replacement label/event carrier" in dialog.confirmation_label.text()
     assert "cannot be applied" not in dialog.confirmation_label.text()
 
@@ -740,7 +780,9 @@ def test_data_interpretation_preview_dialog_returns_eeg_file_remap(qtbot):
     assert ok_button is not None
     assert ok_button.isEnabled()
     assert ok_button.text() == "Apply Remap"
-    assert "EEG file remap" in dialog.decision_label.text()
+    assert dialog.decision_label.text() == (
+        "Choose the replacement EEG file before applying."
+    )
     assert "replacement EEG file" in dialog.confirmation_label.text()
 
     details = _tree_text(dialog.review_tree)

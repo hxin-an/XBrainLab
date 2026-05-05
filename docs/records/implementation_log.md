@@ -1964,6 +1964,33 @@ can operate the humanized `Trial type` row while still saving backend `trial_typ
 
 - 這不是 full mature import wizard editor、raw trigger selector 或 Windows human acceptance。
 
+## 2026-05-05 Data Interpretation Decision Copy Polish
+
+### 狀態
+
+Data Interpretation preview dialog top-level decision copy now uses user-facing workflow language.
+`needs_confirmation` is shown as `Review and confirm these choices before applying.`, `safe` as
+`Ready to apply.`, blocked generic sources as `This source cannot be applied yet. Review the blocked
+items below.`, and recipe reload remap blockers as replacement-file guidance.
+
+### 已可宣稱
+
+- The latest Data Interpretation replay screenshot no longer shows `Validation needs confirmation`
+  as the primary wizard status.
+- Decision copy remains state-specific without exposing raw `safe` / `needs_confirmation` status.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py`
+- Tests：`tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+- Artifacts：`artifacts/ui/data-interpretation-preview.png`,
+  `artifacts/ui/data-interpretation-remap.png`, `artifacts/ui/data-interpretation-replay.json`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是完整 import wizard redesign、human desktop acceptance，或 blocked-state UX completion。
+
 ## 2026-05-05 UI Refresh Bridge Helper Cleanup
 
 ### 狀態

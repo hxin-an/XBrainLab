@@ -3171,7 +3171,7 @@
         "1",
         "BIDS",
         "BIDS-like source, 01, 1 events.tsv file(s)",
-        "Validation needs confirmation before applying.",
+        "Review and confirm these choices before applying.",
         "Review the items marked Needs confirmation, then confirm and apply."
       ],
       "metadata_rows": [
@@ -3321,7 +3321,7 @@
         "1",
         "BIDS",
         "Not detected",
-        "Validation needs recipe remaps before applying.",
+        "Choose replacement recipe files before applying.",
         "Choose replacement EEG files and label/event carriers, then apply the remap to recheck this saved recipe."
       ],
       "review_summary_rows": [

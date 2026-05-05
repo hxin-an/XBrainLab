@@ -7977,3 +7977,43 @@
 - 不能宣稱：
   - This is UI-visible wording polish, not full mature import wizard editor, raw trigger selector,
     or Windows human desktop acceptance.
+
+### 2026-05-05 19:52 Data Interpretation decision copy polish
+
+- scope：
+  - Data Interpretation preview dialog top-level decision copy.
+  - Keep backend decision keys unchanged.
+- problem：
+  - The top status line still exposed backend-oriented wording such as
+    `Validation needs confirmation before applying.`
+  - Recipe remap blockers also used validation/remap language as the first user-facing instruction.
+- red / focused tests：
+  - Added decision-copy assertions requiring `Review and confirm these choices before applying.`,
+    `Ready to apply.`, and a generic blocked message without raw `safe`.
+  - Focused test first failed because the dialog still rendered `Validation needs confirmation`.
+  - Full dialog suite then exposed two remaining remap-copy assertions still tied to old
+    `label carrier remap` / `EEG file remap` wording.
+- 做了什麼：
+  - Replaced decision label copy with user-facing workflow instructions.
+  - Updated remap-specific top status to ask for replacement EEG or label/event carrier files.
+  - Refreshed Data Interpretation replay artifacts.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `18 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
+    -> `21 passed`.
+  - `poetry run ruff check XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+    -> pass.
+  - `poetry run basedpyright XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`; refreshed `artifacts/ui/data-interpretation-preview.png`,
+    `artifacts/ui/data-interpretation-remap.png`, and
+    `artifacts/ui/data-interpretation-replay.json`.
+- evidence：
+  - Screenshot review of `artifacts/ui/data-interpretation-preview.png` shows
+    `Review and confirm these choices before applying.`
+  - Replay JSON `visible_text` contains the same copy and no `Validation needs` match.
+- 不能宣稱：
+  - This improves one visible status line; it is not full wizard UX completion, Windows human
+    acceptance, or full blocked-state redesign.

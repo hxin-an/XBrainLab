@@ -2318,6 +2318,38 @@ complex anchor reconciliation、Windows human acceptance 或全格式 real-data 
 當成第一層可見文字。它仍不是 full mature import wizard editor、raw trigger selector、Windows
 human acceptance 或全格式 real-data certification。
 
+2026-05-05 Data Interpretation decision copy polish：
+
+- UI:
+  - top-level wizard status now uses user-facing workflow copy:
+    `Review and confirm these choices before applying.` / `Ready to apply.`
+  - blocked recipe reload states now ask for replacement EEG or label/event carrier files instead
+    of leading with `Validation ... remap` language.
+  - backend decision values such as `safe`, `needs_confirmation`, and `blocked` remain unchanged.
+- TDD evidence:
+  - focused decision-copy test first failed because the dialog still rendered
+    `Validation needs confirmation before applying.`
+  - full dialog suite then failed on two remaining assertions that were still bound to old remap
+    copy.
+- replay artifact refreshed:
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+  - `artifacts/ui/data-interpretation-preview.png`
+  - `artifacts/ui/data-interpretation-remap.png`
+  - `artifacts/ui/data-interpretation-replay.json`
+  - screenshot review shows `Review and confirm these choices before applying.`
+  - replay JSON `visible_text` contains the same copy and no `Validation needs` match.
+- targeted gates:
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+  - `18 passed`
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
+  - `21 passed`
+  - focused `ruff check` -> pass.
+  - focused `basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+
+這批 evidence 支撐 Data Interpretation wizard 的頂部狀態不再把 backend validation wording 當成
+主要 instruction。它仍不是 full wizard UX completion、Windows human acceptance 或完整
+blocked-state redesign。
+
 2026-05-05 Data Interpretation recipe reload rehydration：
 
 - backend:

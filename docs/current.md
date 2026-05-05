@@ -131,7 +131,10 @@ UI replay 顯示人話 `Seconds`、`Trial`、`Class cue labels`，但 recipe cho
 artifact 也新增 `event_rows`，但 recipe choices 仍保存 `class cue` 等 backend values。最新
 event display polish 又把 visible event-role item 從 `label_carrier` / `trial_type` 這類 source /
 internal key 改成人話 `Label carrier` / `Trial type`，backend choices 仍保存原 key；label /
-event 區塊標題也改成 `Label and Event Interpretation`，recipe trace 留在 `Review Summary`。後續 slice 又新增 format capability
+event 區塊標題也改成 `Label and Event Interpretation`，recipe trace 留在 `Review Summary`。最新
+decision-copy slice 又把 wizard 頂部狀態從 `Validation needs confirmation...` 改成使用者語言
+`Review and confirm these choices before applying.` / `Ready to apply.` / replacement-file guidance；
+artifact visible text 已刷新。後續 slice 又新增 format capability
 boundaries：scan / preview 會列出 GDF、EDF / BDF、EEGLAB、BrainVision、MNE FIF、MAT labels、
 CSV / TSV / BIDS events、TXT labels 和 XDF / LSL 的 supported / needs-review / blocked 邊界；
 dialog `Review Summary` 會用人話顯示這些邊界，XDF / LSL 目前會明確提示 stream selection
