@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+4f96005 ui: select label targets from dataset table
+876c154 docs: refresh handoff after dataset render query
 3f63592 ui: render dataset table from state query
 3766764 docs: refresh handoff after aggregate info query
 272dc5e ui: keep aggregate info on query truth
@@ -193,6 +195,11 @@ bb57beb ui: use backend truth for split replacement
     legacy rendering.
   - `.basedpyright/baseline.json` dropped by one more suppressed error after touched Dataset panel
     typing was cleaned up.
+- Label import target selection:
+  - post-load `Add Labels to Loaded Data` now resolves selected/all-row targets from the Dataset
+    table's column-0 `Qt.UserRole` object before opening `ImportLabelDialog`.
+  - `DatasetController.get_loaded_data_list()` remains only as a mock / legacy fallback when table
+    row objects are unavailable.
 
 ## Validation Already Run
 
@@ -420,6 +427,18 @@ poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 3f63592; basedpyright baseline decreased by 1;
 # mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler \
+  -q
+# 67 passed for 4f96005
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 4f96005; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture guard slices.
