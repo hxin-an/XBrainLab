@@ -142,10 +142,12 @@ UI baseline capture 結果：
   - latest event-scope follow-up maps known observer events through central changed-state scopes:
     `data_changed` from the DatasetPanel owner bridge refreshes Dataset / Preprocess / Training;
     `preprocess_changed` from the PreprocessPanel owner bridge refreshes Preprocess / Training /
-    Visualization; secondary subscribers no-op to avoid duplicate refresh.
+    Visualization; `training_started` / `training_stopped` / `config_changed` / `history_cleared`
+    from TrainingPanel callbacks refresh Training / Evaluation / Visualization. Secondary
+    subscribers no-op to avoid duplicate refresh in full MainWindow context.
   - focused gate:
-    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/core/test_base_panel.py tests/unit/ui/test_panel_event_bridges.py -q`
-    -> `38 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/core/test_base_panel.py tests/unit/ui/test_panel_event_bridges.py tests/unit/ui/training/test_training_panel.py tests/unit/ui/test_main_window_sync.py -q`
+    -> `66 passed`.
   - architecture guard gate:
     `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
     -> `13 passed`.

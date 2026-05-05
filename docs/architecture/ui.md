@@ -68,7 +68,8 @@ no-arg panel refresh、aggregate info refresh 和 assistant backend status refre
 coordinator 邊界。最新 cleanup 又讓 known observer events 使用 coordinator refresh scope：
 `data_changed` 只由 `DatasetPanel` owner bridge 觸發 Dataset / Preprocess / Training refresh，
 `preprocess_changed` 只由 `PreprocessPanel` owner bridge 觸發 Preprocess / Training /
-Visualization refresh；其他同事件 subscriber 不再重複刷新同一組 panels。
+Visualization refresh，training lifecycle events 只由 `TrainingPanel` owner callbacks 觸發
+Training / Evaluation / Visualization refresh；其他同事件 subscriber 不再重複刷新同一組 panels。
 
 ## Controller 取得方式
 
@@ -177,9 +178,10 @@ handler。TrainingPanel 的 high-level callbacks 會在完成 event-specific UI 
 `refresh_shared_status()`，讓 aggregate info panel 和 assistant backend status 不必等下一個
 command result 或 tab switch；`training_updated` 因為是 high-frequency live update，仍只做
 training UI 自身更新。
-`refresh_after_observer()` currently treats `data_changed` and `preprocess_changed` as known
-state-changing events and maps them through the same panel-scope rules used by command-result
-refresh. Unknown observer events still fall back to refreshing the source panel plus shared status.
+`refresh_after_observer()` currently treats `data_changed`, `preprocess_changed`, and high-level
+training lifecycle events as known state-changing events and maps them through the same panel-scope
+rules used by command-result refresh. Unknown observer events still fall back to refreshing the
+source panel plus shared status.
 `tests/architecture_compliance.py` 會阻擋新的 direct `_create_bridge(..., self.update_panel)`
 和 direct `_create_bridge(..., self.refresh_from_observer)` call site；`BasePanel` helper 內部的
 delegation 是唯一例外。

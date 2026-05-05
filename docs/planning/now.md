@@ -136,7 +136,9 @@
 - 最新 observer event-scope cleanup 已讓 `data_changed` / `preprocess_changed` 使用 coordinator
   changed-state scope：DatasetPanel owner bridge owns `data_changed` downstream refresh，
   PreprocessPanel owner bridge owns `preprocess_changed` downstream refresh；其他同事件 subscriber
-  no-op，避免同一 backend observer event 重複刷新整組 panels。
+  no-op，避免同一 backend observer event 重複刷新整組 panels。後續同 slice 也把
+  `training_started` / `training_stopped` / `config_changed` / `history_cleared` 交給 TrainingPanel
+  owner callback 觸發 Training / Evaluation / Visualization scope。
 - 最新 downstream refresh coordinator cleanup 已讓 `training_changed` 刷新 Evaluation /
   Visualization readiness、`epoch_changed` 刷新 Visualization readiness、`evaluation_changed`
   也刷新 Visualization readiness。這把一部分 analysis panel readiness 從 observer-only 補刷新

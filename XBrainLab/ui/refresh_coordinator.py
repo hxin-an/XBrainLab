@@ -18,6 +18,10 @@ _PANEL_NAMES_BY_INDEX = (
 _OBSERVER_EVENT_REFRESH_ROUTES = {
     "data_changed": ("dataset_panel", ChangedState(raw_changed=True)),
     "preprocess_changed": ("preprocess_panel", ChangedState(preprocessed_changed=True)),
+    "training_started": ("training_panel", ChangedState(training_changed=True)),
+    "training_stopped": ("training_panel", ChangedState(training_changed=True)),
+    "config_changed": ("training_panel", ChangedState(training_changed=True)),
+    "history_cleared": ("training_panel", ChangedState(training_changed=True)),
 }
 
 
@@ -81,6 +85,9 @@ def refresh_after_observer(context: Any, *, event_name: str | None = None) -> bo
         if route is not None:
             source_panel_name, changed_state = route
             source_panel = getattr(main_window, source_panel_name, None)
+            if source_panel is None:
+                refreshed = refresh_panel(context)
+                return _refresh_shared_status(main_window) or refreshed
             if not _is_source_context(context, source_panel):
                 return False
             for panel_name in _panel_names_for(changed_state):

@@ -8693,15 +8693,21 @@
     of duplicating the central refresh.
   - Updated `BasePanel.refresh_from_observer()` tests so observer event names are passed to the
     coordinator.
+  - Added training lifecycle tests requiring TrainingPanel owner callbacks to route
+    `training_started` / `training_stopped` / `config_changed` / `history_cleared` through the same
+    coordinator scope and secondary Evaluation / Visualization subscribers to no-op in full
+    MainWindow context.
 - 做了什麼：
   - `refresh_after_observer(context, event_name=...)` now routes known events via
     `ChangedState`-style panel scopes.
   - `BasePanel._create_refresh_bridge()` now wraps the observer callback and passes its event name
     into `refresh_from_observer()`.
+  - TrainingPanel high-level callbacks now call `refresh_after_observer()` with their lifecycle event
+    name after completing their event-specific UI update.
   - Unknown observer events still refresh the source panel plus shared status.
 - validation：
-  - `poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/core/test_base_panel.py tests/unit/ui/test_panel_event_bridges.py tests/unit/ui/test_main_window_sync.py -q`
-    -> `47 passed`.
+  - `poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/core/test_base_panel.py tests/unit/ui/test_panel_event_bridges.py tests/unit/ui/training/test_training_panel.py tests/unit/ui/test_main_window_sync.py -q`
+    -> `66 passed`.
   - `git diff --check`
     -> pass.
   - `poetry run python tests/architecture_compliance.py`

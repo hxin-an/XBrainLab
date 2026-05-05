@@ -579,11 +579,11 @@ def test_training_panel_clears_log_on_history_cleared(
     assert panel.log_text.toPlainText() == ""
 
 
-def test_training_panel_high_level_events_refresh_shared_status(
+def test_training_panel_high_level_events_refresh_coordinator_scope(
     mock_main_window,
     qtbot,
 ):
-    """Named training callbacks should keep shared UI status current."""
+    """Named training callbacks should hand lifecycle refresh to the coordinator."""
     controller: Any = Observable()
     controller.validate_ready = MagicMock(return_value=True)
     controller.has_datasets = MagicMock(return_value=True)
@@ -601,7 +601,7 @@ def test_training_panel_high_level_events_refresh_shared_status(
     with (
         patch("PyQt6.QtWidgets.QMessageBox.information"),
         patch(
-            "XBrainLab.ui.panels.training.panel.refresh_shared_status",
+            "XBrainLab.ui.panels.training.panel.refresh_after_observer",
         ) as refresh,
     ):
         controller.notify("training_started")
@@ -614,7 +614,10 @@ def test_training_panel_high_level_events_refresh_shared_status(
         qtbot.wait(50)
 
     assert refresh.call_count == 4
-    refresh.assert_any_call(panel)
+    refresh.assert_any_call(panel, event_name="training_started")
+    refresh.assert_any_call(panel, event_name="config_changed")
+    refresh.assert_any_call(panel, event_name="training_stopped")
+    refresh.assert_any_call(panel, event_name="history_cleared")
 
 
 def test_training_panel_clears_log_on_config_changed(

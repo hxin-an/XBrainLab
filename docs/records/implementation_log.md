@@ -2259,9 +2259,10 @@ and assistant backend status through the shared coordinator.
 
 ### Evidence 入口
 
-- Source：`XBrainLab/ui/refresh_coordinator.py`, `XBrainLab/ui/core/base_panel.py`
+- Source：`XBrainLab/ui/refresh_coordinator.py`, `XBrainLab/ui/core/base_panel.py`,
+  `XBrainLab/ui/panels/training/panel.py`
 - Tests：`tests/unit/ui/test_refresh_coordinator.py`, `tests/unit/ui/core/test_base_panel.py`,
-  `tests/unit/ui/test_panel_event_bridges.py`
+  `tests/unit/ui/test_panel_event_bridges.py`, `tests/unit/ui/training/test_training_panel.py`
 - Detailed validation：`docs/records/worklog.md`
 
 ### 不能宣稱完成
@@ -2536,13 +2537,16 @@ automated replay.
 Known observer events now use coordinator-owned refresh scope instead of refreshing only whichever
 panel received the observer bridge. `data_changed` is owned by DatasetPanel and refreshes Dataset /
 Preprocess / Training once; `preprocess_changed` is owned by PreprocessPanel and refreshes
-Preprocess / Training / Visualization once. Secondary subscribers no-op to avoid repeated refreshes
-for the same backend observer event.
+Preprocess / Training / Visualization once. High-level training lifecycle events are owned by
+TrainingPanel callbacks and refresh Training / Evaluation / Visualization once. Secondary subscribers
+no-op in full MainWindow context to avoid repeated refreshes for the same backend observer event.
 
 ### 已可宣稱
 
 - Simple observer refresh for data and preprocess lifecycle events is closer to command-result
   changed-state refresh.
+- Training lifecycle callbacks now use the same observer refresh coordinator path for downstream
+  Evaluation / Visualization readiness.
 - Duplicate downstream panel refresh from multiple subscribers of the same observer event is
   explicitly guarded in tests.
 
@@ -2555,6 +2559,5 @@ for the same backend observer event.
 
 ### 不能宣稱完成
 
-- This does not remove controller observers, complete callback-specific observer classification, or
-  make UI refresh fully command-driven. Training high-level callbacks, live updates, and remaining
-  manual UI refreshes still need explicit ownership.
+- This does not remove controller observers or make UI refresh fully command-driven. High-frequency
+  training live updates and remaining manual UI refreshes still need explicit ownership.
