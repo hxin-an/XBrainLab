@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+5ff0790 training: bound force cleanup waits
 5940b7d llm: release local runtime on shutdown
 cc1b03e docs: refresh handoff after downloader lifecycle cleanup
 435d9a9 llm: clean up model downloader lifecycle
@@ -233,6 +234,13 @@ bb57beb ui: use backend truth for split replacement
   - `LLMController.close()` calls worker shutdown before bounded-waiting the worker thread.
   - This is assistant lifecycle resource cleanup, not a long-running true local model UI soak or
     GPU leak-proof acceptance.
+- Training force-clean thread handle guard:
+  - `Trainer.clean(force_update=True)` now sets interrupt and bounded-joins the background
+    training thread when called from outside the job thread.
+  - if the training thread is still alive after the timeout, cleanup raises and leaves the trainer
+    handle intact so later cancel/status paths are still reachable.
+  - `TrainingManager.clean_trainer()` only clears the trainer after `trainer.clean()` succeeds.
+  - This is thread-handle safety coverage, not a long-running training soak.
 - Preprocess epoch command truth:
   - `open_epoching()` uses backend `create_epoch` capability as the authoritative UI gate.
   - An enabled `create_epoch` capability is no longer vetoed by the separate `preprocess`
@@ -714,6 +722,29 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 5940b7d; mkdocs still prints the existing Material advisory
+
+poetry run pytest --capture=sys \
+  tests/unit/backend/training/test_trainer.py \
+  tests/unit/backend/test_training_manager.py \
+  -q
+# 40 passed for 5ff0790
+
+poetry run pytest --capture=sys \
+  tests/unit/backend/controller/test_training_controller.py \
+  tests/unit/backend/application/test_training_service.py \
+  tests/unit/backend/application/test_lifecycle_service.py \
+  -q
+# 19 passed for 5ff0790
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for 5ff0790
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 5ff0790; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
