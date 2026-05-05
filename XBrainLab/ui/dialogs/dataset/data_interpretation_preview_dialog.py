@@ -1201,10 +1201,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 )
             return "This interpretation is blocked and cannot be applied."
         if self.decision == "needs_confirmation":
-            items = self.validation_decision.get("required_confirmations") or []
-            if items:
-                return "Confirmation required: " + "; ".join(str(i) for i in items)
-            return "Confirmation required before applying this interpretation."
+            return "Review the items marked Needs confirmation, then confirm and apply."
         if self.decision == "safe":
             return "This interpretation can be applied."
         return "Review this interpretation before applying."

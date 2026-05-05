@@ -42,6 +42,38 @@
 ### 下一手重點
 ```
 
+## 2026-05-05 Data Interpretation Confirmation Copy Polish
+
+### 狀態
+
+The Data Interpretation preview dialog now uses a short action-oriented confirmation cue at the
+bottom of the dialog. Detailed metadata / label carrier confirmation items remain in the structured
+`Review Summary` table instead of being repeated as a long semicolon-delimited sentence with raw
+filenames.
+
+### 已可宣稱
+
+- Automated replay evidence now shows the preview dialog bottom copy as a user-facing next action,
+  not a repeated raw confirmation dump.
+- The specific confirmation reasons remain visible and reviewable in `Review Summary`.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py`
+- Test: `tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+- Artifact: `artifacts/ui/data-interpretation-preview.png`,
+  `artifacts/ui/data-interpretation-replay.json`
+
+### 不能宣稱完成
+
+- This is a focused copy / density polish, not a complete mature import wizard or human desktop
+  acceptance.
+
+### 下一手重點
+
+Continue the mature import wizard work on embedded label editing, raw trigger selection, and complex
+anchor reconciliation.
+
 ## 2026-05-05 UI Navigation Refresh Coordinator Slice
 
 ### 狀態

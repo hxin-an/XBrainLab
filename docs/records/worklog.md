@@ -37,6 +37,48 @@
 
 ## 2026-05-05
 
+### 18:46 Data Interpretation confirmation copy polish
+
+- 做了什麼：
+  - 檢查最新 `artifacts/ui/data-interpretation-preview.png` /
+    `data-interpretation-applied.png`：Dataset table 已填滿主 panel，`Events` / `Labels` 不再用綠色
+    success 語意，wizard tables 沒有水平外溢，`Review Summary` alternate rows 已降對比。
+  - 發現 preview dialog 底部仍會把 required confirmations 串成長句，重複 `Review Summary`，且把
+    raw filenames 放到底部提示。
+  - 先改 dialog test 建立紅燈，要求 bottom confirmation copy 是短 action cue，詳細項目留在
+    `Review Summary`。
+  - 更新 `_confirmation_text()`：`needs_confirmation` 時固定顯示
+    `Review the items marked Needs confirmation, then confirm and apply.`
+  - 刷新 `scripts/dev/capture_data_interpretation_replay.py` 產生的 screenshot / JSON artifact。
+- 結果：
+  - `artifacts/ui/data-interpretation-preview.png` 底部已不再顯示 raw confirmation dump。
+  - `artifacts/ui/data-interpretation-replay.json` 的 dialog visible text 最後一行為短 action cue；
+    `review_summary_rows` 仍保留具體 metadata / label carrier confirmation。
+- 證據：
+  - 初始紅燈：
+    `poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_renders_payload -q`
+    -> failed，底部仍是 `Confirmation required: Confirm session metadata.`
+  - Focused tests：
+    `poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `16 passed`。
+  - Focused lint/type：
+    `poetry run ruff check XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+    -> pass。
+    `poetry run basedpyright XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - Artifact refresh：
+    `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`，refreshed `artifacts/ui/data-interpretation-preview.png` /
+    `artifacts/ui/data-interpretation-replay.json`。
+  - Slice gates：
+    `git diff --check` -> pass；
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`；
+    `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning；
+    `poetry run ruff check .` -> pass；
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+- 接續 / 本輪剩餘：
+  - 此 slice 已達可提交點。這不是完整 mature import wizard closure。
+
 ### 18:36 UI tab-switch refresh coordinator slice
 
 - 做了什麼：

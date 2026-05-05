@@ -3172,7 +3172,7 @@
         "BIDS",
         "BIDS-like source, 01, 1 events.tsv file(s)",
         "Validation needs confirmation before applying.",
-        "Confirmation required: Confirm label carrier alignment, anchor event, and class map before applying.; Confirm session metadata for sub-01_task-mi_run-1_raw.fif.; Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
+        "Review the items marked Needs confirmation, then confirm and apply."
       ],
       "metadata_rows": [
         [

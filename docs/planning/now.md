@@ -441,6 +441,8 @@
   - 最新 UI table-fit polish 讓 label / event / recipe trace tables 用 stretch + elide 控制欄寬，
     `Review Summary` 使用較低對比的 dark alternate row；Dataset table 的 `File` 欄承接剩餘寬度
     並填滿主 panel，其他欄保留穩定寬度，避免載入後表格內縮。
+  - 最新 confirmation-copy polish 讓底部提示只顯示短 action cue；具體 metadata / label carrier
+    confirmation 留在 `Review Summary` rows，避免 raw filename 長句在 dialog 底部重複。
   - Dataset table `Events` 欄現在用 `Events (n)` 表示 recording events、`Labels (n)` 表示外部
     labels；external labels 使用中性文字，不再用綠色表示成功狀態。
   - subject / session / task / run 和 class map review cells 已可產生 dialog `choices`。

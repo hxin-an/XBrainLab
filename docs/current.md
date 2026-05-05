@@ -495,7 +495,10 @@ table 載入後欄位內縮問題：Dataset table 仍保留 interactive resize m
 外溢；Data Interpretation preview / remap dialog 也會在顯示後用實際 viewport 重算 metadata、
 label/event 和 `Review Summary` 欄寬。`Events` 欄現在用 `Events (n)` / `Labels (n)`
 區分內建 events 與外部 labels，不再用綠色把 external labels 包裝成成功狀態。
-Data Interpretation replay
+最新 confirmation-copy polish 又把 preview dialog 底部從 raw confirmation item 串接長句改成
+短 action cue：`Review the items marked Needs confirmation, then confirm and apply.`；具體的
+metadata / label carrier confirmation 仍只放在 `Review Summary` table，避免底部重複 raw
+filename。Data Interpretation replay
 JSON 已保存 Dataset table headers、rows、resize modes 和 column widths，applied artifact
 顯示全部欄位填滿主 panel。這支撐 automated PyQt replay
 條件下主要 UI path 可操作；仍不能替代 Windows Desktop 真人 click-through、雙螢幕 / DPI 或長時間

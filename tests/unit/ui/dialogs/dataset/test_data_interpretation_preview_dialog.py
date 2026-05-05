@@ -52,8 +52,11 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
     assert dialog.event_tree.topLevelItemCount() == 4
     assert "Found 1 EEG file" in dialog.summary_label.text()
     assert "Validation needs confirmation" in dialog.decision_label.text()
-    assert "Confirm session metadata." in dialog.confirmation_label.text()
     review_text = _tree_text(dialog.review_tree)
+    assert dialog.confirmation_label.text() == (
+        "Review the items marked Needs confirmation, then confirm and apply."
+    )
+    assert "Confirm session metadata." in review_text
     assert "Downstream impact" in review_text
     assert "Training uses this recipe trace." in review_text
     assert not dialog.findChildren(QPlainTextEdit)
@@ -112,7 +115,9 @@ def test_data_interpretation_preview_dialog_tables_fit_product_layout(qtbot):
             assert (
                 header.sectionResizeMode(column) == QHeaderView.ResizeMode.Interactive
             )
-        assert abs(header.length() - tree.viewport().width()) <= 2
+        viewport = tree.viewport()
+        assert viewport is not None
+        assert abs(header.length() - viewport.width()) <= 2
     assert dialog.review_tree.alternatingRowColors()
     assert "alternate-background-color" in dialog.styleSheet()
     assert "#252525" in dialog.styleSheet().lower()
@@ -171,8 +176,12 @@ def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot
     ):
         header = tree.header()
         assert header is not None
-        assert abs(header.length() - tree.viewport().width()) <= 2
-        assert tree.horizontalScrollBar().maximum() == 0
+        viewport = tree.viewport()
+        horizontal_scrollbar = tree.horizontalScrollBar()
+        assert viewport is not None
+        assert horizontal_scrollbar is not None
+        assert abs(header.length() - viewport.width()) <= 2
+        assert horizontal_scrollbar.maximum() == 0
 
 
 def test_data_interpretation_preview_dialog_returns_review_edits(qtbot):
