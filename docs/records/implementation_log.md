@@ -51,13 +51,17 @@ The backend preview payload exposes reviewable diff rows for EEG files, label ca
 choices; the Data Interpretation wizard renders those rows in `Review Summary`. Follow-up hardening
 also blocks reload candidates when a saved selected EEG file is missing from the current scan, so
 apply cannot fall through into a runtime import failure. The same blocker now covers missing saved
-label/event carriers, so external labels cannot be silently dropped during recipe replay.
+label/event carriers, so external labels cannot be silently dropped during recipe replay. Backend
+remap support now lets a saved carrier be explicitly mapped to a replacement carrier in the current
+scan while preserving saved label field / anchor / role choices.
 
 ### 已可宣稱
 
 - Reloaded recipes no longer show only a generic `reapplied` message; the user can see whether saved
   files / label carriers still match the current scan.
 - Missing saved EEG files and label/event carriers are now validation blockers before apply.
+- Explicit backend `label_carrier_remap` can clear the missing-carrier blocker and preserve saved
+  choices on the replacement carrier.
 - Human-like walkthrough evidence was refreshed, including `07-recipe-reloaded.png`.
 
 ### Evidence 入口
@@ -71,6 +75,7 @@ label/event carriers, so external labels cannot be silently dropped during recip
 ### 不能宣稱完成
 
 - 這不是完整 recipe diff editor，也不是人類 Windows desktop acceptance。
+- Wizard remap selector 尚未接上；目前是 backend/headless truth 已可用。
 - 這不處理複雜 recipe conflict resolution；目前只是讓 rescan comparison 可見。
 
 ### 下一手重點

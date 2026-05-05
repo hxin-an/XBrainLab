@@ -353,6 +353,65 @@ def test_reload_recipe_blocks_missing_saved_label_carrier(tmp_path):
     assert reload_result.state.interpretation.validation_decision == "blocked"
 
 
+def test_reload_recipe_accepts_explicit_label_carrier_remap(tmp_path):
+    service = ApplicationService()
+    fif_path = _write_synthetic_raw_fif(tmp_path)
+    old_events = tmp_path / "old_events.tsv"
+    new_events = tmp_path / "renamed_events.tsv"
+    new_events.write_text("onset\tduration\ttrial_type\n1\t0\tleft\n", encoding="utf-8")
+    recipe_path = tmp_path / "remap-label-carrier-recipe.json"
+    ImportRecipe(
+        recipe_id="recipe-remap-label",
+        interpretation_id="interpretation-1",
+        source_path=str(tmp_path),
+        source_kind="folder",
+        selected_eeg_files=[str(fif_path)],
+        label_carriers=[str(old_events)],
+        label_carrier_plan=[
+            {
+                "path": str(old_events),
+                "selected_label_field": "trial_type",
+                "selected_anchor": "onset",
+                "time_model": "seconds",
+                "granularity": "trial",
+                "role": "class cue labels",
+            }
+        ],
+    ).write_json(str(recipe_path))
+
+    reload_result = service.execute(
+        ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path)),
+    )
+    scan = reload_result.diagnostics["scan_result"]
+    candidate = reload_result.diagnostics["candidate"]
+    choices = dict(candidate["choices"])
+    choices["label_carrier_remap"] = {
+        str(old_events): str(new_events),
+    }
+
+    preview_result = service.execute(
+        PreviewInterpretationCommand(
+            scan_id=scan["scan_id"],
+            choices=choices,
+        ),
+    )
+    validation_result = service.execute(ValidateInterpretationCommand())
+
+    assert reload_result.diagnostics["validation_decision"]["decision"] == "blocked"
+    assert preview_result.ok is True
+    assert validation_result.ok is True
+    assert validation_result.diagnostics["validation_decision"]["decision"] == (
+        "needs_confirmation"
+    )
+    remapped = preview_result.diagnostics["candidate"]["label_carrier_plan"][0]
+    assert remapped["path"] == str(new_events)
+    assert remapped["selected_label_field"] == "trial_type"
+    assert (
+        "choices:label_carrier_remap"
+        in preview_result.diagnostics["candidate"]["recipe_trace"]
+    )
+
+
 def test_application_service_failed_command_sets_and_clears_last_error(tmp_path):
     service = ApplicationService()
     fif_path = _write_synthetic_raw_fif(tmp_path)

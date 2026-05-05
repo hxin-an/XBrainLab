@@ -366,6 +366,36 @@ UI baseline capture 結果：
 - Claim boundary: this supports early blocking for missing saved label/event carriers. It does not
   implement carrier remapping, renamed-carrier resolution, or anchor reconciliation UI.
 
+2026-05-05 Recipe reload backend label-carrier remap:
+
+- Product/backend change:
+  - Candidate building now accepts explicit `label_carrier_remap` choices from saved carrier path/name
+    to current scan replacement carrier.
+  - Remapped carriers preserve saved label field, anchor, time model, granularity, and role choices.
+  - `required_label_carriers` are checked after remap, so a deliberate replacement clears the
+    missing-carrier blocker.
+- Focused evidence:
+  - Initial red tests showed remap still blocked on the old carrier and integration validation stayed
+    `blocked`.
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_candidate.py::test_build_interpretation_candidate_remaps_saved_label_carrier_choices tests/integration/backend/test_application_service_workflow.py::test_reload_recipe_accepts_explicit_label_carrier_remap -q`
+    -> `2 passed`.
+- Post-change gates:
+  - `git diff --check` -> pass.
+  - `timeout 300s poetry run ruff check .` -> pass.
+  - `timeout 300s poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+  - `timeout 300s poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `108 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `6 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `473 passed`.
+- Claim boundary: this supports backend/headless remap truth. It does not yet prove a user-facing
+  wizard remap selector or anchor reconciliation UX.
+
 2026-05-05 MCP stdio adapter session boundary:
 
 - Adapter change:

@@ -37,6 +37,44 @@
 
 ## 2026-05-05
 
+### 12:36 Recipe reload backend label-carrier remap
+
+- 做了什麼：
+  - 在 missing label-carrier blocker 後補 backend remap path，讓 UI / headless 後續可以明確把
+    saved carrier 映射到 current scan 的 replacement carrier。
+  - 先加紅燈：
+    - candidate builder 收到 `label_carrier_remap={old: new}` 時，不應再因 old carrier
+      missing 而 blocked。
+    - saved `label_carrier_choices` 應套到 remapped current carrier，而不是遺失。
+    - integration flow 先 reload blocked recipe，再用 `PreviewInterpretationCommand` 提供
+      remap choices，validation 應回到 `needs_confirmation`。
+  - `build_interpretation_candidate()` 現在會 normalize `label_carrier_remap`，用 exact path 或
+    basename 匹配 old carrier，並把 saved choices 改掛到 remapped target carrier。
+  - `required_label_carriers` 也會經 remap 後再與 scan result 比對。
+- 結果：
+  - explicit remap 可以清掉 missing-carrier blocker，且 replacement carrier 保留原 recipe 的
+    label field、anchor、time model、granularity 和 role。
+  - recipe trace 新增 `choices:label_carrier_remap`。
+- 證據：
+  - 初始紅燈：
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_candidate.py::test_build_interpretation_candidate_remaps_saved_label_carrier_choices tests/integration/backend/test_application_service_workflow.py::test_reload_recipe_accepts_explicit_label_carrier_remap -q`
+    -> failed；blocked reason 仍包含 old carrier，integration validation 仍是 `blocked`。
+  - 修正後同一指令 -> `2 passed`。
+  - Post-change gates：
+    `git diff --check` -> pass；
+    `timeout 300s poetry run ruff check .` -> pass；
+    `timeout 300s poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`；
+    `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning；
+    `timeout 300s poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`；
+    `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `108 passed`；
+    `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q` -> `6 passed`；
+    `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q` -> `7 passed`；
+    `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `473 passed`。
+- 接續 / 本輪剩餘：
+  - 這是 backend/headless remap truth；wizard selector 尚未接上，不能宣稱完整 manual remap UX。
+
 ### 12:25 Recipe reload missing label-carrier blocker
 
 - 做了什麼：

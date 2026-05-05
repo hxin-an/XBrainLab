@@ -68,9 +68,13 @@ def build_interpretation_candidate(
         scan.metadata,
         choices.get("metadata_overrides"),
     )
+    label_carrier_choices = _remapped_label_carrier_choices(
+        choices.get("label_carrier_choices"),
+        choices.get("label_carrier_remap"),
+    )
     label_carrier_plan = _build_label_carrier_plan(
         scan.label_carriers,
-        choices.get("label_carrier_choices"),
+        label_carrier_choices,
     )
 
     if scan.label_carriers:
@@ -245,13 +249,60 @@ def _required_label_carriers_missing_from_scan(
     choices: dict[str, Any],
     scanned_carriers: list[str],
 ) -> list[str]:
-    required = _string_list(choices.get("required_label_carriers"))
+    remap = _string_mapping(choices.get("label_carrier_remap"))
+    required = _remapped_required_label_carriers(
+        _string_list(choices.get("required_label_carriers")),
+        remap,
+    )
     label_carrier_choices = choices.get("label_carrier_choices")
     if isinstance(label_carrier_choices, dict):
         required.extend(
-            str(key).strip() for key in label_carrier_choices if str(key).strip()
+            remap.get(str(key).strip(), str(key).strip())
+            for key in label_carrier_choices
+            if str(key).strip()
         )
     return _paths_missing_from_scan(required, scanned_carriers)
+
+
+def _remapped_required_label_carriers(
+    required: list[str],
+    remap: dict[str, str],
+) -> list[str]:
+    result: list[str] = []
+    for carrier in required:
+        mapped = _mapped_path(carrier, remap)
+        if mapped and mapped not in result:
+            result.append(mapped)
+    return result
+
+
+def _remapped_label_carrier_choices(
+    payload: Any,
+    remap_payload: Any,
+) -> dict[str, dict[str, str]]:
+    choices = _normalize_label_carrier_choices(payload)
+    remap = _string_mapping(remap_payload)
+    if not choices or not remap:
+        return choices
+    result: dict[str, dict[str, str]] = {}
+    for carrier, carrier_choices in choices.items():
+        mapped = _mapped_path(carrier, remap)
+        if mapped:
+            result[mapped] = dict(carrier_choices)
+    return result
+
+
+def _mapped_path(path: str, remap: dict[str, str]) -> str:
+    text = str(path).strip()
+    if not text:
+        return ""
+    if text in remap:
+        return remap[text]
+    name = Path(text).name or text
+    for source, target in remap.items():
+        if Path(str(source)).name == name:
+            return str(target)
+    return text
 
 
 def _string_list(payload: Any) -> list[str]:
@@ -292,6 +343,8 @@ def _choice_recipe_trace(choices: dict[str, Any]) -> list[str]:
         choices.get("label_carrier_choices")
     ) or _string_list(choices.get("required_label_carriers")):
         traces.append("choices:label_carriers")
+    if _string_mapping(choices.get("label_carrier_remap")):
+        traces.append("choices:label_carrier_remap")
     return traces
 
 

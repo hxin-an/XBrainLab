@@ -506,6 +506,10 @@ evidence；仍不是完整 recipe diff editor 或 human desktop acceptance。
 `label_carriers` / `label_carrier_plan.path` 帶回 candidate choices，若 current scan 找不到對應
 carrier，validation 會以 `Saved label/event carrier(s) were not found in the current scan: ...`
 擋下，避免 recipe replay 靜默丟失 external labels。
+後續 backend remap slice 已允許明確 `label_carrier_remap`，可把 saved carrier path/name 映射到
+current scan 的 replacement carrier；原 recipe 的 label field、anchor、time model、granularity
+和 role choices 會套到 replacement carrier。這支撐 headless / UI 下一步做 manual remap，但
+wizard selector 尚未接上，不能宣稱完整 conflict editor。
 
 ## 可信狀態
 

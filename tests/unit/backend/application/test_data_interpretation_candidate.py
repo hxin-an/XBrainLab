@@ -115,3 +115,33 @@ def test_build_interpretation_candidate_blocks_required_label_carriers_missing_f
     assert "missing_events.tsv" in candidate.blocked_reasons[0]
     assert "label/event carrier" in candidate.blocked_reasons[0]
     assert "choices:label_carriers" in candidate.recipe_trace
+
+
+def test_build_interpretation_candidate_remaps_saved_label_carrier_choices():
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(label_carriers=["/data/renamed_events.tsv"]),
+        choices={
+            "recipe_id": "recipe-1",
+            "required_label_carriers": ["/data/original_events.tsv"],
+            "label_carrier_remap": {
+                "/data/original_events.tsv": "/data/renamed_events.tsv",
+            },
+            "label_carrier_choices": {
+                "/data/original_events.tsv": {
+                    "label_field": "trial_type",
+                    "anchor": "onset",
+                    "time_model": "seconds",
+                    "granularity": "trial",
+                    "role": "class cue labels",
+                }
+            },
+        },
+    )
+
+    assert candidate.blocked_reasons == []
+    assert candidate.label_carrier_plan[0]["path"] == "/data/renamed_events.tsv"
+    assert candidate.label_carrier_plan[0]["selected_label_field"] == "trial_type"
+    assert candidate.label_carrier_plan[0]["selected_anchor"] == "onset"
+    assert candidate.label_carrier_plan[0]["role"] == "class cue labels"
+    assert "choices:label_carrier_remap" in candidate.recipe_trace
