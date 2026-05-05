@@ -548,6 +548,10 @@ Windows desktop acceptance.
 - UI runtime bypass cleanup 覆蓋 Dataset direct file import 和 Preprocess reset：successful
   `LoadDataCommand` / `ResetPreprocessCommand` 不再落回 controller mutation，fallback 只保留給
   command adapter unavailable 的 mock / legacy `None` 情境。
+- Legacy raw-loader boundary cleanup 覆蓋 `DatasetPanel.apply_loader()`：real `Study`
+  runtime 會拒絕 direct `loader.apply(study)` 並提示使用 Data Interpretation workflow；mock /
+  legacy-only path 仍保留 `_apply_legacy_loader()` adapter。Architecture compliance 新增 direct
+  loader apply guard，並通過 focused unit test。
 - Training sidebar bypass cleanup 覆蓋 destructive dataset cleanup 和 Clear History：
   successful `ClearDatasetsCommand` / `ClearTrainingHistoryCommand` 不再落回 training controller
   mutation，Clear History 現在也有 user confirmation。

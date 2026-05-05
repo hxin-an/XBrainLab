@@ -203,6 +203,9 @@ capability-confirmation gate、result envelope 和 compatibility wrapper methods
 runtime bypass cleanup 又修掉兩個 service-success fallback 風險：Dataset panel direct
 file import 在 `LoadDataCommand` 成功後不再再呼叫 controller import；Preprocess reset 也改走
 `ResetPreprocessCommand`，controller reset 只保留給 mock / legacy `None` adapter fallback。
+最新 legacy-loader boundary slice 又把 `DatasetPanel.apply_loader()` 隔離成 mock / legacy-only
+adapter；real `Study` runtime 會拒絕 direct `loader.apply(study)`，提示使用
+Data Interpretation workflow，且 architecture compliance 會阻止新的 UI direct loader apply 旁路。
 下一個 UI cleanup slice 又把 Training sidebar 的 destructive cleanup path 收回 command spine：
 重新 split 前清 datasets 走 `ClearDatasetsCommand(confirmed=True)`；Clear History 會先要求
 使用者確認，再走 `ClearTrainingHistoryCommand(confirmed=True)`，successful service result 不再

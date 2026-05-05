@@ -2089,3 +2089,34 @@ legacy-result helpers.
 ### 不能宣稱完成
 
 - 這是 guard hardening，不是 full controller fallback removal or UI refresh closure.
+
+## 2026-05-05 Dataset Legacy Loader Boundary
+
+### 狀態
+
+`DatasetPanel.apply_loader()` is now an explicit mock / legacy-only adapter instead of a product
+runtime direct mutation path. In real `Study` contexts it refuses `loader.apply(study)` and tells the
+user to use the Data Interpretation workflow. `find_study()` now also detects `controller.study`,
+so panels constructed with a real controller but without a main-window parent do not accidentally
+open legacy fallback. Architecture compliance now rejects new UI `loader.apply(...study...)` calls
+outside legacy adapter functions.
+
+### 已可宣稱
+
+- The old raw loader panel helper cannot silently mutate a real `Study` runtime from product UI.
+- Static architecture compliance covers future direct loader-apply regressions in UI code.
+- Mock / legacy compatibility remains isolated behind `_apply_legacy_loader()`.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/panel.py`,
+  `XBrainLab/ui/application_capabilities.py`, `tests/architecture_compliance.py`
+- Tests：`tests/unit/ui/dataset/test_panel.py`,
+  `tests/unit/ui/test_application_capabilities.py`,
+  `tests/unit/test_architecture_compliance.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是 full UI command-refresh closure，也不是移除所有 controller read path；只是封住 raw
+  loader direct mutation 旁路。

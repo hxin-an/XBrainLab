@@ -59,6 +59,10 @@
 - 最新 UI runtime bypass audit 修掉 Dataset direct file import 和 Preprocess reset 的
   service-success fallback：successful `LoadDataCommand` / `ResetPreprocessCommand` 不再再呼叫
   controller mutation，controller fallback 只留給 mock / legacy `None` adapter 情境。
+- 最新 legacy raw-loader boundary slice 已把 `DatasetPanel.apply_loader()` 改成 mock /
+  legacy-only adapter；real `Study` runtime 會拒絕 direct `loader.apply(study)` 並提示走
+  Data Interpretation workflow。`tests/architecture_compliance.py` 也新增 direct loader apply
+  guard，避免 UI 新增 raw loader mutation 旁路。
 - Reviewer follow-up：UI refresh 目前仍是 controller observer events、panel-local manual
   refresh、tab switch refresh、command-result local refresh 和 ChatPanel / agent Qt signal 的
   混合模式。第一個 cleanup slice 已建立 `refresh_after_command()`，real `Study`

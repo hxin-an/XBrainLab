@@ -1,4 +1,5 @@
 from tests.architecture_compliance import (
+    check_ui_direct_loader_apply,
     check_ui_observer_direct_update_bridges,
     check_ui_post_command_local_refreshes,
 )
@@ -146,3 +147,31 @@ def _setup_bridges(self):
     )
 
     assert check_ui_observer_direct_update_bridges(tmp_path) == []
+
+
+def test_direct_loader_apply_guard_flags_product_ui_mutation(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def apply_loader(self, loader):
+    loader.apply(self.controller.study, force_update=True)
+""",
+    )
+
+    violations = check_ui_direct_loader_apply(tmp_path)
+
+    assert len(violations) == 1
+    assert "loader.apply" in violations[0]
+    assert "legacy loader adapter" in violations[0]
+
+
+def test_direct_loader_apply_guard_allows_legacy_adapter(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def _apply_legacy_loader(self, loader):
+    loader.apply(self.controller.study, force_update=True)
+""",
+    )
+
+    assert check_ui_direct_loader_apply(tmp_path) == []

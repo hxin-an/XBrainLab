@@ -138,26 +138,50 @@ class DatasetPanel(BasePanel):
             self.table.setColumnWidth(column, width)
 
     def apply_loader(self, loader):
-        """Apply a data loader to the current study.
+        """Apply a legacy data loader only for mock or legacy UI contexts.
 
         Args:
             loader: A data loader instance that supports ``apply()``
                 and ``__len__``.
 
         """
-        if self.main_window and hasattr(self.main_window, "study"):
-            try:
-                # Use force_update=True to allow updating the dataset (e.g. appending)
-                loader.apply(self.controller.study, force_update=True)
-                self.update_panel()
-                QMessageBox.information(
+        try:
+            total_files = run_legacy_controller_fallback(
+                self,
+                lambda: self._apply_legacy_loader(loader),
+            )
+        except RuntimeError as exc:
+            if "refusing controller fallback" in str(exc):
+                logger.warning("Blocked legacy loader apply in real Study context.")
+                QMessageBox.warning(
                     self,
-                    "Success",
-                    f"Dataset updated. Total files: {len(loader)}",
+                    "Interpret Data Source",
+                    "Use Interpret Data Source or Interpret Folder / BIDS so "
+                    "the import goes through the Data Interpretation workflow.",
                 )
-            except Exception as e:
-                logger.error("Failed to apply data", exc_info=True)
-                QMessageBox.critical(self, "Error", f"Failed to apply data: {e}")
+                return
+            logger.error("Failed to apply data", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Failed to apply data: {exc}")
+            return
+        except Exception as exc:
+            logger.error("Failed to apply data", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Failed to apply data: {exc}")
+            return
+
+        QMessageBox.information(
+            self,
+            "Success",
+            f"Dataset updated. Total files: {total_files}",
+        )
+
+    def _apply_legacy_loader(self, loader) -> int:
+        # Kept for mock/unit-test compatibility; product data entry uses commands.
+        controller = self.controller
+        if controller is None or getattr(controller, "study", None) is None:
+            raise RuntimeError("Legacy loader adapter requires a dataset controller.")
+        loader.apply(controller.study, force_update=True)
+        self.update_panel()
+        return len(loader)
 
     def _update_panel_after_legacy_result(self, result) -> None:
         if result is None:

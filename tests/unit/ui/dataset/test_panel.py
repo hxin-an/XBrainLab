@@ -5,6 +5,7 @@ import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QHeaderView, QMainWindow, QMessageBox, QTableWidgetItem
 
+from XBrainLab.backend.study import Study
 from XBrainLab.ui.panels.dataset.panel import DatasetPanel
 from XBrainLab.ui.styles.theme import Theme
 
@@ -189,6 +190,34 @@ def test_dataset_panel_table_columns_shrink_to_fill_narrow_panel(
         max(panel.table.columnWidth(column) for column in range(7))
         < (DatasetPanel._TABLE_BASE_WIDTHS[0])
     )
+
+
+def test_dataset_panel_apply_loader_refuses_real_study(
+    qtbot,
+    monkeypatch,
+):
+    window = QMainWindow()
+    qtbot.addWidget(window)
+    cast(Any, window).study = Study()
+    warnings: list[tuple[Any, ...]] = []
+    infos: list[tuple[Any, ...]] = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: warnings.append(args))
+    monkeypatch.setattr(
+        QMessageBox,
+        "information",
+        lambda *args: infos.append(args),
+    )
+    panel = DatasetPanel(parent=window)
+    qtbot.addWidget(panel)
+    loader = MagicMock()
+
+    panel.apply_loader(loader)
+
+    loader.apply.assert_not_called()
+    assert infos == []
+    assert warnings
+    assert warnings[0][1] == "Interpret Data Source"
+    assert "Data Interpretation workflow" in warnings[0][2]
 
 
 def test_dataset_panel_events_column_uses_semantic_text_and_muted_color(

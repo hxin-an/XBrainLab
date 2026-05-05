@@ -154,6 +154,13 @@ def check_architecture(root_dir: str) -> int:
             print(f" - {violation}")
         return 1
 
+    loader_apply_violations = check_ui_direct_loader_apply(Path(root_dir))
+    if loader_apply_violations:
+        print("\nUI Direct Loader Apply Violations Found:")
+        for violation in loader_apply_violations:
+            print(f" - {violation}")
+        return 1
+
     refresh_violations = check_ui_post_command_local_refreshes(Path(root_dir))
     if refresh_violations:
         print("\nUI Post-command Local Refresh Violations Found:")
@@ -256,6 +263,71 @@ class _ControllerFallbackVisitor(ast.NodeVisitor):
             self.violations.append(node)
             return
         self.generic_visit(node)
+
+
+def check_ui_direct_loader_apply(root_dir: Path) -> list[str]:
+    """Return UI code that directly applies raw loaders outside legacy adapters."""
+    violations: list[str] = []
+    ui_dir = root_dir / "XBrainLab" / "ui"
+    if not ui_dir.exists():
+        return violations
+
+    for py_file in ui_dir.rglob("*.py"):
+        if py_file.name == "__init__.py":
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if "legacy" in node.name.lower():
+                continue
+            visitor = _DirectLoaderApplyVisitor()
+            visitor.visit(node)
+            violations.extend(
+                f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
+                "loader.apply() directly; isolate raw loader mutation behind a "
+                "legacy loader adapter or ApplicationService command."
+                for call in visitor.violations
+            )
+    return violations
+
+
+class _DirectLoaderApplyVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.violations: list[ast.Call] = []
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if _is_direct_loader_apply(node):
+            self.violations.append(node)
+            return
+        self.generic_visit(node)
+
+
+def _is_direct_loader_apply(node: ast.Call) -> bool:
+    if not isinstance(node.func, ast.Attribute) or node.func.attr != "apply":
+        return False
+    if not isinstance(node.func.value, ast.Name):
+        return False
+    if node.func.value.id not in {"loader", "raw_loader", "data_loader"}:
+        return False
+    return any(_expression_mentions_study(arg) for arg in node.args) or any(
+        _expression_mentions_study(keyword.value)
+        for keyword in node.keywords
+        if keyword.value is not None
+    )
+
+
+def _expression_mentions_study(node: ast.AST) -> bool:
+    if isinstance(node, ast.Attribute) and node.attr == "study":
+        return True
+    return any(
+        isinstance(child, ast.Attribute) and child.attr == "study"
+        for child in ast.walk(node)
+    )
 
 
 def _call_name(func: ast.expr) -> str:

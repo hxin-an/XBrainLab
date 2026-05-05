@@ -31,6 +31,11 @@ def find_study(context: Any) -> Any | None:
         if study is not None:
             return study
 
+        controller = getattr(current, "controller", None)
+        study = getattr(controller, "study", None)
+        if study is not None:
+            return study
+
         parent = getattr(current, "parent", None)
         current = parent() if callable(parent) else None
 

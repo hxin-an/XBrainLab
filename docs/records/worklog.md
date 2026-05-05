@@ -8017,3 +8017,49 @@
 - 不能宣稱：
   - This improves one visible status line; it is not full wizard UX completion, Windows human
     acceptance, or full blocked-state redesign.
+
+### 2026-05-05 20:00 Dataset legacy loader boundary
+
+- scope：
+  - Dataset panel legacy raw-loader helper.
+  - UI fallback study detection and architecture guard.
+- problem：
+  - `DatasetPanel.apply_loader()` still directly called `loader.apply(self.controller.study, ...)`
+    from UI code.
+  - `run_legacy_controller_fallback()` only detected `study` via widget/main-window context, so a
+    panel constructed with a real controller but no main-window parent could incorrectly look like a
+    legacy context.
+- red / focused tests：
+  - Added architecture guard tests requiring direct UI `loader.apply(...study...)` to fail outside
+    legacy adapter functions.
+  - Added UI capability test requiring `run_legacy_controller_fallback()` to refuse a real
+    `controller.study` context; it failed before implementation.
+- 做了什麼：
+  - `find_study()` now checks `controller.study`.
+  - `DatasetPanel.apply_loader()` now delegates to `_apply_legacy_loader()` through
+    `run_legacy_controller_fallback()`.
+  - Real `Study` runtime gets a user-facing warning to use Data Interpretation workflow instead of
+    mutating through the raw loader.
+  - Added `check_ui_direct_loader_apply()` to architecture compliance.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `11 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_application_capabilities.py -q`
+    -> `6 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py -q`
+    -> `12 passed`.
+  - Combined focused regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py tests/unit/ui/test_application_capabilities.py tests/unit/test_architecture_compliance.py -q`
+    -> `29 passed`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - Focused `ruff check` -> pass.
+  - Focused `basedpyright` -> `0 errors, 0 warnings, 0 notes`; baseline reduced by one existing
+    optional-member entry for `DatasetPanel`.
+- evidence：
+  - `test_dataset_panel_apply_loader_refuses_real_study` asserts real runtime does not call
+    `loader.apply()` and shows `Interpret Data Source` guidance.
+  - Architecture compliance unit test asserts non-legacy UI `loader.apply(self.controller.study)`
+    is rejected.
+- 不能宣稱：
+  - This closes one legacy raw-loader mutation bypass. It does not finish the full controller
+    fallback audit, command-driven UI refresh coordinator, or human desktop acceptance.
