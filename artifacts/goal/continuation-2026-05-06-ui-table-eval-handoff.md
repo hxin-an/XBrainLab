@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+3330f1d ui: show visualization fallback refusals
+8034739 docs: refresh handoff after preprocess render guard
 a86b1b2 ui: guard preprocess render query fallback
 1fd080a docs: refresh handoff after dialog fallback guard
 a315170 ui: guard dialog query fallback paths
@@ -226,6 +228,9 @@ bb57beb ui: use backend truth for split replacement
     before opening the montage picker.
   - `VisualizationController.get_channel_names()` is only used through the mock / legacy query
     fallback helper when ApplicationService query result is unavailable.
+  - latest fallback language slice catches real `Study` query-none and apply-none fallback refusal
+    and shows a product warning instead of letting `LegacyControllerFallbackUnavailableError`
+    escape from the Qt slot.
 - Dataset smart-parse query defaults:
   - `Smart Parse Metadata` now checks `QueryStateCommand(query="state")` for `state.raw.files`
     before opening the parser dialog.
@@ -248,6 +253,8 @@ bb57beb ui: use backend truth for split replacement
     `VisualizeCommand(view="summary", include_objects=True)` `trainer_objects`.
   - `panel.get_trainers()` / `VisualizationController.get_trainers()` remain only for
     query-unavailable mock / legacy fallback.
+  - latest fallback language slice catches query-none legacy fallback refusal and shows
+    `Export Saliency Blocked` with the shared safety message.
 - Training split dialog context query:
   - `QueryStateCommand(query="dataset_generation_context", include_objects=True)` now returns the
     epoch data and current dataset generator needed by `DataSplittingDialog`.
@@ -1142,6 +1149,39 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for a86b1b2; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_export_saliency_refuses_real_study_query_none_controller_fallback \
+  tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_refuses_real_study_controller_fallback \
+  tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_apply_none_refuses_real_study_controller_fallback \
+  tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_saliency_refuses_real_study_controller_fallback \
+  tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_saliency_apply_none_refuses_real_study_controller_fallback \
+  -q
+# 5 passed for 3330f1d after red failures where fallback refusal escaped as an exception
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/visualization/test_control_sidebar.py \
+  tests/unit/ui/test_visualization_panel_redesign.py \
+  tests/unit/ui/test_visualization_panel_coverage.py \
+  tests/unit/ui/test_visualization.py \
+  -q
+# 64 passed for 3330f1d
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for 3330f1d
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for 3330f1d
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 3330f1d; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
