@@ -8538,3 +8538,36 @@
   - This supports the saved `121` case tool-call benchmark slice only.
   - It does not prove human desktop acceptance, mature import wizard UX, MCP HTTP / long-running
     jobs, or long autonomous ChatPanel workflow.
+
+### 2026-05-05 UI direct controller mutation guard
+
+- scope：
+  - Static architecture guard for product UI controller mutation bypasses outside explicit legacy
+    fallback paths.
+- current gap：
+  - Existing guard caught controller mutation only in `result is None` fallback branches.
+  - A future UI action could still call `controller.update_metadata()` or
+    `self.controller.start_training()` directly outside that exact branch shape.
+- red / focused tests：
+  - Added tests requiring direct `controller.update_metadata(...)` and
+    `self.controller.start_training()` to fail.
+  - Added allow tests for `run_legacy_controller_fallback(...)`, named fallback helper functions,
+    and non-controller UI methods such as `history_table.clear_history()`.
+- 做了什麼：
+  - Added `check_ui_direct_controller_mutations()` to `tests/architecture_compliance.py`.
+  - The guard flags calls whose receiver is `controller` or `self.controller` and whose method is in
+    the mutating controller fallback method list.
+  - Explicit `run_legacy_controller_fallback()` calls and function names containing `legacy` or
+    `fallback` remain allowed.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `18 passed`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `poetry run ruff check tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> pass.
+  - `poetry run basedpyright tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+- 不能宣稱：
+  - This is a guardrail only. It does not complete full command-driven UI refresh, remove
+    controller observer bridges, or replace human desktop acceptance.

@@ -1,4 +1,5 @@
 from tests.architecture_compliance import (
+    check_ui_direct_controller_mutations,
     check_ui_direct_loader_apply,
     check_ui_observer_direct_update_bridges,
     check_ui_post_command_local_refreshes,
@@ -211,3 +212,74 @@ def _apply_legacy_loader(self, loader):
     )
 
     assert check_ui_direct_loader_apply(tmp_path) == []
+
+
+def test_direct_controller_mutation_guard_flags_product_ui_mutation(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def rename_subject(self):
+    controller = self.controller
+    controller.update_metadata(0, subject="S01")
+""",
+    )
+
+    violations = check_ui_direct_controller_mutations(tmp_path)
+
+    assert len(violations) == 1
+    assert "controller.update_metadata" in violations[0]
+    assert "ApplicationService" in violations[0]
+
+
+def test_direct_controller_mutation_guard_flags_self_controller_mutation(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def run_training(self):
+    self.controller.start_training()
+""",
+    )
+
+    violations = check_ui_direct_controller_mutations(tmp_path)
+
+    assert len(violations) == 1
+    assert "controller.start_training" in violations[0]
+
+
+def test_direct_controller_mutation_guard_allows_legacy_fallback_call(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def run(self):
+    run_legacy_controller_fallback(
+        self,
+        lambda: self.controller.start_training(),
+    )
+""",
+    )
+
+    assert check_ui_direct_controller_mutations(tmp_path) == []
+
+
+def test_direct_controller_mutation_guard_allows_named_fallback_helper(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def _run_metadata_update_fallback(self, controller):
+    controller.update_metadata(0, subject="S01")
+""",
+    )
+
+    assert check_ui_direct_controller_mutations(tmp_path) == []
+
+
+def test_direct_controller_mutation_guard_ignores_non_controller_methods(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def clear_ui_table(self):
+    self.history_table.clear_history()
+""",
+    )
+
+    assert check_ui_direct_controller_mutations(tmp_path) == []

@@ -819,7 +819,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   legacy non-`Study` context；若 real `Study` command helper 意外回 `None`，會拒絕 fallback
   並暴露錯誤，而不是 silent controller mutation。後續 Preprocess、Dataset、Visualization 和
   AgentManager fallback audit 已沿用同一 helper；`tests/architecture_compliance.py` 也會阻擋
-  UI `result is None` branch 直接 controller mutation。這是 product runtime fallback boundary，
+  UI `result is None` branch 直接 controller mutation。最新 guard follow-up 又會阻擋 UI
+  product path 直接呼叫 `controller.update_metadata()` / `controller.start_training()` 這類
+  mutating controller method；合法 controller mutation 必須在 `run_legacy_controller_fallback()`
+  或明確 legacy / fallback helper 裡。這是 product runtime fallback boundary，
   不是 controller 已完全退場；下一個 architecture cleanup milestone 仍是確認 product runtime
   mutating path 不 silent fallback 到 controller mutation，controller fallback 只可保留給 explicit
   mock / unit-test compatibility 或 isolated legacy adapter。

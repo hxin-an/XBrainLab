@@ -2444,3 +2444,29 @@ boundary hardening. Deterministic, primary local, and fallback local artifacts a
   MCP HTTP / long-running jobs, or long autonomous ChatPanel workflow.
 - Future verifier / normalizer / prompt / UI-refresh slices should use the fast dev or candidate
   eval gate unless they are updating a formal release / thesis benchmark claim.
+
+## 2026-05-05 UI Direct Controller Mutation Guard
+
+### 狀態
+
+Architecture compliance now checks UI controller mutation calls outside missing-result fallback
+branches. Direct product-path calls such as `controller.update_metadata()` or
+`self.controller.start_training()` are violations unless they are inside
+`run_legacy_controller_fallback()` or an explicit legacy / fallback helper.
+
+### 已可宣稱
+
+- New UI mutating paths have a static guard against bypassing ApplicationService by calling a
+  controller mutation directly.
+- Existing legacy helpers remain allowed and auditable.
+
+### Evidence 入口
+
+- Source：`tests/architecture_compliance.py`
+- Tests：`tests/unit/test_architecture_compliance.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is a guardrail only. It does not remove existing controller observer bridges, complete
+  command-driven UI refresh, or prove human desktop acceptance.

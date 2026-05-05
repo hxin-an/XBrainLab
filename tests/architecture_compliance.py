@@ -154,6 +154,15 @@ def check_architecture(root_dir: str) -> int:
             print(f" - {violation}")
         return 1
 
+    direct_controller_mutation_violations = check_ui_direct_controller_mutations(
+        Path(root_dir)
+    )
+    if direct_controller_mutation_violations:
+        print("\nUI Direct Controller Mutation Violations Found:")
+        for violation in direct_controller_mutation_violations:
+            print(f" - {violation}")
+        return 1
+
     loader_apply_violations = check_ui_direct_loader_apply(Path(root_dir))
     if loader_apply_violations:
         print("\nUI Direct Loader Apply Violations Found:")
@@ -263,6 +272,74 @@ class _ControllerFallbackVisitor(ast.NodeVisitor):
             self.violations.append(node)
             return
         self.generic_visit(node)
+
+
+def check_ui_direct_controller_mutations(root_dir: Path) -> list[str]:
+    """Return UI controller mutations outside explicit legacy fallback paths."""
+    violations: list[str] = []
+    ui_dir = root_dir / "XBrainLab" / "ui"
+    if not ui_dir.exists():
+        return violations
+
+    for py_file in ui_dir.rglob("*.py"):
+        if py_file.name == "__init__.py":
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if _is_legacy_controller_mutation_helper(node.name):
+                continue
+            visitor = _DirectControllerMutationVisitor()
+            visitor.visit(node)
+            violations.extend(
+                f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
+                f"controller.{_call_name(call.func)}() directly; product UI "
+                "mutations must go through ApplicationService, with controller "
+                "mutation limited to run_legacy_controller_fallback() or an "
+                "explicit legacy/fallback helper."
+                for call in visitor.violations
+            )
+    return violations
+
+
+def _is_legacy_controller_mutation_helper(function_name: str) -> bool:
+    lower_name = function_name.lower()
+    return "legacy" in lower_name or "fallback" in lower_name
+
+
+class _DirectControllerMutationVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.violations: list[ast.Call] = []
+
+    def visit_Call(self, node: ast.Call) -> None:
+        call_name = _call_name(node.func)
+        if call_name == "run_legacy_controller_fallback":
+            return
+        if call_name in UI_CONTROLLER_FALLBACK_METHODS and _call_receiver_is_controller(
+            node.func
+        ):
+            self.violations.append(node)
+            return
+        self.generic_visit(node)
+
+
+def _call_receiver_is_controller(func: ast.expr) -> bool:
+    if not isinstance(func, ast.Attribute):
+        return False
+    receiver = func.value
+    if isinstance(receiver, ast.Name):
+        return receiver.id == "controller"
+    return (
+        isinstance(receiver, ast.Attribute)
+        and receiver.attr == "controller"
+        and isinstance(receiver.value, ast.Name)
+        and receiver.value.id == "self"
+    )
 
 
 def check_ui_direct_loader_apply(root_dir: Path) -> list[str]:

@@ -161,6 +161,10 @@
 - 最新 architecture guard slice 已把這條 boundary 寫進 `tests/architecture_compliance.py`：UI 的
   `result is None` branch 若直接呼叫 controller mutation，會 fail；mock / legacy fallback 必須透過
   `run_legacy_controller_fallback()`。
+- 最新 direct controller mutation guard 又把 UI product path 直接呼叫
+  `controller.update_metadata()` / `controller.start_training()` 這類 mutating controller method
+  擋住；只有 `run_legacy_controller_fallback()` 或明確 legacy / fallback helper 可以保留 controller
+  mutation。這是 fallback audit guardrail，不是 controller 退場完成。
 - 後續 Training sidebar bypass cleanup 修掉重新 split 前清 datasets 和 Clear History 的 direct
   controller mutation；destructive cleanup 會走 `ClearDatasetsCommand` /
   `ClearTrainingHistoryCommand`，且 Clear History 現在有 user confirmation。
