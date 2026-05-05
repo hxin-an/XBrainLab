@@ -10470,3 +10470,43 @@
 - 不能宣稱：
   - This does not certify interactive desktop 3D / PyVista render, OpenGL soak behavior, full
     Visualization product UX, or human Windows desktop acceptance.
+
+### 2026-05-06 Preprocess re-reference dialog query source
+
+- scope：
+  - Continue UI command truth cleanup from the remaining controller-read audit.
+  - Prevent command-capable `open_rereference()` from opening `RereferenceDialog` with stale
+    `PreprocessController.get_preprocessed_data_list()` data.
+- red / focused tests：
+  - Added `test_open_rereference_uses_query_data_list_before_stale_controller`.
+  - Red gate failed because `open_rereference()` called the stale controller getter before opening
+    the dialog.
+- 做了什麼：
+  - Extracted `_preprocessed_data_list_for_dialog()` from the epoching query helper.
+  - `open_epoching()` still uses the helper with `Epoching Blocked`.
+  - `open_rereference()` now calls the same `QueryStateCommand(query="data_lists",
+    include_objects=True)` helper before constructing `RereferenceDialog`.
+  - Controller list reads remain only when no command capability exists and
+    `execute_application_command()` returns `None`, preserving mock / legacy compatibility.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_rereference_uses_query_data_list_before_stale_controller -q`
+    -> failed because `PreprocessController.get_preprocessed_data_list()` was called.
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_rereference_uses_query_data_list_before_stale_controller tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_rereference_accepted tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_uses_query_data_list_before_stale_controller -q`
+    -> `3 passed`.
+  - Preprocess regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar tests/unit/ui/preprocess -q`
+    -> `65 passed`.
+  - Focused lint/type/architecture:
+    `poetry run ruff check XBrainLab/ui/panels/preprocess/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/preprocess/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+- local eval：
+  - Not run. This is a UI command-source cleanup under the fast dev gate; it does not justify
+    primary/fallback x3 local eval.
+- 不能宣稱：
+  - This does not finish all Preprocess dialog read-source audits, full preprocessing workflow UI
+    acceptance, or long-running preprocessing resource validation.

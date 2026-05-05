@@ -186,17 +186,27 @@ class PreprocessSidebar(QWidget):
         self,
         epoch_capability,
     ) -> list[Any] | None:
+        return self._preprocessed_data_list_for_dialog(
+            epoch_capability,
+            "Epoching Blocked",
+        )
+
+    def _preprocessed_data_list_for_dialog(
+        self,
+        command_capability,
+        failure_title: str,
+    ) -> list[Any] | None:
         result = execute_application_command(
             self,
             QueryStateCommand(query="data_lists", include_objects=True),
             refresh=False,
         )
         if result is None:
-            if epoch_capability is None:
+            if command_capability is None:
                 return self.controller.get_preprocessed_data_list()
             return []
         if result.failed:
-            self._show_command_failure("Epoching Blocked", result.message)
+            self._show_command_failure(failure_title, result.message)
             return None
         data_list = result.diagnostics.get("preprocessed_data_list")
         return list(data_list) if isinstance(data_list, list) else []
@@ -439,7 +449,13 @@ class PreprocessSidebar(QWidget):
         if self.check_lock() or not self.check_data_loaded():
             return
 
-        data_list = self.controller.get_preprocessed_data_list()
+        preprocess_capability = get_command_capability(self, CommandName.PREPROCESS)
+        data_list = self._preprocessed_data_list_for_dialog(
+            preprocess_capability,
+            "Re-reference Blocked",
+        )
+        if data_list is None:
+            return
         dialog = RereferenceDialog(self, data_list)
         if dialog.exec():
             ref_channels = dialog.get_params()

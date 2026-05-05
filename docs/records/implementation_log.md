@@ -42,6 +42,39 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Preprocess Dialog Query Source Cleanup
+
+### 狀態
+
+The Preprocess sidebar now uses the backend state query as the data source for the re-reference
+dialog in command-capable contexts. `open_rereference()` shares the same
+`QueryStateCommand(query="data_lists", include_objects=True)` helper used by epoching; direct
+`PreprocessController.get_preprocessed_data_list()` remains only for no-capability mock / legacy
+dialog population.
+
+### 已可宣稱
+
+- A real command-capable path no longer opens `RereferenceDialog` from stale controller
+  preprocessed-list reads.
+- Focused tests cover the query-first dialog source and prevent controller apply fallback on
+  service success.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/preprocess/sidebar.py`
+- Tests: `tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not finish the full Preprocess UI product workflow, all remaining controller read
+  audits, or long-running preprocessing resource tests.
+
+### 下一手重點
+
+Continue auditing command-capable UI dialogs for stale controller read sources before user choice is
+collected, especially where a dialog decides available channels/files from old controller state.
+
 ## 2026-05-06 Visualization 3D Widget Cleanup
 
 ### 狀態

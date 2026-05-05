@@ -121,6 +121,14 @@ Visualization 3D widget cleanup gate:
 existing headless blocked-before-QtInteractor behavior. It is not interactive desktop 3D / PyVista
 render acceptance, OpenGL soak evidence, or human Windows desktop verification.
 
+Preprocess re-reference dialog query-source gate:
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_rereference_uses_query_data_list_before_stale_controller tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_rereference_accepted tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_uses_query_data_list_before_stale_controller -q`
+-> `3 passed`；
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar tests/unit/ui/preprocess -q`
+-> `65 passed`。This supports query-backed dialog data for command-capable re-reference and
+epoching paths. It does not prove the full Preprocess UI workflow or all remaining controller read
+audits are complete.
+
 目前 fast engineering artifact 狀態是：
 
 - generated at: `2026-05-04 04:07:48 UTC+08:00`

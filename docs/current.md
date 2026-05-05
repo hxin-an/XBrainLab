@@ -929,7 +929,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   舊 controller lock/data checks 只保留給 no-capability mock / legacy path。最新 guard follow-up
   又讓 epoch dialog 的 preprocessed object list 先走 `QueryStateCommand(query="data_lists",
   include_objects=True)`，`PreprocessController.get_preprocessed_data_list()` 只保留在
-  no-capability mock / legacy path。
+  no-capability mock / legacy path。最新 re-reference dialog cleanup 也改用同一個
+  `QueryStateCommand(query="data_lists", include_objects=True)` 取得 dialog data source；real
+  command-capable path 不再用 stale `PreprocessController.get_preprocessed_data_list()` 開
+  `RereferenceDialog`。
   最新 Evaluation panel cleanup 則把 readonly `EvaluateCommand` 結果接到顯示 gate：real
   `Study` path 若 ApplicationService 回 blocked / unavailable evaluation，panel 不再繼續讀
   stale injected `EvaluationController.get_plans()` 來顯示過期 plan，而是清成

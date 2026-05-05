@@ -264,6 +264,9 @@
   legacy `check_lock()` / `check_data_loaded()` 只留給 no-capability path。最新 guard follow-up
   又讓 epoch dialog data list 先走 `QueryStateCommand(query="data_lists", include_objects=True)`；
   `PreprocessController.get_preprocessed_data_list()` 只留在 no-capability mock / legacy path。
+- 最新 Preprocess re-reference cleanup 也讓 `RereferenceDialog` 的 data list 先走同一個
+  `QueryStateCommand(query="data_lists", include_objects=True)` helper；real command-capable path
+  不再直接讀 stale `PreprocessController.get_preprocessed_data_list()` 開 dialog。
 - 最新 Preprocess sidebar fallback audit slice 已把 filter / resample / rereference / normalize /
   epoch / reset 的 controller fallback 改成同一個 mock / legacy-only helper。剩餘 Dataset /
   Visualization / AgentManager fallback 還要沿同一模式盤點。
