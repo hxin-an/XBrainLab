@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+2f5ccb0 ui: gate dataset clear action
 48af56d ui: deduplicate aggregate info refresh
 6e99b03 ui: surface eval claim boundary
 ca469ff ui: render eval dashboard artifact
@@ -160,6 +161,17 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Dataset Clear empty-state boundary:
+  - real `Study` `DatasetSidebar.update_sidebar()` now queries
+    `QueryStateCommand(query="state")` before enabling `Clear Dataset`.
+  - empty startup / reset state keeps `Clear Dataset` disabled with `No dataset to clear.`;
+    Data Interpretation apply re-enables it.
+  - direct empty `clear_dataset()` now shows a short notice instead of opening reset
+    confirmation.
+  - disabled success / danger / warning action colors now use neutral disabled tokens, so disabled
+    destructive buttons no longer look active.
+  - refreshed `artifacts/ui/human-like-walkthrough/02-dataset-page.png` and the walkthrough JSON /
+    Markdown; JSON spot-check shows startup/reset disabled and apply enabled.
 - MainWindow aggregate-info observer deduplication:
   - MainWindow now constructs `InfoPanelService(study, observe_controller_events=False)`.
   - Product runtime aggregate info refresh is owned by `refresh_coordinator` shared-status refresh
@@ -610,6 +622,38 @@ bb57beb ui: use backend truth for split replacement
 ## Validation Already Run
 
 ```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/dataset/test_dataset_sidebar.py \
+  tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar \
+  tests/unit/ui/styles/test_theme.py -q
+# 36 passed for 2f5ccb0
+
+QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py
+# exit 0; status passed, 26/26 phases, 20 screenshots, resource smoke passed
+# Clear Dataset: startup/reset disabled with "No dataset to clear.", apply enabled
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 2f5ccb0; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/dataset/test_dataset_sidebar.py \
+  tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar \
+  tests/unit/ui/styles/test_theme.py \
+  tests/integration/ui/test_product_walkthrough.py -q
+# 39 passed
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py -q
+# 20 passed
+
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/components/test_info_panel_service.py \
   tests/unit/ui/test_main_window_sync.py \
