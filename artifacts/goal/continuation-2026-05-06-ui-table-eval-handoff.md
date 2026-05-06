@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+2a940de ui: find study from named controllers
+64ec5e3 docs: refresh handoff after named controller guard
 37c8e5c test: guard named controller mutations
 4ac0e57 docs: refresh handoff after chinese label gate
 c54a06f eval: clarify chinese label missing input
@@ -191,6 +193,16 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Named controller runtime study lookup:
+  - `find_study()` in `XBrainLab/ui/application_capabilities.py` now resolves real `Study`
+    instances from attributes ending in `_controller`, not only `.controller`.
+  - Named-controller contexts such as widgets/helpers with `self.preprocess_controller` now use
+    ApplicationService capability lookup and refuse legacy fallback in real `Study` runtime.
+  - Validation covered red focused capability/fallback tests, UI capability + AgentManager montage
+    regression, full ruff, full basedpyright, architecture compliance, `git diff --check`, and
+    `mkdocs build --strict`.
+  - No local LLM eval was run; this was a UI runtime fallback-boundary slice under the fast dev
+    gate.
 - Named controller mutation architecture guard:
   - `tests/architecture_compliance.py` now treats local variables ending in `_controller` and
     `self.<name>_controller` attributes as controller receivers.
@@ -2799,6 +2811,17 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 37c8e5c; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_application_capabilities.py::test_named_controller_context_uses_application_service tests/unit/ui/test_application_capabilities.py::test_legacy_controller_fallback_refuses_named_real_controller -q
+# red first, then 2 passed for 2a940de
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_application_capabilities.py tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker -q
+# 16 passed for 2a940de
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 2a940de; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard and changed-case eval
