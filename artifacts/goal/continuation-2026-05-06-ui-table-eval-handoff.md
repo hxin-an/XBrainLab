@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+a697457 ui: guard training preflight fallback
 1b950fe ui: guard montage preflight fallback
 635f5b4 docs: refresh handoff after replay geometry gate
 826cd96 test: gate interpretation replay geometry
@@ -176,6 +177,19 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Training sidebar no-capability preflight fallback boundary:
+  - `TrainingSidebar` now routes no-capability fallback reads through
+    `run_legacy_controller_fallback()` instead of directly reading stale
+    `TrainingController` state.
+  - Covered paths: `check_ready_to_train()` readiness / tooltip, Data Splitting loaded-data /
+    epoch / running preflight, model/settings configuration lock checks, Stop Training preflight,
+    and Clear History preflight.
+  - Real `Study` contexts now disable Start Training with state-unavailable tooltip or show
+    product blocked warnings; mock / legacy contexts keep controller compatibility behavior.
+  - Validation covered red stale-controller tests, `TestTrainingSidebar` regression, full fast gate
+    (`git diff --check`, ruff, basedpyright, architecture compliance, mkdocs strict, backend
+    integration, and agent/tool deterministic regression).
+  - No local LLM eval was run; this was a UI fallback audit slice under the fast dev gate.
 - Montage preflight fallback boundary:
   - `ControlSidebar.set_montage()` no longer reads stale
     `VisualizationController.has_epoch_data()` when `apply_montage` capability lookup unexpectedly
