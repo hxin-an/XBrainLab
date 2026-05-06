@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+5db16a7 ui: guard info panel controller lookup
+613a9f0 docs: refresh handoff after study controller guard
 9be1149 ui: guard direct study controller lookup
 7effe49 docs: refresh handoff after observer fallback guard
 ed54a8f ui: guard observer controller fallback
@@ -214,6 +216,21 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- InfoPanelService direct Study controller lookup guard:
+  - `InfoPanelService` no longer uses direct real-`Study` `get_controller(...)` lookup for
+    aggregate-info observer bridges or data-list fallback.
+  - Real `Study` aggregate info stays on `QueryStateCommand(query="data_lists", include_objects=True)`
+    and coordinator-driven `notify_all()`; query failure returns empty summary rather than stale
+    controller-list fallback.
+  - Mock / legacy contexts can still use controller observer bridges through
+    `get_legacy_controller_from_study()`.
+  - `tests/architecture_compliance.py` no longer allows `info_panel_service.py` as a direct Study
+    controller lookup exception.
+  - Validation covered focused InfoPanelService tests, refresh coordinator / MainWindow sync
+    regressions, architecture-compliance unit tests, full architecture compliance, full ruff, full
+    basedpyright, `git diff --check`, and `mkdocs build --strict`.
+  - No local LLM eval was run; this was a UI aggregate-info architecture slice under the fast dev
+    gate.
 - Panel constructor / AgentManager direct Study controller lookup guard:
   - Added `get_legacy_controller_from_study()` as the shared mock / legacy-only controller lookup
     helper.
@@ -223,8 +240,8 @@ bb57beb ui: use backend truth for split replacement
   - AgentManager no longer fetches `study.get_controller("preprocess")` during real runtime
     initialization; that controller remains only for legacy montage apply fallback.
   - `tests/architecture_compliance.py` now rejects direct `study.get_controller(...)` /
-    `parent.study.get_controller(...)` product UI lookup outside central wiring, InfoPanelService
-    compatibility, or explicit legacy / fallback helpers.
+    `parent.study.get_controller(...)` product UI lookup outside central wiring or explicit
+    legacy / fallback helpers.
   - Validation covered red/focused architecture, AgentManager, and five-panel constructor tests;
     MainWindow / event bridge / major panel regressions; full architecture compliance; full ruff;
     full basedpyright; `git diff --check`; and `mkdocs build --strict`.
