@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+76426ca test: settle walkthrough capture geometry
+83062ee docs: refresh handoff after training settings fallback
 bdfe18a ui: guard training settings dialog fallback
 dc43c83 docs: refresh handoff after walkthrough text guard
 c278218 test: guard walkthrough recipe trace text
@@ -204,6 +206,21 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Human-like walkthrough 1280px Dataset table evidence:
+  - `capture_human_like_product_walkthrough.py` now lets MainWindow post-show geometry recovery
+    timers run, then reapplies the deterministic `1280x800` capture size before the first
+    screenshot.
+  - The refreshed `06-interpretation-applied.png` is `1280x800`; JSON records loaded Dataset table
+    `widget_width=1020`, `header_length=993`, `viewport_width=994`, `right_boundary_x=1020`,
+    `right_gap_to_boundary=0`, and `horizontal_scrollbar_max=0`.
+  - Spot review shows the loaded Dataset table fills the main panel up to the sidebar; Events text
+    remains semantic `Events (6)` / `Labels (4)` rather than green success-style `Yes (...)`.
+  - Validation covered focused geometry-settling test, full walkthrough script unit gate
+    (`20 passed`), Dataset Events color/wording guard, product walkthrough integration
+    (`3 passed`), refreshed screenshots/JSON/Markdown artifacts, full ruff, full basedpyright,
+    architecture compliance, `git diff --check`, and `mkdocs build --strict`.
+  - No local LLM eval was run; this was a UI-observable artifact / geometry evidence slice under
+    the fast dev gate.
 - Data Interpretation recipe trace wording:
   - `DataInterpretationPreviewDialog` now renders backend recipe trace tokens as user-facing
     `Review Summary` rows.
@@ -2991,6 +3008,30 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for bdfe18a; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/scripts/test_capture_human_like_product_walkthrough.py \
+  -q
+# 20 passed for 76426ca
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/dataset/test_panel.py::test_dataset_panel_events_column_uses_semantic_text_and_muted_color \
+  -q
+# 1 passed for 76426ca
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/integration/ui/test_product_walkthrough.py \
+  -q
+# 3 passed for 76426ca
+QT_QPA_PLATFORM=offscreen poetry run python \
+  scripts/dev/capture_human_like_product_walkthrough.py
+# exit 0; refreshed 1280px main / loaded Dataset screenshots and walkthrough JSON/Markdown
+QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_ui_baseline.py
+# exit 0; refreshed 1280px baseline screenshots
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 76426ca; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard and changed-case eval
