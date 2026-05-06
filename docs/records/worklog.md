@@ -37,6 +37,43 @@
 
 ## 2026-05-06
 
+### 18:20 MCP HTTP terminal job status
+
+- 做了什麼：
+  - Added terminal status storage to HTTP MCP job records.
+  - Cancelled / completed jobs now keep their terminal status across later train runs in the same
+    HTTP session.
+- red / focused tests：
+  - Added a test that starts a train job, cancels it, starts another train job, then lists jobs.
+  - Red gate first failed because the first job changed from `cancelled` back to
+    `cancel_requested` when the second run made global training state active again.
+- validation：
+  - Red gate:
+    `poetry run pytest --capture=sys tests/unit/mcp/test_http_server.py::test_http_mcp_job_terminal_status_survives_later_train_runs -q`
+    -> failed on old cancelled job status becoming `cancel_requested`.
+  - Focused pass:
+    same command -> `1 passed`.
+  - Focused regression:
+    `poetry run pytest --capture=sys tests/unit/mcp/test_http_server.py tests/integration/mcp/test_http_walkthrough_artifact.py -q`
+    -> `7 passed`.
+    `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q`
+    -> `17 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/mcp/http_server.py tests/unit/mcp/test_http_server.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/mcp/http_server.py tests/unit/mcp/test_http_server.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `git diff --check` -> passed.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is MCP HTTP job-state correctness, not a tool-call benchmark claim update.
+- 不能宣稱：
+  - This still does not provide cross-process job persistence / recovery. Terminal status is held in
+    memory for the current HTTP MCP session only.
+
 ### 18:12 MCP HTTP duplicate train start guard
 
 - 做了什麼：

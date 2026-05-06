@@ -301,9 +301,10 @@ long-running `train` over HTTP 現在會建立 in-memory job，並提供 `GET /j
 cancel 仍透過
 `StopTrainingCommand` / `ApplicationService.execute()`，不直接碰 controller。HTTP registry 也會
 拒絕同一 session 內 duplicate train start：既有 job 正在 start 或 running 時回
-`job_already_running`，不會啟動第二個 training command。這是 train-only HTTP job baseline；
-evaluation / visualization jobs、job persistence / recovery、multi-client recovery-grade resource
-lock 和 full remote authorization 仍是後續 architecture work。
+`job_already_running`，不會啟動第二個 training command；cancelled / completed job records 會
+保存 terminal status，避免後續新 training run 把舊 job 重新顯示成 active。這是 train-only HTTP
+job baseline；evaluation / visualization jobs、job persistence / recovery、multi-client
+recovery-grade resource lock 和 full remote authorization 仍是後續 architecture work。
 
 `ApplicationService` 會拿同一組 cached controllers：
 

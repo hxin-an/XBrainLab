@@ -225,6 +225,7 @@ class MCPHTTPJobRecord:
     command_execution: dict[str, Any]
     cancel_requested: bool = False
     cancel_execution: dict[str, Any] | None = None
+    terminal_status: str | None = None
     updated_at: float = field(default_factory=time)
 
 
@@ -243,8 +244,7 @@ class MCPHTTPJobRegistry:
 
     def list_jobs(self) -> list[dict[str, Any]]:
         with self._lock:
-            records = list(self._jobs.values())
-        return [self._job_snapshot(record) for record in records]
+            return [self._job_snapshot_locked(record) for record in self._jobs.values()]
 
     def start_job(
         self,
@@ -295,8 +295,8 @@ class MCPHTTPJobRegistry:
         with self._lock:
             self._jobs[record.job_id] = record
             self._starting_command_name = None
+            job = self._job_snapshot_locked(record)
 
-        job = self._job_snapshot(record)
         message = f"{_product_command_name(command_name)} job started."
         return {
             "accepted": True,
@@ -333,7 +333,7 @@ class MCPHTTPJobRegistry:
         running = bool(self._mcp_server.service.get_state().active_training.is_running)
         for record in self._jobs.values():
             if _job_status(record, running) in {"running", "cancel_requested"}:
-                return self._job_snapshot(record)
+                return self._job_snapshot_locked(record)
         return None
 
     def _job_conflict_execution(
@@ -401,9 +401,9 @@ class MCPHTTPJobRegistry:
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         with self._lock:
             record = self._jobs.get(job_id)
-        if record is None:
-            return None
-        return self._job_snapshot(record)
+            if record is None:
+                return None
+            return self._job_snapshot_locked(record)
 
     def cancel_job(self, job_id: str) -> dict[str, Any] | None:
         with self._lock:
@@ -419,15 +419,23 @@ class MCPHTTPJobRegistry:
             record.cancel_requested = True
             record.cancel_execution = cancel_execution
             record.updated_at = time()
+            job = self._job_snapshot_locked(record)
         return {
-            "job": self._job_snapshot(record),
+            "job": job,
             "cancel_result": cancel_execution,
         }
 
-    def _job_snapshot(self, record: MCPHTTPJobRecord) -> dict[str, Any]:
+    def _job_snapshot_locked(self, record: MCPHTTPJobRecord) -> dict[str, Any]:
         state = self._mcp_server.service.get_state()
         running = bool(state.active_training.is_running)
         status = _job_status(record, running)
+        if record.terminal_status is None and status in {
+            "completed",
+            "cancelled",
+            "failed",
+        }:
+            record.terminal_status = status
+            record.updated_at = time()
         return {
             "job_id": record.job_id,
             "command_name": record.command_name,
@@ -506,6 +514,8 @@ def _job_id_from_path(path: str, *, suffix: str = "") -> str | None:
 
 
 def _job_status(record: MCPHTTPJobRecord, running: bool) -> str:
+    if record.terminal_status is not None:
+        return record.terminal_status
     result = record.command_execution.get("result")
     if isinstance(result, dict) and result.get("status") == "failed":
         return "failed"

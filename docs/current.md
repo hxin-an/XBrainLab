@@ -134,10 +134,11 @@ backend-ready long-running `train` over HTTP 會建立 `mcp-http-job-*`、可用
 查狀態，也可用 `GET /jobs` 在同一 session 內重新列出 jobs，並可用
 `POST /jobs/{id}/cancel` 透過 `StopTrainingCommand` 取消。HTTP registry 也已補同 session
 duplicate-start guard：第一個 train job 還在 start boundary 內或 running 時，第二個 `train`
-會回 `job_already_running` structured blocked result，不會啟動第二次 training。這是 in-memory
-headless HTTP train job baseline；仍不是 evaluation / visualization job API、job persistence /
-recovery、multi-client recovery-grade resource lock、remote authorization certification、Windows
-human launcher acceptance 或 full MCP client certification。後續 hardening slice 又讓 HTTP adapter
+會回 `job_already_running` structured blocked result，不會啟動第二次 training；已 cancelled /
+completed 的 HTTP job snapshot 也會保存 terminal status，不會被後續新 run 的全域 training state
+改寫。這是 in-memory headless HTTP train job baseline；仍不是 evaluation / visualization job API、
+job persistence / recovery、multi-client recovery-grade resource lock、remote authorization
+certification、Windows human launcher acceptance 或 full MCP client certification。後續 hardening slice 又讓 HTTP adapter
 用 constant-time Bearer token compare，並用 bounded request body size 拒絕過大 JSON-RPC body；
 這是 local adapter abuse guard，不是 remote security certification。另已新增 non-mocked backend
 workflow evidence：synthetic FIF source 會走 scan -> preview -> validate ->

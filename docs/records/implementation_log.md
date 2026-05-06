@@ -50,7 +50,8 @@ HTTP MCP now has a train-only in-memory job baseline. Backend-ready `train` no l
 old unsupported HTTP job boundary; it creates a job that can be observed and cancelled through the
 HTTP adapter. The same-session HTTP registry now rejects duplicate train starts while a job is
 starting or running, returning a structured `job_already_running` blocked result instead of
-dispatching a second training command.
+dispatching a second training command. Terminal job statuses are also preserved so cancelled /
+completed jobs do not become active again when a later training run starts.
 
 ### 已可宣稱
 
@@ -61,6 +62,7 @@ dispatching a second training command.
   it does not directly mutate controller internals.
 - Duplicate HTTP `train` calls in the same session are resource-guarded while an existing train job
   is starting or running.
+- Cancelled / completed HTTP job records preserve terminal status across later train runs.
 - The walkthrough artifact now records train job creation, running status, and cancelled status.
 
 ### Evidence 入口

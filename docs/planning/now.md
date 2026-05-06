@@ -682,8 +682,9 @@
     scan_source / preview_interpretation / backend-ready train job creation / status / cancel。
   - 這支撐 local HTTP MCP train job status-cancel baseline；latest guard 也會在同 session
     train job 正在 start / running 時拒絕 duplicate start，回 `job_already_running` structured
-    blocked result。這仍不是 evaluation / visualization jobs、job persistence / recovery、remote
-    authorization certification 或 full MCP client certification。
+    blocked result；已 cancelled / completed 的 job snapshot 會保留 terminal status，不會因後續
+    新 run 改成 active。這仍不是 evaluation / visualization jobs、job persistence / recovery、
+    remote authorization certification 或 full MCP client certification。
 - Windows launcher automated command walkthrough 已新增：
   - `scripts/dev/capture_windows_launcher_walkthrough.py` 會從 Windows `cmd.exe` 執行 Desktop
     `XBrainLab.cmd` smoke，確認它指向 active repo。

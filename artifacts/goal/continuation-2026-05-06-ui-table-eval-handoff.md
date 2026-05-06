@@ -240,6 +240,8 @@ bb57beb ui: use backend truth for split replacement
   - Follow-up duplicate-start guard blocks a second HTTP `train` while the same-session train job is
     starting or running, returning structured `job_already_running` without dispatching a second
     training command.
+  - Follow-up terminal-status guard keeps cancelled / completed HTTP job records terminal across
+    later train runs in the same session.
   - `MCPServer` now carries transport-scoped adapter metadata:
     `mode=headless_mcp_http`, `transport=http`, stable `session_id`, and
     `ui_refresh.supported=False` for HTTP.
@@ -247,10 +249,10 @@ bb57beb ui: use backend truth for split replacement
     `scripts/dev/capture_mcp_http_walkthrough.py`.
   - Refreshed `artifacts/mcp/http-walkthrough.json` / `.md`; walkthrough covers health,
     initialize, tools/list, scan, preview, train job creation, status, and cancel.
-  - HTTP train job progress/cancel and same-session duplicate-start guard are now a baseline;
-    evaluation / visualization jobs, job persistence / recovery, multi-client recovery-grade
-    resource locks, remote authorization certification, and full MCP client certification remain
-    open.
+  - HTTP train job progress/cancel, same-session duplicate-start guard, and in-memory terminal job
+    status are now a baseline; evaluation / visualization jobs, job persistence / recovery,
+    multi-client recovery-grade resource locks, remote authorization certification, and full MCP
+    client certification remain open.
 - Data Interpretation table geometry verification:
   - User-reported preview table overflow / Review Summary contrast and loaded Dataset table
     underfill / green Events concerns were checked against current code and refreshed replay

@@ -387,3 +387,59 @@ def test_http_mcp_rejects_duplicate_train_start_while_job_is_starting():
         httpd.shutdown()
         httpd.server_close()
         thread.join(timeout=10)
+
+
+def test_http_mcp_job_terminal_status_survives_later_train_runs():
+    service, calls = _training_ready_service()
+    httpd, port, thread = _start_server(service=service)
+    try:
+        _post_json(
+            port,
+            "/mcp",
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"protocolVersion": PROTOCOL_VERSION},
+            },
+        )
+        status, first_response = _post_json(
+            port,
+            "/mcp",
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {"name": "train", "arguments": {"confirmed": True}},
+            },
+        )
+        assert status == 200
+        first_job = first_response["result"]["structuredContent"]["result"]["job"]
+
+        status, cancelled = _post_json(port, f"/jobs/{first_job['job_id']}/cancel", {})
+        assert status == 200
+        assert cancelled["job"]["status"] == "cancelled"
+
+        status, second_response = _post_json(
+            port,
+            "/mcp",
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {"name": "train", "arguments": {"confirmed": True}},
+            },
+        )
+        assert status == 200
+        second_job = second_response["result"]["structuredContent"]["result"]["job"]
+        assert calls["started"] == 2
+
+        status, listed_jobs = _get_json(port, "/jobs")
+        assert status == 200
+        jobs_by_id = {job["job_id"]: job for job in listed_jobs["jobs"]}
+        assert jobs_by_id[first_job["job_id"]]["status"] == "cancelled"
+        assert jobs_by_id[second_job["job_id"]]["status"] == "running"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=10)
