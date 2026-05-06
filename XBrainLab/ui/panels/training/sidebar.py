@@ -21,6 +21,7 @@ from XBrainLab.backend.application import (
     TrainCommand,
 )
 from XBrainLab.ui.application_capabilities import (
+    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
     LegacyControllerFallbackUnavailableError,
     blocked_reason,
     execute_application_command,
@@ -384,6 +385,13 @@ class TrainingSidebar(QWidget):
             refresh=False,
         )
         if result is None:
+            if get_command_capability(self, CommandName.GENERATE_DATASET) is not None:
+                QMessageBox.warning(
+                    self,
+                    "Data Splitting Blocked",
+                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                )
+                return None
             return {}
         if result.failed:
             QMessageBox.warning(

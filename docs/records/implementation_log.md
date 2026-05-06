@@ -42,6 +42,36 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Data Splitting Context Query-None Boundary
+
+### 狀態
+
+`TrainingSidebar._data_splitting_dialog_context()` now blocks real `Study` product runtime when the
+dataset-generation context query unexpectedly returns `None`. The UI shows `Data Splitting Blocked`
+instead of opening a splitting dialog without service-backed epoch/generator context.
+
+### 已可宣稱
+
+- Real `Study` data-splitting dialog context no longer falls through to a context-less dialog when
+  the ApplicationService query is unavailable.
+- Mock / legacy tests can still construct the dialog without ApplicationService context.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/training/sidebar.py`
+- Tests: `tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not complete full Data Splitting desktop acceptance or all TrainingSidebar fallback
+  cleanup.
+
+### 下一手重點
+
+Continue converting remaining real `Study` query-none and fallback branches into blocked
+user-facing states.
+
 ## 2026-05-06 Start Training Fallback Warning Boundary
 
 ### 狀態

@@ -37,6 +37,50 @@
 
 ## 2026-05-06
 
+### 08:56 Data Splitting context query-none boundary
+
+- scope：
+  - Continue product-runtime command-truth audit for Training sidebar data-splitting actions.
+  - Prevent real `Study` split dialog from opening without service-backed dataset-generation
+    context when the context query returns `None`.
+- red / focused tests：
+  - Added `test_split_data_refuses_real_study_query_none_dialog_context`.
+  - Red gate failed because `TrainingSidebar.split_data()` still opened `DataSplittingDialog`.
+- 做了什麼：
+  - `_data_splitting_dialog_context()` now treats query-none as blocked when backend generate
+    capability is present.
+  - Mock / legacy contexts still get the old empty-context dialog behavior.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_split_data_refuses_real_study_query_none_dialog_context -q`
+    -> failed because dialog opened.
+  - Focused pass:
+    same command -> `1 passed`.
+  - TrainingSidebar regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar -q`
+    -> `42 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> pass.
+    `poetry run basedpyright XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Full fast gate:
+    `git diff --check` -> pass.
+    `poetry run ruff check .` -> pass.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> pass.
+    `poetry run mkdocs build --strict` -> pass.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a Training UI command-truth cleanup under the fast dev gate, not a release /
+    thesis benchmark update. It does not justify primary/fallback x3 local eval under 16GB VRAM
+    pressure.
+- 不能宣稱：
+  - This does not complete full Data Splitting desktop acceptance, all query-none paths, or all
+    controller fallback debt.
+
 ### 08:50 Start Training fallback warning boundary
 
 - scope：

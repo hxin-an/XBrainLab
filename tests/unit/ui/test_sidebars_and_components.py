@@ -851,6 +851,41 @@ class TestTrainingSidebar:
         assert commands[0].include_objects is True
         assert isinstance(commands[1], GenerateDatasetCommand)
 
+    def test_split_data_refuses_real_study_query_none_dialog_context(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.study import Study
+
+        sidebar.panel.main_window.study = Study()
+        sidebar.panel.controller.get_epoch_data.side_effect = AssertionError(
+            "split dialog context should not fall back to controller",
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                return_value=SimpleNamespace(enabled=True, reasons=[]),
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=None,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog",
+            ) as mock_dialog,
+            patch.object(QMessageBox, "warning") as mock_warning,
+        ):
+            sidebar.split_data()
+
+        mock_dialog.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Data Splitting Blocked"
+        assert "could not safely complete" in mock_warning.call_args.args[2]
+        sidebar.panel.controller.get_epoch_data.assert_not_called()
+
     def test_split_data_refuses_real_study_generate_none_controller_fallback(
         self,
         sidebar,
