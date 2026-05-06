@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+41930e0 ui: show montage fallback warning
 c26cb99 ui: show inline metadata fallback warning
 789b520 docs: refresh handoff after preprocess warnings
 fc14dd3 ui: show preprocess fallback warnings
@@ -154,6 +155,13 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- AgentManager montage fallback warning:
+  - real `Study` assistant montage confirmation now shows `Montage setup blocked` when
+    `ApplyMontageCommand` returns `None`.
+  - the UI no longer lets legacy fallback refusal escape from
+    `AgentManager.open_montage_picker_dialog()` or call `PreprocessController.apply_montage()` in
+    product runtime.
+  - mock / legacy non-`Study` montage fallback still calls `PreprocessController.apply_montage()`.
 - Dataset inline metadata fallback warning:
   - real `Study` inline subject/session edits now show `Metadata blocked` when
     `UpdateMetadataCommand` returns `None`.
@@ -2034,7 +2042,14 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/llm/tools/test_application_surface.py \
   tests/integration/agent/test_tool_call_eval.py \
   -q
-# passed for c26cb99; backend integration 7 passed; agent/tool 20 passed
+# passed for 41930e0; backend integration 7 passed; agent/tool 20 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_agent_manager_coverage.py \
+  tests/unit/ui/components/test_agent_manager.py \
+  tests/unit/ui/test_ui_misc.py::TestAgentManagerDeep \
+  -q
+# 83 passed for 41930e0
 
 git diff --check
 poetry run ruff check .
