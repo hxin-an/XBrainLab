@@ -30,6 +30,9 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+ed54a8f ui: guard observer controller fallback
+74882c8 docs: sync roadmap after study state guard
+cba9e4f docs: refresh handoff after study state guard
 87e18ff ui: guard direct study state reads
 4a19100 ui: query label filter suggestions
 54ee9ae docs: refresh handoff after walkthrough geometry
@@ -209,6 +212,25 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Observer wiring controller-tree fallback guard:
+  - EvaluationPanel / VisualizationPanel no longer use
+    `controller.study.get_controller("training")` to fill in missing `training_controller` wiring
+    for real `Study` contexts.
+  - Product MainWindow already injects `TrainingController`; real panels without injection now skip
+    that observer bridge instead of walking the controller tree.
+  - `tests/architecture_compliance.py` now rejects new product UI functions that call
+    `controller.study.get_controller(...)` outside explicit legacy / fallback helpers.
+  - Validation covered red/focused architecture and panel tests, full architecture-compliance unit
+    tests, Evaluation / Visualization panel event/render regressions, architecture compliance,
+    full ruff, full basedpyright, `git diff --check`, and `mkdocs build --strict`.
+  - No local LLM eval was run; this was a UI observer/fallback architecture slice under the fast
+    dev gate.
+- Roadmap / eval gate sync:
+  - Roadmap now records the direct Study state guard as completed architecture progress.
+  - Roadmap restates the eval gate hierarchy: fast dev gate is deterministic changed/failed cases
+    only, repeat `1`, no fallback; candidate gate is primary affected families only, repeat `1` or
+    `2`, no fallback; release / thesis gate is the only place for full primary / fallback x3.
+  - This did not update formal local-model benchmark claims.
 - Direct Study state read guard:
   - UI fallback audit now covers direct mutable `Study` state reads, not only controller methods.
   - AgentManager montage picker channel choices now come from
