@@ -1405,6 +1405,18 @@ def build_eval_cases() -> list[EvalCase]:
             families=("chinese", "ambiguous_request", "missing_input"),
         ),
         EvalCase(
+            "zh-label-action-missing-input",
+            "Chinese label action without carrier asks clarification",
+            "loaded",
+            ["幫我貼標籤"],
+            "ask_clarification",
+            expected_verification_result="missing_input",
+            expected_blocked=True,
+            expected_reason_terms=["which workflow step"],
+            expected_recovery=True,
+            families=("chinese", "missing_input", "label_ambiguity"),
+        ),
+        EvalCase(
             "no-tool-why-train-blocked",
             "Why-train question is answered without mutating tools",
             "empty",

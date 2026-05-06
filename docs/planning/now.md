@@ -938,7 +938,9 @@ Goal 1 至少要包含：
 9. **Evaluation baseline**
    - deterministic / engineering tool-call cases 覆蓋 Data Interpretation、metadata resolution、
      autonomy boundary、blocked、confirmation、missing parameter、recipe reload。
-     （目前 deterministic baseline 已擴為 `121 / 121` pass；新增三個 recipe remap cases。）
+     （formal release gate 目前為 `121 / 121` pass；新增三個 recipe remap cases。最新 fast
+     changed-case slice 又新增 `zh-label-action-missing-input`，source suite 變成 `122` cases，但
+     只跑 deterministic changed-case `1 / 1`，不更新正式 claim。）
    - local LLM runner 使用同一份 cases 接 primary / fallback raw output，各重跑 `3` 次；
      目前 deterministic / primary / fallback 都是 `121 / 121`。apply-lock case 的 local raw output
      仍可能提出 direct blocked
@@ -1070,8 +1072,10 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
 - 不能宣稱 agent 已達理想架構，除非它已遷移到新 tool taxonomy 並受 autonomy policy 約束。
 - 不能把 prompt smoke 當成真 local LLM ChatPanel walkthrough。
 - 不能把 deterministic eval 當成 local LLM 真實 tool-call accuracy；目前 primary / fallback
-  真模型已用同一 `121` case suite 各重跑 `3` 次並得到 `121 / 121` evidence。這只支撐已重跑
-  tool-call benchmark slice，不代表 ChatPanel / launcher / import wizard 產品驗收完成。
+  真模型已用同一 `121` case suite 各重跑 `3` 次並得到 `121 / 121` evidence。最新 source
+  suite 已增至 `122` cases，但新增中文 label-action missing-input case 只跑 fast changed-case
+  gate；正式 `122` case local score 需要 release / thesis gate 重跑。這只支撐已重跑 tool-call
+  benchmark slice，不代表 ChatPanel / launcher / import wizard 產品驗收完成。
 - 不能把 backend scripted replay 的文字報告當成 UI 行為正確；UI replay 要有人眼可審查 artifact。
 - 不能把 mock-heavy tests 當成真實 workflow evidence。
 - 不能把 dashboard PASS 當成產品完成或 thesis claim 成立。

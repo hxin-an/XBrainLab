@@ -425,7 +425,13 @@ primary x3 + fallback x3 dashboard。最新 CLI guard 也已讓
 local gate 偵測到 high VRAM pressure，會先寫 `resource_preflight.json` / `.md` 並拒絕啟動
 local model，避免 routine slice 誤跑 full fallback x3。日常 UI refresh、verifier、normalizer、
 prompt 或 case wording 切片只應跑 fast dev gate；除非正在更新正式 release / thesis benchmark
-claim，不應啟動 fallback full x3。後續
+claim，不應啟動 fallback full x3。最新 fast changed-case slice 又新增中文 label-action
+missing-input case：`zh-label-action-missing-input` 會把「幫我貼標籤」判成需要 clarification，
+deterministic source suite 因此變成 `122` cases；只跑
+`artifacts/agent_evals/deterministic_changed/latest.*` 的 `1 / 1` changed-case gate，沒有重跑
+local primary / fallback，也沒有更新正式 release / thesis benchmark claim。正式可引用的
+primary / fallback x3 evidence 仍是上一輪同一 `121` case suite；若要宣稱 `122` case suite，
+必須走 release / thesis gate 並先做 disk / cache / VRAM preflight。後續
 ChatPanel local-model UI
 walkthrough 已新增一輪真模型可見回覆 evidence：
 `scripts/dev/capture_chatpanel_local_walkthrough.py` 會在 `HF_HUB_OFFLINE=1` /
@@ -1168,8 +1174,11 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   command；`evaluate` / `visualize` / `saliency` 也已暴露成 ApplicationService-backed agent
   tools。它們目前回傳 summary / setup diagnostics，不等於完整互動式 analysis workflow 已完成。
 - tool-call eval 已有 deterministic baseline 和 primary / fallback 真 local model runner；最新
-  deterministic / primary / fallback artifact 都已刷新為 `121 / 121`，包含 recipe reload
-  `eeg_file_remap` / `label_carrier_remap` 和 missing remap target clarification。
+  formal deterministic / primary / fallback artifact 都已刷新為 `121 / 121`，包含 recipe reload
+  `eeg_file_remap` / `label_carrier_remap` 和 missing remap target clarification。後續 fast
+  changed-case gate 已把 source suite 增到 `122` cases，新增中文「幫我貼標籤」missing-input
+  clarification case，並通過 `1 / 1` deterministic changed-case artifact；這不是正式 local
+  primary / fallback rerun，也不能更新 thesis score claim。
   scorer 已收緊 substitute-tool handling：direct blocked command 可以由 verifier/capability
   policy 擋下，但替代工具不再被誤算成 pass。這解除先前 `54` case 數不足、
   bandpass-vs-standard preprocess failure，以及只測乾淨英文 prompt 的 coverage gap。ChatPanel true local
@@ -1228,8 +1237,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
    action 改成中性 workflow action；這個按鈕會修改資料，不應用成功狀態顏色誤導使用者。仍要補
    mature import wizard editing、assistant main-window narrow composition 和整體產品感。
 6. 將 `121` case remap-expanded tool-call dashboard 整理成 thesis report evidence；目前
-   deterministic / primary / fallback 都是 `121 / 121`，但不要把它擴張成 UI / launcher /
-   import wizard 產品完成 claim。日常 tool-call 修正不可預設 full primary / fallback x3；
+   formal deterministic / primary / fallback 都是 `121 / 121`，但不要把它擴張成 UI /
+   launcher / import wizard 產品完成 claim。最新 source suite 已因 `zh-label-action-missing-input`
+   增至 `122` cases，這一片只跑 `1 / 1` deterministic changed-case fast gate；正式 `122`
+   case claim 要等 release / thesis gate 重跑。日常 tool-call 修正不可預設 full primary / fallback x3；
    validation gate 分成 deterministic changed-case fast gate、primary subset candidate gate，以及
    release / thesis full local gate。full fallback x3 需要先做 VRAM / disk / cache preflight，並把
    latency / resource pressure 寫進 artifact；deterministic CLI 現在也要求預設 fast gate 必須指定

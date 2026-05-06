@@ -1,0 +1,312 @@
+{
+  "benchmark": "xbrainlab-deterministic-tool-call",
+  "runner": "deterministic-scripted-baseline",
+  "method_references": [
+    {
+      "name": "Berkeley Function Calling Leaderboard",
+      "url": "https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard",
+      "used_for": "tool selection, argument matching, multi-turn cases"
+    },
+    {
+      "name": "LangSmith trajectory evaluations",
+      "url": "https://docs.langchain.com/langsmith/trajectory-evals",
+      "used_for": "trajectory-level sequence scoring"
+    },
+    {
+      "name": "OpenAI structured outputs/function calling guidance",
+      "url": "https://platform.openai.com/docs/guides/structured-outputs",
+      "used_for": "schema-aware tool output and strict result parsing"
+    }
+  ],
+  "case_source_path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/scripts/agent/evals/run_tool_call_eval.py",
+  "fixture_source_paths": [
+    "/mnt/d/workspace_v2/projects/lab/XBrainLab/scripts/agent/evals/run_tool_call_eval.py"
+  ],
+  "repeat_count": 1,
+  "total_cases": 1,
+  "total_suite_cases": 122,
+  "selected_case_ids": [
+    "zh-label-action-missing-input"
+  ],
+  "selected_case_families": [
+    "blocked_command",
+    "chinese",
+    "label_ambiguity",
+    "missing_input",
+    "recovery"
+  ],
+  "exploratory": true,
+  "summary": {
+    "total_cases": 1,
+    "passed_cases": 1,
+    "failed_cases": 0,
+    "pass_rate": 1.0,
+    "intent_accuracy": 1.0,
+    "tool_selection_accuracy": 1.0,
+    "argument_correctness_accuracy": 1.0,
+    "state_aware_accuracy": 1.0,
+    "verification_result_match_accuracy": 1.0,
+    "state_delta_accuracy": 1.0,
+    "blocked_command_accuracy": 1.0,
+    "recovery_accuracy": 1.0,
+    "tool_result_interpretation_accuracy": 1.0,
+    "trajectory_quality_accuracy": 1.0,
+    "runtime_safety_accuracy": 1.0,
+    "local_llm_reliability_accuracy": 1.0,
+    "tool_or_no_tool_decision_accuracy": 1.0,
+    "clarification_behavior_accuracy": 1.0,
+    "confirmation_boundary_accuracy": 1.0,
+    "visible_response_quality_accuracy": 1.0,
+    "family_pass_rates": {
+      "blocked_command": {
+        "total": 1,
+        "passed": 1,
+        "pass_rate": 1.0
+      },
+      "chinese": {
+        "total": 1,
+        "passed": 1,
+        "pass_rate": 1.0
+      },
+      "label_ambiguity": {
+        "total": 1,
+        "passed": 1,
+        "pass_rate": 1.0
+      },
+      "missing_input": {
+        "total": 1,
+        "passed": 1,
+        "pass_rate": 1.0
+      },
+      "recovery": {
+        "total": 1,
+        "passed": 1,
+        "pass_rate": 1.0
+      }
+    },
+    "failure_taxonomy": {}
+  },
+  "failure_taxonomy": {},
+  "cases": [
+    {
+      "case_id": "zh-label-action-missing-input",
+      "passed": true,
+      "user_command": [
+        "幫我貼標籤"
+      ],
+      "initial_state": "loaded",
+      "available_command_summary": {
+        "enabled": [
+          "scan_source",
+          "reload_interpretation_recipe",
+          "load_data",
+          "attach_labels",
+          "import_labels",
+          "update_metadata",
+          "apply_smart_parse",
+          "remove_files",
+          "preprocess",
+          "configure_training",
+          "query_state",
+          "reset_preprocess",
+          "reset_session",
+          "new_session"
+        ],
+        "blocked": [
+          {
+            "command": "preview_interpretation",
+            "reasons": [
+              "Scan a data source before previewing interpretation."
+            ]
+          },
+          {
+            "command": "validate_interpretation",
+            "reasons": [
+              "Preview an interpretation candidate before validation."
+            ]
+          },
+          {
+            "command": "apply_interpretation",
+            "reasons": [
+              "Validate an interpretation before applying it."
+            ]
+          },
+          {
+            "command": "save_interpretation_recipe",
+            "reasons": [
+              "Apply an interpretation before saving a recipe."
+            ]
+          },
+          {
+            "command": "create_epoch",
+            "reasons": [
+              "Preprocess data before creating epochs."
+            ]
+          },
+          {
+            "command": "generate_dataset",
+            "reasons": [
+              "Create epochs before generating datasets."
+            ]
+          },
+          {
+            "command": "clear_datasets",
+            "reasons": [
+              "No generated datasets or training plans to clear."
+            ]
+          },
+          {
+            "command": "train",
+            "reasons": [
+              "Generate datasets before training.",
+              "Select a model before training.",
+              "Configure training options before training."
+            ]
+          },
+          {
+            "command": "stop_training",
+            "reasons": [
+              "No training run is active."
+            ]
+          },
+          {
+            "command": "clear_training_history",
+            "reasons": [
+              "No training history is available to clear."
+            ]
+          },
+          {
+            "command": "evaluate",
+            "reasons": [
+              "Create a training plan before evaluating results."
+            ]
+          },
+          {
+            "command": "visualize",
+            "reasons": [
+              "Create epochs, complete training, or configure saliency before opening visualization views."
+            ]
+          },
+          {
+            "command": "saliency",
+            "reasons": [
+              "Create epochs, generate datasets, or select a model and training settings before querying saliency readiness."
+            ]
+          },
+          {
+            "command": "apply_montage",
+            "reasons": [
+              "Create epochs before applying a montage."
+            ]
+          }
+        ],
+        "confirmation": [
+          {
+            "command": "train",
+            "decision_boundary": "long_running"
+          },
+          {
+            "command": "reset_session",
+            "decision_boundary": null
+          },
+          {
+            "command": "new_session",
+            "decision_boundary": null
+          }
+        ]
+      },
+      "expected_verification_result": "missing_input",
+      "expected_state_delta": {},
+      "actual_model_output": "Please tell me which workflow step you want to run before I change the session.",
+      "parsed_tool_calls": [],
+      "verification_result": "missing_input",
+      "backend_result": {
+        "simulated": true,
+        "status": "failed",
+        "command_name": null,
+        "verification_result": "missing_input",
+        "result_interpretation": null,
+        "expected_state_delta": {}
+      },
+      "visible_response": "Please tell me which workflow step you want to run before I change the session.",
+      "score_breakdown": {
+        "intent": true,
+        "tool_selection": true,
+        "argument_correctness": true,
+        "state_aware": true,
+        "verification_result": true,
+        "state_delta": true,
+        "blocked_command": true,
+        "recovery": true,
+        "tool_result_interpretation": true,
+        "trajectory_quality": true,
+        "runtime_safety": true,
+        "local_llm_reliability": true,
+        "tool_or_no_tool_decision": true,
+        "clarification_behavior": true,
+        "confirmation_boundary": true,
+        "visible_response_quality": true
+      },
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "verification_result_match": true,
+      "state_delta": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "tool_or_no_tool_decision": true,
+      "clarification_behavior": true,
+      "confirmation_boundary": true,
+      "visible_response_quality": true,
+      "families": [
+        "blocked_command",
+        "chinese",
+        "label_ambiguity",
+        "missing_input",
+        "recovery"
+      ],
+      "prediction": {
+        "intent": "ask_clarification",
+        "tool_calls": [],
+        "blocked": true,
+        "confirmation_required": false,
+        "blocked_reason": "Missing required workflow detail; ask which workflow step or input the user wants to use.",
+        "asks_clarification": true,
+        "final_message": "Please tell me which workflow step you want to run before I change the session.",
+        "result_interpretation": null,
+        "state_delta": {}
+      },
+      "failures": []
+    }
+  ],
+  "eval_gate": "fast",
+  "gate_preflight": {
+    "ok": true,
+    "message": "Deterministic eval gate passed.",
+    "eval_gate": "fast",
+    "repeat_count": 1,
+    "selected_cases": 1,
+    "total_suite_cases": 122,
+    "selected_case_ids": [
+      "zh-label-action-missing-input"
+    ],
+    "selected_case_families": [
+      "blocked_command",
+      "chinese",
+      "label_ambiguity",
+      "missing_input",
+      "recovery"
+    ],
+    "full_suite": false,
+    "claim_boundary": "Fast deterministic subsets are engineering regression gates. Only release/thesis gates should refresh full-suite dashboard claims."
+  },
+  "artifact_paths": {
+    "json": "artifacts/agent_evals/deterministic_changed/latest.json",
+    "markdown": "artifacts/agent_evals/deterministic_changed/latest.md"
+  }
+}

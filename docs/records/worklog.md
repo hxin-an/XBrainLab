@@ -13361,3 +13361,53 @@
 - 不能宣稱：
   - This guards callback-specific observer drift. It does not complete full command-driven refresh
     closure, remove all observer callbacks, or finish human desktop acceptance.
+
+### 2026-05-06 Chinese label-action missing-input fast gate
+
+- scope：
+  - Add one difficult real-language tool-call case for the Chinese prompt `幫我貼標籤`.
+  - Treat it as missing input / ask clarification unless the user gives a concrete label carrier,
+    workflow step, or Data Interpretation context.
+  - Keep this as a fast dev gate slice; do not rerun local primary / fallback x3.
+- red / focused tests：
+  - Added `assert infer_user_intent("幫我貼標籤") == "ask_clarification"`.
+  - Added deterministic eval case `zh-label-action-missing-input` with families `chinese`,
+    `missing_input`, and `label_ambiguity`.
+  - Red gate:
+    `poetry run pytest --capture=sys tests/unit/llm/agent/test_intent.py::test_infers_multilingual_no_call_and_clarification_boundaries -q`
+    -> failed as expected because the intent resolver returned `unknown`.
+- 做了什麼：
+  - Added the Chinese label-action phrase to the ambiguous workflow markers after the no-tool
+    explanatory guard, so concept questions like `貼標籤在 BCI 裡是什麼意思?` still remain no-tool.
+  - Wrote changed-case deterministic artifacts to
+    `artifacts/agent_evals/deterministic_changed/latest.json` / `.md`.
+- validation：
+  - Focused pass:
+    `poetry run pytest --capture=sys tests/unit/llm/agent/test_intent.py::test_infers_multilingual_no_call_and_clarification_boundaries -q`
+    -> `1 passed`.
+  - Deterministic changed-case fast gate:
+    `poetry run python scripts/agent/evals/run_tool_call_eval.py --case-id zh-label-action-missing-input --output-dir artifacts/agent_evals/deterministic_changed`
+    -> `1 / 1` passed; source suite count is now `122`.
+  - Focused runner / agent regression:
+    `poetry run pytest --capture=sys tests/unit/llm/agent/test_intent.py tests/unit/scripts/test_run_tool_call_eval.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `12 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/agent/test_verification_layer.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `100 passed`.
+  - Quality / docs:
+    `git diff --check` -> passed.
+    `poetry run ruff check XBrainLab/llm/agent/intent.py scripts/agent/evals/run_tool_call_eval.py tests/unit/llm/agent/test_intent.py tests/unit/scripts/test_run_tool_call_eval.py`
+    -> `All checks passed!`.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/llm/agent/intent.py scripts/agent/evals/run_tool_call_eval.py tests/unit/llm/agent/test_intent.py tests/unit/scripts/test_run_tool_call_eval.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+- local eval：
+  - Not run. Per the eval gate policy, this changed prompt/case-wording slice uses deterministic
+    changed-case fast gate only. Full primary / fallback x3 remains release / thesis gate only and
+    requires disk / cache / VRAM preflight.
+- 不能宣稱：
+  - Formal local-model benchmark evidence remains the prior `121` case primary / fallback x3 run.
+    This slice does not update thesis score claim, ChatPanel local-model acceptance, UI product
+    completion, or Windows launcher acceptance.

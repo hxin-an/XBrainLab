@@ -78,6 +78,22 @@ synthetic replay fixture; it still does not replace human Windows desktop review
 - Claim boundary: no local LLM benchmark was rerun for this guard slice, so no thesis score claim
   changed.
 
+2026-05-06 Chinese label-action missing-input fast gate:
+
+- Source suite change: `scripts/agent/evals/run_tool_call_eval.py` now includes
+  `zh-label-action-missing-input` for the Chinese prompt `幫我貼標籤`, classified as
+  ask-clarification / missing input instead of a mutating label command.
+- Fast gate evidence:
+  `poetry run python scripts/agent/evals/run_tool_call_eval.py --case-id zh-label-action-missing-input --output-dir artifacts/agent_evals/deterministic_changed`
+  -> `1 / 1` passed.
+- Artifacts:
+  `artifacts/agent_evals/deterministic_changed/latest.json` and
+  `artifacts/agent_evals/deterministic_changed/latest.md`.
+- Claim boundary: the deterministic source suite is now `122` cases, but this slice did not rerun
+  local primary or fallback models. Formal release / thesis evidence remains the prior `121` case
+  primary / fallback x3 run until a release/thesis gate reruns the full `122` case suite with
+  resource preflight.
+
 最新使用者要求的「單一 automated human-like walkthrough」已新增：
 `scripts/dev/capture_human_like_product_walkthrough.py` 產出
 `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` / `.md` 和 `20` 張 screenshots。

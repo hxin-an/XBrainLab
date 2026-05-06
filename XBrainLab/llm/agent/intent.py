@@ -195,6 +195,7 @@ def _is_ambiguous_workflow_request(normalized: str) -> bool:
             "幫我處理資料",
             "幫我弄資料",
             "把資料處理一下",
+            "幫我貼標籤",
         )
     )
 

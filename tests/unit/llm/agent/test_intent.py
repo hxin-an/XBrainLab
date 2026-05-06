@@ -39,6 +39,7 @@ def test_infers_multilingual_no_call_and_clarification_boundaries():
     assert infer_user_intent("現在為什麼不能 train?") == "no_tool"
     assert infer_user_intent("什麼是 epoch?") == "no_tool"
     assert infer_user_intent("幫我處理資料") == "ask_clarification"
+    assert infer_user_intent("幫我貼標籤") == "ask_clarification"
     assert infer_user_intent("幫我切 epoch event 769") == "create_epoch"
 
 

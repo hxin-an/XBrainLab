@@ -5249,3 +5249,29 @@ Named handlers can still do event-local UI work, but they must delegate shared r
 
 - This guards one observer-drift class. It does not complete full command-driven UI refresh
   coordinator closure or remove all callback-specific local side effects.
+
+## 2026-05-06 Chinese Label Missing-Input Fast Gate
+
+### 狀態
+
+The tool-call eval source suite now includes a Chinese label-action prompt that must ask for
+clarification instead of calling a mutating label tool.
+
+### 已可宣稱
+
+- `幫我貼標籤` is classified as missing input / clarification in deterministic intent inference.
+- The changed deterministic eval case passed under the fast dev gate.
+
+### Evidence 入口
+
+- Source：`XBrainLab/llm/agent/intent.py`,
+  `scripts/agent/evals/run_tool_call_eval.py`
+- Test：`tests/unit/llm/agent/test_intent.py`
+- Fast artifact：`artifacts/agent_evals/deterministic_changed/latest.md`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- The source suite is now `122` cases, but local primary / fallback x3 was not rerun. Formal
+  release / thesis score evidence remains the prior `121` case gate until the full `122` case suite
+  is rerun with resource preflight.
