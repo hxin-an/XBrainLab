@@ -55,6 +55,17 @@ def test_apply_replay_review_choices_updates_event_role_selector(qtbot) -> None:
 
     apply_replay_review_choices(dialog)
 
+    label_item = dialog.label_carrier_tree.topLevelItem(0)
+    assert label_item is not None
+    target_selector = dialog.label_carrier_tree.itemWidget(label_item, 1)
+    assert isinstance(target_selector, QComboBox)
+    assert target_selector.currentData() == "sub-01_task-mi_run-2_raw.fif"
+    assert (
+        dialog.get_result()["choices"]["label_carrier_choices"][
+            "/tmp/source/events.tsv"
+        ]["target_file"]
+        == "sub-01_task-mi_run-2_raw.fif"
+    )
     assert role_selector.currentData() == "class cue"
     assert ["Trial type", "event role", "Class cue"] in tree_rows(dialog.event_tree)
     assert dialog.get_result()["choices"]["event_roles"] == {"trial_type": "class cue"}

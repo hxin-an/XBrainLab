@@ -173,7 +173,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._populate_label_carrier_tree()
         self._fit_tree_columns(
             self.label_carrier_tree,
-            (145, 145, 110, 115, 105, 100, 105, 157),
+            (130, 135, 100, 110, 95, 125, 130, 157),
             stretch_column=7,
         )
         label_layout.addWidget(self.label_carrier_tree)
@@ -541,12 +541,13 @@ class DataInterpretationPreviewDialog(BaseDialog):
             if not isinstance(carrier, dict):
                 continue
             match_text = self._label_carrier_match_text(carrier)
+            match_display = self._label_target_display(match_text)
             original = dict(carrier)
             original["_matched_eeg_text"] = match_text
             item = QTreeWidgetItem(
                 [
                     str(carrier.get("name") or Path(str(carrier.get("path", ""))).name),
-                    match_text,
+                    match_display,
                     str(carrier.get("format") or "Unknown"),
                     str(carrier.get("selected_label_field") or ""),
                     str(carrier.get("selected_anchor") or ""),
@@ -556,7 +557,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 ],
             )
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
-            item.setToolTip(1, "The EEG file this label carrier can be matched to.")
+            item.setData(1, Qt.ItemDataRole.UserRole, match_text)
+            item.setToolTip(1, match_text)
             item.setToolTip(3, self._candidate_tooltip(carrier, "label_candidates"))
             item.setToolTip(4, self._candidate_tooltip(carrier, "anchor_candidates"))
             item.setToolTip(5, "How label timing aligns to the EEG recording.")
@@ -958,11 +960,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
     def _label_target_selector(self) -> QComboBox:
         selector = QComboBox(self.label_carrier_tree)
         self._prepare_table_combo(selector)
-        selector.addItem("Needs review")
+        selector.addItem("Needs review", "")
         for file_path in self.scan_result.get("eeg_files", []) or []:
             text = Path(str(file_path)).name
             if text:
-                selector.addItem(text)
+                selector.addItem(self._label_target_display(text), text)
         selector.setToolTip("Choose the EEG file this label carrier applies to.")
         return selector
 
@@ -970,12 +972,38 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if column == 1:
             selector = self._label_target_widgets.get(id(item))
             if selector is not None:
-                return selector.currentText()
+                value = selector.currentData()
+                return str(value) if value is not None else selector.currentText()
+            value = item.data(1, Qt.ItemDataRole.UserRole)
+            if isinstance(value, str) and value:
+                return value
         choice_selector = self._label_choice_widgets.get((id(item), column))
         if choice_selector is not None:
             value = choice_selector.currentData()
             return str(value) if value is not None else choice_selector.currentText()
         return item.text(column)
+
+    @staticmethod
+    def _label_target_display(text: str) -> str:
+        if text in {"", "Needs review", "Recording"}:
+            return text
+        name = Path(text).name
+        lowered = name.lower()
+        if lowered.endswith(".fif.gz"):
+            stem = name[: -len(".fif.gz")]
+        else:
+            stem = Path(name).stem
+        parts = [part for part in stem.split("_") if part]
+        subject = next((part for part in parts if part.startswith("sub-")), "")
+        session = next((part for part in parts if part.startswith("ses-")), "")
+        run = next((part for part in parts if part.startswith("run-")), "")
+        task = next((part for part in parts if part.startswith("task-")), "")
+        compact_parts = [part for part in (subject, session, run) if part]
+        if not compact_parts and task:
+            compact_parts = [task]
+        if len(compact_parts) == 1 and task and not run:
+            compact_parts.append(task)
+        return " ".join(compact_parts) if compact_parts else name
 
     @staticmethod
     def _label_carrier_choice_text(choice_key: str, value: str) -> str:

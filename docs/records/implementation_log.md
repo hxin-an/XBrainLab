@@ -4863,3 +4863,39 @@ session boundaries keep it disabled with a user-facing reason, while applied dat
 - This is one Dataset sidebar safety / polish slice. It does not complete human Windows desktop
   acceptance, the mature Data Interpretation wizard, or all remaining command-driven UI refresh
   cleanup.
+
+## 2026-05-06 Data Interpretation Selector Fit
+
+### 狀態
+
+Data Interpretation preview/remap tables now allocate enough width for the user-facing label/event
+selectors and show compact BIDS target labels in the table while preserving full filenames in the
+recipe choices.
+
+### 已可宣稱
+
+- `Needs review` in Time / Granularity selectors is no longer clipped in the product-width remap
+  screenshot.
+- Matched EEG target display uses compact labels such as `sub-01 run-2`, so the distinguishing run
+  remains visible.
+- Replay choices and apply diagnostics still preserve the full target filename
+  `sub-01_task-mi_run-2_raw.fif`.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py`,
+  `scripts/dev/capture_data_interpretation_replay.py`
+- Tests：`tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`,
+  `tests/unit/scripts/test_capture_data_interpretation_replay.py`
+- Artifacts：`artifacts/ui/data-interpretation-preview.png`,
+  `artifacts/ui/data-interpretation-remap.png`,
+  `artifacts/ui/data-interpretation-replay.json`,
+  `artifacts/ui/human-like-walkthrough/04-interpretation-preview.png`,
+  `artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png`,
+  `artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is targeted table/selector polish. It does not complete the mature import wizard editor,
+  complex real-data label carrier reconciliation, or Windows human desktop acceptance.

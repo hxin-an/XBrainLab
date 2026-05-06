@@ -176,7 +176,7 @@
         "evaluation_changed": false,
         "visualization_changed": false,
         "interpretation_changed": true,
-        "error_changed": true
+        "error_changed": false
       },
       "error_type": "none",
       "recoverable": true,
@@ -3193,7 +3193,7 @@
       "label_carrier_rows": [
         [
           "events.tsv",
-          "sub-01_task-mi_run-2_raw.fif",
+          "sub-01 run-2",
           "BIDS events",
           "Trial type",
           "Onset",
@@ -3338,7 +3338,7 @@
           "rows": [
             [
               "events.tsv",
-              "sub-01_task-mi_run-2_raw.fif",
+              "sub-01 run-2",
               "BIDS events",
               "Trial type",
               "Onset",
@@ -3361,13 +3361,13 @@
           "header_length": 982,
           "viewport_width": 982,
           "column_widths": [
-            145,
-            145,
-            110,
-            115,
-            105,
+            130,
+            135,
             100,
-            105,
+            110,
+            95,
+            125,
+            130,
             157
           ],
           "horizontal_scrollbar_max": 0,
@@ -3661,13 +3661,13 @@
           "header_length": 982,
           "viewport_width": 982,
           "column_widths": [
-            145,
-            145,
-            110,
-            115,
-            105,
+            130,
+            135,
             100,
-            105,
+            110,
+            95,
+            125,
+            130,
             157
           ],
           "horizontal_scrollbar_max": 0,
@@ -3920,8 +3920,8 @@
         },
         "clear_dataset": {
           "text": "Clear Dataset",
-          "enabled": true,
-          "tooltip": "Remove all loaded data"
+          "enabled": false,
+          "tooltip": "No dataset to clear."
         }
       },
       "import_label_button_text": "Add Labels to Loaded Data",

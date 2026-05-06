@@ -368,7 +368,11 @@ def apply_replay_review_choices(
     if label_item is not None:
         target_selector = dialog.label_carrier_tree.itemWidget(label_item, 1)
         if isinstance(target_selector, QComboBox):
-            target_selector.setCurrentText(SECOND_SOURCE_PATH.name)
+            target_index = target_selector.findData(SECOND_SOURCE_PATH.name)
+            if target_index >= 0:
+                target_selector.setCurrentIndex(target_index)
+            else:
+                target_selector.setCurrentText(SECOND_SOURCE_PATH.name)
         else:
             label_item.setText(1, SECOND_SOURCE_PATH.name)
         set_tree_cell(dialog.label_carrier_tree, label_item, 3, "trial_type")

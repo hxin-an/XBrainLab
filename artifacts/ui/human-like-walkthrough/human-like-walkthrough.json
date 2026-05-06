@@ -830,13 +830,13 @@
             "header_length": 982,
             "viewport_width": 982,
             "column_widths": [
-              145,
-              145,
-              110,
-              115,
-              105,
+              130,
+              135,
               100,
-              105,
+              110,
+              95,
+              125,
+              130,
               157
             ],
             "horizontal_scrollbar_max": 0,
@@ -994,7 +994,7 @@
         "Seconds",
         "Trial",
         "Class cue labels",
-        "sub-01_task-mi_run-2_raw.fif",
+        "sub-01 run-2",
         "External label or event source",
         "Time anchor",
         "Event duration",
@@ -1123,7 +1123,7 @@
         "label_carrier_rows": [
           [
             "events.tsv",
-            "sub-01_task-mi_run-2_raw.fif",
+            "sub-01 run-2",
             "BIDS events",
             "Trial type",
             "Onset",
@@ -1194,7 +1194,7 @@
             "rows": [
               [
                 "events.tsv",
-                "sub-01_task-mi_run-2_raw.fif",
+                "sub-01 run-2",
                 "BIDS events",
                 "Trial type",
                 "Onset",
@@ -1217,13 +1217,13 @@
             "header_length": 982,
             "viewport_width": 982,
             "column_widths": [
-              145,
-              145,
-              110,
-              115,
-              105,
+              130,
+              135,
               100,
-              105,
+              110,
+              95,
+              125,
+              130,
               157
             ],
             "horizontal_scrollbar_max": 0,
@@ -1381,7 +1381,7 @@
         "Seconds",
         "Trial",
         "Class cue labels",
-        "sub-01_task-mi_run-2_raw.fif",
+        "sub-01 run-2",
         "External label or event source",
         "Time anchor",
         "Event duration",
@@ -2635,13 +2635,13 @@
             "header_length": 982,
             "viewport_width": 982,
             "column_widths": [
-              145,
-              145,
-              110,
-              115,
-              105,
+              130,
+              135,
               100,
-              105,
+              110,
+              95,
+              125,
+              130,
               157
             ],
             "horizontal_scrollbar_max": 0,
@@ -5029,7 +5029,7 @@
         "Seconds",
         "Trial",
         "Class cue labels",
-        "sub-01_task-mi_run-2_raw.fif",
+        "sub-01 run-2",
         "External label or event source",
         "Time anchor",
         "Event duration",
@@ -5058,7 +5058,7 @@
         "Seconds",
         "Trial",
         "Class cue labels",
-        "sub-01_task-mi_run-2_raw.fif",
+        "sub-01 run-2",
         "External label or event source",
         "Time anchor",
         "Event duration",
@@ -9720,13 +9720,13 @@
           "header_length": 982,
           "viewport_width": 982,
           "column_widths": [
-            145,
-            145,
-            110,
-            115,
-            105,
+            130,
+            135,
             100,
-            105,
+            110,
+            95,
+            125,
+            130,
             157
           ],
           "horizontal_scrollbar_max": 0,
@@ -9922,7 +9922,7 @@
           "rows": [
             [
               "events.tsv",
-              "sub-01_task-mi_run-2_raw.fif",
+              "sub-01 run-2",
               "BIDS events",
               "Trial type",
               "Onset",
@@ -9945,13 +9945,13 @@
           "header_length": 982,
           "viewport_width": 982,
           "column_widths": [
-            145,
-            145,
-            110,
-            115,
-            105,
+            130,
+            135,
             100,
-            105,
+            110,
+            95,
+            125,
+            130,
             157
           ],
           "horizontal_scrollbar_max": 0,
@@ -10298,13 +10298,13 @@
           "header_length": 982,
           "viewport_width": 982,
           "column_widths": [
-            145,
-            145,
-            110,
-            115,
-            105,
+            130,
+            135,
             100,
-            105,
+            110,
+            95,
+            125,
+            130,
             157
           ],
           "horizontal_scrollbar_max": 0,
@@ -19593,33 +19593,33 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 1125885,
+      "pid": 1129301,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 837964
+      "max_rss_kb": 837720
     },
     {
       "label": "before_close",
-      "pid": 1125885,
+      "pid": 1129301,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1069336
+      "max_rss_kb": 1069440
     },
     {
       "label": "after_close",
-      "pid": 1125885,
+      "pid": 1129301,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1069336
+      "max_rss_kb": 1069440
     }
   ],
   "ui_quality_review": {
@@ -19907,13 +19907,13 @@
             "Interactive"
           ],
           "column_widths": [
-            145,
-            145,
-            110,
-            115,
-            105,
+            130,
+            135,
             100,
-            105,
+            110,
+            95,
+            125,
+            130,
             157
           ],
           "text_elide_mode": "ElideRight",
@@ -20076,13 +20076,13 @@
             "Interactive"
           ],
           "column_widths": [
-            145,
-            145,
-            110,
-            115,
-            105,
+            130,
+            135,
             100,
-            105,
+            110,
+            95,
+            125,
+            130,
             157
           ],
           "text_elide_mode": "ElideRight",
@@ -20343,13 +20343,13 @@
             "Interactive"
           ],
           "column_widths": [
-            145,
-            145,
-            110,
-            115,
-            105,
+            130,
+            135,
             100,
-            105,
+            110,
+            95,
+            125,
+            130,
             157
           ],
           "text_elide_mode": "ElideRight",
@@ -20450,10 +20450,10 @@
       "after_close_python_threads": 1,
       "python_thread_tolerance": 1,
       "after_close_qt_active_threads": 0,
-      "rss_growth_kb": 231372,
+      "rss_growth_kb": 231720,
       "rss_limit_kb": 600000,
       "boundary": "Coarse process smoke only: RSS uses ru_maxrss high-water mark and this does not prove the absence of leaks."
     }
   },
-  "elapsed_seconds": 4.063
+  "elapsed_seconds": 4.042
 }

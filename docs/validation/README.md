@@ -232,6 +232,16 @@ refreshed `artifacts/ui/data-interpretation-preview.png`,
 automated PyQt replay claim that the review summary no longer shows clipped rows in this fixture;
 it does not prove mature import-wizard UX or Windows human desktop acceptance.
 
+Data Interpretation selector-fit polish gate:
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_label_selectors_fit_review_text tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_shows_label_carrier_matches tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_returns_manual_label_target_mapping tests/unit/scripts/test_capture_data_interpretation_replay.py::test_apply_replay_review_choices_updates_event_role_selector -q`
+-> `4 passed`；
+`QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+refreshed the preview/remap screenshots and replay JSON. The artifact now shows compact visible
+target labels such as `sub-01 run-2`, full `Needs review` selector text in the remap dialog, and
+full backend `target_file=sub-01_task-mi_run-2_raw.fif` preserved in `review_choices` /
+`label_apply.file_mapping`. This supports the captured fixture only; it does not certify every
+real-data label carrier naming pattern.
+
 Human-like clipped-row quality gate:
 `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
 -> `21 passed`；

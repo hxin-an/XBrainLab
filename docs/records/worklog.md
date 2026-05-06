@@ -12642,3 +12642,64 @@
 - 不能宣稱：
   - This does not complete the mature Data Interpretation wizard, Windows human desktop acceptance,
     full command-driven UI refresh, or product completion.
+
+### 2026-05-06 Data Interpretation selector-fit polish
+
+- scope：
+  - Continue the user-reported Data Interpretation preview polish.
+  - The remap screenshot still clipped `Needs review` to `Needs re` in Time / Granularity selector
+    cells, and the preview target file cell could hide the run identifier.
+- red / focused tests：
+  - Added `test_data_interpretation_preview_dialog_label_selectors_fit_review_text`.
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_label_selectors_fit_review_text -q`
+    -> failed as expected because the Time column width was `100` while `Needs review` required a
+    wider selector budget.
+- 做了什麼：
+  - Rebalanced the label carrier table columns so Matched EEG / Time / Granularity / Role get enough
+    product-width space without adding horizontal overflow.
+  - Added compact BIDS target display for label carrier targets: full filenames such as
+    `sub-01_task-mi_run-2_raw.fif` display as `sub-01 run-2` in the table.
+  - Kept full filenames in `Qt.UserRole`, target selector data, replay `review_choices`, and
+    `label_apply.file_mapping`, so recipe/apply semantics did not change.
+  - Updated `apply_replay_review_choices()` to select target files by combo data rather than visible
+    display text.
+  - Refreshed Data Interpretation replay and consolidated human-like walkthrough artifacts.
+- validation：
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_label_selectors_fit_review_text tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_shows_label_carrier_matches tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_returns_manual_label_target_mapping tests/unit/scripts/test_capture_data_interpretation_replay.py::test_apply_replay_review_choices_updates_event_role_selector -q`
+    -> `4 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py scripts/dev/capture_data_interpretation_replay.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/scripts/test_capture_data_interpretation_replay.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py scripts/dev/capture_data_interpretation_replay.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/scripts/test_capture_data_interpretation_replay.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - UI-observable replay:
+    `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`; refreshed `artifacts/ui/data-interpretation-preview.png`,
+    `artifacts/ui/data-interpretation-remap.png`, and `artifacts/ui/data-interpretation-replay.json`.
+    Manual screenshot review confirmed `Needs review` is no longer clipped in remap Time /
+    Granularity selectors, preview target displays `sub-01 run-2`, and replay JSON still records
+    `target_file=sub-01_task-mi_run-2_raw.fif`.
+    `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> exit `0`; refreshed the consolidated walkthrough. JSON spot-check showed
+    `data_interpretation_preview` / `data_interpretation_confirm_metadata_labels` contain
+    `sub-01 run-2`, and resource smoke remained passed with RSS growth `231720 KB` /
+    limit `600000 KB`.
+  - Fast gate:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/scripts/test_capture_data_interpretation_replay.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/integration/ui/test_product_walkthrough.py -q`
+    -> `46 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is UI table/selector polish under the fast dev gate; no tool-call benchmark claim
+    changed.
+- 不能宣稱：
+  - This does not complete all import wizard editing, all label carrier edge cases, real-data manual
+    certification, or human desktop acceptance.

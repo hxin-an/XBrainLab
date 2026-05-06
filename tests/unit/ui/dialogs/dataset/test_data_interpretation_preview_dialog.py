@@ -110,6 +110,7 @@ def test_data_interpretation_preview_dialog_tables_fit_product_layout(qtbot):
     dialog.show()
     qtbot.wait(0)
     dialog._fit_all_tree_columns_to_viewport()
+    qtbot.wait(0)
 
     assert dialog.label_carrier_tree.textElideMode() == Qt.TextElideMode.ElideRight
     assert dialog.event_tree.textElideMode() == Qt.TextElideMode.ElideRight
@@ -203,6 +204,51 @@ def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot
         assert horizontal_scrollbar is not None
         assert abs(header.length() - viewport.width()) <= 2
         assert horizontal_scrollbar.maximum() == 0
+
+
+def test_data_interpretation_preview_dialog_label_selectors_fit_review_text(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": [
+                "/tmp/source/sub-01_task-mi_run-1_raw.fif",
+                "/tmp/source/sub-01_task-mi_run-2_raw.fif",
+            ],
+            "label_carriers": ["/tmp/source/events.tsv"],
+        },
+        preview={
+            "label_carrier_preview": [
+                {
+                    "path": "/tmp/source/events.tsv",
+                    "name": "events.tsv",
+                    "format": "TSV",
+                    "selected_label_field": "",
+                    "selected_anchor": "",
+                    "time_model": "",
+                    "granularity": "",
+                    "role": "external labels",
+                },
+            ],
+        },
+        validation_decision={"decision": "blocked", "blocked_reasons": ["review"]},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(1040, 860)
+    dialog.show()
+    qtbot.wait(0)
+    dialog._fit_all_tree_columns_to_viewport()
+    qtbot.wait(0)
+
+    item = dialog.label_carrier_tree.topLevelItem(0)
+    assert item is not None
+    for column in (5, 6):
+        selector = dialog.label_carrier_tree.itemWidget(item, column)
+        assert isinstance(selector, QComboBox)
+        visible_text_width = selector.fontMetrics().horizontalAdvance(
+            selector.currentText(),
+        )
+        assert dialog.label_carrier_tree.columnWidth(column) >= visible_text_width + 42
 
 
 def test_data_interpretation_preview_dialog_review_summary_shows_whole_rows(qtbot):
@@ -573,9 +619,9 @@ def test_data_interpretation_preview_dialog_shows_label_carrier_matches(qtbot):
     generic = dialog.label_carrier_tree.topLevelItem(2)
 
     assert first is not None
-    assert first.text(1) == "sub-01_task-mi_run-1_raw.fif"
+    assert first.text(1) == "sub-01 run-1"
     assert second is not None
-    assert second.text(1) == "sub-01_task-mi_run-2_raw.fif"
+    assert second.text(1) == "sub-01 run-2"
     assert generic is not None
     assert generic.text(1) == "Needs review"
 
@@ -619,11 +665,11 @@ def test_data_interpretation_preview_dialog_returns_manual_label_target_mapping(
         target_selector.itemText(index) for index in range(target_selector.count())
     ] == [
         "Needs review",
-        "sub-01_task-mi_run-1_raw.fif",
-        target_name,
+        "sub-01 run-1",
+        "sub-01 run-2",
     ]
 
-    target_selector.setCurrentText(target_name)
+    target_selector.setCurrentIndex(target_selector.findData(target_name))
     result = dialog.get_result()
 
     assert result["choices"]["label_carrier_choices"] == {

@@ -473,7 +473,10 @@
 - 最新 wizard selector polish 也把 label carrier combo 顯示從 raw `trial_type` / `onset` 改成
   `Trial type` / `Onset`，並把 `Review Summary` alternate row contrast 再降低；recipe choices
   仍保存 raw source column value。後續欄位權重 polish 又讓 label-carrier `Format` 欄在
-  product-width dialog 中完整顯示 `BIDS events`，不再被擠成 `BIDS ...`。
+  product-width dialog 中完整顯示 `BIDS events`，不再被擠成 `BIDS ...`。最新 selector-fit follow-up
+  又讓 Matched EEG / Time / Granularity / Role 欄位在 product-width dialog 中保留足夠寬度：
+  visible target 顯示成 `sub-01 run-2`，`Needs review` 不再被截成 `Needs re`，但
+  `review_choices` / recipe apply 仍保存完整 `sub-01_task-mi_run-2_raw.fif`。
 - 最新 decision-copy polish 已把 wizard 頂部狀態從 `Validation needs confirmation...` 改成
   `Review and confirm these choices before applying.` / `Ready to apply.` / replacement-file
   guidance，減少 backend wording 暴露。
