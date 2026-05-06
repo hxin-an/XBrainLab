@@ -742,10 +742,18 @@ class DatasetActionHandler:
             controller = self.controller
             if controller is None:
                 return []
-            return run_legacy_controller_fallback(
-                self.panel,
-                controller.get_filenames,
-            )
+            try:
+                return run_legacy_controller_fallback(
+                    self.panel,
+                    controller.get_filenames,
+                )
+            except LegacyControllerFallbackUnavailableError as exc:
+                QMessageBox.warning(
+                    self.panel,
+                    "Smart Parse Blocked",
+                    str(exc),
+                )
+                return None
         if result.failed:
             QMessageBox.warning(
                 self.panel,

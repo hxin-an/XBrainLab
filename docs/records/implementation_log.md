@@ -42,6 +42,37 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Smart Parse Filename Fallback Warning Boundary
+
+### 狀態
+
+`DatasetActionHandler._smart_parse_filenames()` now converts real `Study` filename-query fallback
+refusal into a user-facing blocked warning. If `QueryStateCommand(query="state")` unexpectedly
+cannot provide filenames in a real product context, the UI shows `Smart Parse Blocked` instead of
+reading stale controller filenames.
+
+### 已可宣稱
+
+- Real `Study` smart-parse filename fallback refusal is visible as product language instead of a
+  raw exception.
+- Mock / legacy filename fallback behavior remains available through the explicit fallback helper.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/dataset/actions.py`
+- Tests: `tests/unit/ui/test_ui_misc.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not audit every DatasetActionHandler fallback or complete Dataset page desktop
+  acceptance.
+
+### 下一手重點
+
+Continue converting remaining real `Study` Dataset action fallback refusals into blocked
+user-facing states.
+
 ## 2026-05-06 Label Import Fallback Warning Boundary
 
 ### 狀態

@@ -260,6 +260,8 @@
 - 最新 Label Import fallback warning slice 也讓 real `Study` label-import apply command
   無法 dispatch 時顯示 `Label Import Blocked`，不再把 legacy fallback refusal 包成 generic
   `Failed: ...` error。
+- 最新 Smart Parse filename fallback warning slice 也讓 real `Study` state query 無法提供
+  filenames 時顯示 `Smart Parse Blocked`，不再回讀 stale controller filename list。
 - 最新 Dataset sidebar render cleanup 也把 `is_locked()` / `has_data()` 納入同一 guard：
   有 backend capability 時，button state / tooltip 不再先讀 stale controller lock/data state；
   legacy lock/data reads 只留在 explicit no-capability branch。
