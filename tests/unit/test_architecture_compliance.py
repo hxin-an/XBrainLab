@@ -1,5 +1,6 @@
 from tests.architecture_compliance import (
     check_ui_capability_gated_controller_readiness,
+    check_ui_controller_fallbacks,
     check_ui_direct_controller_mutations,
     check_ui_direct_loader_apply,
     check_ui_observer_direct_update_bridges,
@@ -139,6 +140,40 @@ def select_model(self):
     )
 
     assert check_ui_post_command_controller_echoes(tmp_path) == []
+
+
+def test_controller_fallback_guard_allows_named_legacy_wrapper(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def run(self):
+    result = execute_application_command(self, SomeCommand())
+    if result is None:
+        self._run_legacy_preprocess_fallback(
+            "Filtering Blocked",
+            lambda: self.controller.apply_filter(1.0, 40.0, [50.0]),
+        )
+""",
+    )
+
+    assert check_ui_controller_fallbacks(tmp_path) == []
+
+
+def test_controller_fallback_guard_flags_direct_mutation_in_missing_result(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def run(self):
+    result = execute_application_command(self, SomeCommand())
+    if result is None:
+        self.controller.apply_filter(1.0, 40.0, [50.0])
+""",
+    )
+
+    violations = check_ui_controller_fallbacks(tmp_path)
+
+    assert len(violations) == 1
+    assert "apply_filter" in violations[0]
 
 
 def test_capability_readiness_guard_flags_controller_gate_after_capability(tmp_path):
@@ -473,6 +508,21 @@ def run(self):
     run_legacy_controller_fallback(
         self,
         lambda: self.controller.start_training(),
+    )
+""",
+    )
+
+    assert check_ui_direct_controller_mutations(tmp_path) == []
+
+
+def test_direct_controller_mutation_guard_allows_named_legacy_wrapper_call(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def run(self):
+    self._run_legacy_preprocess_fallback(
+        "Filtering Blocked",
+        lambda: self.controller.apply_filter(1.0, 40.0, [50.0]),
     )
 """,
     )

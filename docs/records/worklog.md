@@ -37,6 +37,57 @@
 
 ## 2026-05-06
 
+### 09:39 Preprocess operation fallback warning boundary
+
+- scope：
+  - Continue product-runtime fallback warning audit beyond Dataset actions.
+  - Convert filtering / resampling / re-reference / normalization / epoching command-`None`
+    fallback refusal into operation-specific blocked warnings.
+- red / focused tests：
+  - Added `test_open_filtering_refuses_real_study_controller_fallback`.
+  - Red gate failed because real `Study` filtering fallback refusal was not shown as a product
+    blocked warning.
+- 做了什麼：
+  - Added `_run_legacy_preprocess_fallback()` helper in `PreprocessSidebar`.
+  - Applied it to filtering, resampling, re-reference, normalization, and epoching legacy fallback
+    branches.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_filtering_refuses_real_study_controller_fallback -q`
+    -> failed because no blocked warning was shown.
+  - Focused pass:
+    same command -> `1 passed`.
+  - PreprocessSidebar regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar -q`
+    -> `26 passed`.
+  - Preprocess UI regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess -q`
+    -> `48 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/preprocess/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> pass.
+    `poetry run basedpyright XBrainLab/ui/panels/preprocess/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Architecture guard adjustment:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_controller_fallback_guard_allows_named_legacy_wrapper tests/unit/test_architecture_compliance.py::test_controller_fallback_guard_flags_direct_mutation_in_missing_result tests/unit/test_architecture_compliance.py::test_direct_controller_mutation_guard_allows_named_legacy_wrapper_call -q`
+    -> `3 passed`.
+  - Full fast gate:
+    `git diff --check` -> pass.
+    `poetry run ruff check .` -> pass.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> pass.
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `32 passed`.
+    `poetry run mkdocs build --strict` -> pass.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a Preprocess UI fallback language cleanup under the fast dev gate, not a
+    release / thesis benchmark update.
+- 不能宣稱：
+  - This does not complete every Preprocess workflow, performance path, or memory cleanup gate.
+
 ### 09:33 Direct Load compatibility fallback warning boundary
 
 - scope：

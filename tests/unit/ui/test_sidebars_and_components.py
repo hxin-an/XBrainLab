@@ -140,6 +140,36 @@ class TestPreprocessSidebar:
             sidebar.open_filtering()
             sidebar.panel.controller.apply_filter.assert_called_once()
 
+    def test_open_filtering_refuses_real_study_controller_fallback(self, sidebar):
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        raw = MagicMock()
+        raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
+        study.data_manager.loaded_data_list = [raw]
+        sidebar.panel.main_window.study = study
+
+        with (
+            patch("XBrainLab.ui.panels.preprocess.sidebar.FilteringDialog") as MockDlg,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
+                return_value=None,
+            ),
+            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
+            patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_critical,
+            patch("PyQt6.QtWidgets.QMessageBox.information") as mock_info,
+        ):
+            MockDlg.return_value.exec.return_value = True
+            MockDlg.return_value.get_params.return_value = (1.0, 40.0, [50.0])
+            sidebar.open_filtering()
+
+        sidebar.panel.controller.apply_filter.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Filtering Blocked"
+        assert "could not safely complete" in mock_warning.call_args.args[2]
+        mock_critical.assert_not_called()
+        mock_info.assert_not_called()
+
     def test_open_resample_accepted(self, sidebar):
         with (
             patch("XBrainLab.ui.panels.preprocess.sidebar.ResampleDialog") as MockDlg,

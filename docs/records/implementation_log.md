@@ -42,6 +42,37 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Preprocess Operation Fallback Warning Boundary
+
+### 狀態
+
+`PreprocessSidebar` now routes filtering, resampling, re-reference, normalization, and epoching
+legacy fallback refusal through a shared helper. If the corresponding command unexpectedly cannot
+dispatch in a real `Study` product context, the UI shows an operation-specific Blocked warning
+instead of trying controller mutation or wrapping the refusal in generic failed text.
+
+### 已可宣稱
+
+- Real `Study` preprocess operation fallback refusal is visible as product language.
+- Mock / legacy preprocess operation fallback behavior remains available through the explicit
+  fallback helper.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/preprocess/sidebar.py`
+- Tests: `tests/unit/ui/test_sidebars_and_components.py`, `tests/unit/ui/preprocess`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not complete every Preprocess UI workflow or prove long-running preprocessing
+  performance / memory behavior.
+
+### 下一手重點
+
+Continue auditing remaining non-Dataset UI fallback paths, especially visualization/training
+read-side fallbacks and mutating controller compatibility.
+
 ## 2026-05-06 Direct Load Compatibility Fallback Warning Boundary
 
 ### 狀態

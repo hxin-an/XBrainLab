@@ -54,6 +54,10 @@ UI_CONTROLLER_FALLBACK_METHODS = (
     "stop_training",
     "update_metadata",
 )
+UI_CONTROLLER_FALLBACK_WRAPPERS = (
+    "run_legacy_controller_fallback",
+    "_run_legacy_preprocess_fallback",
+)
 UI_POST_COMMAND_LOCAL_REFRESH_METHODS = (
     "check_ready_to_train",
     "notify_update",
@@ -297,7 +301,7 @@ class _ControllerFallbackVisitor(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         call_name = _call_name(node.func)
-        if call_name == "run_legacy_controller_fallback":
+        if call_name in UI_CONTROLLER_FALLBACK_WRAPPERS:
             return
         if call_name in UI_CONTROLLER_FALLBACK_METHODS:
             self.violations.append(node)
@@ -349,7 +353,7 @@ class _DirectControllerMutationVisitor(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         call_name = _call_name(node.func)
-        if call_name == "run_legacy_controller_fallback":
+        if call_name in UI_CONTROLLER_FALLBACK_WRAPPERS:
             return
         if call_name in UI_CONTROLLER_FALLBACK_METHODS and _call_receiver_is_controller(
             node.func

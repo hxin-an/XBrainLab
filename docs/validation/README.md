@@ -2717,6 +2717,41 @@ UI，也不是 human desktop acceptance。
 這批 evidence 支撐 post-load label compatibility path 不再在 empty / blocked state 裡鼓勵舊
 attach-label 心智模型。它仍不是完整 embedded Data Interpretation label editor。
 
+2026-05-06 Preprocess operation fallback warning boundary：
+
+- Focused red/fixed gate:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_filtering_refuses_real_study_controller_fallback -q`
+  -> `1 passed` after failing because no product blocked warning was shown.
+- Regression:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar -q`
+  -> `26 passed`;
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess -q`
+  -> `48 passed`.
+- Focused lint/type:
+  `poetry run ruff check XBrainLab/ui/panels/preprocess/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+  -> pass;
+  `poetry run basedpyright XBrainLab/ui/panels/preprocess/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+  -> `0 errors`.
+- Architecture guard adjustment:
+  `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_controller_fallback_guard_allows_named_legacy_wrapper tests/unit/test_architecture_compliance.py::test_controller_fallback_guard_flags_direct_mutation_in_missing_result tests/unit/test_architecture_compliance.py::test_direct_controller_mutation_guard_allows_named_legacy_wrapper_call -q`
+  -> `3 passed`.
+- Full fast gate:
+  `git diff --check` -> pass;
+  `poetry run ruff check .` -> pass;
+  `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`;
+  `poetry run python tests/architecture_compliance.py` -> pass;
+  `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` -> `32 passed`;
+  `poetry run mkdocs build --strict` -> pass;
+  `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`;
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+  -> `20 passed`.
+- Local eval:
+  not run. This was a fast dev gate Preprocess UI fallback language slice, not a release / thesis
+  benchmark update.
+
+This supports real `Study` preprocess operation fallback refusal showing operation-specific blocked
+warnings. It does not prove long-running preprocessing performance or memory behavior.
+
 2026-05-06 Direct Load compatibility fallback warning boundary：
 
 - Focused red/fixed gate:

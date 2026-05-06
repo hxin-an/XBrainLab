@@ -1,5 +1,6 @@
 """Sidebar widget for the preprocessing panel with operations and execution controls."""
 
+from collections.abc import Callable
 from typing import Any
 
 from PyQt6.QtCore import Qt
@@ -379,6 +380,17 @@ class PreprocessSidebar(QWidget):
     def _show_command_failure(self, title: str, message: str) -> None:
         QMessageBox.critical(self, title, message)
 
+    def _run_legacy_preprocess_fallback(
+        self,
+        blocked_title: str,
+        fallback: Callable[[], Any],
+    ) -> tuple[bool, Any]:
+        try:
+            return True, run_legacy_controller_fallback(self, fallback)
+        except LegacyControllerFallbackUnavailableError as exc:
+            QMessageBox.warning(self, blocked_title, str(exc))
+            return False, None
+
     def open_filtering(self):
         """Open the filtering dialog and apply bandpass/notch filters."""
         if self.check_lock() or not self.check_data_loaded():
@@ -410,14 +422,16 @@ class PreprocessSidebar(QWidget):
                             ),
                         )
                     if result is None:
-                        run_legacy_controller_fallback(
-                            self,
+                        fallback_ok, _ = self._run_legacy_preprocess_fallback(
+                            "Filtering Blocked",
                             lambda: self.controller.apply_filter(
                                 l_freq,
                                 h_freq,
                                 notch_freqs,
                             ),
                         )
+                        if not fallback_ok:
+                            return
                     elif result.failed:
                         self._show_command_failure("Error", result.message)
                         return
@@ -445,10 +459,12 @@ class PreprocessSidebar(QWidget):
                         ),
                     )
                     if result is None:
-                        run_legacy_controller_fallback(
-                            self,
+                        fallback_ok, _ = self._run_legacy_preprocess_fallback(
+                            "Resampling Blocked",
                             lambda: self.controller.apply_resample(rate),
                         )
+                        if not fallback_ok:
+                            return
                     elif result.failed:
                         self._show_command_failure("Error", result.message)
                         return
@@ -487,10 +503,12 @@ class PreprocessSidebar(QWidget):
                         ),
                     )
                     if result is None:
-                        run_legacy_controller_fallback(
-                            self,
+                        fallback_ok, _ = self._run_legacy_preprocess_fallback(
+                            "Re-reference Blocked",
                             lambda: self.controller.apply_rereference(ref_channels),
                         )
+                        if not fallback_ok:
+                            return
                     elif result.failed:
                         self._show_command_failure("Error", result.message)
                         return
@@ -517,10 +535,12 @@ class PreprocessSidebar(QWidget):
                         ),
                     )
                     if result is None:
-                        run_legacy_controller_fallback(
-                            self,
+                        fallback_ok, _ = self._run_legacy_preprocess_fallback(
+                            "Normalization Blocked",
                             lambda: self.controller.apply_normalization(method),
                         )
+                        if not fallback_ok:
+                            return
                     elif result.failed:
                         self._show_command_failure("Error", result.message)
                         return
@@ -565,9 +585,9 @@ class PreprocessSidebar(QWidget):
                     )
                     applied = True
                     if result is None:
-                        applied = bool(
-                            run_legacy_controller_fallback(
-                                self,
+                        fallback_ok, legacy_applied = (
+                            self._run_legacy_preprocess_fallback(
+                                "Epoching Blocked",
                                 lambda: self.controller.apply_epoching(
                                     baseline,
                                     selected_events,
@@ -576,6 +596,9 @@ class PreprocessSidebar(QWidget):
                                 ),
                             )
                         )
+                        if not fallback_ok:
+                            return
+                        applied = bool(legacy_applied)
                     elif result.failed:
                         self._show_command_failure("Error", result.message)
                         return
