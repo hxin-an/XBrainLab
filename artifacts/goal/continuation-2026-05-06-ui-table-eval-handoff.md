@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+e8e65bc ui: block missing data splitting context
+5851718 docs: refresh handoff after start training warning
 5ad6b7d ui: show start training fallback warning
 c54b88c docs: refresh handoff after training settings warning
 9abb334 ui: show training settings fallback warning
@@ -137,6 +139,10 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Data Splitting context query-none boundary:
+  - real `Study` dataset-generation context query-none now shows `Data Splitting Blocked`.
+  - the UI no longer opens `DataSplittingDialog` without service-backed epoch/generator context.
+  - mock / legacy contexts retain the old empty-context dialog behavior.
 - Start Training fallback warning:
   - real `Study` start-training fallback refusal now shows `Start Training Blocked`.
   - the UI no longer wraps the safe refusal in a generic critical training failure when
@@ -1727,6 +1733,36 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 5ad6b7d; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_split_data_refuses_real_study_query_none_dialog_context \
+  -q
+# 1 passed for e8e65bc after red failure because the dialog opened
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar \
+  -q
+# 42 passed for e8e65bc
+
+poetry run ruff check XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py
+poetry run basedpyright XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py
+# focused lint/type passed for e8e65bc
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for e8e65bc
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for e8e65bc
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for e8e65bc; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
