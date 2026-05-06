@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+da565f8 ui: align chat empty state with scan source
+eb96111 docs: refresh handoff after assistant footer wording
 28db597 ui: keep assistant footer on scan source
 30efdbf docs: refresh handoff after assistant status guard
 24441d8 ui: tolerate partial assistant capabilities
@@ -222,6 +224,16 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- ChatPanel empty-state Data Interpretation wording:
+  - Initial ChatPanel workflow guidance no longer says `Import EEG files`.
+  - Initial empty-state next step now says `Scan a data source · Ask what is ready`; no-data
+    fallback after status refresh says `Scan a data source to begin`.
+  - Source scan confirms only negative test assertions still mention `Load EEG data` / `Attach
+    labels` in ChatPanel UI tests.
+  - Validation covered red/focused empty-state wording, ChatPanel / backend-status regressions,
+    full ruff, full basedpyright, architecture compliance, `git diff --check`, and
+    `mkdocs build --strict`.
+  - No local LLM eval was run; this was UI wording/product-language cleanup.
 - ChatPanel no-data footer wording:
   - AgentManager and ChatPanel no longer fall back to `Import files to begin` when no data is
     loaded and no available command labels are present.
