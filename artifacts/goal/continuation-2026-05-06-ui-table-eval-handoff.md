@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+d84a02a ui: rename label compatibility prompts
 da565f8 ui: align chat empty state with scan source
 eb96111 docs: refresh handoff after assistant footer wording
 28db597 ui: keep assistant footer on scan source
@@ -224,6 +225,16 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Label compatibility target prompt wording:
+  - Post-load label compatibility target selection no longer presents itself as `Import Label`.
+  - No-selection target prompt title is `Add Labels to Loaded Data`; fallback warnings use
+    `Add Labels Blocked`.
+  - The no-selection prompt asks `No files selected. Add labels to all loaded files?`, keeping the
+    compatibility path understandable without restoring the old import-label mental model.
+  - Validation covered the red/focused prompt test, DatasetActionHandler regression (`77 passed`),
+    full ruff, full basedpyright, architecture compliance, `git diff --check`, and
+    `mkdocs build --strict`.
+  - No local LLM eval was run; this was UI wording/product-language cleanup under the fast dev gate.
 - ChatPanel empty-state Data Interpretation wording:
   - Initial ChatPanel workflow guidance no longer says `Import EEG files`.
   - Initial empty-state next step now says `Scan a data source · Ask what is ready`; no-data
