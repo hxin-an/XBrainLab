@@ -6052,3 +6052,27 @@ ChatPanel narrow transcript layout has a focused product regression guard.
 
 - This is offscreen automated UI evidence. It does not complete Windows desktop acceptance,
   high-DPI / dual-monitor review, or long local-model assistant soak.
+
+## 2026-05-06 Query-State Data Summary Resilience
+
+### 狀態
+
+Read-only ApplicationService state summary queries now tolerate a failed loaded-data controller
+list read after a state snapshot is already available.
+
+### 已可宣稱
+
+- `StateSnapshotService.data_summary_from_state()` falls back to the supplied raw state snapshot
+  when `dataset.get_loaded_data_list()` raises.
+- The focused state-service regression test covers the fallback.
+
+### Evidence 入口
+
+- Source：`XBrainLab/backend/application/state_service.py`
+- Tests：`tests/unit/backend/application/test_state_service.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is a small read-only query resilience fix. It does not complete the broader command-refresh
+  coordinator or controller-fallback cleanup.

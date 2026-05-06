@@ -14908,3 +14908,35 @@
 - 不能宣稱：
   - This does not replace human Windows desktop acceptance, high-DPI / dual-monitor launcher
     review, long local-model chat soak, or the remaining mature import wizard work.
+
+### 2026-05-06 Query-state data summary fallback
+
+- scope：
+  - Make read-only `query_state(data_summary)` resilient when the loaded-data controller query
+    raises after a state snapshot has already been built.
+- red / focused tests：
+  - Added
+    `test_data_summary_query_falls_back_to_state_when_loaded_list_query_fails`.
+  - Red gate failed first because `StateSnapshotService.data_summary_from_state()` called
+    `dataset.get_loaded_data_list()` directly and propagated `RuntimeError`.
+- 做了什麼：
+  - `data_summary_from_state()` now uses the existing `_safe_call_list()` helper for
+    `get_loaded_data_list`, falling back to the supplied `ApplicationStateSnapshot` raw summary
+    when that controller read is unavailable.
+- validation：
+  - Focused red gate:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_state_service.py::test_data_summary_query_falls_back_to_state_when_loaded_list_query_fails -q`
+    -> red `1 failed`, then passed after the fix.
+  - Regression:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_state_service.py -q`
+    -> `3 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/backend/application/state_service.py tests/unit/backend/application/test_state_service.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/backend/application/state_service.py tests/unit/backend/application/test_state_service.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+- local eval：
+  - Not run. This is backend read-only query resilience under the fast dev gate.
+- 不能宣稱：
+  - This does not complete the broader UI command-refresh coordinator audit, controller fallback
+    cleanup, or product-complete backend architecture closure.

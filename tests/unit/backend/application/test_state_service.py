@@ -92,6 +92,11 @@ class _DatasetController:
         return list(range(target_count))
 
 
+class _BrokenLoadedDataController(_DatasetController):
+    def get_loaded_data_list(self) -> list[Any]:
+        raise RuntimeError("loaded data list unavailable")
+
+
 class _PreprocessController:
     def get_runtime_diagnostics(self) -> dict[str, Any]:
         return {"preprocess": "ok"}
@@ -180,6 +185,20 @@ def test_state_snapshot_service_builds_workflow_snapshot() -> None:
     assert state.visualization.saliency_configured is True
     assert state.interpretation.has_scan_result is True
     assert state.active_dataset.has_epoch_data is True
+
+
+def test_data_summary_query_falls_back_to_state_when_loaded_list_query_fails() -> None:
+    state_builder = _snapshot_service()
+    state = state_builder.build()
+    state_builder.dataset = _BrokenLoadedDataController(state_builder.study)
+
+    summary = state_builder.data_summary_from_state(state)
+
+    assert summary["count"] == state.raw.count
+    assert summary["files"] == state.raw.files
+    assert summary["formats"] == state.raw.formats
+    assert summary["metadata"] == state.raw.metadata
+    assert summary["unique_labels"] == ["left"]
 
 
 def test_query_state_service_returns_summary_and_capabilities() -> None:

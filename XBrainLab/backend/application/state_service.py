@@ -176,7 +176,7 @@ class StateSnapshotService:
         self,
         state: ApplicationStateSnapshot,
     ) -> dict[str, Any]:
-        data_list = list(self.dataset.get_loaded_data_list() or [])
+        data_list = self._safe_call_list(self.dataset.get_loaded_data_list)
         summary: dict[str, Any] = {
             "count": len(data_list) if data_list else state.raw.count,
             "files": [self.data_filename(item) for item in data_list]
