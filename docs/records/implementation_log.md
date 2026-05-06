@@ -4899,3 +4899,35 @@ recipe choices.
 
 - This is targeted table/selector polish. It does not complete the mature import wizard editor,
   complex real-data label carrier reconciliation, or Windows human desktop acceptance.
+
+## 2026-05-06 ChatPanel Walkthrough Visible Text Evidence
+
+### 狀態
+
+The consolidated human-like walkthrough now records ChatPanel bubble text in the per-phase visible
+text snapshots and in top-level `chatpanel.visible_messages`.
+
+### 已可宣稱
+
+- Assistant normal / clarification / blocked / successful / narrow-panel phases have JSON visible
+  text evidence matching the chat bubbles seen in screenshots.
+- `chatpanel.visible_messages` is captured before the reset/new conversation boundary, so the
+  artifact no longer reports an empty visible-message list after showing messages.
+
+### Evidence 入口
+
+- Source：`scripts/dev/capture_human_like_product_walkthrough.py`
+- Tests：`tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+- Artifacts：`artifacts/ui/human-like-walkthrough/human-like-walkthrough.json`,
+  `artifacts/ui/human-like-walkthrough/human-like-walkthrough.md`,
+  `artifacts/ui/human-like-walkthrough/13-assistant-normal.png`,
+  `artifacts/ui/human-like-walkthrough/14-assistant-clarification.png`,
+  `artifacts/ui/human-like-walkthrough/15-assistant-blocked.png`,
+  `artifacts/ui/human-like-walkthrough/16-assistant-success.png`,
+  `artifacts/ui/human-like-walkthrough/17-assistant-narrow.png`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This strengthens automated UI-observable evidence. It is not a human desktop acceptance run,
+  long local-model soak, or proof of every ChatPanel autonomous workflow.

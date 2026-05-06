@@ -863,17 +863,21 @@ def run_chatpanel_walkthrough(
     set_window_geometry(window, WINDOW_SIZE)
     app.processEvents()
 
+    visible_messages = [message.__dict__ for message in collect_visible_messages(panel)]
+    send_button_text = panel.send_btn.text()
+    send_button_enabled = panel.send_btn.isEnabled()
+    input_enabled = panel.input_field.isEnabled()
+    processing = manager.chat_controller.is_processing
+
     manager.start_new_conversation()
     app.processEvents()
     return {
         "open_close_states": open_close_states,
-        "visible_messages": [
-            message.__dict__ for message in collect_visible_messages(panel)
-        ],
-        "send_button_text": panel.send_btn.text(),
-        "send_button_enabled": panel.send_btn.isEnabled(),
-        "input_enabled": panel.input_field.isEnabled(),
-        "processing": manager.chat_controller.is_processing,
+        "visible_messages": visible_messages,
+        "send_button_text": send_button_text,
+        "send_button_enabled": send_button_enabled,
+        "input_enabled": input_enabled,
+        "processing": processing,
     }
 
 
@@ -1286,6 +1290,8 @@ def visible_text_snapshot(widget: QWidget) -> list[str]:
             text = child.text() or child.placeholderText()
         elif isinstance(child, QComboBox):
             text = child.currentText()
+        elif isinstance(child, QTextBrowser):
+            text = child.toPlainText()
         if text:
             normalized = " ".join(str(text).split())
             if normalized and normalized not in texts:

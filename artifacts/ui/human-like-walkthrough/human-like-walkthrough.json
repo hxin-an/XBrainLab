@@ -3927,6 +3927,8 @@
       "phase": "assistant_normal_message",
       "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/13-assistant-normal.png",
       "visible_text": [
+        "Hello.",
+        "I can help interpret EEG data and prepare a training-ready dataset.",
         "Ask about EEG workflow",
         "Send"
       ],
@@ -4008,6 +4010,10 @@
       "phase": "assistant_missing_input_clarification",
       "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/14-assistant-clarification.png",
       "visible_text": [
+        "Hello.",
+        "I can help interpret EEG data and prepare a training-ready dataset.",
+        "Load my brainwave data.",
+        "Choose a file, folder, BIDS root, or saved recipe before I can scan it.",
         "Ask about EEG workflow",
         "Send"
       ],
@@ -4091,6 +4097,12 @@
       "phase": "assistant_blocked_command",
       "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/15-assistant-blocked.png",
       "visible_text": [
+        "Hello.",
+        "I can help interpret EEG data and prepare a training-ready dataset.",
+        "Load my brainwave data.",
+        "Choose a file, folder, BIDS root, or saved recipe before I can scan it.",
+        "Train it now.",
+        "Training is not ready until data, epochs, a dataset, a model, and settings are ready.",
         "Ask about EEG workflow",
         "Send"
       ],
@@ -4174,6 +4186,14 @@
       "phase": "assistant_successful_tool_result",
       "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/16-assistant-success.png",
       "visible_text": [
+        "Hello.",
+        "I can help interpret EEG data and prepare a training-ready dataset.",
+        "Load my brainwave data.",
+        "Choose a file, folder, BIDS root, or saved recipe before I can scan it.",
+        "Train it now.",
+        "Training is not ready until data, epochs, a dataset, a model, and settings are ready.",
+        "What is ready now?",
+        "The dataset and training settings are ready; evaluation needs a completed run.",
         "Ask about EEG workflow",
         "Send"
       ],
@@ -4279,6 +4299,14 @@
       "phase": "assistant_narrow_panel",
       "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/17-assistant-narrow.png",
       "visible_text": [
+        "Hello.",
+        "I can help interpret EEG data and prepare a training-ready dataset.",
+        "Load my brainwave data.",
+        "Choose a file, folder, BIDS root, or saved recipe before I can scan it.",
+        "Train it now.",
+        "Training is not ready until data, epochs, a dataset, a model, and settings are ready.",
+        "What is ready now?",
+        "The dataset and training settings are ready; evaluation needs a completed run.",
         "Ask about EEG workflow",
         "Send"
       ],
@@ -4616,6 +4644,8 @@
         "Smart Parse Metadata",
         "Channel Selection",
         "Clear Dataset",
+        "Preview the selected data again.",
+        "I need a source scan before previewing. I scanned the selected source again.",
         "Ask about EEG workflow",
         "Send",
         "XBrainLab",
@@ -5227,22 +5257,50 @@
         "Send"
       ],
       "assistant_normal_message": [
+        "Hello.",
+        "I can help interpret EEG data and prepare a training-ready dataset.",
         "Ask about EEG workflow",
         "Send"
       ],
       "assistant_missing_input_clarification": [
+        "Hello.",
+        "I can help interpret EEG data and prepare a training-ready dataset.",
+        "Load my brainwave data.",
+        "Choose a file, folder, BIDS root, or saved recipe before I can scan it.",
         "Ask about EEG workflow",
         "Send"
       ],
       "assistant_blocked_command": [
+        "Hello.",
+        "I can help interpret EEG data and prepare a training-ready dataset.",
+        "Load my brainwave data.",
+        "Choose a file, folder, BIDS root, or saved recipe before I can scan it.",
+        "Train it now.",
+        "Training is not ready until data, epochs, a dataset, a model, and settings are ready.",
         "Ask about EEG workflow",
         "Send"
       ],
       "assistant_successful_tool_result": [
+        "Hello.",
+        "I can help interpret EEG data and prepare a training-ready dataset.",
+        "Load my brainwave data.",
+        "Choose a file, folder, BIDS root, or saved recipe before I can scan it.",
+        "Train it now.",
+        "Training is not ready until data, epochs, a dataset, a model, and settings are ready.",
+        "What is ready now?",
+        "The dataset and training settings are ready; evaluation needs a completed run.",
         "Ask about EEG workflow",
         "Send"
       ],
       "assistant_narrow_panel": [
+        "Hello.",
+        "I can help interpret EEG data and prepare a training-ready dataset.",
+        "Load my brainwave data.",
+        "Choose a file, folder, BIDS root, or saved recipe before I can scan it.",
+        "Train it now.",
+        "Training is not ready until data, epochs, a dataset, a model, and settings are ready.",
+        "What is ready now?",
+        "The dataset and training settings are ready; evaluation needs a completed run.",
         "Ask about EEG workflow",
         "Send"
       ],
@@ -5286,6 +5344,8 @@
         "Smart Parse Metadata",
         "Channel Selection",
         "Clear Dataset",
+        "Preview the selected data again.",
+        "I need a source scan before previewing. I scanned the selected source again.",
         "Ask about EEG workflow",
         "Send",
         "XBrainLab",
@@ -19530,7 +19590,40 @@
         "visible": false
       }
     ],
-    "visible_messages": [],
+    "visible_messages": [
+      {
+        "sender": "user",
+        "text": "Hello."
+      },
+      {
+        "sender": "assistant",
+        "text": "I can help interpret EEG data and prepare a training-ready dataset."
+      },
+      {
+        "sender": "user",
+        "text": "Load my brainwave data."
+      },
+      {
+        "sender": "assistant",
+        "text": "Choose a file, folder, BIDS root, or saved recipe before I can scan it."
+      },
+      {
+        "sender": "user",
+        "text": "Train it now."
+      },
+      {
+        "sender": "assistant",
+        "text": "Training is not ready until data, epochs, a dataset, a model, and settings are ready."
+      },
+      {
+        "sender": "user",
+        "text": "What is ready now?"
+      },
+      {
+        "sender": "assistant",
+        "text": "The dataset and training settings are ready; evaluation needs a completed run."
+      }
+    ],
     "send_button_text": "Send",
     "send_button_enabled": true,
     "input_enabled": true,
@@ -19593,33 +19686,33 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 1129301,
+      "pid": 1131408,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 837720
+      "max_rss_kb": 837084
     },
     {
       "label": "before_close",
-      "pid": 1129301,
+      "pid": 1131408,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1069440
+      "max_rss_kb": 1068968
     },
     {
       "label": "after_close",
-      "pid": 1129301,
+      "pid": 1131408,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1069440
+      "max_rss_kb": 1068968
     }
   ],
   "ui_quality_review": {
@@ -20450,10 +20543,10 @@
       "after_close_python_threads": 1,
       "python_thread_tolerance": 1,
       "after_close_qt_active_threads": 0,
-      "rss_growth_kb": 231720,
+      "rss_growth_kb": 231884,
       "rss_limit_kb": 600000,
       "boundary": "Coarse process smoke only: RSS uses ru_maxrss high-water mark and this does not prove the absence of leaks."
     }
   },
-  "elapsed_seconds": 4.042
+  "elapsed_seconds": 4.076
 }

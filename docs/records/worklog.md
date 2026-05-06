@@ -12703,3 +12703,61 @@
 - 不能宣稱：
   - This does not complete all import wizard editing, all label carrier edge cases, real-data manual
     certification, or human desktop acceptance.
+
+### 2026-05-06 ChatPanel walkthrough visible text evidence
+
+- scope：
+  - Strengthen the UI-observable artifact, not the product runtime itself.
+  - Screenshots showed ChatPanel messages, but the per-phase JSON `visible_text` snapshots only
+    recorded the composer placeholder and `Send`, because chat bubbles render text via
+    `QTextBrowser`.
+  - Top-level `chatpanel.visible_messages` was also empty because the script collected it after
+    `start_new_conversation()` cleared the bubbles.
+- red / focused tests：
+  - Added `test_visible_text_snapshot_includes_chat_bubble_text`.
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py::test_visible_text_snapshot_includes_chat_bubble_text -q`
+    -> failed as expected because `visible_text_snapshot()` ignored `QTextBrowser`.
+- 做了什麼：
+  - `visible_text_snapshot()` now reads `QTextBrowser.toPlainText()`.
+  - `run_chatpanel_walkthrough()` now captures `visible_messages`, send button state, input state,
+    and processing state before clearing the conversation for the reset/new-session boundary.
+  - Refreshed the consolidated human-like walkthrough artifact.
+- validation：
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py::test_visible_text_snapshot_includes_chat_bubble_text -q`
+    -> `1 passed`.
+  - Walkthrough unit regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py -q`
+    -> `19 passed`.
+  - Focused lint/type:
+    `poetry run ruff check scripts/dev/capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright scripts/dev/capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - UI-observable replay:
+    `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> exit `0`; artifact status `passed`, `26 / 26` phases, `20` screenshots.
+    JSON spot-check showed assistant clarification / blocked / success / narrow phases now include
+    visible chat text such as `Choose a file, folder, BIDS root, or saved recipe before I can scan
+    it.` and `Training is not ready until data, epochs, a dataset, a model, and settings are
+    ready.` Top-level `chatpanel.visible_messages` now contains the eight visible user/assistant
+    bubbles before reset. Resource smoke remained passed with RSS growth `231884 KB` /
+    limit `600000 KB`.
+  - Fast gate:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/integration/ui/test_product_walkthrough.py -q`
+    -> `22 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is UI evidence capture under the fast dev gate; no local model benchmark claim
+    changed.
+- 不能宣稱：
+  - This does not replace human desktop acceptance, true local-model long-session testing, or
+    autonomous ChatPanel workflow certification.

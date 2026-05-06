@@ -77,13 +77,16 @@ success / narrow、reset / new session boundary、error recovery 和 eval dashbo
 table 顯示 reviewed `S01` / `session-01`，且 training readiness 回到 dataset-ready / Start Training
 enabled。最新 artifact 另有 top-level `observable_evidence` / `ui_quality_review`：`26`
 個 phase 都有 visible text、button state、workflow/backend snapshot index，`20` 張 screenshot
-全數 nonblank，visible text raw tool / schema / traceback leakage findings 為 `0`。這支撐
+全數 nonblank，visible text raw tool / schema / traceback leakage findings 為 `0`。最新
+ChatPanel evidence hardening 也讓 visible text snapshots 收到 chat bubble `QTextBrowser` 內容：
+normal / clarification / blocked / successful / narrow-panel phases 的 JSON 現在包含使用者與
+assistant 氣泡文字，且 top-level `chatpanel.visible_messages` 會在 reset 前保存可見訊息。這支撐
 automated PyQt replay 的主要 UI 操作路徑，但仍不能
 替代 human desktop acceptance。
 同一 walkthrough 現在也把 process/thread resource notes 納入 pass/fail smoke：artifact
 `pass_fail_summary.resource_smoke` 會檢查 replay close 後 Python thread count 是否回落、
 Qt thread pool 是否仍 active，以及 `ru_maxrss` high-water delta 是否超過 smoke threshold。
-最新 offscreen artifact 顯示 resource smoke `passed=True`、RSS growth `231372 KB` /
+最新 offscreen artifact 顯示 resource smoke `passed=True`、RSS growth `231884 KB` /
 limit `600000 KB`、Qt active thread `0`，且 visible text 已刷新到
 `Review and confirm these choices before applying.` / `Ask about EEG workflow`。這只能抓明顯 cleanup regression，不是
 leak-proof soak test，也不能替代長時間 local model / training desktop session。

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QComboBox
+from PyQt6.QtWidgets import QComboBox, QTextBrowser, QVBoxLayout, QWidget
 
 from scripts.dev.capture_data_interpretation_replay import (
     source_event_field_matches,
@@ -17,6 +17,7 @@ from scripts.dev.capture_human_like_product_walkthrough import (
     render_eval_dashboard_html,
     render_markdown,
     validate_walkthrough_payload,
+    visible_text_snapshot,
 )
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
@@ -119,6 +120,25 @@ def test_forbidden_visible_text_flags_raw_tool_syntax() -> None:
 
     assert '{"tool_name": "scan_source"}' in offenders
     assert "Traceback:" in offenders
+
+
+def test_visible_text_snapshot_includes_chat_bubble_text(qtbot) -> None:
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    layout = QVBoxLayout(widget)
+    bubble_text = QTextBrowser()
+    bubble_text.setMarkdown(
+        "Choose a file, folder, BIDS root, or saved recipe before I can scan it."
+    )
+    layout.addWidget(bubble_text)
+    widget.show()
+
+    texts = visible_text_snapshot(widget)
+
+    assert (
+        "Choose a file, folder, BIDS root, or saved recipe before I can scan it."
+        in texts
+    )
 
 
 def test_build_pass_fail_summary_requires_all_phases() -> None:
