@@ -895,22 +895,23 @@ class AgentManager(QObject):
             model_status = "Ready" if model_ready else "Setup needed"
 
             train_capability = capabilities.get("train")
+            train_reasons = list(getattr(train_capability, "reasons", []) or [])
             tooltip_lines = [
                 f"Workflow stage: {stage}",
                 "Options hold setup details.",
                 "Suggested next actions: "
                 + (", ".join(command_labels(enabled)) if enabled else "none"),
             ]
-            if train_capability.reasons:
+            if train_reasons:
                 tooltip_lines.append(
-                    "Train blocked: " + "; ".join(train_capability.reasons),
+                    "Train blocked: " + "; ".join(train_reasons),
                 )
             if state.last_error:
                 tooltip_lines.append(f"Last workflow error: {state.last_error.message}")
 
             blocked_reason = None
-            if train_capability.reasons:
-                blocked_reason = "; ".join(train_capability.reasons)
+            if train_reasons:
+                blocked_reason = "; ".join(train_reasons)
 
             if hasattr(self.chat_panel, "set_product_status"):
                 self.chat_panel.set_product_status(
@@ -981,7 +982,7 @@ class AgentManager(QObject):
         return [
             command_name
             for command_name in candidates
-            if capabilities.get(command_name).enabled
+            if getattr(capabilities.get(command_name), "enabled", False)
         ]
 
     def close(self):

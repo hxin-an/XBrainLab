@@ -5698,3 +5698,28 @@ UI data-list query execution is now centralized behind `execute_application_comm
 
 - This closes one direct UI command-helper bypass. It does not complete full command-driven refresh,
   remove injected controllers, or finish controller fallback audit.
+
+## 2026-05-06 ChatPanel Backend Status Resilience
+
+### 狀態
+
+`AgentManager.refresh_backend_status()` now handles partial capability snapshots without turning the
+assistant footer into `Workflow status unavailable`.
+
+### 已可宣稱
+
+- Missing `train` capability no longer raises while composing tooltip / blocked reason text.
+- Missing candidate command capabilities are treated as unavailable in next-step selection.
+- ChatPanel product status can still show stage and available actions when a partial capability map
+  is returned.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/components/agent_manager.py`
+- Tests：`tests/unit/ui/test_agent_manager_coverage.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is a status resilience slice. It does not complete long autonomous ChatPanel workflows,
+  Windows human desktop acceptance, or full UI refresh closure.

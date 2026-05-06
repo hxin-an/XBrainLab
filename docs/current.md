@@ -856,6 +856,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   chat composer 底下狀態列和不存在的 mode/step controls 移除。第一層控制收斂到 dock
   title bar 的單一功能列，並用 regression tests 保護 disabled Retry、empty state、bubble
   minimum width、composer fit 和 raw tool output 不外洩。
+- 最新 ChatPanel backend-status cleanup 讓 `AgentManager.refresh_backend_status()` 對不完整
+  capability snapshot fail soft：缺少 `train` 或 candidate capability 時會把該 action 視為
+  unavailable，而不是讓 assistant footer 掉成 `Workflow status unavailable`。
 - automated gate 漏掉了最基本的 user-visible chat product flow。deterministic eval `21 / 21`、
   local prompt smoke、launcher startup smoke 都不能替代真 chat flow 驗收；local tool-call
   eval runner 也不能替代 true ChatPanel multi-turn / tool-command walkthrough。

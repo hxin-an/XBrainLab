@@ -14137,3 +14137,47 @@
 - 不能宣稱：
   - This does not complete full command-driven UI refresh, remove all direct controller usage, or
     prove human desktop acceptance.
+
+### 2026-05-06 ChatPanel backend status missing-capability resilience
+
+- scope：
+  - Prevent `AgentManager.refresh_backend_status()` from degrading to `Workflow status unavailable`
+    when the capability snapshot is partial.
+  - Missing command capability should mean that action is unavailable, not that the assistant UI
+    hit a product-visible status error.
+- red / focused tests：
+  - Added `test_refresh_backend_status_handles_missing_train_capability`.
+  - Added `test_product_next_steps_ignores_missing_candidate_capabilities`.
+  - Red gate failed first because `train_capability.reasons` and
+    `capabilities.get(command_name).enabled` assumed non-None capability entries.
+- 做了什麼：
+  - `refresh_backend_status()` now normalizes missing train capability reasons to an empty list.
+  - `_product_next_steps()` now uses `getattr(capability, "enabled", False)` so missing candidate
+    capability entries are treated as unavailable.
+- validation：
+  - Focused gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py::TestAgentManagerBackendStatus -q`
+    -> red `2 failed`, then `2 passed`.
+  - Regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/components/test_agent_manager.py tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/test_ui_misc.py::TestAgentManagerDeep -q`
+    -> `87 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/components/agent_manager.py tests/unit/ui/test_agent_manager_coverage.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/components/agent_manager.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Note: direct focused basedpyright on `tests/unit/ui/test_agent_manager_coverage.py` is not a
+    useful gate because that existing dynamic Qt / MagicMock coverage file has many unrelated
+    typing errors; repo-level basedpyright remains the required gate.
+  - Quality / docs:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is ChatPanel UI status resilience under the fast dev gate and does not affect
+    tool-call benchmark claims.
+- 不能宣稱：
+  - This does not complete long autonomous ChatPanel workflow, true Windows desktop acceptance, or
+    full UI refresh / controller fallback closure.

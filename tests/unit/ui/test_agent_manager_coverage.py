@@ -21,11 +21,32 @@ def _make_manager():
     m.agent_controller = MagicMock()
     m.agent_initialized = True
     m.vram_checker = MagicMock()
+    m.status_message_received = MagicMock()
     epoch_data = MagicMock()
     epoch_data.get_channel_names.return_value = ["Cz", "Fz"]
     epoch_data.get_mne.return_value.info = {"ch_names": ["Cz", "Fz"]}
     m.study.epoch_data = epoch_data
     return m
+
+
+def _empty_workflow_state():
+    return SimpleNamespace(
+        active_dataset=SimpleNamespace(
+            has_raw_data=False,
+            has_preprocessed_data=False,
+            has_epoch_data=False,
+            has_datasets=False,
+        ),
+        active_training=SimpleNamespace(is_running=False),
+        training=SimpleNamespace(
+            is_running=False,
+            has_model=False,
+            has_training_option=False,
+        ),
+        evaluation=SimpleNamespace(finished_runs=0, metrics_available=False),
+        pipeline_stage="empty",
+        last_error=None,
+    )
 
 
 def test_agent_manager_does_not_fetch_preprocess_controller_from_real_study(qtbot):
@@ -92,6 +113,45 @@ class TestAgentManagerStartSystem:
         m.agent_initialized = False
         m.chat_panel = None
         m.start_system()
+
+
+class TestAgentManagerBackendStatus:
+    def test_refresh_backend_status_handles_missing_train_capability(self):
+        m = _make_manager()
+        m.backend_facade = MagicMock()
+        m.backend_facade.get_state.return_value = _empty_workflow_state()
+        m.backend_facade.get_capabilities.return_value = {
+            "scan_source": SimpleNamespace(enabled=True, reasons=[]),
+        }
+        model_config = MagicMock()
+        model_config.local_backend_ready.return_value = True
+
+        with (
+            patch(
+                "XBrainLab.ui.components.agent_manager.LLMConfig.load_from_file",
+                return_value=model_config,
+            ),
+            patch(
+                "XBrainLab.ui.components.agent_manager.LLMConfig.assistant_runtime_selection_from",
+                return_value=SimpleNamespace(model_id="local-model"),
+            ),
+        ):
+            m.refresh_backend_status()
+
+        m.chat_panel.set_product_status.assert_called_once()
+        kwargs = m.chat_panel.set_product_status.call_args.kwargs
+        assert kwargs["stage"] == "No data loaded"
+        assert kwargs["available_commands"] == ["scan_source"]
+        assert kwargs["blocked_reason"] is None
+        m.chat_panel.set_status_summary.assert_not_called()
+
+    def test_product_next_steps_ignores_missing_candidate_capabilities(self):
+        from XBrainLab.ui.components.agent_manager import AgentManager
+
+        state = _empty_workflow_state()
+        state.active_dataset.has_raw_data = True
+
+        assert AgentManager._product_next_steps(state, {}) == []
 
 
 class TestAgentManagerRetry:
