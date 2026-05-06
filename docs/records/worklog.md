@@ -37,6 +37,50 @@
 
 ## 2026-05-06
 
+### 08:20 Channel Selection apply fallback warning boundary
+
+- scope：
+  - Continue product-runtime fallback warning audit for Dataset sidebar mutating actions.
+  - Prevent real `Study` channel-selection apply fallback refusal from being wrapped in a generic
+    critical error.
+- red / focused tests：
+  - Added `test_open_channel_selection_refuses_real_study_apply_none_controller_fallback`.
+  - Red gate failed because apply-none fallback did not show `Channel Selection Blocked`.
+- 做了什麼：
+  - `DatasetSidebar.open_channel_selection()` now catches real `Study` legacy fallback refusal
+    after the apply command returns `None` and shows `Channel Selection Blocked`.
+  - Mock / legacy fallback still calls `DatasetController.apply_channel_selection()`.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_open_channel_selection_refuses_real_study_apply_none_controller_fallback -q`
+    -> failed on missing blocked warning.
+  - Focused pass:
+    same command -> `1 passed`.
+  - DatasetSidebar regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar -q`
+    -> `14 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> pass.
+    `poetry run basedpyright XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Full fast gate:
+    `git diff --check` -> pass.
+    `poetry run ruff check .` -> pass.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> pass.
+    `poetry run mkdocs build --strict` -> pass.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a Dataset UI fallback language cleanup under the fast dev gate, not a
+    release / thesis benchmark update. It does not justify primary/fallback x3 local eval under
+    16GB VRAM pressure.
+- 不能宣稱：
+  - This does not audit every DatasetSidebar fallback, complete Channel Selection desktop
+    acceptance, or close all controller fallback debt.
+
 ### 08:15 Dataset Clear fallback warning boundary
 
 - scope：

@@ -375,10 +375,18 @@ class DatasetSidebar(QWidget):
                         ),
                     )
                     if command_result is None:
-                        run_legacy_controller_fallback(
-                            self,
-                            lambda: self.controller.apply_channel_selection(result),
-                        )
+                        try:
+                            run_legacy_controller_fallback(
+                                self,
+                                lambda: self.controller.apply_channel_selection(result),
+                            )
+                        except LegacyControllerFallbackUnavailableError as exc:
+                            QMessageBox.warning(
+                                self,
+                                "Channel Selection Blocked",
+                                str(exc),
+                            )
+                            return
                     elif command_result.failed:
                         QMessageBox.critical(
                             self,

@@ -1639,6 +1639,63 @@ class TestDatasetSidebar:
         panel.controller.apply_channel_selection.assert_not_called()
         mock_warning.assert_not_called()
 
+    def test_open_channel_selection_refuses_real_study_apply_none_controller_fallback(
+        self,
+        qtbot,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.application import PreprocessCommand, QueryStateCommand
+        from XBrainLab.backend.study import Study
+        from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
+
+        study = Study()
+        raw = MagicMock()
+        raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
+        study.data_manager.loaded_data_list = [raw]
+        panel = _make_panel_mock()
+        panel.main_window.study = study
+        sb = DatasetSidebar(panel)
+        qtbot.addWidget(sb)
+
+        def execute_for(_, command, refresh=True):
+            if isinstance(command, QueryStateCommand):
+                assert refresh is False
+                return _command_result(loaded_data_list=[raw])
+            if isinstance(command, PreprocessCommand):
+                return None
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with (
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.sidebar.get_command_capability",
+                return_value=SimpleNamespace(enabled=True, reasons=[]),
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.sidebar.ChannelSelectionDialog",
+            ) as mock_dialog,
+            patch(
+                "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
+                side_effect=execute_for,
+            ),
+            patch.object(QMessageBox, "warning") as mock_warning,
+            patch.object(QMessageBox, "critical") as mock_critical,
+        ):
+            mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            mock_dialog.return_value.get_result.return_value = ["Cz", "Pz"]
+            sb.open_channel_selection()
+
+        panel.controller.apply_channel_selection.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Channel Selection Blocked"
+        mock_critical.assert_not_called()
+        assert "could not safely complete" in mock_warning.call_args.args[2]
+
     def test_open_channel_selection_refuses_real_study_query_none_controller_fallback(
         self,
         qtbot,

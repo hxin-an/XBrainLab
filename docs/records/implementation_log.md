@@ -42,6 +42,37 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Channel Selection Apply Fallback Warning Boundary
+
+### 狀態
+
+`DatasetSidebar.open_channel_selection()` now converts real `Study` channel-selection apply
+fallback refusal into a user-facing blocked warning. If the `PreprocessCommand(SELECT_CHANNELS)`
+apply path unexpectedly cannot dispatch in a real product context, the UI shows
+`Channel Selection Blocked` instead of a generic critical channel-selection failure.
+
+### 已可宣稱
+
+- Real `Study` channel-selection apply fallback refusal is visible as product language instead of a
+  generic critical error wrapper.
+- Mock / legacy channel-selection fallback behavior remains available through the explicit fallback
+  helper.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/dataset/sidebar.py`
+- Tests: `tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not audit every DatasetSidebar mutating fallback or complete the Channel Selection
+  desktop workflow.
+
+### 下一手重點
+
+Continue converting remaining real `Study` fallback refusals into blocked user-facing states.
+
 ## 2026-05-06 Dataset Clear Fallback Warning Boundary
 
 ### 狀態
