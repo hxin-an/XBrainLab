@@ -350,7 +350,7 @@ class ChatPanel(QWidget):
         self.workflow_stage_label.setStyleSheet(GUIDANCE_STAGE_STYLE)
         guidance_layout.addWidget(self.workflow_stage_label)
 
-        self.workflow_next_label = QLabel("Import EEG files or ask what is ready.")
+        self.workflow_next_label = QLabel("Scan a data source or ask what is ready.")
         self.workflow_next_label.setObjectName("WorkflowGuidanceText")
         self.workflow_next_label.setStyleSheet(GUIDANCE_TEXT_STYLE)
         self.workflow_next_label.setWordWrap(True)
@@ -399,7 +399,7 @@ class ChatPanel(QWidget):
         self.empty_state_model_label.setWordWrap(True)
         self.empty_state_model_label.setVisible(False)
 
-        self.empty_state_next_label = QLabel("Import EEG files · Ask what is ready")
+        self.empty_state_next_label = QLabel("Scan a data source · Ask what is ready")
         self.empty_state_next_label.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
         self.empty_state_next_label.setWordWrap(True)
         empty_layout.addWidget(self.empty_state_next_label)
@@ -742,9 +742,13 @@ class ChatPanel(QWidget):
                 )
             elif blocked_reason:
                 self.empty_state_next_label.setText(blocked_reason)
+            elif stage == "No data loaded":
+                self.empty_state_next_label.setText(
+                    "Scan a data source to begin",
+                )
             else:
                 self.empty_state_next_label.setText(
-                    "Import EEG files · Ask what is ready"
+                    "Ask what is ready",
                 )
         self._footer_status_text = self._footer_status_for(
             stage,

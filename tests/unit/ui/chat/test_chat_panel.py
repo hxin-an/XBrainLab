@@ -343,7 +343,7 @@ class TestChatPanelCallbacks:
         assert chat_panel.empty_state_backend_label.text() == (
             "No EEG files are open yet."
         )
-        assert "Import EEG files" in chat_panel.empty_state_next_label.text()
+        assert "Scan a data source" in chat_panel.empty_state_next_label.text()
         assert chat_panel.backend_stage_chip.text()
         assert chat_panel.model_status_chip.isHidden()
         assert chat_panel.runtime_status_label.isHidden()
@@ -431,6 +431,9 @@ class TestChatPanelCallbacks:
 
         assert chat_panel.footer_status_label.toolTip() == (
             "No EEG data open · Scan a data source to begin"
+        )
+        assert chat_panel.empty_state_next_label.text() == (
+            "Scan a data source to begin"
         )
 
     def test_retry_available_controls_disabled_state(self, chat_panel):

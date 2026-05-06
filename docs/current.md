@@ -861,7 +861,8 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   unavailable，而不是讓 assistant footer 掉成 `Workflow status unavailable`。
 - 最新 ChatPanel data-entry wording follow-up 又把 no-data / no-action footer fallback 從
   `Import files to begin` 改成 `Scan a data source to begin`，避免在 capability snapshot 缺漏時
-  把使用者帶回舊 data-entry 心智模型。
+  把使用者帶回舊 data-entry 心智模型。後續 empty-state wording cleanup 也把 ChatPanel 初始
+  guidance 裡的 `Import EEG files` 改成 `Scan a data source`。
 - automated gate 漏掉了最基本的 user-visible chat product flow。deterministic eval `21 / 21`、
   local prompt smoke、launcher startup smoke 都不能替代真 chat flow 驗收；local tool-call
   eval runner 也不能替代 true ChatPanel multi-turn / tool-command walkthrough。

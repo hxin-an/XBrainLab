@@ -14221,3 +14221,44 @@
 - 不能宣稱：
   - This does not complete ChatPanel long workflow acceptance, import wizard maturity, or Windows
     human desktop validation.
+
+### 2026-05-06 ChatPanel initial empty-state uses Data Interpretation language
+
+- scope：
+  - Remove visible `Import EEG files` wording from ChatPanel initial guidance before backend status
+    refresh has run.
+- red / focused tests：
+  - Extended `test_product_status_empty_stage_without_actions_uses_scan_language` to cover empty
+    state next text.
+  - Red gate failed first because empty-state fallback still showed
+    `Import EEG files · Ask what is ready`.
+- 做了什麼：
+  - Initial hidden workflow guidance now says `Scan a data source or ask what is ready.`
+  - Initial empty-state next label now says `Scan a data source · Ask what is ready`.
+  - Status fallback for no-data / no-actions keeps `Scan a data source to begin`.
+- validation：
+  - Focused gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/chat/test_chat_panel.py::TestChatPanelCallbacks::test_product_status_empty_stage_without_actions_uses_scan_language -q`
+    -> red `1 failed`, then `1 passed`.
+  - Regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/test_agent_manager_coverage.py::TestAgentManagerBackendStatus -q`
+    -> `45 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/chat/panel.py tests/unit/ui/chat/test_chat_panel.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/chat/panel.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Source scan:
+    `rg -n "Import EEG files|Import files to begin|Load EEG data|Attach labels" XBrainLab/ui tests/unit/ui/chat tests/unit/ui/test_agent_manager_coverage.py -g '*.py'`
+    -> only negative assertions remain.
+  - Quality / docs:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is UI wording/product-language cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not complete ChatPanel long workflow acceptance, import wizard maturity, or human
+    desktop validation.

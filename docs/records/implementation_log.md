@@ -5748,3 +5748,27 @@ available command labels are present.
 
 - This is wording consistency for the assistant footer. It does not complete Data Interpretation
   wizard maturity, long ChatPanel workflow, or human desktop acceptance.
+
+## 2026-05-06 ChatPanel Empty-State Data-Entry Wording
+
+### 狀態
+
+ChatPanel initial empty-state guidance now uses Data Interpretation wording before backend status
+has refreshed.
+
+### 已可宣稱
+
+- Initial workflow guidance says `Scan a data source or ask what is ready.`
+- Initial empty-state next step says `Scan a data source · Ask what is ready`.
+- The visible `Import EEG files` fallback has been removed from ChatPanel source.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/chat/panel.py`
+- Tests：`tests/unit/ui/chat/test_chat_panel.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is initial copy cleanup only. It does not complete full ChatPanel workflow acceptance or
+  Data Interpretation wizard maturity.
