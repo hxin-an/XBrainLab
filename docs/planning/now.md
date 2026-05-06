@@ -228,6 +228,8 @@
   只留在 query unavailable 的 mock / legacy path。最新 query-none fallback boundary 也讓
   real `Study` training-history query 意外回 `None` 時清成 empty training display，不再回讀
   stale controller history。
+- 最新 Stop Training fallback warning slice 也讓 real `Study` stop command 意外無法 dispatch
+  時顯示 `Stop Training Blocked`，不再把 legacy fallback refusal 外拋成 raw RuntimeError。
 - 最新 Dataset sidebar render cleanup 也把 `is_locked()` / `has_data()` 納入同一 guard：
   有 backend capability 時，button state / tooltip 不再先讀 stale controller lock/data state；
   legacy lock/data reads 只留在 explicit no-capability branch。

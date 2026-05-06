@@ -973,6 +973,8 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
+        from PyQt6.QtWidgets import QMessageBox
+
         from XBrainLab.backend.study import Study
 
         study = Study()
@@ -987,11 +989,14 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 return_value=None,
             ),
-            pytest.raises(RuntimeError, match="could not safely complete"),
+            patch.object(QMessageBox, "warning") as mock_warning,
         ):
             sidebar.stop_training()
 
         sidebar.panel.controller.stop_training.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Stop Training Blocked"
+        assert "could not safely complete" in mock_warning.call_args.args[2]
 
     def test_stop_training_blocked_by_backend_capability_before_command(
         self,

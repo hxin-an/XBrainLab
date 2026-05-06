@@ -37,6 +37,50 @@
 
 ## 2026-05-06
 
+### 08:00 Stop Training fallback warning boundary
+
+- scope：
+  - Continue mutating fallback audit for Training sidebar actions.
+  - Prevent real `Study` stop-training fallback refusal from escaping as a raw runtime exception.
+- red / focused tests：
+  - Updated `test_stop_training_refuses_real_study_controller_fallback` to require a user-facing
+    warning instead of `pytest.raises(RuntimeError)`.
+  - Red gate failed because `TrainingSidebar.stop_training()` let
+    `LegacyControllerFallbackUnavailableError` escape.
+- 做了什麼：
+  - `TrainingSidebar.stop_training()` now catches real `Study` legacy fallback refusal and shows
+    `Stop Training Blocked` with the shared safety message.
+  - Mock / legacy fallback still calls `TrainingController.stop_training()`.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_stop_training_refuses_real_study_controller_fallback -q`
+    -> failed on escaped `LegacyControllerFallbackUnavailableError`.
+  - Focused pass:
+    same command -> `1 passed`.
+  - TrainingSidebar regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar -q`
+    -> `35 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> pass.
+    `poetry run basedpyright XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Static / docs / architecture gate:
+    `git diff --check` -> pass;
+    `poetry run ruff check .` -> pass;
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`;
+    `poetry run python tests/architecture_compliance.py` -> pass;
+    `poetry run mkdocs build --strict` -> pass.
+  - Backend / agent regression:
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a Training UI fallback language cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not audit every TrainingSidebar mutating fallback, complete long-running training
+    acceptance, or close all controller fallback debt.
+
 ### 07:55 Visualization average stale-selection fallback boundary
 
 - scope：

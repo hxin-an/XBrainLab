@@ -42,6 +42,36 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Stop Training Fallback Warning Boundary
+
+### 狀態
+
+`TrainingSidebar.stop_training()` now converts real `Study` legacy fallback refusal into a
+user-facing warning. If the stop command unexpectedly cannot dispatch in a real product context,
+the UI shows `Stop Training Blocked` instead of letting `LegacyControllerFallbackUnavailableError`
+escape as a raw runtime exception.
+
+### 已可宣稱
+
+- Real `Study` Stop Training fallback refusal is visible as product language instead of a raw
+  exception.
+- Mock / legacy stop fallback behavior remains available through the explicit fallback helper.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/training/sidebar.py`
+- Tests: `tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not audit every TrainingSidebar mutating fallback or complete long-running training
+  desktop acceptance.
+
+### 下一手重點
+
+Continue converting remaining real `Study` fallback refusals into user-facing blocked states.
+
 ## 2026-05-06 Visualization Average Stale-Selection Fallback Boundary
 
 ### 狀態

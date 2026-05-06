@@ -21,6 +21,7 @@ from XBrainLab.backend.application import (
     TrainCommand,
 )
 from XBrainLab.ui.application_capabilities import (
+    LegacyControllerFallbackUnavailableError,
     blocked_reason,
     execute_application_command,
     get_command_capability,
@@ -601,7 +602,11 @@ class TrainingSidebar(QWidget):
 
         result = execute_application_command(self, StopTrainingCommand())
         if result is None:
-            run_legacy_controller_fallback(self, self.controller.stop_training)
+            try:
+                run_legacy_controller_fallback(self, self.controller.stop_training)
+            except LegacyControllerFallbackUnavailableError as exc:
+                QMessageBox.warning(self, "Stop Training Blocked", str(exc))
+                return
         elif result.failed:
             QMessageBox.warning(
                 self,

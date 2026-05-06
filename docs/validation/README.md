@@ -2717,6 +2717,35 @@ UI，也不是 human desktop acceptance。
 這批 evidence 支撐 post-load label compatibility path 不再在 empty / blocked state 裡鼓勵舊
 attach-label 心智模型。它仍不是完整 embedded Data Interpretation label editor。
 
+2026-05-06 Stop Training fallback warning boundary：
+
+- Focused red/fixed gate:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_stop_training_refuses_real_study_controller_fallback -q`
+  -> `1 passed` after failing on escaped `LegacyControllerFallbackUnavailableError`.
+- TrainingSidebar regression:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar -q`
+  -> `35 passed`.
+- Focused lint/type:
+  `poetry run ruff check XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+  -> pass;
+  `poetry run basedpyright XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+  -> `0 errors`.
+- Static / docs / backend / agent gate:
+  `git diff --check` -> pass;
+  `poetry run ruff check .` -> pass;
+  `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`;
+  `poetry run python tests/architecture_compliance.py` -> pass;
+  `poetry run mkdocs build --strict` -> pass;
+  `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`;
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+  -> `20 passed`.
+- Local eval:
+  not run. This was a fast dev gate Training fallback language slice.
+
+This supports real `Study` Stop Training fallback refusal showing a product warning instead of a
+raw runtime exception. It does not prove long-running training desktop acceptance or complete all
+TrainingSidebar fallback cleanup.
+
 2026-05-06 Visualization average stale-selection fallback boundary：
 
 - Focused red/fixed gate:
