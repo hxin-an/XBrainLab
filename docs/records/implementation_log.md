@@ -4957,3 +4957,30 @@ and also enters `refresh_after_observer(..., event_name="training_updated")`.
 
 - This is one callback-specific observer cleanup. UI refresh remains a mixed model and still needs
   the broader command-driven refresh coordinator / controller fallback audit.
+
+## 2026-05-06 Walkthrough Internal Command Leakage Guard
+
+### 狀態
+
+The automated human-like walkthrough visible-text guard now rejects additional internal command
+names beyond the original Data Interpretation tool names.
+
+### 已可宣稱
+
+- Visible text quality checks now flag common internal commands such as `configure_training`,
+  `generate_dataset`, `query_state`, and legacy data-entry names like `load_data` /
+  `attach_labels`.
+- The refreshed walkthrough artifact still passes with `0` forbidden visible-text findings.
+
+### Evidence 入口
+
+- Source：`scripts/dev/capture_human_like_product_walkthrough.py`
+- Tests：`tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+- Artifacts：`artifacts/ui/human-like-walkthrough/human-like-walkthrough.json`,
+  `artifacts/ui/human-like-walkthrough/human-like-walkthrough.md`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is an automated leakage guard. It is not a full human copy review of every desktop screen or
+  a long local-model ChatPanel acceptance run.

@@ -115,11 +115,19 @@ def test_validate_walkthrough_payload_rejects_missing_human_boundary() -> None:
 
 def test_forbidden_visible_text_flags_raw_tool_syntax() -> None:
     offenders = forbidden_visible_text(
-        ["The dataset is ready.", '{"tool_name": "scan_source"}', "Traceback:"]
+        [
+            "The dataset is ready.",
+            '{"tool_name": "scan_source"}',
+            "Traceback:",
+            "configure_training is blocked.",
+            "legacy load_data fallback",
+        ],
     )
 
     assert '{"tool_name": "scan_source"}' in offenders
     assert "Traceback:" in offenders
+    assert "configure_training is blocked." in offenders
+    assert "legacy load_data fallback" in offenders
 
 
 def test_visible_text_snapshot_includes_chat_bubble_text(qtbot) -> None:

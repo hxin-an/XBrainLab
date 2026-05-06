@@ -12804,3 +12804,52 @@
 - 不能宣稱：
   - This does not complete full command-driven UI refresh coordination, remove controller observer
     events, or finish controller fallback audit.
+
+### 2026-05-06 Walkthrough internal command leakage guard
+
+- scope：
+  - Strengthen the UI-observable visible text quality gate for the user requirement that product
+    UI / ChatPanel should not expose raw tool syntax, schema, traceback, or snake_case commands.
+  - Existing guard covered Data Interpretation command names such as `scan_source`, but not common
+    training / lifecycle / legacy command names like `configure_training` or `load_data`.
+- red / focused tests：
+  - Extended `test_forbidden_visible_text_flags_raw_tool_syntax`.
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py::test_forbidden_visible_text_flags_raw_tool_syntax -q`
+    -> failed as expected because `configure_training` and `load_data` were not flagged.
+- 做了什麼：
+  - Added selected internal command markers to `VISIBLE_FORBIDDEN`: recipe save/reload,
+    training/dataset/epoch lifecycle commands, `query_state`, and legacy `load_data` /
+    `attach_labels` / `import_labels`.
+  - Refreshed the consolidated human-like walkthrough artifact.
+- validation：
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py::test_forbidden_visible_text_flags_raw_tool_syntax -q`
+    -> `1 passed`.
+  - Walkthrough unit regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py -q`
+    -> `19 passed`.
+  - Focused lint:
+    `poetry run ruff check scripts/dev/capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> `All checks passed!`.
+  - UI-observable replay:
+    `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> exit `0`; artifact status `passed`; forbidden visible text findings `0`; resource smoke
+    passed with RSS growth `231556 KB` / limit `600000 KB`.
+  - Fast gate:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/integration/ui/test_product_walkthrough.py -q`
+    -> `22 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a UI visible-text artifact guard under the fast dev gate; no local model
+    benchmark claim changed.
+- 不能宣稱：
+  - This does not replace human desktop copy review, Windows launcher acceptance, or long local
+    ChatPanel sessions.

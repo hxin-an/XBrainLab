@@ -142,6 +142,17 @@ VISIBLE_FORBIDDEN = (
     "preview_interpretation",
     "validate_interpretation",
     "apply_interpretation",
+    "save_interpretation_recipe",
+    "reload_interpretation_recipe",
+    "configure_training",
+    "generate_dataset",
+    "create_epoch",
+    "reset_session",
+    "new_session",
+    "query_state",
+    "load_data",
+    "attach_labels",
+    "import_labels",
 )
 
 RESOURCE_THREAD_TOLERANCE = 1

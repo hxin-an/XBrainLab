@@ -536,7 +536,7 @@ artifact 和 process/thread notes。artifact
 `26 / 26` phases、human desktop acceptance `not performed`。最新 artifact 已補上 top-level
 `observable_evidence` 和 `ui_quality_review`：`26` 個 phase 都有 visible text、button
 state、workflow/backend snapshot index，`20` 張 screenshot 全部通過 nonblank check，visible text
-raw tool / schema / traceback leakage check 為 `0` findings；latest ChatPanel evidence hardening
+raw tool / schema / traceback / selected internal snake_case command leakage check 為 `0` findings；latest ChatPanel evidence hardening
 also makes the visible text snapshots include chat bubble `QTextBrowser` content, so clarification /
 blocked / successful assistant screenshots now have matching JSON text evidence and
 `chatpanel.visible_messages` is populated before reset. 最新 table geometry review 會檢查
@@ -545,7 +545,7 @@ right-boundary gap 和 clipped visible row 狀態，目前 `15` 個 table/tree w
 `0` geometry findings、`0` clipped-row findings。最新 resource smoke gate 也會讓
 walkthrough 在 close 後 Python threads 未回落、Qt thread pool 仍 active 或 RSS high-water delta
 超過 threshold 時 fail；目前 artifact 顯示 resource smoke `passed=True`、RSS growth
-`231884 KB` / limit `600000 KB`、Qt active thread `0`。最新 2026-05-06 artifact
+`231556 KB` / limit `600000 KB`、Qt active thread `0`。最新 2026-05-06 artifact
 也已刷新 Data Interpretation decision copy 和 ChatPanel composer placeholder，可見
 `Review and confirm these choices before applying.` 以及 `Ask about EEG workflow`。這是 coarse cleanup smoke，不是
 memory-leak proof 或長時間 soak。後續 UI polish 已依截圖修正
