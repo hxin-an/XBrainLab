@@ -42,6 +42,37 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Training Settings Fallback Warning Boundary
+
+### 狀態
+
+`TrainingSidebar.training_setting()` now converts real `Study` training-settings fallback refusal
+into a user-facing blocked warning. If the option-side `ConfigureTrainingCommand` unexpectedly
+cannot dispatch in a real product context, the UI shows `Training Settings Blocked` instead of
+letting the legacy fallback exception escape.
+
+### 已可宣稱
+
+- Real `Study` training-settings fallback refusal is visible as product language instead of a raw
+  exception or generic failure wrapper.
+- Mock / legacy training-settings fallback behavior remains available through the explicit
+  fallback helper.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/training/sidebar.py`
+- Tests: `tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not audit every TrainingSidebar configuration fallback or complete Training Settings
+  desktop acceptance.
+
+### 下一手重點
+
+Continue converting remaining real `Study` fallback refusals into blocked user-facing states.
+
 ## 2026-05-06 Model Selection Fallback Warning Boundary
 
 ### 狀態

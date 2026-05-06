@@ -1398,6 +1398,66 @@ class TestTrainingSidebar:
         assert isinstance(commands[1], ConfigureTrainingCommand)
         sidebar.panel.controller.set_training_option.assert_not_called()
 
+    def test_training_setting_refuses_real_study_controller_fallback(self, sidebar):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.application import (
+            ConfigureTrainingCommand,
+            QueryStateCommand,
+        )
+        from XBrainLab.backend.study import Study
+
+        sidebar.panel.main_window.study = Study()
+        sidebar.panel.controller.is_training.return_value = False
+        option = SimpleNamespace(
+            epoch=7,
+            bs=16,
+            lr=0.002,
+            repeat_num=3,
+            use_cpu=True,
+            gpu_idx=None,
+            optim=None,
+            optim_params={},
+            checkpoint_epoch=2,
+            output_dir="./snapshot-output",
+            evaluation_option=SimpleNamespace(value="test_acc"),
+        )
+
+        def execute_for(_, command, refresh=True):
+            if isinstance(command, QueryStateCommand):
+                assert refresh is False
+                return _command_result(state={"training": {}})
+            if isinstance(command, ConfigureTrainingCommand):
+                return None
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                return_value=SimpleNamespace(enabled=True, reasons=[]),
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog"
+            ) as mock_dialog,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                side_effect=execute_for,
+            ),
+            patch.object(QMessageBox, "warning") as mock_warning,
+            patch.object(QMessageBox, "critical") as mock_critical,
+            patch.object(QMessageBox, "information") as mock_info,
+        ):
+            mock_dialog.return_value.exec.return_value = True
+            mock_dialog.return_value.get_result.return_value = option
+            sidebar.training_setting()
+
+        sidebar.panel.controller.set_training_option.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Training Settings Blocked"
+        mock_critical.assert_not_called()
+        mock_info.assert_not_called()
+        assert "could not safely complete" in mock_warning.call_args.args[2]
+
     def test_training_setting_uses_backend_configure_capability_before_dialog(
         self,
         sidebar,

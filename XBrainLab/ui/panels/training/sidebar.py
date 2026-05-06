@@ -511,10 +511,18 @@ class TrainingSidebar(QWidget):
                 ),
             )
             if result is None:
-                run_legacy_controller_fallback(
-                    self,
-                    lambda: self.controller.set_training_option(option),
-                )
+                try:
+                    run_legacy_controller_fallback(
+                        self,
+                        lambda: self.controller.set_training_option(option),
+                    )
+                except LegacyControllerFallbackUnavailableError as exc:
+                    QMessageBox.warning(
+                        self,
+                        "Training Settings Blocked",
+                        str(exc),
+                    )
+                    return
             elif result.failed:
                 QMessageBox.critical(
                     self,

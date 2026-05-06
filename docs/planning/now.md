@@ -244,6 +244,8 @@
   無法 dispatch 時顯示 `Data Splitting Blocked`，不再外拋 legacy fallback exception。
 - 最新 Model Selection fallback warning slice 也讓 real `Study` configure-training model command
   無法 dispatch 時顯示 `Model Selection Blocked`，不再外拋 legacy fallback exception。
+- 最新 Training Settings fallback warning slice 也讓 real `Study` configure-training option command
+  無法 dispatch 時顯示 `Training Settings Blocked`，不再外拋 legacy fallback exception。
 - 最新 Dataset sidebar render cleanup 也把 `is_locked()` / `has_data()` 納入同一 guard：
   有 backend capability 時，button state / tooltip 不再先讀 stale controller lock/data state；
   legacy lock/data reads 只留在 explicit no-capability branch。
