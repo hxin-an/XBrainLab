@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+5ad6b7d ui: show start training fallback warning
+c54b88c docs: refresh handoff after training settings warning
 9abb334 ui: show training settings fallback warning
 f2e5517 docs: refresh handoff after model selection warning
 78c53d1 ui: show model selection fallback warning
@@ -135,6 +137,11 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Start Training fallback warning:
+  - real `Study` start-training fallback refusal now shows `Start Training Blocked`.
+  - the UI no longer wraps the safe refusal in a generic critical training failure when
+    `TrainCommand` returns `None`.
+  - mock / legacy start fallback still calls `TrainingController.start_training()`.
 - Training Settings fallback warning:
   - real `Study` training-settings fallback refusal now shows `Training Settings Blocked`.
   - the UI no longer lets the legacy fallback exception escape when the option-side
@@ -1690,6 +1697,36 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 9abb334; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_start_training_refuses_real_study_controller_fallback \
+  -q
+# 1 passed for 5ad6b7d after red failure on missing blocked warning
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar \
+  -q
+# 41 passed for 5ad6b7d
+
+poetry run ruff check XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py
+poetry run basedpyright XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py
+# focused lint/type passed for 5ad6b7d
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for 5ad6b7d
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for 5ad6b7d
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 5ad6b7d; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
