@@ -486,8 +486,9 @@
   `viewport_width=510`、`horizontal_scrollbar_max=0`。後續 artifact 若 capture 到任何
   `partial_visible_rows`，human-like quality gate 會 failed。
 - 最新 eval dashboard artifact polish 已把 walkthrough 的 `20-eval-dashboard.png` 從 raw Markdown
-  pipe-table text 改成 dark product-style report。這只改善 UI-observable evidence 可讀性；routine
-  UI / prompt / verifier slice 仍走 fast dev gate，不跑 full primary/fallback x3 local eval。
+  pipe-table text 改成 dark product-style report，並把 Thesis Claim Boundary 提到第一屏。這只改善
+  UI-observable evidence 可讀性與 claim boundary visibility；routine UI / prompt / verifier slice
+  仍走 fast dev gate，不跑 full primary/fallback x3 local eval。
 - Recipe reload 現在不只重掃 source path：`ReloadInterpretationRecipeCommand` 會把 saved
   selected files、metadata overrides、label carrier choices、event roles 和 class map rehydrated
   回 candidate `choices` 後再 preview / validate。Human-like walkthrough reload command result

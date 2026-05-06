@@ -387,6 +387,28 @@ def test_render_eval_dashboard_html_converts_markdown_tables() -> None:
     assert "background: #181818" in html
 
 
+def test_render_eval_dashboard_html_surfaces_claim_boundary_first() -> None:
+    markdown = """# XBrainLab Tool-Call Eval Dashboard
+
+## Model Comparison
+
+| Runner | Cases |
+| --- | ---: |
+| deterministic | 121 |
+
+## Thesis Claim Boundary
+
+- Supports this benchmark slice.
+- Does not claim product completion.
+"""
+
+    html = render_eval_dashboard_html(markdown)
+
+    assert 'class="claim-boundary"' in html
+    assert "Does not claim product completion." in html
+    assert html.index("Claim Boundary") < html.index("Model Comparison")
+
+
 def test_apply_review_choices_updates_event_role_selector(qtbot) -> None:
     dialog = DataInterpretationPreviewDialog(
         parent=None,

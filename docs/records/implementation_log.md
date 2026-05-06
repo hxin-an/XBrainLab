@@ -48,11 +48,14 @@
 
 The consolidated human-like walkthrough now renders the tool-call eval dashboard as a dark,
 table-based product report instead of showing raw Markdown / pipe-table text. This keeps the
-UI-observable evidence itself aligned with product UI standards.
+UI-observable evidence itself aligned with product UI standards. The screenshot also surfaces the
+Thesis Claim Boundary near the top, before the 100% benchmark tables, so the artifact does not
+invite a product-complete reading.
 
 ### 已可宣稱
 
 - `20-eval-dashboard.png` is no longer a raw debug-style Markdown text dump.
+- The first screenshot viewport now states what the benchmark does and does not claim.
 - The refreshed human-like walkthrough remains passed with `26 / 26` phases and `20` screenshots.
 
 ### Evidence 入口

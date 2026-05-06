@@ -1012,9 +1012,11 @@ def capture_eval_dashboard(output_dir: Path) -> Path:
 def render_eval_dashboard_html(markdown_text: str) -> str:
     """Convert the saved eval dashboard Markdown into compact review HTML."""
     lines = markdown_text.splitlines()
+    claim_boundary = _extract_markdown_list_section(lines, "Thesis Claim Boundary")
     body: list[str] = []
     index = 0
     in_list = False
+    claim_boundary_inserted = False
     while index < len(lines):
         raw_line = lines[index]
         line = raw_line.strip()
@@ -1041,7 +1043,13 @@ def render_eval_dashboard_html(markdown_text: str) -> str:
                 in_list = False
             level = min(max(len(line) - len(line.lstrip("#")), 1), 3)
             heading = line[level:].strip()
+            if heading == "Thesis Claim Boundary" and claim_boundary:
+                index = _skip_markdown_section(lines, index)
+                continue
             body.append(f"<h{level}>{_format_inline_markdown(heading)}</h{level}>")
+            if level == 1 and claim_boundary and not claim_boundary_inserted:
+                body.append(_render_claim_boundary(claim_boundary))
+                claim_boundary_inserted = True
             index += 1
             continue
         if line.startswith("- "):
@@ -1058,6 +1066,8 @@ def render_eval_dashboard_html(markdown_text: str) -> str:
         index += 1
     if in_list:
         body.append("</ul>")
+    if claim_boundary and not claim_boundary_inserted:
+        body.insert(0, _render_claim_boundary(claim_boundary))
     return f"""
     <html>
     <head>
@@ -1119,6 +1129,24 @@ def render_eval_dashboard_html(markdown_text: str) -> str:
           padding: 1px 4px;
           border-radius: 3px;
         }}
+        .claim-boundary {{
+          background: #202020;
+          border: 1px solid #44413a;
+          border-left: 4px solid #c7a75a;
+          margin: 10px 0 18px;
+          padding: 10px 12px;
+        }}
+        .claim-boundary h2 {{
+          border-top: 0;
+          color: #f2f6fb;
+          font-size: 15px;
+          margin: 0 0 6px;
+          padding-top: 0;
+        }}
+        .claim-boundary ul {{
+          margin: 0;
+          padding-left: 18px;
+        }}
       </style>
     </head>
     <body>
@@ -1126,6 +1154,42 @@ def render_eval_dashboard_html(markdown_text: str) -> str:
     </body>
     </html>
     """
+
+
+def _render_claim_boundary(items: list[str]) -> str:
+    item_html = "".join(f"<li>{_format_inline_markdown(item)}</li>" for item in items)
+    return f'<section class="claim-boundary"><h2>Claim Boundary</h2><ul>{item_html}</ul></section>'
+
+
+def _extract_markdown_list_section(lines: list[str], heading: str) -> list[str]:
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped.startswith("#"):
+            continue
+        level = len(stripped) - len(stripped.lstrip("#"))
+        if stripped[level:].strip() != heading:
+            continue
+        items: list[str] = []
+        section_index = index + 1
+        while section_index < len(lines):
+            section_line = lines[section_index].strip()
+            if section_line.startswith("#"):
+                break
+            if section_line.startswith("- "):
+                items.append(section_line[2:].strip())
+            section_index += 1
+        return items
+    return []
+
+
+def _skip_markdown_section(lines: list[str], start_index: int) -> int:
+    index = start_index + 1
+    while index < len(lines):
+        line = lines[index].strip()
+        if line.startswith("#"):
+            return index
+        index += 1
+    return index
 
 
 def _render_markdown_table(lines: list[str], start_index: int) -> tuple[str, int]:

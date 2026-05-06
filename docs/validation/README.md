@@ -83,14 +83,15 @@ automated PyQt replay 的主要 UI 操作路徑，但仍不能
 同一 walkthrough 現在也把 process/thread resource notes 納入 pass/fail smoke：artifact
 `pass_fail_summary.resource_smoke` 會檢查 replay close 後 Python thread count 是否回落、
 Qt thread pool 是否仍 active，以及 `ru_maxrss` high-water delta 是否超過 smoke threshold。
-最新 offscreen artifact 顯示 resource smoke `passed=True`、RSS growth `231828 KB` /
+最新 offscreen artifact 顯示 resource smoke `passed=True`、RSS growth `232516 KB` /
 limit `600000 KB`、Qt active thread `0`，且 visible text 已刷新到
 `Review and confirm these choices before applying.` / `Ask about EEG workflow`。這只能抓明顯 cleanup regression，不是
 leak-proof soak test，也不能替代長時間 local model / training desktop session。
 最新 eval dashboard screenshot 也已改成 product-style HTML report：walkthrough 會把
 `artifacts/agent_evals/dashboard.md` 的 Markdown tables 轉成深色 styled tables 後截圖，避免
-UI-observable evidence 顯示 raw pipe table / debug text dump。這是 artifact presentation gate，
-不是新的 tool-call benchmark run。
+UI-observable evidence 顯示 raw pipe table / debug text dump；同時把 Thesis Claim Boundary
+提升到 screenshot 第一屏，明確標示 benchmark slice 不能代表 UI usability、Windows launcher
+coverage 或 product completion。這是 artifact presentation gate，不是新的 tool-call benchmark run。
 最新 Dataset sidebar polish 後也已刷新同一 walkthrough artifact；`Channel Selection` 改為中性
 sidebar action，不再用 success-green 表示一個尚未執行且會修改資料的操作。
 同輪 artifact 也驗證 assistant empty-state / status visible text 只顯示 Data Interpretation

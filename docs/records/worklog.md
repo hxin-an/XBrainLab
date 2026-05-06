@@ -42,6 +42,8 @@
 - scope：
   - Fix the UI-observable eval dashboard artifact after screenshot review showed
     `20-eval-dashboard.png` as a raw white Markdown / pipe-table text area.
+  - Surface the Thesis Claim Boundary above the benchmark tables so the first screenshot viewport
+    does not imply product completion from 100% scores alone.
   - Keep this as a presentation / artifact-quality slice, not a benchmark score update.
 - red / focused tests：
   - Added `test_render_eval_dashboard_html_converts_markdown_tables`.
@@ -51,6 +53,8 @@
     `artifacts/agent_evals/dashboard.md` through a compact product-style HTML renderer.
   - Markdown tables become styled dark tables; inline code is escaped and rendered as small code
     chips.
+  - `render_eval_dashboard_html()` extracts the `Thesis Claim Boundary` section and displays it
+    near the top, while skipping the duplicate lower section.
   - Refreshed `artifacts/ui/human-like-walkthrough/20-eval-dashboard.png` plus the walkthrough JSON /
     Markdown.
 - validation：
@@ -70,10 +74,10 @@
   - UI-observable replay:
     `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
     -> exit `0`; refreshed walkthrough status `passed`, `26 / 26` phases, `20` screenshots,
-    resource smoke passed with RSS growth `231828 KB` / `600000 KB`.
+    resource smoke passed with RSS growth `232516 KB` / `600000 KB`.
   - Screenshot review:
     `artifacts/ui/human-like-walkthrough/20-eval-dashboard.png` now shows dark themed model
-    comparison and metric tables instead of raw Markdown.
+    comparison and metric tables instead of raw Markdown, with Claim Boundary visible at the top.
 - local eval：
   - Not run. This is a UI artifact presentation slice under the fast dev gate. It does not justify
     full primary/fallback x3 local eval, especially under 16GB VRAM pressure.
