@@ -2,12 +2,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
+from PyQt6.QtWidgets import QWidget
 
+from XBrainLab.backend.study import Study
 from XBrainLab.ui.dialogs.training import (
     DeviceSettingDialog,
     OptimizerSettingDialog,
     TrainingSettingDialog,
 )
+
+
+class _StudyWidget(QWidget):
+    study: Study
 
 
 class TestTrainingSetting:
@@ -112,6 +118,15 @@ class TestTrainingSetting:
             qtbot.addWidget(window)
 
             # Verify fields are populated
+            assert window.epoch_entry is not None
+            assert window.bs_entry is not None
+            assert window.lr_entry is not None
+            assert window.checkpoint_entry is not None
+            assert window.repeat_entry is not None
+            assert window.output_dir_label is not None
+            assert window.opt_label is not None
+            assert window.dev_label is not None
+            assert window.evaluation_combo is not None
             assert window.epoch_entry.text() == "50"
             assert window.bs_entry.text() == "64"
             assert window.lr_entry.text() == "0.005"
@@ -126,6 +141,38 @@ class TestTrainingSetting:
             assert "0 - Test GPU" in window.dev_label.text()
 
         assert window.evaluation_combo.currentText() == "Last Epoch"
+
+    def test_real_study_without_initial_option_does_not_read_controller_defaults(
+        self,
+        qtbot,
+        monkeypatch,
+    ):
+        study = Study()
+        controller = study.get_controller("training")
+        parent = _StudyWidget()
+        parent.study = study
+        qtbot.addWidget(parent)
+        get_training_option = MagicMock(
+            side_effect=AssertionError(
+                "real Study dialog should not read stale controller defaults",
+            ),
+        )
+        monkeypatch.setattr(controller, "get_training_option", get_training_option)
+
+        with patch(
+            "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
+            return_value={"Adam": torch.optim.Adam},
+        ):
+            window = TrainingSettingDialog(parent, controller)
+            qtbot.addWidget(window)
+
+        get_training_option.assert_not_called()
+        assert window.epoch_entry is not None
+        assert window.bs_entry is not None
+        assert window.lr_entry is not None
+        assert window.epoch_entry.text() == "10"
+        assert window.bs_entry.text() == "32"
+        assert window.lr_entry.text() == "0.001"
 
 
 class TestSetOptimizer:

@@ -28,6 +28,10 @@ from XBrainLab.backend.training import (
 from XBrainLab.backend.training.utils import (
     get_optimizer_classes,
 )
+from XBrainLab.ui.application_capabilities import (
+    LegacyControllerFallbackUnavailableError,
+    run_legacy_controller_fallback,
+)
 from XBrainLab.ui.core.base_dialog import BaseDialog
 
 from .device_setting_dialog import DeviceSettingDialog
@@ -94,12 +98,18 @@ class TrainingSettingDialog(BaseDialog):
         self.load_settings()
 
     def load_settings(self):
-        """Load previously saved training settings from the controller."""
+        """Load settings from a service snapshot or explicit legacy fallback."""
         opt = self.initial_option
         if opt is None:
             if not self.controller:
                 return
-            opt = self.controller.get_training_option()
+            try:
+                opt = run_legacy_controller_fallback(
+                    self,
+                    self.controller.get_training_option,
+                )
+            except LegacyControllerFallbackUnavailableError:
+                return
         if opt:
             if isinstance(opt, dict):
                 self._load_settings_snapshot(opt)

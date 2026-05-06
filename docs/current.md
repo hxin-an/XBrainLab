@@ -995,6 +995,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   最新 Training settings cleanup 又把設定 dialog 預設值改成先讀
   `QueryStateCommand(query="state")` 的 `state.training.training_option` snapshot；dialog
   `controller.get_training_option()` 只保留給 query unavailable 的 mock / legacy path。
+  最新 dialog-level hardening 又讓 `TrainingSettingDialog.load_settings()` 本身受
+  `run_legacy_controller_fallback()` 約束；real `Study` 若沒有 service-backed `initial_option`，
+  會保留安全預設，不回讀 stale controller defaults。
   最新 Training history cleanup 新增 `QueryStateCommand(query="training_history",
   include_objects=True)`；real `Study` `TrainingPanel.update_loop()` 會用 service-backed
   history rows 更新 table / plot selection，不再從 injected `TrainingController.get_formatted_history()`

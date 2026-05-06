@@ -13699,3 +13699,45 @@
 - 不能宣稱：
   - This does not prove human Windows desktop acceptance, mature import-wizard UX, or long local
     model desktop sessions.
+
+### 2026-05-06 Training settings dialog fallback boundary
+
+- scope：
+  - Close a dialog-level stale controller read gap: `TrainingSettingDialog.load_settings()` could
+    read `TrainingController.get_training_option()` if a real `Study` dialog was created without
+    the service-backed `initial_option` that the Training sidebar normally supplies.
+  - Preserve mock / legacy dialog behavior through the explicit fallback gate.
+- red / focused tests：
+  - Added `test_real_study_without_initial_option_does_not_read_controller_defaults`.
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/training/test_training_setting.py::TestTrainingSetting::test_real_study_without_initial_option_does_not_read_controller_defaults -q`
+    -> failed as expected because the dialog read the controller default.
+- 做了什麼：
+  - `TrainingSettingDialog.load_settings()` now wraps controller default reads in
+    `run_legacy_controller_fallback()`.
+  - Real `Study` contexts without a service snapshot keep safe defaults; mock / legacy dialogs can
+    still load controller defaults.
+- validation：
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/training/test_training_setting.py::TestTrainingSetting::test_real_study_without_initial_option_does_not_read_controller_defaults -q`
+    -> `1 passed`.
+  - Training settings regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/training/test_training_setting.py tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_training_setting_uses_state_snapshot_defaults_before_stale_controller tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_training_setting_accepted -q`
+    -> `12 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/dialogs/training/training_setting_dialog.py tests/unit/ui/training/test_training_setting.py`
+    -> `All checks passed!`;
+    `poetry run basedpyright XBrainLab/ui/dialogs/training/training_setting_dialog.py tests/unit/ui/training/test_training_setting.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Quality gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is a UI fallback-boundary slice under the fast dev gate. It does not update
+    tool-call benchmark claims.
+- 不能宣稱：
+  - This guards one dialog default-read path. It does not complete all UI controller fallback
+    cleanup or human desktop acceptance.

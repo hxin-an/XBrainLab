@@ -5436,3 +5436,28 @@ visible text, alongside raw tool syntax, schema, traceback, and selected command
 
 - This is automated visible-text leakage evidence. It does not replace human Windows launcher /
   dual-monitor / DPI review, or mature import-wizard product acceptance.
+
+## 2026-05-06 Training Settings Dialog Fallback Boundary
+
+### 狀態
+
+`TrainingSettingDialog.load_settings()` now uses the explicit legacy fallback gate before reading
+controller defaults.
+
+### 已可宣稱
+
+- Real `Study` dialogs created without a service-backed `initial_option` keep safe defaults instead
+  of reading stale `TrainingController.get_training_option()`.
+- Mock / legacy dialogs can still load controller defaults through `run_legacy_controller_fallback()`.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/dialogs/training/training_setting_dialog.py`
+- Tests：`tests/unit/ui/training/test_training_setting.py`,
+  `tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This closes one dialog default-read gap. It does not complete the UI Command Refresh Coordinator
+  + Controller Fallback Audit.

@@ -184,6 +184,13 @@ explicit service-backed epoch/generator context instead of reading stale Trainin
 Mock / legacy dialog fallback remains. This does not redesign the split UX or prove long-running
 dataset-generation behavior.
 
+Training settings dialog fallback gate:
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/training/test_training_setting.py tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_training_setting_uses_state_snapshot_defaults_before_stale_controller tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_training_setting_accepted -q`
+-> `12 passed`。This supports the boundary that `TrainingSettingDialog.load_settings()` will not
+read `TrainingController.get_training_option()` in a real `Study` context when no service-backed
+`initial_option` is supplied. It falls back to controller defaults only through explicit mock /
+legacy fallback, and does not complete the broader UI controller-fallback audit.
+
 Visualization 3D widget cleanup gate:
 `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization.py::TestSaliency3DPlotWidget::test_clear_plot_schedules_child_widgets_for_deletion tests/unit/ui/test_visualization.py::TestSaliency3DPlotWidget::test_clear_plot tests/unit/ui/test_visualization.py::TestSaliency3DPlotWidget::test_update_plot_blocks_offscreen_before_qtinteractor -q`
 -> `3 passed`；
