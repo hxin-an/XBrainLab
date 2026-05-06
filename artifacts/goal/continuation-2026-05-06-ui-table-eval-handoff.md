@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+37c8e5c test: guard named controller mutations
+4ac0e57 docs: refresh handoff after chinese label gate
 c54a06f eval: clarify chinese label missing input
 31ad65f docs: refresh handoff after observer guard
 accf290 test: require observer handlers to coordinate refresh
@@ -189,6 +191,17 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Named controller mutation architecture guard:
+  - `tests/architecture_compliance.py` now treats local variables ending in `_controller` and
+    `self.<name>_controller` attributes as controller receivers.
+  - Direct product UI calls such as `self.preprocess_controller.apply_montage(...)` now fail the
+    static mutation guard unless they are inside `run_legacy_controller_fallback()` or another
+    explicit legacy / fallback helper.
+  - The current `XBrainLab/ui` source passes the stricter guard.
+  - Validation covered the red focused architecture test, all architecture compliance unit tests,
+    full architecture compliance, full ruff, full basedpyright, `git diff --check`, and
+    `mkdocs build --strict`.
+  - No local LLM eval was run; this was an architecture guard slice under the fast dev gate.
 - Chinese label-action missing-input fast gate:
   - Added deterministic eval case `zh-label-action-missing-input` for `幫我貼標籤`.
   - `infer_user_intent("幫我貼標籤")` now returns `ask_clarification`, after no-tool explanatory
@@ -2775,6 +2788,17 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for c54a06f; mkdocs still prints the existing Material advisory
+
+poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_direct_controller_mutation_guard_flags_named_controller_attribute -q
+# red first, then 1 passed for 37c8e5c
+poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q
+# 40 passed for 37c8e5c
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 37c8e5c; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard and changed-case eval
