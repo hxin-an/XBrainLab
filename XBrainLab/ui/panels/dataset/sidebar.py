@@ -1,5 +1,6 @@
 """Sidebar widget for the dataset panel: info, operations, and controls."""
 
+from collections.abc import Callable
 from typing import Any
 
 from PyQt6.QtCore import Qt
@@ -172,6 +173,34 @@ class DatasetSidebar(QWidget):
 
         layout.addStretch()
 
+    def _legacy_controller_value(
+        self,
+        fallback: Callable[[], Any],
+        *,
+        blocked_title: str | None = None,
+    ) -> tuple[bool, Any]:
+        """Read legacy controller state only for mock / legacy UI contexts."""
+        try:
+            return True, run_legacy_controller_fallback(self, fallback)
+        except LegacyControllerFallbackUnavailableError as exc:
+            if blocked_title is not None:
+                QMessageBox.warning(self, blocked_title, str(exc))
+            return False, None
+
+    def _legacy_sidebar_state(self) -> tuple[bool, bool, bool]:
+        """Return legacy lock/data state when no command capability is available."""
+        available, is_locked = self._legacy_controller_value(
+            lambda: bool(self.controller.is_locked()),
+        )
+        if not available:
+            return False, False, False
+        available, has_data = self._legacy_controller_value(
+            lambda: bool(self.controller.has_data()),
+        )
+        if not available:
+            return False, bool(is_locked), False
+        return True, bool(is_locked), bool(has_data)
+
     def update_sidebar(self):
         """Update info panel and button states."""
         if self.controller:
@@ -183,6 +212,37 @@ class DatasetSidebar(QWidget):
                 self,
                 CommandName.RELOAD_INTERPRETATION_RECIPE,
             )
+            preprocess_capability = get_command_capability(
+                self,
+                CommandName.PREPROCESS,
+            )
+            smart_parse_capability = get_command_capability(
+                self,
+                CommandName.APPLY_SMART_PARSE,
+            )
+            import_label_capability = get_command_capability(
+                self,
+                CommandName.IMPORT_LABELS,
+            )
+            legacy_state_available = True
+            legacy_is_locked = False
+            legacy_has_data = False
+            if any(
+                capability is None
+                for capability in (
+                    scan_capability,
+                    reload_capability,
+                    preprocess_capability,
+                    smart_parse_capability,
+                    import_label_capability,
+                )
+            ):
+                (
+                    legacy_state_available,
+                    legacy_is_locked,
+                    legacy_has_data,
+                ) = self._legacy_sidebar_state()
+
             if scan_capability is not None:
                 self.import_btn.setEnabled(scan_capability.enabled)
                 self.import_folder_btn.setEnabled(scan_capability.enabled)
@@ -200,7 +260,18 @@ class DatasetSidebar(QWidget):
                     if scan_capability.enabled
                     else source_tooltip,
                 )
-            elif scan_capability is None and self.controller.is_locked():
+            elif not legacy_state_available:
+                self.import_btn.setEnabled(False)
+                self.import_folder_btn.setEnabled(False)
+                self.import_btn.setToolTip(
+                    "Data interpretation availability is unavailable right now.",
+                )
+                self.import_folder_btn.setToolTip(
+                    "Data interpretation availability is unavailable right now.",
+                )
+            elif legacy_is_locked:
+                self.import_btn.setEnabled(True)
+                self.import_folder_btn.setEnabled(True)
                 self.import_btn.setToolTip(
                     "Dataset is locked. Reset before interpreting a new source.",
                 )
@@ -208,6 +279,8 @@ class DatasetSidebar(QWidget):
                     "Dataset is locked. Reset before interpreting a folder.",
                 )
             else:
+                self.import_btn.setEnabled(True)
+                self.import_folder_btn.setEnabled(True)
                 self.import_btn.setToolTip(
                     "Scan, preview, validate, and apply EEG data",
                 )
@@ -225,19 +298,22 @@ class DatasetSidebar(QWidget):
                         "Recipe reload is not available right now.",
                     ),
                 )
-            elif reload_capability is None and self.controller.is_locked():
+            elif not legacy_state_available:
+                self.reload_recipe_btn.setEnabled(False)
+                self.reload_recipe_btn.setToolTip(
+                    "Recipe reload availability is unavailable right now.",
+                )
+            elif legacy_is_locked:
+                self.reload_recipe_btn.setEnabled(True)
                 self.reload_recipe_btn.setToolTip(
                     "Dataset is locked. Reset before reloading a recipe.",
                 )
             else:
+                self.reload_recipe_btn.setEnabled(True)
                 self.reload_recipe_btn.setToolTip(
                     "Review a saved import recipe before applying it",
                 )
 
-            preprocess_capability = get_command_capability(
-                self,
-                CommandName.PREPROCESS,
-            )
             if preprocess_capability is not None:
                 self.chan_select_btn.setEnabled(preprocess_capability.enabled)
                 self.chan_select_btn.setToolTip(
@@ -248,17 +324,20 @@ class DatasetSidebar(QWidget):
                         "Load raw data before selecting channels.",
                     ),
                 )
-            elif preprocess_capability is None and self.controller.is_locked():
+            elif not legacy_state_available:
+                self.chan_select_btn.setEnabled(False)
+                self.chan_select_btn.setToolTip(
+                    "Channel selection availability is unavailable right now.",
+                )
+            elif legacy_is_locked:
+                self.chan_select_btn.setEnabled(True)
                 self.chan_select_btn.setToolTip(
                     "Dataset is locked. Click to see details.",
                 )
             else:
+                self.chan_select_btn.setEnabled(True)
                 self.chan_select_btn.setToolTip("Select specific channels to keep")
 
-            smart_parse_capability = get_command_capability(
-                self,
-                CommandName.APPLY_SMART_PARSE,
-            )
             if smart_parse_capability is not None:
                 self.smart_parse_btn.setEnabled(smart_parse_capability.enabled)
                 self.smart_parse_btn.setToolTip(
@@ -269,19 +348,22 @@ class DatasetSidebar(QWidget):
                         "Load raw data before applying smart parse.",
                     ),
                 )
-            elif smart_parse_capability is None and self.controller.is_locked():
+            elif not legacy_state_available:
+                self.smart_parse_btn.setEnabled(False)
+                self.smart_parse_btn.setToolTip(
+                    "Smart parse availability is unavailable right now.",
+                )
+            elif legacy_is_locked:
+                self.smart_parse_btn.setEnabled(True)
                 self.smart_parse_btn.setToolTip(
                     "Dataset is locked. Click to see details.",
                 )
             else:
+                self.smart_parse_btn.setEnabled(True)
                 self.smart_parse_btn.setToolTip(
                     "Auto-extract Subject/Session from filenames",
                 )
 
-            import_label_capability = get_command_capability(
-                self,
-                CommandName.IMPORT_LABELS,
-            )
             if import_label_capability is not None:
                 self.import_label_btn.setEnabled(import_label_capability.enabled)
                 self.import_label_btn.setToolTip(
@@ -292,14 +374,17 @@ class DatasetSidebar(QWidget):
                         "Interpret a data source before adding labels.",
                     ),
                 )
-            elif import_label_capability is None and self.controller.is_locked():
+            elif not legacy_state_available:
+                self.import_label_btn.setEnabled(False)
+                self.import_label_btn.setToolTip(
+                    "Label import availability is unavailable right now.",
+                )
+            elif legacy_is_locked:
                 self.import_label_btn.setEnabled(False)
                 self.import_label_btn.setToolTip(
                     "Dataset is locked. Reset before changing labels.",
                 )
-            elif import_label_capability is None and not bool(
-                self.controller.has_data()
-            ):
+            elif not legacy_has_data:
                 self.import_label_btn.setEnabled(False)
                 self.import_label_btn.setToolTip(
                     "Interpret a data source before adding labels.",
@@ -394,20 +479,33 @@ class DatasetSidebar(QWidget):
             )
             return
 
-        if preprocess_capability is None and not self.controller.has_data():
-            QMessageBox.warning(self, "Warning", "No data loaded.")
-            return
-
-        if preprocess_capability is None and self.controller.is_locked():
-            QMessageBox.warning(
-                self,
-                "Action Blocked",
-                "Dataset is locked because Channel Selection (or other operations) has "
-                "been applied.\n"
-                "Please 'Reset All Preprocessing' to undo Channel Selection or "
-                "'Clear Dataset' to start over.",
+        if preprocess_capability is None:
+            available, has_data = self._legacy_controller_value(
+                lambda: bool(self.controller.has_data()),
+                blocked_title="Channel Selection Blocked",
             )
-            return
+            if not available:
+                return
+            if not has_data:
+                QMessageBox.warning(self, "Warning", "No data loaded.")
+                return
+
+            available, is_locked = self._legacy_controller_value(
+                lambda: bool(self.controller.is_locked()),
+                blocked_title="Channel Selection Blocked",
+            )
+            if not available:
+                return
+            if is_locked:
+                QMessageBox.warning(
+                    self,
+                    "Action Blocked",
+                    "Dataset is locked because a data operation has "
+                    "been applied.\n"
+                    "Please 'Reset All Preprocessing' to undo Channel Selection or "
+                    "'Clear Dataset' to start over.",
+                )
+                return
 
         reply = QMessageBox.question(
             self,

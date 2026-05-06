@@ -294,7 +294,10 @@
   truth。
 - 最新 Dataset sidebar render cleanup 也把 `is_locked()` / `has_data()` 納入同一 guard：
   有 backend capability 時，button state / tooltip 不再先讀 stale controller lock/data state；
-  legacy lock/data reads 只留在 explicit no-capability branch。
+  legacy lock/data reads 只留在 explicit no-capability branch。最新 follow-up 又讓
+  no-capability branch 也走 `run_legacy_controller_fallback()`：real `Study` 若 capability lookup
+  unexpectedly unavailable，button state 顯示 unavailable / blocked，不再回讀 stale
+  `DatasetController.is_locked()` / `has_data()`。
 - 最新 Preprocess sidebar render cleanup 也把 `update_sidebar()` 的 epoched/lock state 收回
   backend capability surface：有 `preprocess` / `create_epoch` capability 時不再讀 stale
   `PreprocessController.get_preprocessed_data_list()`；該 controller read 只留在 no-capability

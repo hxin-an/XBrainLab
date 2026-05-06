@@ -5116,3 +5116,30 @@ fallback helper.
 
 - This is one fallback-audit slice. It does not finish the broader UI command refresh coordinator,
   remove all observer/manual refresh, or complete Windows human desktop acceptance.
+
+## 2026-05-06 Dataset Sidebar No-Capability State Guard
+
+### 狀態
+
+`DatasetSidebar` no-capability button rendering and channel-selection preflight now use the explicit
+mock / legacy-only fallback helper.
+
+### 已可宣稱
+
+- Real `Study` Dataset sidebar paths no longer read stale `DatasetController.is_locked()` /
+  `has_data()` when command capabilities are unexpectedly unavailable.
+- Source / recipe / channel / smart-parse / label buttons show unavailable state, and Channel
+  Selection shows a user-facing blocked warning, instead of treating stale controller state as
+  product truth.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/sidebar.py`
+- Tests：`tests/unit/ui/dataset/test_dataset_sidebar.py`,
+  `tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is another fallback-audit slice. It does not complete all UI refresh coordination or human
+  desktop acceptance.

@@ -13112,3 +13112,54 @@
 - 不能宣稱：
   - This does not finish the wider controller fallback audit, command-driven UI refresh
     coordinator, Windows launcher acceptance, or long local-model ChatPanel verification.
+
+### 2026-05-06 Dataset sidebar no-capability lock/data fallback guard
+
+- scope：
+  - Close the Dataset sidebar fallback-audit gap where explicit no-capability branches still read
+    `DatasetController.is_locked()` / `has_data()` directly for button state or Channel Selection
+    action preflight.
+- red / focused tests：
+  - Added real-`Study` tests that make stale lock/data controller reads raise when
+    `get_command_capability()` unexpectedly returns `None`.
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_dataset_sidebar.py::test_update_sidebar_refuses_real_study_no_capability_lock_data_fallback tests/unit/ui/dataset/test_dataset_sidebar.py::test_open_channel_selection_refuses_real_study_preflight_fallback -q`
+    -> failed as expected because `update_sidebar()` directly read `is_locked()` and
+    `open_channel_selection()` directly read `has_data()`.
+- 做了什麼：
+  - Added Dataset sidebar `_legacy_controller_value()` / `_legacy_sidebar_state()` helpers.
+  - No-capability button rendering now disables source / recipe / channel / smart-parse / label
+    actions with unavailable text in real `Study`, while mock / legacy contexts keep existing
+    controller compatibility behavior.
+  - Channel Selection no-capability preflight now shows `Channel Selection Blocked` in real
+    `Study` instead of reading stale loaded-data / lock state.
+- validation：
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_dataset_sidebar.py::test_update_sidebar_refuses_real_study_no_capability_lock_data_fallback tests/unit/ui/dataset/test_dataset_sidebar.py::test_open_channel_selection_refuses_real_study_preflight_fallback -q`
+    -> `2 passed`.
+  - Dataset sidebar regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar -q`
+    -> `24 passed`.
+  - Focused lint/type/architecture:
+    `poetry run ruff check XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - Fast gate:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar -q`
+    -> `24 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a UI fallback audit slice under the fast dev gate; no tool-call benchmark
+    claim changed.
+- 不能宣稱：
+  - This does not finish the wider controller fallback audit, command-driven UI refresh
+    coordinator, Windows launcher acceptance, or long local-model ChatPanel verification.

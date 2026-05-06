@@ -1,7 +1,7 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QPushButton, QWidget
+from PyQt6.QtWidgets import QMessageBox, QPushButton, QWidget
 
 from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
 from XBrainLab.ui.styles.stylesheets import Stylesheets
@@ -115,6 +115,90 @@ def test_update_sidebar_refuses_real_study_clear_availability_fallback(qtbot):
     panel_mock.controller.has_data.assert_not_called()
     assert widget.clear_btn.isEnabled() is False
     assert "state is unavailable" in widget.clear_btn.toolTip()
+
+
+def test_update_sidebar_refuses_real_study_no_capability_lock_data_fallback(qtbot):
+    from types import SimpleNamespace
+
+    from XBrainLab.backend.application import QueryStateCommand
+    from XBrainLab.backend.study import Study
+
+    panel_mock = MagicMock()
+    panel_mock.action_handler = MagicMock()
+    panel_mock.controller = MagicMock()
+    panel_mock.controller.is_locked.side_effect = AssertionError(
+        "stale lock state should not be read",
+    )
+    panel_mock.controller.has_data.side_effect = AssertionError(
+        "stale loaded-data state should not be read",
+    )
+    panel_mock.main_window = QWidget()
+    panel_mock.main_window.study = Study()
+
+    widget = DatasetSidebar(panel_mock, parent=None)
+    qtbot.addWidget(widget)
+
+    def execute_for(_, command, refresh=True):
+        if isinstance(command, QueryStateCommand):
+            return SimpleNamespace(failed=False, diagnostics={"state": {}})
+        return None
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            "XBrainLab.ui.panels.dataset.sidebar.get_command_capability",
+            lambda *_: None,
+        )
+        monkeypatch.setattr(
+            "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
+            execute_for,
+        )
+        widget.update_sidebar()
+
+    panel_mock.controller.is_locked.assert_not_called()
+    panel_mock.controller.has_data.assert_not_called()
+    assert widget.import_btn.isEnabled() is False
+    assert "unavailable" in widget.import_btn.toolTip()
+    assert widget.import_label_btn.isEnabled() is False
+    assert "unavailable" in widget.import_label_btn.toolTip()
+
+
+def test_open_channel_selection_refuses_real_study_preflight_fallback(qtbot):
+    from XBrainLab.backend.study import Study
+
+    panel_mock = MagicMock()
+    panel_mock.action_handler = MagicMock()
+    panel_mock.controller = MagicMock()
+    panel_mock.controller.has_data.side_effect = AssertionError(
+        "stale loaded-data state should not be read",
+    )
+    panel_mock.controller.is_locked.side_effect = AssertionError(
+        "stale lock state should not be read",
+    )
+    panel_mock.main_window = QWidget()
+    panel_mock.main_window.study = Study()
+
+    widget = DatasetSidebar(panel_mock, parent=None)
+    qtbot.addWidget(widget)
+
+    warning_calls = []
+    with (
+        patch(
+            "XBrainLab.ui.panels.dataset.sidebar.get_command_capability",
+            return_value=None,
+        ),
+        patch.object(
+            QMessageBox,
+            "warning",
+            side_effect=lambda *args: warning_calls.append(args),
+        ),
+    ):
+        widget.open_channel_selection()
+
+    panel_mock.controller.has_data.assert_not_called()
+    panel_mock.controller.is_locked.assert_not_called()
+    assert len(warning_calls) == 1
+    assert warning_calls[0][1] == "Channel Selection Blocked"
+    assert "could not safely complete" in warning_calls[0][2]
 
 
 def test_button_connections(sidebar):

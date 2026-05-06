@@ -1032,7 +1032,11 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   必須走 `run_legacy_controller_fallback()`，不能裸讀 stale controller data。
   最新 Dataset sidebar render cleanup 又把 `is_locked()` / `has_data()` 納入 guard：real
   `Study` button state 和 tooltip 有 backend capability 時不再先讀 stale controller lock/data
-  state；controller lock/data reads 只保留在 explicit no-capability legacy branch。
+  state；controller lock/data reads 只保留在 explicit no-capability legacy branch。最新
+  no-capability follow-up 又把這些 legacy render / Channel Selection preflight reads 包進
+  `run_legacy_controller_fallback()`；real `Study` 若 capability lookup unexpectedly unavailable，
+  source / recipe / channel / smart-parse / label buttons 會 disabled 或顯示 unavailable/blocked
+  文案，不再回讀 stale `DatasetController.is_locked()` / `has_data()`。
   最新 Preprocess sidebar render cleanup 也把 `update_sidebar()` 的 epoched/lock render state
   收回 backend capability surface：real `Study` 有 `preprocess` / `create_epoch` capability 時不再讀
   stale `PreprocessController.get_preprocessed_data_list()`；該 controller read 只保留給
