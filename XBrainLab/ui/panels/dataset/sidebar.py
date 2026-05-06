@@ -462,7 +462,14 @@ class DatasetSidebar(QWidget):
                 ResetSessionCommand(confirmed=True),
             )
             if result is None:
-                run_legacy_controller_fallback(self, self.controller.clean_dataset)
+                try:
+                    run_legacy_controller_fallback(
+                        self,
+                        self.controller.clean_dataset,
+                    )
+                except LegacyControllerFallbackUnavailableError as exc:
+                    QMessageBox.warning(self, "Clear Dataset Blocked", str(exc))
+                    return
             elif result.failed:
                 QMessageBox.critical(
                     self,

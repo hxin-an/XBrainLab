@@ -1729,6 +1729,44 @@ class TestDatasetSidebar:
         panel.controller.clean_dataset.assert_not_called()
         panel.update_panel.assert_not_called()
 
+    def test_clear_dataset_refuses_real_study_controller_fallback(self, sidebar):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.application.capabilities import CommandCapability
+        from XBrainLab.backend.study import Study
+
+        sidebar.panel.main_window.study = Study()
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.sidebar.get_command_capability",
+                return_value=CommandCapability(
+                    command_name="reset_session",
+                    enabled=True,
+                    destructive=True,
+                    confirmation_required=True,
+                ),
+            ),
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
+                return_value=None,
+            ),
+            patch.object(QMessageBox, "warning") as mock_warning,
+            patch.object(QMessageBox, "critical") as mock_critical,
+        ):
+            sidebar.clear_dataset()
+
+        sidebar.panel.controller.clean_dataset.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Clear Dataset Blocked"
+        mock_critical.assert_not_called()
+        assert "could not safely complete" in mock_warning.call_args.args[2]
+
 
 # ============ CardWidget & PlaceholderWidget ============
 

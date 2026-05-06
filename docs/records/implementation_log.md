@@ -42,6 +42,35 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Dataset Clear Fallback Warning Boundary
+
+### 狀態
+
+`DatasetSidebar.clear_dataset()` now converts real `Study` legacy fallback refusal into a
+user-facing blocked warning. If `ResetSessionCommand` unexpectedly cannot dispatch in a real
+product context, the UI shows `Clear Dataset Blocked` instead of a generic clear-dataset failure.
+
+### 已可宣稱
+
+- Real `Study` clear-dataset fallback refusal is visible as product language instead of a generic
+  critical error wrapper.
+- Mock / legacy clear fallback behavior remains available through the explicit fallback helper.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/dataset/sidebar.py`
+- Tests: `tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not audit every DatasetSidebar mutating fallback or complete desktop reset/new-session
+  acceptance.
+
+### 下一手重點
+
+Continue converting remaining real `Study` fallback refusals into blocked user-facing states.
+
 ## 2026-05-06 Preprocess Reset Fallback Warning Boundary
 
 ### 狀態
