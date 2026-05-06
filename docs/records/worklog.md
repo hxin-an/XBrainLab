@@ -37,6 +37,62 @@
 
 ## 2026-05-06
 
+### 12:12 Deterministic tool-call eval CLI gate
+
+- scope：
+  - Align the deterministic CLI with the user's layered eval policy.
+  - Local eval already blocks full primary/fallback x3 without release/thesis gate and resource
+    preflight, but the deterministic CLI still defaulted to full-suite repeat `2`.
+  - Preserve the Python scorer API for tests while preventing routine CLI usage from refreshing the
+    formal dashboard by accident.
+- red / focused tests：
+  - Added `tests/unit/scripts/test_run_tool_call_eval.py`.
+  - The new tests cover case-id filtering, default fast full-suite refusal, fast case subset allow,
+    release-gate full-suite preflight, and empty selection refusal.
+- 做了什麼：
+  - `run_eval()` now accepts optional `case_ids`, `case_families`, and `case_limit` filters while
+    keeping the existing full-suite direct API behavior.
+  - CLI default is now `--eval-gate fast --repeat-count 1`.
+  - Fast/candidate CLI runs must select a subset via `--case-id`, `--case-family`, or
+    `--case-limit`; full-suite deterministic dashboard refresh requires `--eval-gate release` or
+    `--eval-gate thesis`.
+  - Blocked CLI attempts write `deterministic_gate.json` / `.md` and exit `2`.
+  - Updated current / planning / validation docs to record the deterministic CLI gate boundary.
+- validation：
+  - Focused unit:
+    `poetry run pytest --capture=sys tests/unit/scripts/test_run_tool_call_eval.py -q`
+    -> `5 passed`.
+  - Focused lint/type:
+    `poetry run ruff check scripts/agent/evals/run_tool_call_eval.py tests/unit/scripts/test_run_tool_call_eval.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright scripts/agent/evals/run_tool_call_eval.py tests/unit/scripts/test_run_tool_call_eval.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - CLI smoke:
+    `poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir /tmp/xbrainlab_det_gate_full`
+    -> exit `2`, wrote `/tmp/xbrainlab_det_gate_full/deterministic_gate.json` / `.md` and did not
+    refresh `latest.json`.
+    `poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir /tmp/xbrainlab_det_gate_case --case-id empty-load-path`
+    -> exit `0`, wrote `/tmp/xbrainlab_det_gate_case/latest.json` / `.md` for one
+    Data Interpretation case.
+  - Fast gate:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+    `poetry run pytest --capture=sys tests/unit/scripts/test_run_tool_call_eval.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `6 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `7 passed`.
+- local eval：
+  - Not run. This is a deterministic CLI gate / runner safety change. It does not update any local
+    LLM benchmark claim.
+- 不能宣稱：
+  - This does not refresh formal deterministic / primary / fallback artifacts, and it does not
+    replace product UI or ChatPanel validation.
+
 ### 10:58 MainWindow aggregate info observer deduplication
 
 - scope：

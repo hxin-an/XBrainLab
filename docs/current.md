@@ -1203,7 +1203,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
    import wizard 產品完成 claim。日常 tool-call 修正不可預設 full primary / fallback x3；
    validation gate 分成 deterministic changed-case fast gate、primary subset candidate gate，以及
    release / thesis full local gate。full fallback x3 需要先做 VRAM / disk / cache preflight，並把
-   latency / resource pressure 寫進 artifact；local eval CLI 現在要求 full-suite repeat `3`
+   latency / resource pressure 寫進 artifact；deterministic CLI 現在也要求預設 fast gate 必須指定
+   `--case-id` / `--case-family` / `--case-limit` subset，full-suite deterministic dashboard refresh
+   必須顯式帶 `--eval-gate release` 或 `--eval-gate thesis`；local eval CLI 現在要求 full-suite repeat `3`
    local run 顯式帶 `--eval-gate release` 或 `--eval-gate thesis`，且會在 VRAM high pressure 時
    先產生 `resource_preflight.*` 並停止，平常請用 deterministic / changed cases / primary
    subset gate。

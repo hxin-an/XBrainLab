@@ -53,6 +53,13 @@ fallback x3 is a release / thesis evidence gate only. If `nvidia-smi` shows VRAM
 do not start a full fallback x3 run; record the resource state and use the fast dev or candidate
 gate until a formal benchmark claim is being refreshed.
 
+`scripts/agent/evals/run_tool_call_eval.py` now enforces the same gate language for command-line
+deterministic runs. The default CLI gate is `fast` with repeat `1`; it requires `--case-id`,
+`--case-family`, or `--case-limit` and writes `deterministic_gate.json` / `.md` instead of
+refreshing `latest.json` when invoked as a full-suite fast run. Full-suite deterministic dashboard
+refreshes must pass `--eval-gate release` or `--eval-gate thesis`. The Python `run_eval()` API
+remains available for tests and focused scorer checks.
+
 2026-05-06 explicit local eval gate guard:
 
 - `run_local_tool_call_eval.py` now blocks full-suite repeat `3` local eval on the default

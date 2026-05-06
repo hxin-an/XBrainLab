@@ -42,6 +42,36 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Deterministic Tool-Call Eval Gate
+
+### 狀態
+
+`scripts/agent/evals/run_tool_call_eval.py` now has the same validation-gate language as the local
+LLM runner. The command-line default is a fast gate, not a full-suite dashboard refresh.
+
+### 已可宣稱
+
+- Routine deterministic CLI runs must select a subset with `--case-id`, `--case-family`, or
+  `--case-limit`, and use repeat `1`.
+- Full-suite deterministic dashboard refreshes now require explicit `--eval-gate release` or
+  `--eval-gate thesis`.
+- Blocked fast full-suite attempts write `deterministic_gate.json` / `.md` instead of refreshing
+  `latest.json`.
+- The Python `run_eval()` API remains available for integration tests and scorer validation.
+
+### Evidence 入口
+
+- Source：`scripts/agent/evals/run_tool_call_eval.py`
+- Tests：`tests/unit/scripts/test_run_tool_call_eval.py`
+- Validation docs：`docs/validation/README.md`,
+  `docs/validation/thesis_protocol.md`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is an eval-runner guard. It does not refresh formal deterministic / primary / fallback
+  benchmark scores and does not prove product UI acceptance.
+
 ## 2026-05-06 MainWindow Aggregate Info Observer Deduplication
 
 ### 狀態

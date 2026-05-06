@@ -563,7 +563,9 @@
   full local gate 前必須記錄 disk / cache / VRAM preflight；本輪 fallback rerun 的 resource pressure
   已保存到 `artifacts/agent_evals/local-eval-resource-pressure-2026-05-05.*`。local eval CLI 現在
   要求 full-suite repeat `3` local run 顯式帶 `--eval-gate release` 或 `--eval-gate thesis`；
-  預設 candidate gate 會先寫 `resource_preflight.*` 並拒絕啟動模型。
+  預設 candidate gate 會先寫 `resource_preflight.*` 並拒絕啟動模型。deterministic CLI 也已
+  分層：預設 fast gate 只允許 `--case-id` / `--case-family` / `--case-limit` subset 和 repeat
+  `1`；full-suite dashboard refresh 必須顯式帶 `--eval-gate release` 或 `--eval-gate thesis`。
 - MCP stdio external-client walkthrough 已新增：
   - `scripts/dev/capture_mcp_stdio_walkthrough.py` 是只依賴 Python standard library 的 client。
   - client 會啟動 prepared XBrainLab runtime 內的 `scripts/dev/run_mcp_server.py`，並保存

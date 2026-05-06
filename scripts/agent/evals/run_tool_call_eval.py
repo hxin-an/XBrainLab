@@ -50,6 +50,8 @@ METHOD_REFERENCES = [
     },
 ]
 
+DETERMINISTIC_RELEASE_GATES = {"release", "thesis"}
+
 
 @dataclass(frozen=True)
 class ExpectedToolCall:
@@ -1579,9 +1581,21 @@ def build_eval_cases() -> list[EvalCase]:
     ]
 
 
-def run_eval(repeat_count: int = 2) -> dict[str, Any]:
+def run_eval(
+    repeat_count: int = 2,
+    *,
+    case_ids: list[str] | None = None,
+    case_families: list[str] | None = None,
+    case_limit: int | None = None,
+) -> dict[str, Any]:
     """Run deterministic eval and return JSON-friendly results."""
-    cases = build_eval_cases()
+    all_cases = build_eval_cases()
+    cases = select_eval_cases(
+        all_cases,
+        case_ids=case_ids,
+        case_families=case_families,
+        case_limit=case_limit,
+    )
     scores = []
     for case in cases:
         predictions = [predict_case(case) for _ in range(repeat_count)]
@@ -1589,17 +1603,159 @@ def run_eval(repeat_count: int = 2) -> dict[str, Any]:
         scores.append(score)
 
     summary = summarize_scores(scores)
+    selected_families = sorted(
+        {family for case in cases for family in case_families_for(case)}
+    )
     return {
         "benchmark": "xbrainlab-deterministic-tool-call",
         "runner": "deterministic-scripted-baseline",
         "method_references": METHOD_REFERENCES,
         "case_source_path": str(Path(__file__)),
         "fixture_source_paths": [str(Path(__file__))],
+        "repeat_count": repeat_count,
         "total_cases": len(cases),
+        "total_suite_cases": len(all_cases),
+        "selected_case_ids": [case.case_id for case in cases],
+        "selected_case_families": selected_families,
+        "exploratory": len(cases) < len(all_cases) or repeat_count < 2,
         "summary": summary,
         "failure_taxonomy": summary["failure_taxonomy"],
         "cases": [asdict(score) for score in scores],
     }
+
+
+def select_eval_cases(
+    cases: list[EvalCase],
+    *,
+    case_ids: list[str] | None = None,
+    case_families: list[str] | None = None,
+    case_limit: int | None = None,
+) -> list[EvalCase]:
+    """Select a deterministic eval subset by case id, family, and limit."""
+    selected = list(cases)
+    if case_ids:
+        requested = set(case_ids)
+        selected = [case for case in selected if case.case_id in requested]
+        missing = requested - {case.case_id for case in selected}
+        if missing:
+            raise ValueError(f"Unknown case id(s): {', '.join(sorted(missing))}")
+    if case_families:
+        requested_families = set(case_families)
+        all_families = {family for case in cases for family in case_families_for(case)}
+        missing_families = requested_families - all_families
+        if missing_families:
+            raise ValueError(
+                f"Unknown case family/families: {', '.join(sorted(missing_families))}"
+            )
+        selected = [
+            case
+            for case in selected
+            if requested_families.intersection(case_families_for(case))
+        ]
+    if case_limit is not None:
+        selected = selected[:case_limit]
+    if not selected:
+        raise ValueError("No eval cases selected.")
+    return selected
+
+
+def case_families_for(case: EvalCase) -> tuple[str, ...]:
+    """Return explicit and derived family labels for filtering/reporting."""
+    return tuple(case_families(case))
+
+
+def build_deterministic_eval_gate_preflight(
+    *,
+    eval_gate: str,
+    repeat_count: int,
+    case_ids: list[str] | None = None,
+    case_families: list[str] | None = None,
+    case_limit: int | None = None,
+) -> dict[str, Any]:
+    """Return CLI gate metadata for deterministic eval runs."""
+    normalized_gate = eval_gate.lower()
+    all_cases = build_eval_cases()
+    selected = select_eval_cases(
+        all_cases,
+        case_ids=case_ids,
+        case_families=case_families,
+        case_limit=case_limit,
+    )
+    selected_case_ids = [case.case_id for case in selected]
+    selected_families = sorted(
+        {family for case in selected for family in case_families_for(case)}
+    )
+    full_suite = len(selected) == len(all_cases) and not (
+        case_ids or case_families or case_limit is not None
+    )
+    subset_selected = not full_suite
+    fast_repeat_ok = repeat_count == 1
+    release_gate = normalized_gate in DETERMINISTIC_RELEASE_GATES
+    ok = release_gate or (subset_selected and fast_repeat_ok)
+    if ok:
+        message = "Deterministic eval gate passed."
+    elif not subset_selected and repeat_count != 1:
+        message = (
+            "Fast deterministic eval must target changed/failed cases and use "
+            "repeat-count 1. Use --case-id, --case-family, or --case-limit for "
+            "routine work, or pass --eval-gate release/thesis for a formal full "
+            "suite dashboard refresh."
+        )
+    elif not subset_selected:
+        message = (
+            "Fast deterministic eval must target changed/failed cases. Use "
+            "--case-id, --case-family, or --case-limit for routine work, or pass "
+            "--eval-gate release/thesis for a formal full suite dashboard refresh."
+        )
+    else:
+        message = (
+            "Fast deterministic eval uses repeat-count 1. Increase repeats only "
+            "with --eval-gate release or --eval-gate thesis."
+        )
+    return {
+        "ok": ok,
+        "message": message,
+        "eval_gate": normalized_gate,
+        "repeat_count": repeat_count,
+        "selected_cases": len(selected),
+        "total_suite_cases": len(all_cases),
+        "selected_case_ids": selected_case_ids,
+        "selected_case_families": selected_families,
+        "full_suite": full_suite,
+        "claim_boundary": (
+            "Fast deterministic subsets are engineering regression gates. "
+            "Only release/thesis gates should refresh full-suite dashboard claims."
+        ),
+    }
+
+
+def write_deterministic_gate_artifact(
+    preflight: dict[str, Any],
+    output_dir: Path,
+) -> tuple[Path, Path]:
+    """Write a deterministic eval gate refusal artifact."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = output_dir / "deterministic_gate.json"
+    md_path = output_dir / "deterministic_gate.md"
+    json_path.write_text(
+        json.dumps(preflight, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    lines = [
+        "# Deterministic Tool-Call Eval Gate",
+        "",
+        f"- ok: `{preflight.get('ok')}`",
+        f"- eval gate: `{preflight.get('eval_gate')}`",
+        f"- repeat count: `{preflight.get('repeat_count')}`",
+        f"- selected cases: `{preflight.get('selected_cases')}` / "
+        f"`{preflight.get('total_suite_cases')}`",
+        f"- full suite: `{preflight.get('full_suite')}`",
+        f"- message: {preflight.get('message')}",
+        f"- claim boundary: {preflight.get('claim_boundary')}",
+        "",
+    ]
+    md_path.write_text("\n".join(lines), encoding="utf-8")
+    return json_path, md_path
 
 
 def write_artifacts(result: dict[str, Any], output_dir: Path) -> tuple[Path, Path]:
@@ -2849,7 +3005,7 @@ def failure_taxonomy(scores: list[CaseScore]) -> dict[str, int]:
     return taxonomy
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--output-dir",
@@ -2857,17 +3013,51 @@ def parse_args() -> argparse.Namespace:
         help="Directory for latest.json/latest.md",
     )
     parser.add_argument(
+        "--eval-gate",
+        choices=("fast", "candidate", "release", "thesis"),
+        default="fast",
+        help=(
+            "Validation gate. Fast/candidate CLI runs must target changed or "
+            "affected cases; release/thesis may refresh full-suite dashboard claims."
+        ),
+    )
+    parser.add_argument(
         "--repeat-count",
         type=int,
-        default=2,
+        default=1,
         help="Repeat count for deterministic reliability scoring",
     )
-    return parser.parse_args()
+    parser.add_argument("--case-id", action="append", default=None)
+    parser.add_argument("--case-family", action="append", default=None)
+    parser.add_argument("--case-limit", type=int, default=None)
+    return parser.parse_args(argv)
 
 
-def main() -> int:
-    args = parse_args()
-    result = run_eval(repeat_count=args.repeat_count)
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    preflight = build_deterministic_eval_gate_preflight(
+        eval_gate=args.eval_gate,
+        repeat_count=args.repeat_count,
+        case_ids=args.case_id,
+        case_families=args.case_family,
+        case_limit=args.case_limit,
+    )
+    if not preflight["ok"]:
+        json_path, md_path = write_deterministic_gate_artifact(
+            preflight,
+            Path(args.output_dir),
+        )
+        print(preflight["message"])
+        print(f"Wrote {json_path}")
+        print(f"Wrote {md_path}")
+        return 2
+    result = run_eval(
+        repeat_count=args.repeat_count,
+        case_ids=args.case_id,
+        case_families=args.case_family,
+        case_limit=args.case_limit,
+    )
+    result = {**result, "eval_gate": args.eval_gate, "gate_preflight": preflight}
     json_path, md_path = write_artifacts(result, Path(args.output_dir))
     print(f"Wrote {json_path}")
     print(f"Wrote {md_path}")
