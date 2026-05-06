@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+bdfe18a ui: guard training settings dialog fallback
+dc43c83 docs: refresh handoff after walkthrough text guard
 c278218 test: guard walkthrough recipe trace text
 20af230 docs: refresh handoff after replay text guard
 670b6c3 test: guard interpretation replay visible text
@@ -234,6 +236,16 @@ bb57beb ui: use backend truth for split replacement
     architecture compliance, `git diff --check`, and `mkdocs build --strict`.
   - No local LLM eval was run; this was an automated UI visible-text guard slice under the fast dev
     gate.
+- Training settings dialog fallback boundary:
+  - `TrainingSettingDialog.load_settings()` now wraps controller default reads in
+    `run_legacy_controller_fallback()`.
+  - Real `Study` dialogs created without service-backed `initial_option` keep safe defaults instead
+    of reading stale `TrainingController.get_training_option()`.
+  - Mock / legacy dialogs can still load controller defaults through the explicit fallback gate.
+  - Validation covered red/focused dialog test, Training settings regression (`12 passed`), full
+    ruff, full basedpyright, architecture compliance, `git diff --check`, and
+    `mkdocs build --strict`.
+  - No local LLM eval was run; this was a UI fallback-boundary slice under the fast dev gate.
 - Legacy mutation helper call guard:
   - `tests/architecture_compliance.py` now identifies legacy / fallback helpers that directly
     mutate controller state and rejects calls to those helpers unless nested under
@@ -2966,6 +2978,19 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for c278218; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/training/test_training_setting.py \
+  tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_training_setting_uses_state_snapshot_defaults_before_stale_controller \
+  tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_training_setting_accepted \
+  -q
+# 12 passed for bdfe18a
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for bdfe18a; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard and changed-case eval
