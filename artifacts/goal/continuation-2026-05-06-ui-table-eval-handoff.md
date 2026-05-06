@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+24441d8 ui: tolerate partial assistant capabilities
+4a0fc3a docs: refresh handoff after command helper guard
 8bafc5a ui: centralize info panel command query
 4cabcce docs: refresh handoff after info panel guard
 5db16a7 ui: guard info panel controller lookup
@@ -218,6 +220,14 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- ChatPanel backend-status resilience:
+  - `AgentManager.refresh_backend_status()` no longer assumes the capability snapshot contains
+    `train`.
+  - `_product_next_steps()` treats missing candidate capabilities as unavailable instead of raising
+    and turning the assistant footer into `Workflow status unavailable`.
+  - Validation covered red/focused backend-status tests, AgentManager regressions, full ruff, full
+    basedpyright, architecture compliance, `git diff --check`, and `mkdocs build --strict`.
+  - No local LLM eval was run; this was a ChatPanel UI status fast-gate slice.
 - UI command-helper boundary guard:
   - `InfoPanelService._query_data_lists()` no longer calls
     `BackendFacade(...).service.execute(...)` directly.
