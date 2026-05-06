@@ -1042,6 +1042,46 @@ class TestTrainingSidebar:
         mock_critical.assert_not_called()
         mock_info.assert_called_once_with(sidebar, "Success", "Model selected: EEGNet")
 
+    def test_select_model_refuses_real_study_controller_fallback(self, sidebar):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.study import Study
+
+        sidebar.panel.main_window.study = Study()
+        sidebar.panel.controller.is_training.return_value = False
+        mock_holder = MagicMock()
+        mock_holder.target_model.__name__ = "EEGNet"
+        mock_holder.model_params_map = {"channels": 8}
+        mock_holder.pretrained_weight_path = None
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                return_value=SimpleNamespace(enabled=True, reasons=[]),
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ModelSelectionDialog"
+            ) as mock_dialog,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=None,
+            ),
+            patch.object(QMessageBox, "warning") as mock_warning,
+            patch.object(QMessageBox, "critical") as mock_critical,
+            patch.object(QMessageBox, "information") as mock_info,
+        ):
+            mock_dialog.return_value.exec.return_value = True
+            mock_dialog.return_value.get_result.return_value = mock_holder
+            sidebar.select_model()
+
+        sidebar.panel.controller.set_model_holder.assert_not_called()
+        sidebar.panel.controller.get_model_holder.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Model Selection Blocked"
+        mock_critical.assert_not_called()
+        mock_info.assert_not_called()
+        assert "could not safely complete" in mock_warning.call_args.args[2]
+
     def test_select_model_uses_backend_configure_capability_before_dialog(
         self,
         sidebar,

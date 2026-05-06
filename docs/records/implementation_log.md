@@ -42,6 +42,37 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Model Selection Fallback Warning Boundary
+
+### 狀態
+
+`TrainingSidebar.select_model()` now converts real `Study` model-selection fallback refusal into a
+user-facing blocked warning. If the model-side `ConfigureTrainingCommand` unexpectedly cannot
+dispatch in a real product context, the UI shows `Model Selection Blocked` instead of letting the
+legacy fallback exception escape.
+
+### 已可宣稱
+
+- Real `Study` model-selection fallback refusal is visible as product language instead of a raw
+  exception or generic failure wrapper.
+- Mock / legacy model-selection fallback behavior remains available through the explicit fallback
+  helper.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/training/sidebar.py`
+- Tests: `tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not audit every TrainingSidebar configuration fallback or complete Training Settings
+  desktop acceptance.
+
+### 下一手重點
+
+Continue converting remaining real `Study` fallback refusals into blocked user-facing states.
+
 ## 2026-05-06 Data Splitting Clear Fallback Warning Boundary
 
 ### 狀態

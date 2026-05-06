@@ -440,10 +440,18 @@ class TrainingSidebar(QWidget):
                 ),
             )
             if result is None:
-                run_legacy_controller_fallback(
-                    self,
-                    lambda: self.controller.set_model_holder(model_holder),
-                )
+                try:
+                    run_legacy_controller_fallback(
+                        self,
+                        lambda: self.controller.set_model_holder(model_holder),
+                    )
+                except LegacyControllerFallbackUnavailableError as exc:
+                    QMessageBox.warning(
+                        self,
+                        "Model Selection Blocked",
+                        str(exc),
+                    )
+                    return
                 model_holder = self.controller.get_model_holder()
                 if model_holder is None:
                     QMessageBox.critical(
