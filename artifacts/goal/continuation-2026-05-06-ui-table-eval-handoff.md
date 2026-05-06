@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+4a19100 ui: query label filter suggestions
+54ee9ae docs: refresh handoff after walkthrough geometry
 76426ca test: settle walkthrough capture geometry
 83062ee docs: refresh handoff after training settings fallback
 bdfe18a ui: guard training settings dialog fallback
@@ -206,6 +208,18 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Label import smart-filter suggestion query path:
+  - Post-load label import event-filter suggestions now use
+    `QueryStateCommand(query="smart_filter_suggestions")` with the loaded target index.
+  - Real `Study` no longer reads stale `DatasetController.get_smart_filter_suggestions()` for
+    optional event-filter defaults; if the service query is unavailable, real runtime skips the
+    optional preselection instead of falling back to the controller.
+  - Mock / legacy contexts can still use controller suggestions through explicit
+    `run_legacy_controller_fallback()`.
+  - Validation covered red/focused stale-controller test, full DatasetActionHandler regression
+    (`77 passed`), full ruff, full basedpyright, architecture compliance, `git diff --check`, and
+    `mkdocs build --strict`.
+  - No local LLM eval was run; this was a UI fallback / query-truth slice under the fast dev gate.
 - Human-like walkthrough 1280px Dataset table evidence:
   - `capture_human_like_product_walkthrough.py` now lets MainWindow post-show geometry recovery
     timers run, then reapplies the deterministic `1280x800` capture size before the first
@@ -3032,6 +3046,20 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 76426ca; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler \
+  -q
+# 77 passed for 4a19100
+poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py
+poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py
+# focused lint/type passed for 4a19100; basedpyright baseline decreased by one existing error
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 4a19100; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard and changed-case eval
