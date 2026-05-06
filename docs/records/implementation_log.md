@@ -85,6 +85,43 @@ completed jobs do not become active again when a later training run starts.
 - Extend the job model only after defining recovery semantics and multi-client resource ownership;
   avoid adding transport-specific command truth outside ApplicationService / automation.
 
+## 2026-05-06 MCP Execution Boundary Metadata
+
+### 狀態
+
+MCP `tools/list` now exposes capability-derived execution boundary metadata for each command. This
+keeps external clients from guessing whether a tool is immediate, destructive, confirmation-gated,
+or requires the HTTP job API.
+
+### 已可宣稱
+
+- `x_xbrainlab.execution` is present in MCP tool metadata.
+- The metadata is derived from the same ApplicationService capability policy used by
+  `execute_automation_payload()`.
+- `train` is marked `long_running=True`, `requires_http_job=True`,
+  `supported_job_transports=["http"]`.
+- Immediate analysis/query tools such as `evaluate`, `visualize`, and `saliency` are not marked as
+  HTTP job tools in the current command contract.
+- Destructive lifecycle commands expose their destructive / confirmation boundary to MCP clients.
+
+### Evidence 入口
+
+- Source：`XBrainLab/backend/application/automation.py`, `XBrainLab/mcp/server.py`
+- Tests：`tests/unit/backend/application/test_automation.py`, `tests/unit/mcp/test_server.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not add new long-running evaluation / visualization execution jobs. It clarifies the
+  current command contract and prevents client-side confusion. Job persistence / recovery and full
+  MCP client certification remain open.
+
+### 下一手重點
+
+- If a future evaluation / visualization command becomes long-running, promote that backend
+  capability first; MCP job exposure should follow capability policy rather than transport-specific
+  heuristics.
+
 ## 2026-05-06 MCP HTTP Request Hardening
 
 ### 狀態

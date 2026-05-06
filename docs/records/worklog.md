@@ -37,6 +37,49 @@
 
 ## 2026-05-06
 
+### 18:28 MCP execution boundary metadata
+
+- 做了什麼：
+  - Added capability-derived `x_xbrainlab.execution` metadata to MCP tool specs.
+  - External clients can now see `long_running`, `destructive`, `confirmation_required`,
+    `requires_confirmation`, `decision_boundary`, `requires_http_job`, and
+    `supported_job_transports` directly in `tools/list`.
+  - This makes `train` discoverable as the current HTTP-job command and keeps
+    `evaluate` / `visualize` / `saliency` discoverable as immediate typed ApplicationService
+    results in the current command contract.
+- red / focused tests：
+  - Added `test_mcp_tool_specs_expose_execution_boundary_metadata`.
+  - Red gate first failed on missing `x_xbrainlab.execution`.
+- validation：
+  - Red gate:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_automation.py::test_mcp_tool_specs_expose_execution_boundary_metadata -q`
+    -> failed with `KeyError: 'execution'`.
+  - Focused pass:
+    same command -> `1 passed`.
+  - Focused regression:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_automation.py::test_mcp_tool_specs_use_same_command_schema tests/unit/backend/application/test_automation.py::test_mcp_tool_specs_expose_execution_boundary_metadata tests/unit/mcp/test_server.py::test_tools_list_uses_application_command_schema -q`
+    -> `3 passed`.
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_automation.py tests/unit/mcp/test_server.py tests/unit/mcp/test_http_server.py tests/integration/mcp/test_http_walkthrough_artifact.py -q`
+    -> `27 passed`.
+    `poetry run pytest --capture=sys tests/unit/backend/application tests/unit/mcp tests/integration/mcp -q`
+    -> `132 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/backend/application/automation.py tests/unit/backend/application/test_automation.py tests/unit/mcp/test_server.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/backend/application/automation.py tests/unit/backend/application/test_automation.py tests/unit/mcp/test_server.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `git diff --check` -> passed.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is MCP tool-discovery metadata, not a tool-call benchmark claim update.
+- 不能宣稱：
+  - This does not create new evaluation / visualization long-running jobs. It clarifies that only
+    commands marked `long_running` by ApplicationService capability policy require HTTP job
+    transport.
+
 ### 18:20 MCP HTTP terminal job status
 
 - 做了什麼：

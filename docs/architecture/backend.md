@@ -100,6 +100,10 @@ orchestration，state truth 不再混在 handler 檔案裡。
 MCP `tools/list` `x_xbrainlab` metadata 都會標示 `legacy_compatibility=True`、
 `primary_workflow=False`，並列出 Data Interpretation scan / preview / validate / apply / recipe
 作為 preferred commands。這不移除相容工具，但避免 external MCP/headless client 把它們理解成新資料入口主線。
+同一 metadata 現在也暴露 capability-derived `execution` boundary：`long_running`、
+`destructive`、`requires_confirmation`、`decision_boundary`、`requires_http_job` 和
+`supported_job_transports`，讓 MCP client 能區分 immediate query tool 和需要 HTTP job API 的
+long-running command。
 後續 remap schema cleanup 又把 `PreviewInterpretationCommand.choices` schema 抽成
 `data_interpretation_choice_schema.py`，agent `preview_interpretation` tool definition、
 headless `command_specs()` 和 MCP `tools/list` 共用同一份 `eeg_file_remap` /
@@ -278,7 +282,8 @@ UI 測試中的 mock `Study` 仍走 legacy fallback，避免 unit test 用不完
 policy，並將 JSON payload 驗證後轉成 typed command 再呼叫 `ApplicationService.execute()`。
 同一個 schema 也會標出 legacy compatibility boundary：`load_data`、`attach_labels`、
 `import_labels` 仍可呼叫，但 metadata 明確標為非 primary workflow，並提供 Data Interpretation
-preferred commands。
+preferred commands。MCP tool metadata 也會帶 execution boundary，讓 external client 不需要
+猜哪些 command 是 destructive、需要 confirmation，或需要 HTTP job transport。
 `XBrainLab.mcp.server` 是目前的 stdio MCP server baseline；它只處理 MCP lifecycle / tool
 transport，實際 tool call 仍包這層 automation adapter，而不是繞過 command layer 或直接碰
 controller internals。每個 stdio `tools/call` structured result 都會標出

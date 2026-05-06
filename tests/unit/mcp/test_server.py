@@ -55,6 +55,13 @@ def test_tools_list_uses_application_command_schema():
     assert "adapter" in scan["outputSchema"]["properties"]
     assert scan["x_xbrainlab"]["taxonomy"] == "data_interpretation"
     assert scan["x_xbrainlab"]["capability"]["can_auto_execute"] is True
+    assert scan["x_xbrainlab"]["execution"]["requires_http_job"] is False
+    train = tools[CommandName.TRAIN.value]
+    assert train["x_xbrainlab"]["execution"]["long_running"] is True
+    assert train["x_xbrainlab"]["execution"]["requires_http_job"] is True
+    assert train["x_xbrainlab"]["execution"]["supported_job_transports"] == ["http"]
+    reset = tools[CommandName.RESET_SESSION.value]
+    assert reset["x_xbrainlab"]["execution"]["destructive"] is True
 
 
 def test_tools_call_reuses_one_application_service_session(tmp_path: Path):

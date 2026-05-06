@@ -685,6 +685,10 @@
     blocked result；已 cancelled / completed 的 job snapshot 會保留 terminal status，不會因後續
     新 run 改成 active。這仍不是 evaluation / visualization jobs、job persistence / recovery、
     remote authorization certification 或 full MCP client certification。
+  - 最新 tool metadata slice 也會在 MCP `tools/list` `x_xbrainlab.execution` 裡標明
+    `long_running`、`destructive`、`requires_confirmation`、`decision_boundary`、
+    `requires_http_job` 和 `supported_job_transports`；目前 `evaluate` / `visualize` / `saliency`
+    是 immediate typed ApplicationService result，不是 HTTP job。
 - Windows launcher automated command walkthrough 已新增：
   - `scripts/dev/capture_windows_launcher_walkthrough.py` 會從 Windows `cmd.exe` 執行 Desktop
     `XBrainLab.cmd` smoke，確認它指向 active repo。

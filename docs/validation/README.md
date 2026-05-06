@@ -1754,6 +1754,30 @@ on the same ApplicationService / automation command truth」。它仍不支撐 e
 jobs、job persistence / recovery、remote authorization certification、Windows human launcher
 acceptance、full MCP client certification 或 product completion。
 
+2026-05-06 MCP execution boundary metadata：
+
+- 新增 / 驗證：
+  - MCP `tools/list` `x_xbrainlab.execution` exposes capability-derived execution metadata:
+    `long_running`, `destructive`, `confirmation_required`, `requires_confirmation`,
+    `decision_boundary`, `requires_http_job`, and `supported_job_transports`.
+  - `train` is advertised as the current HTTP-job command because backend capability marks it
+    `long_running=True`.
+  - `evaluate`, `visualize`, and `saliency` remain immediate typed ApplicationService query results
+    in the current command contract, so they are not advertised as HTTP job tools.
+  - lifecycle tools such as `reset_session` expose destructive / confirmation boundary metadata.
+- focused validation：
+  - red gate:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_automation.py::test_mcp_tool_specs_expose_execution_boundary_metadata -q`
+    -> failed on missing `x_xbrainlab.execution`.
+  - same command -> `1 passed`.
+  - focused regression:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_automation.py::test_mcp_tool_specs_use_same_command_schema tests/unit/backend/application/test_automation.py::test_mcp_tool_specs_expose_execution_boundary_metadata tests/unit/mcp/test_server.py::test_tools_list_uses_application_command_schema -q`
+    -> `3 passed`.
+- claim boundary：
+  - This supports tool-discovery clarity and shared capability policy exposure. It does not create
+    new evaluation / visualization long-running jobs, job persistence / recovery, or full MCP
+    certification.
+
 2026-05-04 Local LLM tool-call runner and schema gate：
 
 - 新增 `scripts/agent/evals/run_local_tool_call_eval.py`：

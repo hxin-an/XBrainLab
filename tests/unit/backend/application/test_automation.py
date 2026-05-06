@@ -86,6 +86,29 @@ def test_mcp_tool_specs_use_same_command_schema():
     assert "include_objects" not in visualize_schema["properties"]
 
 
+def test_mcp_tool_specs_expose_execution_boundary_metadata():
+    service = ApplicationService(Study())
+
+    tools = {tool["name"]: tool for tool in mcp_tool_specs(service)}
+
+    train_execution = tools[CommandName.TRAIN.value]["x_xbrainlab"]["execution"]
+    assert train_execution["long_running"] is True
+    assert train_execution["requires_http_job"] is True
+    assert train_execution["supported_job_transports"] == ["http"]
+    assert train_execution["requires_confirmation"] is True
+    assert train_execution["decision_boundary"] == "long_running"
+
+    evaluate_execution = tools[CommandName.EVALUATE.value]["x_xbrainlab"]["execution"]
+    assert evaluate_execution["long_running"] is False
+    assert evaluate_execution["requires_http_job"] is False
+    assert evaluate_execution["decision_boundary"] is None
+
+    reset_execution = tools[CommandName.RESET_SESSION.value]["x_xbrainlab"]["execution"]
+    assert reset_execution["destructive"] is True
+    assert reset_execution["requires_confirmation"] is False
+    assert reset_execution["confirmation_required"] is False
+
+
 @pytest.mark.parametrize("command_name", [CommandName.EVALUATE, CommandName.VISUALIZE])
 def test_automation_rejects_ui_object_payload_flag(command_name):
     with pytest.raises(AutomationPayloadError, match="include_objects"):

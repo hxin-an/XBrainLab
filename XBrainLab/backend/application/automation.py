@@ -228,6 +228,7 @@ def mcp_tool_specs(
             "x_xbrainlab": {
                 "taxonomy": spec.taxonomy,
                 "capability": spec.capability,
+                "execution": _execution_metadata(spec.capability),
                 "legacy_compatibility": spec.legacy_compatibility,
                 "primary_workflow": spec.primary_workflow,
                 "preferred_commands": list(spec.preferred_commands),
@@ -441,6 +442,30 @@ def _preferred_commands(command_name: CommandName) -> tuple[str, ...]:
     if _is_legacy_compatibility(command_name):
         return LEGACY_PREFERRED_COMMANDS
     return ()
+
+
+def _execution_metadata(capability: dict[str, Any] | None) -> dict[str, Any]:
+    if capability is None:
+        return {
+            "long_running": False,
+            "destructive": False,
+            "confirmation_required": False,
+            "requires_confirmation": False,
+            "decision_boundary": None,
+            "requires_http_job": False,
+            "supported_job_transports": [],
+        }
+    long_running = bool(capability.get("long_running", False))
+    return {
+        "long_running": long_running,
+        "destructive": bool(capability.get("destructive", False)),
+        "confirmation_required": bool(capability.get("confirmation_required", False)),
+        "requires_confirmation": bool(capability.get("requires_confirmation", False))
+        or bool(capability.get("confirmation_required", False)),
+        "decision_boundary": capability.get("decision_boundary"),
+        "requires_http_job": long_running,
+        "supported_job_transports": ["http"] if long_running else [],
+    }
 
 
 def _automation_execution_output_schema() -> dict[str, Any]:
