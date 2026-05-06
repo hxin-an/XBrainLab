@@ -1480,6 +1480,51 @@ class TestDatasetActionHandler:
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_refuses_real_study_controller_fallback(
+        self,
+        mock_dlg,
+        mock_mb,
+        handler,
+    ):
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QTableWidgetItem
+
+        from XBrainLab.backend.study import Study
+
+        idx = MagicMock()
+        idx.row.return_value = 0
+        data_obj = MagicMock()
+        data_obj.is_raw.return_value = False
+        item = QTableWidgetItem("sub-01_task-mi_raw.fif")
+        item.setData(Qt.ItemDataRole.UserRole, data_obj)
+
+        study = Study()
+        study.data_manager.loaded_data_list = [data_obj]
+        handler.panel.study = study
+        handler.panel.table.rowCount.return_value = 1
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.table.item.return_value = item
+        handler.panel.controller = MagicMock()
+        mock_dlg.return_value.exec.return_value = True
+        mock_dlg.return_value.get_result.return_value = (
+            {"file1.txt": [0, 1, 0, 1]},
+            "mapping",
+        )
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            return_value=None,
+        ):
+            handler.import_label()
+
+        handler.panel.controller.apply_labels_legacy.assert_not_called()
+        handler.panel.controller.apply_labels_batch.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert mock_mb.warning.call_args.args[1] == "Label Import Blocked"
+        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_warns_when_no_labels_applied(
         self,
         mock_dlg,

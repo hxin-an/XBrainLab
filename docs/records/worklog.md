@@ -37,6 +37,52 @@
 
 ## 2026-05-06
 
+### 09:23 Label Import fallback warning boundary
+
+- scope：
+  - Continue product-runtime fallback warning audit for Dataset label import actions.
+  - Prevent real `Study` label-import apply fallback refusal from becoming generic `Failed: ...`
+    text.
+- red / focused tests：
+  - Added `test_import_label_refuses_real_study_controller_fallback`.
+  - Red gate failed because `import_label()` caught `LegacyControllerFallbackUnavailableError` only
+    in the outer generic exception handler and displayed a generic critical failure.
+- 做了什麼：
+  - `DatasetActionHandler.import_label()` now catches real `Study` legacy fallback refusal around
+    the label-import fallback call and shows `Label Import Blocked`.
+  - Mock / legacy fallback still calls `DatasetController.apply_labels_legacy()` /
+    `apply_labels_batch()`.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_refuses_real_study_controller_fallback -q`
+    -> failed because warning was not shown and the refusal was logged as generic failure.
+  - Focused pass:
+    same command -> `1 passed`.
+  - DatasetActionHandler regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `71 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> pass.
+    `poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Full fast gate:
+    `git diff --check` -> pass.
+    `poetry run ruff check .` -> pass.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> pass.
+    `poetry run mkdocs build --strict` -> pass.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a Dataset UI fallback language cleanup under the fast dev gate, not a release /
+    thesis benchmark update. It does not justify primary/fallback x3 local eval under 16GB VRAM
+    pressure.
+- 不能宣稱：
+  - This does not audit every DatasetActionHandler fallback, complete Dataset page desktop
+    acceptance, or close all controller fallback debt.
+
 ### 09:18 Smart Parse apply fallback warning boundary
 
 - scope：

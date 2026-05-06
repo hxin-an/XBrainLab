@@ -848,16 +848,24 @@ class DatasetActionHandler:
                 ImportLabelsCommand(plan=plan),
             )
             if result is None:
-                count = run_legacy_controller_fallback(
-                    self.panel,
-                    lambda: self._run_legacy_label_import(
-                        target_files,
-                        label_map,
-                        mapping,
-                        selected_event_names,
-                        plan,
-                    ),
-                )
+                try:
+                    count = run_legacy_controller_fallback(
+                        self.panel,
+                        lambda: self._run_legacy_label_import(
+                            target_files,
+                            label_map,
+                            mapping,
+                            selected_event_names,
+                            plan,
+                        ),
+                    )
+                except LegacyControllerFallbackUnavailableError as exc:
+                    QMessageBox.warning(
+                        self.panel,
+                        "Label Import Blocked",
+                        str(exc),
+                    )
+                    return
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
                 return
