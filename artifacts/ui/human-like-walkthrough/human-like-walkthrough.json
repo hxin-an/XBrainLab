@@ -19686,33 +19686,33 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 1134460,
+      "pid": 1159775,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 837148
+      "max_rss_kb": 837376
     },
     {
       "label": "before_close",
-      "pid": 1134460,
+      "pid": 1159775,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1068704
+      "max_rss_kb": 1070356
     },
     {
       "label": "after_close",
-      "pid": 1134460,
+      "pid": 1159775,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1068704
+      "max_rss_kb": 1070356
     }
   ],
   "ui_quality_review": {
@@ -20525,7 +20525,7 @@
       ],
       "boundary": "Automated geometry smoke checks header length, viewport width, horizontal scrollbar state, table-to-content-boundary gaps, and whether visible rows are clipped at the viewport edge. Human review still decides visual polish."
     },
-    "visible_text_boundary": "Checks visible widget text for raw tool syntax, schema, traceback, and selected snake_case command leakage.",
+    "visible_text_boundary": "Checks visible widget text for raw tool syntax, schema, traceback, selected snake_case command leakage, and recipe trace tokens.",
     "human_design_review_boundary": "This is automated UI-observable evidence. It does not replace a human desktop review of Windows launcher, dual-monitor/DPI, or long local-model sessions."
   },
   "pass_fail_summary": {
@@ -20543,10 +20543,10 @@
       "after_close_python_threads": 1,
       "python_thread_tolerance": 1,
       "after_close_qt_active_threads": 0,
-      "rss_growth_kb": 231556,
+      "rss_growth_kb": 232980,
       "rss_limit_kb": 600000,
       "boundary": "Coarse process smoke only: RSS uses ru_maxrss high-water mark and this does not prove the absence of leaks."
     }
   },
-  "elapsed_seconds": 4.042
+  "elapsed_seconds": 4.049
 }

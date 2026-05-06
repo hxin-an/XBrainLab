@@ -121,6 +121,8 @@ def test_forbidden_visible_text_flags_raw_tool_syntax() -> None:
             "Traceback:",
             "configure_training is blocked.",
             "legacy load_data fallback",
+            "Recipe trace saved scan:scan-1",
+            "Saved choices:metadata_overrides",
         ],
     )
 
@@ -128,6 +130,8 @@ def test_forbidden_visible_text_flags_raw_tool_syntax() -> None:
     assert "Traceback:" in offenders
     assert "configure_training is blocked." in offenders
     assert "legacy load_data fallback" in offenders
+    assert "Recipe trace saved scan:scan-1" in offenders
+    assert "Saved choices:metadata_overrides" in offenders
 
 
 def test_visible_text_snapshot_includes_chat_bubble_text(qtbot) -> None:

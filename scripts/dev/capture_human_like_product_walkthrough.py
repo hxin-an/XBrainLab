@@ -154,6 +154,10 @@ VISIBLE_FORBIDDEN = (
     "attach_labels",
     "import_labels",
 )
+VISIBLE_TRACE_TOKEN_PATTERN = re.compile(
+    r"\b(?:scan|candidate|metadata|metadata_override|choices|label_import|"
+    r"label_carrier|class_map|recipe):[A-Za-z0-9_.<>/-]+",
+)
 
 RESOURCE_THREAD_TOLERANCE = 1
 RESOURCE_RSS_SMOKE_LIMIT_KB = 600_000
@@ -1594,7 +1598,7 @@ def build_ui_quality_review(
         "table_geometry_review": table_geometry_review,
         "visible_text_boundary": (
             "Checks visible widget text for raw tool syntax, schema, traceback, "
-            "and selected snake_case command leakage."
+            "selected snake_case command leakage, and recipe trace tokens."
         ),
         "human_design_review_boundary": (
             "This is automated UI-observable evidence. It does not replace a "
@@ -1739,6 +1743,9 @@ def forbidden_visible_text(texts: list[str]) -> list[str]:
         normalized = str(text)
         lowered = normalized.lower()
         if any(marker.lower() in lowered for marker in VISIBLE_FORBIDDEN):
+            offenders.append(normalized)
+            continue
+        if VISIBLE_TRACE_TOKEN_PATTERN.search(normalized):
             offenders.append(normalized)
             continue
         if re.search(r"\b(tool|schema|traceback)\b", lowered):

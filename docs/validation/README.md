@@ -303,6 +303,15 @@ The walkthrough quality review now fails on captured `partial_visible_rows`; lat
 automated artifact quality gating only; it does not replace human Windows launcher / DPI /
 dual-monitor verification.
 
+Human-like visible-text guard:
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/integration/ui/test_product_walkthrough.py -q`
+-> `22 passed`；
+`QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+refreshed `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` / `.md`。Artifact remains
+status `passed`、forbidden visible text findings `0`，and `visible_text_boundary` now includes
+recipe trace tokens. This extends automated UI-observable leakage evidence; it does not replace
+Windows human desktop acceptance.
+
 Training updated refresh route gate:
 `poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_panel_event_bridges.py tests/unit/ui/training/test_training_panel.py -q`
 -> `54 passed`。This supports the central coordinator route for `training_updated` refreshing

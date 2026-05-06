@@ -13656,3 +13656,46 @@
   - This removes raw recipe trace wording from the visible wizard review surface. It does not
     complete mature recipe diff UX, embedded label editor, full real-data certification, or human
     Windows desktop acceptance.
+
+### 2026-05-06 Human-like walkthrough recipe trace visible-text guard
+
+- scope：
+  - Extend the consolidated automated human-like walkthrough visible-text guard so it catches raw
+    recipe trace tokens, not only raw tool names, schema, traceback, and selected command names.
+  - This guards against future UI regressions where `scan:*`, `choices:*`, or `label_import:*`
+    appear in captured product text.
+- red / focused tests：
+  - Extended `test_forbidden_visible_text_flags_raw_tool_syntax` with
+    `Recipe trace saved scan:scan-1` and `Saved choices:metadata_overrides`.
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py::test_forbidden_visible_text_flags_raw_tool_syntax -q`
+    -> failed as expected before the regex was added.
+- 做了什麼：
+  - Added `VISIBLE_TRACE_TOKEN_PATTERN` to `capture_human_like_product_walkthrough.py`.
+  - Updated `visible_text_boundary` wording to include recipe trace tokens.
+  - Refreshed `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` / `.md`; artifact
+    remains status `passed` with forbidden visible text findings `0`.
+- validation：
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py::test_forbidden_visible_text_flags_raw_tool_syntax -q`
+    -> `1 passed`.
+  - Walkthrough unit / integration gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/integration/ui/test_product_walkthrough.py -q`
+    -> `22 passed`.
+  - Focused lint/type:
+    `poetry run ruff check scripts/dev/capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> `All checks passed!`;
+    `poetry run basedpyright scripts/dev/capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Quality gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is an automated UI visible-text guard slice under the fast dev gate. It does not
+    update tool-call benchmark claims and does not justify primary / fallback x3 local eval.
+- 不能宣稱：
+  - This does not prove human Windows desktop acceptance, mature import-wizard UX, or long local
+    model desktop sessions.

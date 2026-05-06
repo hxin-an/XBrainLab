@@ -520,6 +520,9 @@
   clipped-row findings；載入資料後 Dataset table 記錄 `header_length=509`、
   `viewport_width=510`、`horizontal_scrollbar_max=0`。後續 artifact 若 capture 到任何
   `partial_visible_rows`，human-like quality gate 會 failed。
+- 最新 human-like walkthrough visible-text guard 也把 recipe trace token pattern 納入 forbidden
+  visible text；`human-like-walkthrough.json` 現在記錄 boundary 包含 recipe trace tokens，且
+  `forbidden_visible_text=[]`。
 - 最新 eval dashboard artifact polish 已把 walkthrough 的 `20-eval-dashboard.png` 從 raw Markdown
   pipe-table text 改成 dark product-style report，並把 Thesis Claim Boundary 提到第一屏。這只改善
   UI-observable evidence 可讀性與 claim boundary visibility；routine UI / prompt / verifier slice

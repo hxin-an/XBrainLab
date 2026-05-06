@@ -5409,3 +5409,30 @@ checks captured UI text for selected raw command names and recipe trace tokens.
 
 - This is a visible wording polish slice. It does not complete the mature recipe diff editor,
   embedded label editor, full import wizard certification, or human Windows desktop acceptance.
+
+## 2026-05-06 Human-Like Walkthrough Visible Text Guard
+
+### 狀態
+
+The consolidated automated human-like walkthrough now treats recipe trace tokens as forbidden
+visible text, alongside raw tool syntax, schema, traceback, and selected command names.
+
+### 已可宣稱
+
+- `forbidden_visible_text()` flags visible strings containing tokens such as `scan:scan-1` or
+  `choices:metadata_overrides`.
+- `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` was refreshed and still reports
+  forbidden visible text findings `0`.
+
+### Evidence 入口
+
+- Source：`scripts/dev/capture_human_like_product_walkthrough.py`
+- Tests：`tests/unit/scripts/test_capture_human_like_product_walkthrough.py`,
+  `tests/integration/ui/test_product_walkthrough.py`
+- Artifact：`artifacts/ui/human-like-walkthrough/human-like-walkthrough.json`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is automated visible-text leakage evidence. It does not replace human Windows launcher /
+  dual-monitor / DPI review, or mature import-wizard product acceptance.

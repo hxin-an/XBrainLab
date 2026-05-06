@@ -545,7 +545,7 @@ artifact 和 process/thread notes。artifact
 `26 / 26` phases、human desktop acceptance `not performed`。最新 artifact 已補上 top-level
 `observable_evidence` 和 `ui_quality_review`：`26` 個 phase 都有 visible text、button
 state、workflow/backend snapshot index，`20` 張 screenshot 全部通過 nonblank check，visible text
-raw tool / schema / traceback / selected internal snake_case command leakage check 為 `0` findings；latest ChatPanel evidence hardening
+raw tool / schema / traceback / selected internal snake_case command and recipe trace token leakage check 為 `0` findings；latest ChatPanel evidence hardening
 also makes the visible text snapshots include chat bubble `QTextBrowser` content, so clarification /
 blocked / successful assistant screenshots now have matching JSON text evidence and
 `chatpanel.visible_messages` is populated before reset. 最新 table geometry review 會檢查
@@ -594,6 +594,10 @@ diff editor 或 final import wizard 完成。
 `ui_quality_review.visible_text` 現在會檢查可見 replay text 是否含 raw command names 或 recipe
 trace tokens；目前 artifact 顯示 `passed=true`、`findings=[]`。這只檢查 replay 捕捉到的 UI text，
 不取代人工 Windows desktop review。
+最新 human-like walkthrough visible-text guard 也擴充到 recipe trace tokens；artifact
+`visible_text_boundary` 現在明確列出 raw tool syntax、schema、traceback、selected snake_case
+command leakage 和 recipe trace tokens，且 `forbidden_visible_text=[]`。這仍只代表 captured UI
+text，不能取代人眼設計審查。
 同一 `partial_visible_rows` evidence 也已進入 consolidated human-like walkthrough 的 top-level
 UI quality gate；未來任一被 capture 的 table/tree widget 出現半截 visible row，artifact 會 failed，
 不會只靠人工目視偶然發現。
