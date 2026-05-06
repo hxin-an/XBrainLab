@@ -42,6 +42,37 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Generate Dataset Apply Fallback Warning Boundary
+
+### 狀態
+
+`TrainingSidebar.split_data()` now converts real `Study` dataset-generation apply fallback refusal
+into a user-facing blocked warning. If `GenerateDatasetCommand` unexpectedly cannot dispatch in a
+real product context, the UI shows `Data Splitting Blocked` instead of letting the legacy fallback
+exception escape.
+
+### 已可宣稱
+
+- Real `Study` generate-dataset fallback refusal is visible as product language instead of a raw
+  exception or generic failure wrapper.
+- Mock / legacy data-splitting fallback behavior remains available through the explicit fallback
+  helper.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/training/sidebar.py`
+- Tests: `tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not audit every TrainingSidebar mutating fallback or complete Data Splitting desktop
+  acceptance.
+
+### 下一手重點
+
+Continue converting remaining real `Study` fallback refusals into blocked user-facing states.
+
 ## 2026-05-06 Channel Selection Apply Fallback Warning Boundary
 
 ### 狀態

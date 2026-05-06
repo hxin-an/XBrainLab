@@ -238,6 +238,8 @@
   時顯示 `Clear Dataset Blocked`，不再把 fallback refusal 包成 generic critical error。
 - 最新 Channel Selection apply fallback warning slice 也讓 real `Study` channel-selection apply
   command 無法 dispatch 時顯示 `Channel Selection Blocked`，不再包成 generic critical error。
+- 最新 Generate Dataset apply fallback warning slice 也讓 real `Study` dataset-generation command
+  無法 dispatch 時顯示 `Data Splitting Blocked`，不再外拋 legacy fallback exception。
 - 最新 Dataset sidebar render cleanup 也把 `is_locked()` / `has_data()` 納入同一 guard：
   有 backend capability 時，button state / tooltip 不再先讀 stale controller lock/data state；
   legacy lock/data reads 只留在 explicit no-capability branch。

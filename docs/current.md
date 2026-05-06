@@ -954,6 +954,8 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   時顯示 `Clear Dataset Blocked`，不再把 fallback refusal 包成 generic critical error。
   最新 Channel Selection apply fallback warning slice 也讓 real `Study` channel-selection apply
   command 無法 dispatch 時顯示 `Channel Selection Blocked`，不再包成 generic critical error。
+  最新 Generate Dataset apply fallback warning slice 也讓 real `Study` dataset-generation command
+  無法 dispatch 時顯示 `Data Splitting Blocked`，不再外拋 legacy fallback exception。
   最新 Dataset sidebar render cleanup 又把 `is_locked()` / `has_data()` 納入 guard：real
   `Study` button state 和 tooltip 有 backend capability 時不再先讀 stale controller lock/data
   state；controller lock/data reads 只保留在 explicit no-capability legacy branch。

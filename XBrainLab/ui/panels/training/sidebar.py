@@ -310,10 +310,18 @@ class TrainingSidebar(QWidget):
                     GenerateDatasetCommand(generator=generator),
                 )
                 if result is None:
-                    run_legacy_controller_fallback(
-                        self,
-                        lambda: self.controller.apply_data_splitting(generator),
-                    )
+                    try:
+                        run_legacy_controller_fallback(
+                            self,
+                            lambda: self.controller.apply_data_splitting(generator),
+                        )
+                    except LegacyControllerFallbackUnavailableError as exc:
+                        QMessageBox.warning(
+                            self,
+                            "Data Splitting Blocked",
+                            str(exc),
+                        )
+                        return
                 elif result.failed:
                     QMessageBox.critical(
                         self,
