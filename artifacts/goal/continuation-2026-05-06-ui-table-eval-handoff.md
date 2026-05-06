@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+cdab73f ui: show data splitting clear fallback warning
+2394e13 docs: refresh handoff after dataset generation warning
 c93012d ui: show dataset generation fallback warning
 b3424d0 docs: refresh handoff after channel selection warning
 ea16c8b ui: show channel selection fallback warning
@@ -129,6 +131,12 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Data Splitting clear fallback warning:
+  - real `Study` clear-datasets preflight fallback refusal now shows `Data Splitting Blocked`.
+  - the UI no longer lets the legacy fallback exception escape when
+    `ClearDatasetsCommand` returns `None`.
+  - mock / legacy data-splitting cleanup fallback still calls
+    `TrainingController.clean_datasets(force_update=True)`.
 - Generate Dataset apply fallback warning:
   - real `Study` dataset-generation apply fallback refusal now shows `Data Splitting Blocked`.
   - the UI no longer lets the legacy fallback exception escape when
@@ -1577,6 +1585,36 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for c93012d; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_split_data_refuses_real_study_clear_none_controller_fallback \
+  -q
+# 1 passed for cdab73f after red failure on escaped legacy fallback exception
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar \
+  -q
+# 38 passed for cdab73f
+
+poetry run ruff check XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py
+poetry run basedpyright XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py
+# focused lint/type passed for cdab73f
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for cdab73f
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for cdab73f
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for cdab73f; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
