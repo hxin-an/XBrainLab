@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+144f4b1 docs: record table geometry verification
+93f3e67 docs: refresh handoff after label prompt wording
 d84a02a ui: rename label compatibility prompts
 da565f8 ui: align chat empty state with scan source
 eb96111 docs: refresh handoff after assistant footer wording
@@ -225,6 +227,20 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Data Interpretation table geometry verification:
+  - User-reported preview table overflow / Review Summary contrast and loaded Dataset table
+    underfill / green Events concerns were checked against current code and refreshed replay
+    artifacts.
+  - Focused PyQt gates passed for wizard table fit, loaded Dataset table fill, replay geometry, and
+    Events column semantic wording/color.
+  - Refreshed `artifacts/ui/data-interpretation-replay.json` has
+    `ui_quality_review.geometry.passed=True`; preview/remap tables report `width_gap=0` and
+    `horizontal_scrollbar_max=0`; Dataset table reports `header_length=993`,
+    `viewport_width=994`, and `right_gap_to_boundary=0`.
+  - Current screenshots show Review Summary with subtle dark rows and Dataset Events as
+    `Events (6)` / `Labels (4)`, not green `Yes (...)`.
+  - No local LLM eval was run; this was UI-observable table/layout verification under the fast dev
+    gate.
 - Label compatibility target prompt wording:
   - Post-load label compatibility target selection no longer presents itself as `Import Label`.
   - No-selection target prompt title is `Add Labels to Loaded Data`; fallback warnings use
