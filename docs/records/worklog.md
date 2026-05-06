@@ -37,6 +37,26 @@
 
 ## 2026-05-06
 
+### 19:22 Consolidated walkthrough BIDS Levels refresh
+
+- 做了什麼：
+  - Refreshed `artifacts/ui/human-like-walkthrough/` after the BIDS sidecar fixture change.
+  - `04-interpretation-preview.png`, `05-interpretation-confirm.png`, `07-recipe-reloaded.png`,
+    `human-like-walkthrough.json`, `human-like-walkthrough.md`, and
+    `walkthrough-import.recipe.json` now reflect `Left hand` / `Right hand` class-map rows.
+  - Confirmed the top-level walkthrough still reports status `passed`, table geometry findings
+    `0`, clipped row findings `0`, visible text guard passed, and resource smoke passed.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py --output-dir artifacts/ui/human-like-walkthrough`
+    -> exit `0`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/integration/ui/test_product_walkthrough.py -q`
+    -> `23 passed`.
+- local eval：
+  - Not run. This refreshes UI-observable walkthrough artifacts only.
+- 不能宣稱：
+  - This remains automated offscreen walkthrough evidence. It does not replace Windows launcher /
+    dual-monitor / DPI / long local-model human desktop acceptance.
+
 ### 19:16 BIDS Levels UI replay sidecar evidence
 
 - 做了什麼：

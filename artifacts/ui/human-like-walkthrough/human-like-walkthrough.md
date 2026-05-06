@@ -3,9 +3,9 @@
 - status: `passed`
 - failure reason: none
 - claim boundary: Automated UI-observable PyQt replay; not human Windows desktop acceptance. Windows launcher click-through, dual-monitor/DPI behavior, and long real local-model desktop sessions remain human verification.
-- elapsed seconds: `4.667`
+- elapsed seconds: `4.693`
 - source: `<walkthrough_source>`
-- recipe: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json`
+- recipe: `artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json`
 
 ## Pass / Fail
 
@@ -14,30 +14,30 @@
 - screenshots: `20`
 - human desktop acceptance: `not performed`
 - resource smoke passed: `True`
-- RSS growth: `228260` KB / limit `600000` KB
+- RSS growth: `229948` KB / limit `600000` KB
 
 ## Screenshots
 
-- main_initial: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/01-main-initial.png`
-- dataset_page: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/02-dataset-page.png`
-- source_selection: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/03-source-selection.png`
-- wizard_preview: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/04-interpretation-preview.png`
-- wizard_confirm: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png`
-- applied: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png`
-- recipe_reloaded: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png`
-- preprocess: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/08-preprocessing.png`
-- dataset_ready: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/09-dataset-ready.png`
-- training_readiness: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/10-training-readiness.png`
-- analysis_readiness: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/11-analysis-readiness.png`
-- assistant_empty: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/12-assistant-empty.png`
-- assistant_normal: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/13-assistant-normal.png`
-- assistant_clarification: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/14-assistant-clarification.png`
-- assistant_blocked: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/15-assistant-blocked.png`
-- assistant_success: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/16-assistant-success.png`
-- assistant_narrow: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/17-assistant-narrow.png`
-- reset_boundary: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/18-reset-boundary.png`
-- error_recovery: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/19-error-recovery.png`
-- eval_dashboard: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/20-eval-dashboard.png`
+- main_initial: `artifacts/ui/human-like-walkthrough/01-main-initial.png`
+- dataset_page: `artifacts/ui/human-like-walkthrough/02-dataset-page.png`
+- source_selection: `artifacts/ui/human-like-walkthrough/03-source-selection.png`
+- wizard_preview: `artifacts/ui/human-like-walkthrough/04-interpretation-preview.png`
+- wizard_confirm: `artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png`
+- applied: `artifacts/ui/human-like-walkthrough/06-interpretation-applied.png`
+- recipe_reloaded: `artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png`
+- preprocess: `artifacts/ui/human-like-walkthrough/08-preprocessing.png`
+- dataset_ready: `artifacts/ui/human-like-walkthrough/09-dataset-ready.png`
+- training_readiness: `artifacts/ui/human-like-walkthrough/10-training-readiness.png`
+- analysis_readiness: `artifacts/ui/human-like-walkthrough/11-analysis-readiness.png`
+- assistant_empty: `artifacts/ui/human-like-walkthrough/12-assistant-empty.png`
+- assistant_normal: `artifacts/ui/human-like-walkthrough/13-assistant-normal.png`
+- assistant_clarification: `artifacts/ui/human-like-walkthrough/14-assistant-clarification.png`
+- assistant_blocked: `artifacts/ui/human-like-walkthrough/15-assistant-blocked.png`
+- assistant_success: `artifacts/ui/human-like-walkthrough/16-assistant-success.png`
+- assistant_narrow: `artifacts/ui/human-like-walkthrough/17-assistant-narrow.png`
+- reset_boundary: `artifacts/ui/human-like-walkthrough/18-reset-boundary.png`
+- error_recovery: `artifacts/ui/human-like-walkthrough/19-error-recovery.png`
+- eval_dashboard: `artifacts/ui/human-like-walkthrough/20-eval-dashboard.png`
 
 ## UI Quality Review
 
@@ -59,32 +59,32 @@
 
 ## Phases
 
-- `app_startup` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/01-main-initial.png`
-- `main_window_initial_state` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/02-dataset-page.png`
-- `data_source_selection` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/03-source-selection.png`
-- `data_interpretation_select_source` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/03-source-selection.png`
-- `data_interpretation_scan_result` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/04-interpretation-preview.png`
-- `data_interpretation_preview` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png`
-- `data_interpretation_confirm_metadata_labels` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png`
-- `data_interpretation_decisions` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png`
-- `data_interpretation_apply` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png`
-- `data_interpretation_save_recipe` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png`
-- `data_interpretation_reload_recipe` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png`
-- `preprocessing` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/08-preprocessing.png`
-- `epoch_creation` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/09-dataset-ready.png`
-- `dataset_generation` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/09-dataset-ready.png`
-- `training_readiness` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/10-training-readiness.png`
-- `evaluation_visualization_saliency_readiness` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/11-analysis-readiness.png`
-- `assistant_empty_state` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/12-assistant-empty.png`
-- `assistant_repeated_open_close` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/12-assistant-empty.png`
-- `assistant_normal_message` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/13-assistant-normal.png`
-- `assistant_missing_input_clarification` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/14-assistant-clarification.png`
-- `assistant_blocked_command` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/15-assistant-blocked.png`
-- `assistant_successful_tool_result` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/16-assistant-success.png`
-- `assistant_narrow_panel` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/17-assistant-narrow.png`
-- `reset_new_session_boundary` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/18-reset-boundary.png`
-- `error_recovery` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/19-error-recovery.png`
-- `eval_dashboard_report` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/20-eval-dashboard.png`
+- `app_startup` -> `artifacts/ui/human-like-walkthrough/01-main-initial.png`
+- `main_window_initial_state` -> `artifacts/ui/human-like-walkthrough/02-dataset-page.png`
+- `data_source_selection` -> `artifacts/ui/human-like-walkthrough/03-source-selection.png`
+- `data_interpretation_select_source` -> `artifacts/ui/human-like-walkthrough/03-source-selection.png`
+- `data_interpretation_scan_result` -> `artifacts/ui/human-like-walkthrough/04-interpretation-preview.png`
+- `data_interpretation_preview` -> `artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png`
+- `data_interpretation_confirm_metadata_labels` -> `artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png`
+- `data_interpretation_decisions` -> `artifacts/ui/human-like-walkthrough/06-interpretation-applied.png`
+- `data_interpretation_apply` -> `artifacts/ui/human-like-walkthrough/06-interpretation-applied.png`
+- `data_interpretation_save_recipe` -> `artifacts/ui/human-like-walkthrough/06-interpretation-applied.png`
+- `data_interpretation_reload_recipe` -> `artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png`
+- `preprocessing` -> `artifacts/ui/human-like-walkthrough/08-preprocessing.png`
+- `epoch_creation` -> `artifacts/ui/human-like-walkthrough/09-dataset-ready.png`
+- `dataset_generation` -> `artifacts/ui/human-like-walkthrough/09-dataset-ready.png`
+- `training_readiness` -> `artifacts/ui/human-like-walkthrough/10-training-readiness.png`
+- `evaluation_visualization_saliency_readiness` -> `artifacts/ui/human-like-walkthrough/11-analysis-readiness.png`
+- `assistant_empty_state` -> `artifacts/ui/human-like-walkthrough/12-assistant-empty.png`
+- `assistant_repeated_open_close` -> `artifacts/ui/human-like-walkthrough/12-assistant-empty.png`
+- `assistant_normal_message` -> `artifacts/ui/human-like-walkthrough/13-assistant-normal.png`
+- `assistant_missing_input_clarification` -> `artifacts/ui/human-like-walkthrough/14-assistant-clarification.png`
+- `assistant_blocked_command` -> `artifacts/ui/human-like-walkthrough/15-assistant-blocked.png`
+- `assistant_successful_tool_result` -> `artifacts/ui/human-like-walkthrough/16-assistant-success.png`
+- `assistant_narrow_panel` -> `artifacts/ui/human-like-walkthrough/17-assistant-narrow.png`
+- `reset_new_session_boundary` -> `artifacts/ui/human-like-walkthrough/18-reset-boundary.png`
+- `error_recovery` -> `artifacts/ui/human-like-walkthrough/19-error-recovery.png`
+- `eval_dashboard_report` -> `artifacts/ui/human-like-walkthrough/20-eval-dashboard.png`
 
 ## User-Facing Transcript
 
@@ -128,9 +128,9 @@
 - smoke checked: `True`
 - smoke passed: `True`
 - boundary: Coarse process smoke only: RSS uses ru_maxrss high-water mark and this does not prove the absence of leaks.
-- start: threads `1`, qt active `0`, rss `837748` KB
-- before_close: threads `1`, qt active `0`, rss `1066008` KB
-- after_close: threads `1`, qt active `0`, rss `1066008` KB
+- start: threads `1`, qt active `0`, rss `837432` KB
+- before_close: threads `1`, qt active `0`, rss `1067380` KB
+- after_close: threads `1`, qt active `0`, rss `1067380` KB
 
 ## Remaining Human Verification
 

@@ -642,6 +642,11 @@ text，不能取代人眼設計審查。
 同一 `partial_visible_rows` evidence 也已進入 consolidated human-like walkthrough 的 top-level
 UI quality gate；未來任一被 capture 的 table/tree widget 出現半截 visible row，artifact 會 failed，
 不會只靠人工目視偶然發現。
+最新 consolidated walkthrough refresh 也重用 Data Interpretation replay 的 BIDS `events.json`
+Levels fixture；`04-interpretation-preview.png` / `05-interpretation-confirm.png` /
+`07-recipe-reloaded.png` 和 JSON 現在顯示 `Left hand` / `Right hand` class-map rows。Raw
+`choices:class_map` 仍可能留在 backend command-result diagnostics 內供 recipe reload trace 使用，
+但 visible-text guard 仍通過，代表這不是使用者可見 UI 文案。
 最新 eval dashboard walkthrough screenshot 也已從 raw Markdown / pipe-table preview 改成
 dark product-style report：model comparison、metric pass rates 等 section 以 styled tables 呈現，
 並在第一屏提升顯示 Thesis Claim Boundary，避免先看到 100% 分數就誤讀成 product complete。

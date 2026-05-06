@@ -1,5 +1,8 @@
 {
-  "class_map": {},
+  "class_map": {
+    "left": "Left hand",
+    "right": "Right hand"
+  },
   "confirmations": [
     "Confirm label carrier alignment, anchor event, and class map before applying.",
     "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
@@ -63,7 +66,10 @@
   ],
   "label_imports": [
     {
-      "class_map": {},
+      "class_map": {
+        "left": "Left hand",
+        "right": "Right hand"
+      },
       "file_mapping": {
         "/tmp/xbrainlab_data_interpretation_replay/sub-01_task-mi_run-2_raw.fif": "/tmp/xbrainlab_data_interpretation_replay/events.tsv"
       },

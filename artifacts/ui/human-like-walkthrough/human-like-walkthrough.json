@@ -3,11 +3,11 @@
   "failure_reason": "",
   "claim_boundary": "Automated UI-observable PyQt replay; not human Windows desktop acceptance. Windows launcher click-through, dual-monitor/DPI behavior, and long real local-model desktop sessions remain human verification.",
   "source_path": "<walkthrough_source>",
-  "recipe_path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json",
+  "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json",
   "phases": [
     {
       "phase": "app_startup",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/01-main-initial.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/01-main-initial.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -164,7 +164,7 @@
     },
     {
       "phase": "main_window_initial_state",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/02-dataset-page.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/02-dataset-page.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -365,7 +365,7 @@
     },
     {
       "phase": "data_source_selection",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/03-source-selection.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/03-source-selection.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -523,7 +523,7 @@
     },
     {
       "phase": "data_interpretation_select_source",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/03-source-selection.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/03-source-selection.png",
       "visible_text": [
         "Interpret Data Source",
         "Interpret Folder / BIDS",
@@ -637,7 +637,7 @@
     },
     {
       "phase": "data_interpretation_scan_result",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/04-interpretation-preview.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/04-interpretation-preview.png",
       "visible_text": [
         "Select source | Scan result | Preview | Confirm | Apply | Save recipe",
         "Found 2 EEG file(s) and 1 label/event carrier(s).",
@@ -662,6 +662,8 @@
         "Time anchor",
         "Event duration",
         "Class label candidate",
+        "Left hand",
+        "Right hand",
         "Review the items marked Needs confirmation, then confirm and apply.",
         "Save reusable import recipe after applying",
         "Confirm and Apply",
@@ -876,6 +878,16 @@
                 "Trial type",
                 "event role",
                 "Class label candidate"
+              ],
+              [
+                "left",
+                "class map",
+                "Left hand"
+              ],
+              [
+                "right",
+                "class map",
+                "Right hand"
               ]
             ],
             "resize_modes": [
@@ -974,7 +986,7 @@
     },
     {
       "phase": "data_interpretation_preview",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
       "visible_text": [
         "Select source | Scan result | Preview | Confirm | Apply | Save recipe",
         "Found 2 EEG file(s) and 1 label/event carrier(s).",
@@ -999,6 +1011,8 @@
         "Time anchor",
         "Event duration",
         "Class cue",
+        "Left hand",
+        "Right hand",
         "Review the items marked Needs confirmation, then confirm and apply.",
         "Save reusable import recipe after applying",
         "Confirm and Apply",
@@ -1263,6 +1277,16 @@
                 "Trial type",
                 "event role",
                 "Class cue"
+              ],
+              [
+                "left",
+                "class map",
+                "Left hand"
+              ],
+              [
+                "right",
+                "class map",
+                "Right hand"
               ]
             ],
             "resize_modes": [
@@ -1361,7 +1385,7 @@
     },
     {
       "phase": "data_interpretation_confirm_metadata_labels",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
       "visible_text": [
         "Select source | Scan result | Preview | Confirm | Apply | Save recipe",
         "Found 2 EEG file(s) and 1 label/event carrier(s).",
@@ -1386,6 +1410,8 @@
         "Time anchor",
         "Event duration",
         "Class cue",
+        "Left hand",
+        "Right hand",
         "Review the items marked Needs confirmation, then confirm and apply.",
         "Save reusable import recipe after applying",
         "Confirm and Apply",
@@ -1495,7 +1521,7 @@
     },
     {
       "phase": "data_interpretation_decisions",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -1645,7 +1671,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -1887,7 +1913,7 @@
     },
     {
       "phase": "data_interpretation_apply",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -2037,7 +2063,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -2161,7 +2187,7 @@
     },
     {
       "phase": "data_interpretation_save_recipe",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -2311,7 +2337,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -2343,7 +2369,7 @@
     },
     {
       "phase": "data_interpretation_reload_recipe",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
       "visible_text": [
         "Select source | Scan result | Preview | Confirm | Apply | Save recipe",
         "Found 2 EEG file(s) and 1 label/event carrier(s).",
@@ -2368,6 +2394,8 @@
         "Time anchor",
         "Event duration",
         "Class cue",
+        "Left hand",
+        "Right hand",
         "Review the items marked Needs confirmation, then confirm and apply.",
         "Save reusable import recipe after applying",
         "Confirm and Apply",
@@ -2447,7 +2475,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -2482,7 +2510,7 @@
           [
             "Reloaded recipe",
             "Reapplied",
-            "Saved recipe choices were reapplied before validation: selected EEG files, metadata overrides, label carrier choices, event roles."
+            "Saved recipe choices were reapplied before validation: selected EEG files, metadata overrides, label carrier choices, event roles, class map."
           ],
           [
             "EEG files",
@@ -2497,7 +2525,7 @@
           [
             "Saved choices",
             "Reapplied",
-            "selected EEG files, metadata overrides, label carrier choices, event roles."
+            "selected EEG files, metadata overrides, label carrier choices, event roles, class map."
           ],
           [
             "Warning",
@@ -2681,6 +2709,16 @@
                 "Trial type",
                 "event role",
                 "Class cue"
+              ],
+              [
+                "left",
+                "class map",
+                "Left hand"
+              ],
+              [
+                "right",
+                "class map",
+                "Right hand"
               ]
             ],
             "resize_modes": [
@@ -2712,7 +2750,7 @@
               [
                 "Reloaded recipe",
                 "Reapplied",
-                "Saved recipe choices were reapplied before validation: selected EEG files, metadata overrides, label carrier choices, event roles."
+                "Saved recipe choices were reapplied before validation: selected EEG files, metadata overrides, label carrier choices, event roles, class map."
               ],
               [
                 "EEG files",
@@ -2727,7 +2765,7 @@
               [
                 "Saved choices",
                 "Reapplied",
-                "selected EEG files, metadata overrides, label carrier choices, event roles."
+                "selected EEG files, metadata overrides, label carrier choices, event roles, class map."
               ],
               [
                 "Warning",
@@ -2804,7 +2842,7 @@
     },
     {
       "phase": "preprocessing",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/08-preprocessing.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/08-preprocessing.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -2960,7 +2998,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -2988,7 +3026,7 @@
     },
     {
       "phase": "epoch_creation",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -3138,7 +3176,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -3191,7 +3229,7 @@
     },
     {
       "phase": "dataset_generation",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
       "visible_text": [
         "Dataset Splitting",
         "Model Selection",
@@ -3299,7 +3337,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -3332,7 +3370,7 @@
     },
     {
       "phase": "training_readiness",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/10-training-readiness.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/10-training-readiness.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -3482,7 +3520,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -3512,7 +3550,7 @@
     },
     {
       "phase": "evaluation_visualization_saliency_readiness",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/11-analysis-readiness.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/11-analysis-readiness.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -3630,7 +3668,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -3717,7 +3755,7 @@
     },
     {
       "phase": "assistant_empty_state",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
       "visible_text": [
         "Start with your EEG data",
         "Ask for a quick workflow check, plan preprocessing, or explain why training is blocked.",
@@ -3795,7 +3833,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -3821,7 +3859,7 @@
     },
     {
       "phase": "assistant_repeated_open_close",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
       "visible_text": [
         "Start with your EEG data",
         "Ask for a quick workflow check, plan preprocessing, or explain why training is blocked.",
@@ -3899,7 +3937,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -3925,7 +3963,7 @@
     },
     {
       "phase": "assistant_normal_message",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/13-assistant-normal.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/13-assistant-normal.png",
       "visible_text": [
         "Hello.",
         "I can help interpret EEG data and prepare a training-ready dataset.",
@@ -4001,14 +4039,14 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {}
     },
     {
       "phase": "assistant_missing_input_clarification",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/14-assistant-clarification.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/14-assistant-clarification.png",
       "visible_text": [
         "Hello.",
         "I can help interpret EEG data and prepare a training-ready dataset.",
@@ -4086,7 +4124,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -4095,7 +4133,7 @@
     },
     {
       "phase": "assistant_blocked_command",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/15-assistant-blocked.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/15-assistant-blocked.png",
       "visible_text": [
         "Hello.",
         "I can help interpret EEG data and prepare a training-ready dataset.",
@@ -4175,7 +4213,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -4184,7 +4222,7 @@
     },
     {
       "phase": "assistant_successful_tool_result",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/16-assistant-success.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/16-assistant-success.png",
       "visible_text": [
         "Hello.",
         "I can help interpret EEG data and prepare a training-ready dataset.",
@@ -4266,7 +4304,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -4297,7 +4335,7 @@
     },
     {
       "phase": "assistant_narrow_panel",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/17-assistant-narrow.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/17-assistant-narrow.png",
       "visible_text": [
         "Hello.",
         "I can help interpret EEG data and prepare a training-ready dataset.",
@@ -4379,7 +4417,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -4389,7 +4427,7 @@
     },
     {
       "phase": "reset_new_session_boundary",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/18-reset-boundary.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/18-reset-boundary.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -4629,7 +4667,7 @@
     },
     {
       "phase": "error_recovery",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/19-error-recovery.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/19-error-recovery.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -4868,7 +4906,7 @@
     },
     {
       "phase": "eval_dashboard_report",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/20-eval-dashboard.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/20-eval-dashboard.png",
       "visible_text": [
         "XBrainLab Evaluation Dashboard Report"
       ],
@@ -4934,26 +4972,26 @@
     }
   ],
   "screenshots": {
-    "main_initial": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/01-main-initial.png",
-    "dataset_page": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/02-dataset-page.png",
-    "source_selection": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/03-source-selection.png",
-    "wizard_preview": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/04-interpretation-preview.png",
-    "wizard_confirm": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
-    "applied": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
-    "recipe_reloaded": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
-    "preprocess": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/08-preprocessing.png",
-    "dataset_ready": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
-    "training_readiness": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/10-training-readiness.png",
-    "analysis_readiness": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/11-analysis-readiness.png",
-    "assistant_empty": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
-    "assistant_normal": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/13-assistant-normal.png",
-    "assistant_clarification": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/14-assistant-clarification.png",
-    "assistant_blocked": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/15-assistant-blocked.png",
-    "assistant_success": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/16-assistant-success.png",
-    "assistant_narrow": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/17-assistant-narrow.png",
-    "reset_boundary": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/18-reset-boundary.png",
-    "error_recovery": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/19-error-recovery.png",
-    "eval_dashboard": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/20-eval-dashboard.png"
+    "main_initial": "artifacts/ui/human-like-walkthrough/01-main-initial.png",
+    "dataset_page": "artifacts/ui/human-like-walkthrough/02-dataset-page.png",
+    "source_selection": "artifacts/ui/human-like-walkthrough/03-source-selection.png",
+    "wizard_preview": "artifacts/ui/human-like-walkthrough/04-interpretation-preview.png",
+    "wizard_confirm": "artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
+    "applied": "artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
+    "recipe_reloaded": "artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
+    "preprocess": "artifacts/ui/human-like-walkthrough/08-preprocessing.png",
+    "dataset_ready": "artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
+    "training_readiness": "artifacts/ui/human-like-walkthrough/10-training-readiness.png",
+    "analysis_readiness": "artifacts/ui/human-like-walkthrough/11-analysis-readiness.png",
+    "assistant_empty": "artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
+    "assistant_normal": "artifacts/ui/human-like-walkthrough/13-assistant-normal.png",
+    "assistant_clarification": "artifacts/ui/human-like-walkthrough/14-assistant-clarification.png",
+    "assistant_blocked": "artifacts/ui/human-like-walkthrough/15-assistant-blocked.png",
+    "assistant_success": "artifacts/ui/human-like-walkthrough/16-assistant-success.png",
+    "assistant_narrow": "artifacts/ui/human-like-walkthrough/17-assistant-narrow.png",
+    "reset_boundary": "artifacts/ui/human-like-walkthrough/18-reset-boundary.png",
+    "error_recovery": "artifacts/ui/human-like-walkthrough/19-error-recovery.png",
+    "eval_dashboard": "artifacts/ui/human-like-walkthrough/20-eval-dashboard.png"
   },
   "observable_evidence": {
     "visible_text_snapshots": {
@@ -5035,6 +5073,8 @@
         "Time anchor",
         "Event duration",
         "Class label candidate",
+        "Left hand",
+        "Right hand",
         "Review the items marked Needs confirmation, then confirm and apply.",
         "Save reusable import recipe after applying",
         "Confirm and Apply",
@@ -5064,6 +5104,8 @@
         "Time anchor",
         "Event duration",
         "Class cue",
+        "Left hand",
+        "Right hand",
         "Review the items marked Needs confirmation, then confirm and apply.",
         "Save reusable import recipe after applying",
         "Confirm and Apply",
@@ -5093,6 +5135,8 @@
         "Time anchor",
         "Event duration",
         "Class cue",
+        "Left hand",
+        "Right hand",
         "Review the items marked Needs confirmation, then confirm and apply.",
         "Save reusable import recipe after applying",
         "Confirm and Apply",
@@ -5167,6 +5211,8 @@
         "Time anchor",
         "Event duration",
         "Class cue",
+        "Left hand",
+        "Right hand",
         "Review the items marked Needs confirmation, then confirm and apply.",
         "Save reusable import recipe after applying",
         "Confirm and Apply",
@@ -6978,7 +7024,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "data_interpretation_apply": {
@@ -7035,7 +7081,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "data_interpretation_save_recipe": {
@@ -7092,7 +7138,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "data_interpretation_reload_recipe": {
@@ -7149,7 +7195,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "preprocessing": {
@@ -7213,7 +7259,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "epoch_creation": {
@@ -7277,7 +7323,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "dataset_generation": {
@@ -7341,7 +7387,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "training_readiness": {
@@ -7405,7 +7451,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "evaluation_visualization_saliency_readiness": {
@@ -7469,7 +7515,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_empty_state": {
@@ -7533,7 +7579,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_repeated_open_close": {
@@ -7597,7 +7643,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_normal_message": {
@@ -7661,7 +7707,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_missing_input_clarification": {
@@ -7725,7 +7771,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_blocked_command": {
@@ -7789,7 +7835,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_successful_tool_result": {
@@ -7853,7 +7899,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_narrow_panel": {
@@ -7917,7 +7963,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "reset_new_session_boundary": {
@@ -8516,7 +8562,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "data_interpretation_apply": {
@@ -8573,7 +8619,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "data_interpretation_save_recipe": {
@@ -8630,7 +8676,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "data_interpretation_reload_recipe": {
@@ -8687,7 +8733,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "preprocessing": {
@@ -8751,7 +8797,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "epoch_creation": {
@@ -8815,7 +8861,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "dataset_generation": {
@@ -8879,7 +8925,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "training_readiness": {
@@ -8943,7 +8989,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "evaluation_visualization_saliency_readiness": {
@@ -9007,7 +9053,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_empty_state": {
@@ -9071,7 +9117,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_repeated_open_close": {
@@ -9135,7 +9181,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_normal_message": {
@@ -9199,7 +9245,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_missing_input_clarification": {
@@ -9263,7 +9309,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_blocked_command": {
@@ -9327,7 +9373,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_successful_tool_result": {
@@ -9391,7 +9437,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_narrow_panel": {
@@ -9455,7 +9501,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "reset_new_session_boundary": {
@@ -9622,32 +9668,32 @@
       }
     },
     "phase_screenshots": {
-      "app_startup": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/01-main-initial.png",
-      "main_window_initial_state": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/02-dataset-page.png",
-      "data_source_selection": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/03-source-selection.png",
-      "data_interpretation_select_source": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/03-source-selection.png",
-      "data_interpretation_scan_result": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/04-interpretation-preview.png",
-      "data_interpretation_preview": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
-      "data_interpretation_confirm_metadata_labels": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
-      "data_interpretation_decisions": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
-      "data_interpretation_apply": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
-      "data_interpretation_save_recipe": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
-      "data_interpretation_reload_recipe": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
-      "preprocessing": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/08-preprocessing.png",
-      "epoch_creation": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
-      "dataset_generation": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
-      "training_readiness": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/10-training-readiness.png",
-      "evaluation_visualization_saliency_readiness": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/11-analysis-readiness.png",
-      "assistant_empty_state": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
-      "assistant_repeated_open_close": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
-      "assistant_normal_message": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/13-assistant-normal.png",
-      "assistant_missing_input_clarification": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/14-assistant-clarification.png",
-      "assistant_blocked_command": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/15-assistant-blocked.png",
-      "assistant_successful_tool_result": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/16-assistant-success.png",
-      "assistant_narrow_panel": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/17-assistant-narrow.png",
-      "reset_new_session_boundary": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/18-reset-boundary.png",
-      "error_recovery": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/19-error-recovery.png",
-      "eval_dashboard_report": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/20-eval-dashboard.png"
+      "app_startup": "artifacts/ui/human-like-walkthrough/01-main-initial.png",
+      "main_window_initial_state": "artifacts/ui/human-like-walkthrough/02-dataset-page.png",
+      "data_source_selection": "artifacts/ui/human-like-walkthrough/03-source-selection.png",
+      "data_interpretation_select_source": "artifacts/ui/human-like-walkthrough/03-source-selection.png",
+      "data_interpretation_scan_result": "artifacts/ui/human-like-walkthrough/04-interpretation-preview.png",
+      "data_interpretation_preview": "artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
+      "data_interpretation_confirm_metadata_labels": "artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
+      "data_interpretation_decisions": "artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
+      "data_interpretation_apply": "artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
+      "data_interpretation_save_recipe": "artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
+      "data_interpretation_reload_recipe": "artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
+      "preprocessing": "artifacts/ui/human-like-walkthrough/08-preprocessing.png",
+      "epoch_creation": "artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
+      "dataset_generation": "artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
+      "training_readiness": "artifacts/ui/human-like-walkthrough/10-training-readiness.png",
+      "evaluation_visualization_saliency_readiness": "artifacts/ui/human-like-walkthrough/11-analysis-readiness.png",
+      "assistant_empty_state": "artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
+      "assistant_repeated_open_close": "artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
+      "assistant_normal_message": "artifacts/ui/human-like-walkthrough/13-assistant-normal.png",
+      "assistant_missing_input_clarification": "artifacts/ui/human-like-walkthrough/14-assistant-clarification.png",
+      "assistant_blocked_command": "artifacts/ui/human-like-walkthrough/15-assistant-blocked.png",
+      "assistant_successful_tool_result": "artifacts/ui/human-like-walkthrough/16-assistant-success.png",
+      "assistant_narrow_panel": "artifacts/ui/human-like-walkthrough/17-assistant-narrow.png",
+      "reset_new_session_boundary": "artifacts/ui/human-like-walkthrough/18-reset-boundary.png",
+      "error_recovery": "artifacts/ui/human-like-walkthrough/19-error-recovery.png",
+      "eval_dashboard_report": "artifacts/ui/human-like-walkthrough/20-eval-dashboard.png"
     },
     "ui_geometry_snapshots": {
       "main_window_initial_state": {
@@ -9826,6 +9872,16 @@
               "Trial type",
               "event role",
               "Class label candidate"
+            ],
+            [
+              "left",
+              "class map",
+              "Left hand"
+            ],
+            [
+              "right",
+              "class map",
+              "Right hand"
             ]
           ],
           "resize_modes": [
@@ -10051,6 +10107,16 @@
               "Trial type",
               "event role",
               "Class cue"
+            ],
+            [
+              "left",
+              "class map",
+              "Left hand"
+            ],
+            [
+              "right",
+              "class map",
+              "Right hand"
             ]
           ],
           "resize_modes": [
@@ -10404,6 +10470,16 @@
               "Trial type",
               "event role",
               "Class cue"
+            ],
+            [
+              "left",
+              "class map",
+              "Left hand"
+            ],
+            [
+              "right",
+              "class map",
+              "Right hand"
             ]
           ],
           "resize_modes": [
@@ -10435,7 +10511,7 @@
             [
               "Reloaded recipe",
               "Reapplied",
-              "Saved recipe choices were reapplied before validation: selected EEG files, metadata overrides, label carrier choices, event roles."
+              "Saved recipe choices were reapplied before validation: selected EEG files, metadata overrides, label carrier choices, event roles, class map."
             ],
             [
               "EEG files",
@@ -10450,7 +10526,7 @@
             [
               "Saved choices",
               "Reapplied",
-              "selected EEG files, metadata overrides, label carrier choices, event roles."
+              "selected EEG files, metadata overrides, label carrier choices, event roles, class map."
             ],
             [
               "Warning",
@@ -11106,7 +11182,10 @@
             "duration": "event duration",
             "trial_type": "class label candidate"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -11181,7 +11260,10 @@
             "duration": "event duration",
             "trial_type": "class label candidate"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "time_model": "sample_index_or_annotation_time",
           "granularity": "trial_or_event",
           "metadata": [
@@ -11482,7 +11564,10 @@
             "duration": "event duration",
             "trial_type": "class label candidate"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "recipe_reload_summary": {}
         }
       }
@@ -11740,7 +11825,10 @@
             "duration": "event duration",
             "trial_type": "class label candidate"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -12055,7 +12143,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -12130,7 +12221,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "time_model": "sample_index_or_annotation_time",
           "granularity": "trial_or_event",
           "metadata": [
@@ -12464,7 +12558,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "recipe_reload_summary": {}
         }
       }
@@ -12726,7 +12823,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -13040,7 +13140,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -13373,7 +13476,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "label_import_count": 1,
           "label_imports": [
             {
@@ -13388,7 +13494,10 @@
                 "<walkthrough_source>/sub-01_task-mi_run-2_raw.fif": "<walkthrough_source>/events.tsv"
               },
               "selected_event_names": [],
-              "class_map": {},
+              "class_map": {
+                "left": "Left hand",
+                "right": "Right hand"
+              },
               "success_count": 1
             }
           ],
@@ -13593,7 +13702,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "label_imports": [
             {
               "mode": "timestamp",
@@ -13607,7 +13719,10 @@
                 "<walkthrough_source>/sub-01_task-mi_run-2_raw.fif": "<walkthrough_source>/events.tsv"
               },
               "selected_event_names": [],
-              "class_map": {},
+              "class_map": {
+                "left": "Left hand",
+                "right": "Right hand"
+              },
               "success_count": 1
             }
           ],
@@ -13657,7 +13772,10 @@
               "<walkthrough_source>/sub-01_task-mi_run-2_raw.fif": "<walkthrough_source>/events.tsv"
             },
             "selected_event_names": [],
-            "class_map": {},
+            "class_map": {
+              "left": "Left hand",
+              "right": "Right hand"
+            },
             "success_count": 1
           },
           "label_carrier": "<walkthrough_source>/events.tsv",
@@ -13958,7 +14076,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "label_import_count": 1,
           "label_imports": [
             {
@@ -13973,11 +14094,14 @@
                 "<walkthrough_source>/sub-01_task-mi_run-2_raw.fif": "<walkthrough_source>/events.tsv"
               },
               "selected_event_names": [],
-              "class_map": {},
+              "class_map": {
+                "left": "Left hand",
+                "right": "Right hand"
+              },
               "success_count": 1
             }
           ],
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         },
         "active_dataset": {
           "has_raw_data": true,
@@ -14176,7 +14300,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "label_imports": [
             {
               "mode": "timestamp",
@@ -14190,7 +14317,10 @@
                 "<walkthrough_source>/sub-01_task-mi_run-2_raw.fif": "<walkthrough_source>/events.tsv"
               },
               "selected_event_names": [],
-              "class_map": {},
+              "class_map": {
+                "left": "Left hand",
+                "right": "Right hand"
+              },
               "success_count": 1
             }
           ],
@@ -14210,7 +14340,7 @@
             "recipe:recipe-7"
           ]
         },
-        "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
       }
     },
     {
@@ -14505,7 +14635,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "label_import_count": 1,
           "label_imports": [
             {
@@ -14520,11 +14653,14 @@
                 "<walkthrough_source>/sub-01_task-mi_run-2_raw.fif": "<walkthrough_source>/events.tsv"
               },
               "selected_event_names": [],
-              "class_map": {},
+              "class_map": {
+                "left": "Left hand",
+                "right": "Right hand"
+              },
               "success_count": 1
             }
           ],
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         },
         "active_dataset": {
           "has_raw_data": true,
@@ -14723,10 +14859,16 @@
             "onset": "time anchor",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "label_imports": [
             {
-              "class_map": {},
+              "class_map": {
+                "left": "Left hand",
+                "right": "Right hand"
+              },
               "file_mapping": {
                 "<walkthrough_source>/sub-01_task-mi_run-2_raw.fif": "<walkthrough_source>/events.tsv"
               },
@@ -14959,7 +15101,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "time_model": "sample_index_or_annotation_time",
           "granularity": "trial_or_event",
           "metadata": [
@@ -15133,12 +15278,17 @@
               "label_carrier": "external label or event source",
               "onset": "time anchor",
               "trial_type": "class cue"
+            },
+            "class_map": {
+              "left": "Left hand",
+              "right": "Right hand"
             }
           },
           "recipe_trace": [
             "scan:scan-8",
             "candidate:candidate-9",
             "choices:metadata_overrides",
+            "choices:class_map",
             "choices:event_roles",
             "choices:label_carriers"
           ]
@@ -15319,7 +15469,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "recipe_reload_summary": {
             "recipe_id": "recipe-7",
             "status": "matched",
@@ -15327,9 +15480,10 @@
               "selected EEG files",
               "metadata overrides",
               "label carrier choices",
-              "event roles"
+              "event roles",
+              "class map"
             ],
-            "message": "Saved recipe choices were reapplied before validation: selected EEG files, metadata overrides, label carrier choices, event roles.",
+            "message": "Saved recipe choices were reapplied before validation: selected EEG files, metadata overrides, label carrier choices, event roles, class map.",
             "diff_rows": [
               {
                 "item": "EEG files",
@@ -15344,7 +15498,7 @@
               {
                 "item": "Saved choices",
                 "status": "Reapplied",
-                "detail": "selected EEG files, metadata overrides, label carrier choices, event roles."
+                "detail": "selected EEG files, metadata overrides, label carrier choices, event roles, class map."
               }
             ],
             "eeg_file_remap_options": [],
@@ -15668,7 +15822,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "label_import_count": 1,
           "label_imports": [
             {
@@ -15683,11 +15840,14 @@
                 "<walkthrough_source>/sub-01_task-mi_run-2_raw.fif": "<walkthrough_source>/events.tsv"
               },
               "selected_event_names": [],
-              "class_map": {},
+              "class_map": {
+                "left": "Left hand",
+                "right": "Right hand"
+              },
               "success_count": 1
             }
           ],
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         },
         "active_dataset": {
           "has_raw_data": true,
@@ -16027,7 +16187,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "label_import_count": 1,
           "label_imports": [
             {
@@ -16042,11 +16205,14 @@
                 "<walkthrough_source>/sub-01_task-mi_run-2_raw.fif": "<walkthrough_source>/events.tsv"
               },
               "selected_event_names": [],
-              "class_map": {},
+              "class_map": {
+                "left": "Left hand",
+                "right": "Right hand"
+              },
               "success_count": 1
             }
           ],
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         },
         "active_dataset": {
           "has_raw_data": true,
@@ -16397,7 +16563,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "label_import_count": 1,
           "label_imports": [
             {
@@ -16412,11 +16581,14 @@
                 "<walkthrough_source>/sub-01_task-mi_run-2_raw.fif": "<walkthrough_source>/events.tsv"
               },
               "selected_event_names": [],
-              "class_map": {},
+              "class_map": {
+                "left": "Left hand",
+                "right": "Right hand"
+              },
               "success_count": 1
             }
           ],
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         },
         "active_dataset": {
           "has_raw_data": true,
@@ -16594,7 +16766,7 @@
             "device": "cpu",
             "optimizer": "Adam",
             "checkpoint_epoch": 0,
-            "output_dir": "<repo>/artifacts/ui/human-like-walkthrough/training-smoke-output"
+            "output_dir": "artifacts/ui/human-like-walkthrough/training-smoke-output"
           },
           "has_trainer": false,
           "is_running": false,
@@ -16792,7 +16964,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "label_import_count": 1,
           "label_imports": [
             {
@@ -16807,11 +16982,14 @@
                 "<walkthrough_source>/sub-01_task-mi_run-2_raw.fif": "<walkthrough_source>/events.tsv"
               },
               "selected_event_names": [],
-              "class_map": {},
+              "class_map": {
+                "left": "Left hand",
+                "right": "Right hand"
+              },
               "success_count": 1
             }
           ],
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         },
         "active_dataset": {
           "has_raw_data": true,
@@ -16851,7 +17029,7 @@
           "device": "cpu",
           "optimizer": "Adam",
           "checkpoint_epoch": 0,
-          "output_dir": "<repo>/artifacts/ui/human-like-walkthrough/training-smoke-output"
+          "output_dir": "artifacts/ui/human-like-walkthrough/training-smoke-output"
         }
       }
     },
@@ -16981,7 +17159,7 @@
             "device": "cpu",
             "optimizer": "Adam",
             "checkpoint_epoch": 0,
-            "output_dir": "<repo>/artifacts/ui/human-like-walkthrough/training-smoke-output"
+            "output_dir": "artifacts/ui/human-like-walkthrough/training-smoke-output"
           },
           "has_trainer": false,
           "is_running": false,
@@ -17179,7 +17357,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "label_import_count": 1,
           "label_imports": [
             {
@@ -17194,11 +17375,14 @@
                 "<walkthrough_source>/sub-01_task-mi_run-2_raw.fif": "<walkthrough_source>/events.tsv"
               },
               "selected_event_names": [],
-              "class_map": {},
+              "class_map": {
+                "left": "Left hand",
+                "right": "Right hand"
+              },
               "success_count": 1
             }
           ],
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         },
         "active_dataset": {
           "has_raw_data": true,
@@ -17363,7 +17547,7 @@
             "device": "cpu",
             "optimizer": "Adam",
             "checkpoint_epoch": 0,
-            "output_dir": "<repo>/artifacts/ui/human-like-walkthrough/training-smoke-output"
+            "output_dir": "artifacts/ui/human-like-walkthrough/training-smoke-output"
           },
           "has_trainer": false,
           "is_running": false,
@@ -17561,7 +17745,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "label_import_count": 1,
           "label_imports": [
             {
@@ -17576,11 +17763,14 @@
                 "<walkthrough_source>/sub-01_task-mi_run-2_raw.fif": "<walkthrough_source>/events.tsv"
               },
               "selected_event_names": [],
-              "class_map": {},
+              "class_map": {
+                "left": "Left hand",
+                "right": "Right hand"
+              },
               "success_count": 1
             }
           ],
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         },
         "active_dataset": {
           "has_raw_data": true,
@@ -17752,7 +17942,7 @@
             "device": "cpu",
             "optimizer": "Adam",
             "checkpoint_epoch": 0,
-            "output_dir": "<repo>/artifacts/ui/human-like-walkthrough/training-smoke-output"
+            "output_dir": "artifacts/ui/human-like-walkthrough/training-smoke-output"
           },
           "has_trainer": false,
           "is_running": false,
@@ -17950,7 +18140,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "label_import_count": 1,
           "label_imports": [
             {
@@ -17965,11 +18158,14 @@
                 "<walkthrough_source>/sub-01_task-mi_run-2_raw.fif": "<walkthrough_source>/events.tsv"
               },
               "selected_event_names": [],
-              "class_map": {},
+              "class_map": {
+                "left": "Left hand",
+                "right": "Right hand"
+              },
               "success_count": 1
             }
           ],
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         },
         "active_dataset": {
           "has_raw_data": true,
@@ -18135,7 +18331,7 @@
             "device": "cpu",
             "optimizer": "Adam",
             "checkpoint_epoch": 0,
-            "output_dir": "<repo>/artifacts/ui/human-like-walkthrough/training-smoke-output"
+            "output_dir": "artifacts/ui/human-like-walkthrough/training-smoke-output"
           },
           "has_trainer": false,
           "is_running": false,
@@ -18333,7 +18529,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "Left hand",
+            "right": "Right hand"
+          },
           "label_import_count": 1,
           "label_imports": [
             {
@@ -18348,11 +18547,14 @@
                 "<walkthrough_source>/sub-01_task-mi_run-2_raw.fif": "<walkthrough_source>/events.tsv"
               },
               "selected_event_names": [],
-              "class_map": {},
+              "class_map": {
+                "left": "Left hand",
+                "right": "Right hand"
+              },
               "success_count": 1
             }
           ],
-          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         },
         "active_dataset": {
           "has_raw_data": true,
@@ -19686,33 +19888,33 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 1162459,
+      "pid": 1202926,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 837748
+      "max_rss_kb": 837432
     },
     {
       "label": "before_close",
-      "pid": 1162459,
+      "pid": 1202926,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1066008
+      "max_rss_kb": 1067380
     },
     {
       "label": "after_close",
-      "pid": 1162459,
+      "pid": 1202926,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1066008
+      "max_rss_kb": 1067380
     }
   ],
   "ui_quality_review": {
@@ -19720,140 +19922,140 @@
     "screenshot_review": [
       {
         "screenshot": "main_initial",
-        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/01-main-initial.png",
+        "path": "artifacts/ui/human-like-walkthrough/01-main-initial.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "dataset_page",
-        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/02-dataset-page.png",
+        "path": "artifacts/ui/human-like-walkthrough/02-dataset-page.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "source_selection",
-        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/03-source-selection.png",
+        "path": "artifacts/ui/human-like-walkthrough/03-source-selection.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "wizard_preview",
-        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/04-interpretation-preview.png",
+        "path": "artifacts/ui/human-like-walkthrough/04-interpretation-preview.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "wizard_confirm",
-        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
+        "path": "artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "applied",
-        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
+        "path": "artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "recipe_reloaded",
-        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
+        "path": "artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "preprocess",
-        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/08-preprocessing.png",
+        "path": "artifacts/ui/human-like-walkthrough/08-preprocessing.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "dataset_ready",
-        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
+        "path": "artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "training_readiness",
-        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/10-training-readiness.png",
+        "path": "artifacts/ui/human-like-walkthrough/10-training-readiness.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "analysis_readiness",
-        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/11-analysis-readiness.png",
+        "path": "artifacts/ui/human-like-walkthrough/11-analysis-readiness.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "assistant_empty",
-        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
+        "path": "artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "assistant_normal",
-        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/13-assistant-normal.png",
+        "path": "artifacts/ui/human-like-walkthrough/13-assistant-normal.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "assistant_clarification",
-        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/14-assistant-clarification.png",
+        "path": "artifacts/ui/human-like-walkthrough/14-assistant-clarification.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "assistant_blocked",
-        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/15-assistant-blocked.png",
+        "path": "artifacts/ui/human-like-walkthrough/15-assistant-blocked.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "assistant_success",
-        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/16-assistant-success.png",
+        "path": "artifacts/ui/human-like-walkthrough/16-assistant-success.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "assistant_narrow",
-        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/17-assistant-narrow.png",
+        "path": "artifacts/ui/human-like-walkthrough/17-assistant-narrow.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "reset_boundary",
-        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/18-reset-boundary.png",
+        "path": "artifacts/ui/human-like-walkthrough/18-reset-boundary.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "error_recovery",
-        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/19-error-recovery.png",
+        "path": "artifacts/ui/human-like-walkthrough/19-error-recovery.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "eval_dashboard",
-        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/20-eval-dashboard.png",
+        "path": "artifacts/ui/human-like-walkthrough/20-eval-dashboard.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
@@ -20020,7 +20222,7 @@
             "Role",
             "Meaning"
           ],
-          "row_count": 5,
+          "row_count": 7,
           "header_length": 982,
           "viewport_width": 982,
           "width_gap": 0,
@@ -20189,7 +20391,7 @@
             "Role",
             "Meaning"
           ],
-          "row_count": 5,
+          "row_count": 7,
           "header_length": 982,
           "viewport_width": 982,
           "width_gap": 0,
@@ -20456,7 +20658,7 @@
             "Role",
             "Meaning"
           ],
-          "row_count": 5,
+          "row_count": 7,
           "header_length": 982,
           "viewport_width": 982,
           "width_gap": 0,
@@ -20543,10 +20745,10 @@
       "after_close_python_threads": 1,
       "python_thread_tolerance": 1,
       "after_close_qt_active_threads": 0,
-      "rss_growth_kb": 228260,
+      "rss_growth_kb": 229948,
       "rss_limit_kb": 600000,
       "boundary": "Coarse process smoke only: RSS uses ru_maxrss high-water mark and this does not prove the absence of leaks."
     }
   },
-  "elapsed_seconds": 4.667
+  "elapsed_seconds": 4.693
 }
