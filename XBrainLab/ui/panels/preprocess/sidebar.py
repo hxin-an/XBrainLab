@@ -178,12 +178,23 @@ class PreprocessSidebar(QWidget):
         preprocess_capability = get_command_capability(self, CommandName.PREPROCESS)
         epoch_capability = get_command_capability(self, CommandName.CREATE_EPOCH)
         if preprocess_capability is None and epoch_capability is None:
-            data_list = self.controller.get_preprocessed_data_list()
+            data_list = self._legacy_preprocessed_data_list_for_render()
             if data_list:
                 first_data = data_list[0]
                 is_epoched = not first_data.is_raw()
 
         self._update_button_states(is_epoched)
+
+    def _legacy_preprocessed_data_list_for_render(self) -> list[Any]:
+        """Return legacy render data only for mock / legacy UI contexts."""
+        try:
+            data_list = run_legacy_controller_fallback(
+                self,
+                self.controller.get_preprocessed_data_list,
+            )
+        except LegacyControllerFallbackUnavailableError:
+            return []
+        return list(data_list) if isinstance(data_list, list) else []
 
     def _preprocessed_data_list_for_epoching(
         self,

@@ -5196,3 +5196,31 @@ reads now use explicit legacy fallback boundaries instead of direct controller r
 
 - This removes one visible fallback pattern class. It does not complete the broader command-driven
   UI refresh coordinator, all controller read audits, or human desktop acceptance.
+
+## 2026-05-06 Capability None Controller Read Guard
+
+### 狀態
+
+The architecture compliance guard now treats direct controller readiness calls inside
+`capability is None` branches as violations unless they are isolated behind explicit legacy helper
+functions.
+
+### 已可宣稱
+
+- The current `XBrainLab/ui` source passes the stricter guard.
+- `PreprocessSidebar.update_sidebar()` no-capability render fallback no longer directly reads
+  `PreprocessController.get_preprocessed_data_list()`.
+
+### Evidence 入口
+
+- Source：`tests/architecture_compliance.py`,
+  `XBrainLab/ui/panels/preprocess/sidebar.py`
+- Tests：`tests/unit/test_architecture_compliance.py`,
+  `tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar`,
+  `tests/unit/ui/preprocess`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This protects one fallback pattern class. It does not prove all controller reads are gone or
+  complete the wider UI refresh coordinator.

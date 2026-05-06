@@ -13219,6 +13219,52 @@
   - This does not finish every controller read audit, command-driven UI refresh coordinator,
     Windows launcher acceptance, or long local-model ChatPanel verification.
 
+### 2026-05-06 Capability-none controller readiness architecture guard
+
+- scope：
+  - Make the architecture compliance guard match the fallback-audit direction: direct controller
+    readiness calls are not allowed even inside `capability is None` branches.
+  - Explicit legacy helper functions remain allowed because they refuse real `Study` fallback and
+    preserve mock / legacy compatibility.
+- red / focused tests：
+  - Changed the old `allows_explicit_legacy_none_branch` expectation into a violation.
+  - Red gate:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_capability_readiness_guard_flags_explicit_legacy_none_branch tests/unit/test_architecture_compliance.py::test_capability_readiness_guard_allows_explicit_legacy_helper -q`
+    -> failed as expected because the checker still allowed direct
+    `if capability is None and self.controller.is_training()`.
+- 做了什麼：
+  - Updated `_CapabilityGatedControllerReadinessVisitor` to flag controller readiness calls in
+    no-capability branches and skip explicit legacy fallback helper calls.
+  - Added a unit test proving local `_legacy_controller_value(...)` helper lambdas are allowed.
+  - Moved `PreprocessSidebar.update_sidebar()` no-capability render list read into
+    `_legacy_preprocessed_data_list_for_render()`.
+- validation：
+  - Focused pass:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_capability_readiness_guard_flags_explicit_legacy_none_branch tests/unit/test_architecture_compliance.py::test_capability_readiness_guard_allows_explicit_legacy_helper tests/unit/test_architecture_compliance.py::test_capability_readiness_guard_allows_local_legacy_value_helper -q`
+    -> `3 passed`.
+  - Architecture compliance:
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - Preprocess regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar tests/unit/ui/preprocess -q`
+    -> `76 passed`.
+  - Fast gate:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar tests/unit/ui/preprocess -q`
+    -> `112 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is an architecture guard / UI fallback audit slice under the fast dev gate; no
+    tool-call benchmark claim changed.
+- 不能宣稱：
+  - This does not prove every controller read in the UI is gone; it hardens one important fallback
+    pattern.
+
 ### 2026-05-06 Dataset sidebar no-capability lock/data fallback guard
 
 - scope：

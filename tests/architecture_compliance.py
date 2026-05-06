@@ -56,6 +56,9 @@ UI_CONTROLLER_FALLBACK_METHODS = (
 )
 UI_CONTROLLER_FALLBACK_WRAPPERS = (
     "run_legacy_controller_fallback",
+    "_legacy_controller_value",
+    "_legacy_locked_preflight_blocked",
+    "_legacy_preprocessed_data_list_for_render",
     "_run_legacy_preprocess_fallback",
 )
 UI_POST_COMMAND_LOCAL_REFRESH_METHODS = (
@@ -869,25 +872,13 @@ class _PostCommandControllerEchoVisitor(ast.NodeVisitor):
 class _CapabilityGatedControllerReadinessVisitor(ast.NodeVisitor):
     def __init__(self) -> None:
         self.violations: list[ast.Call] = []
-        self._allow_controller_readiness = 0
-
-    def visit_If(self, node: ast.If) -> None:
-        if _is_missing_capability_guard(node.test):
-            self._allow_controller_readiness += 1
-            self.visit(node.test)
-            for statement in node.body:
-                self.visit(statement)
-            self._allow_controller_readiness -= 1
-            for statement in node.orelse:
-                self.visit(statement)
-            return
-        self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
+        call_name = _call_name(node.func)
+        if call_name in UI_CONTROLLER_FALLBACK_WRAPPERS:
+            return
         if (
-            self._allow_controller_readiness == 0
-            and _call_name(node.func)
-            in UI_CAPABILITY_GATED_CONTROLLER_READINESS_METHODS
+            call_name in UI_CAPABILITY_GATED_CONTROLLER_READINESS_METHODS
             and _call_receiver_is_controller(node.func)
         ):
             self.violations.append(node)

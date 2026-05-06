@@ -361,7 +361,7 @@ def update_sidebar(self):
     assert "capability is None" in violations[0]
 
 
-def test_capability_readiness_guard_allows_explicit_legacy_none_branch(tmp_path):
+def test_capability_readiness_guard_flags_explicit_legacy_none_branch(tmp_path):
     _write_ui_file(
         tmp_path,
         """
@@ -370,6 +370,49 @@ def start_training(self):
     if train_capability is None and self.controller.is_training():
         return
     execute_application_command(self, TrainCommand())
+""",
+    )
+
+    violations = check_ui_capability_gated_controller_readiness(tmp_path)
+
+    assert len(violations) == 1
+    assert "controller.is_training" in violations[0]
+    assert "capability is None" in violations[0]
+
+
+def test_capability_readiness_guard_allows_explicit_legacy_helper(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def start_training(self):
+    train_capability = get_command_capability(self, CommandName.TRAIN)
+    if train_capability is None:
+        ok, running = run_legacy_controller_fallback(
+            self,
+            lambda: self.controller.is_training(),
+        )
+        if ok and running:
+            return
+    execute_application_command(self, TrainCommand())
+""",
+    )
+
+    assert check_ui_capability_gated_controller_readiness(tmp_path) == []
+
+
+def test_capability_readiness_guard_allows_local_legacy_value_helper(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def update_sidebar(self):
+    scan_capability = get_command_capability(self, CommandName.SCAN_SOURCE)
+    if scan_capability is None:
+        available, is_locked = self._legacy_controller_value(
+            lambda: self.controller.is_locked(),
+        )
+        if available and is_locked:
+            return
+    execute_application_command(self, ScanSourceCommand())
 """,
     )
 

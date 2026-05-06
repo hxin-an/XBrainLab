@@ -1048,7 +1048,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   no-capability follow-up 又把 `check_lock()` / `check_data_loaded()` 的 epoched/data fallback
   reads 包進 `run_legacy_controller_fallback()`；real `Study` 若 `preprocess` capability lookup
   unexpectedly unavailable，會顯示 user-facing blocked/unavailable warning，不再回讀 stale
-  `PreprocessController.is_epoched()` / `has_data()`。
+  `PreprocessController.is_epoched()` / `has_data()`。最新 architecture guard follow-up 又收緊
+  `tests/architecture_compliance.py`：`capability is None` branch 也不可直接呼叫 controller
+  readiness methods，必須走 explicit legacy helper；同時 `PreprocessSidebar.update_sidebar()` 的
+  no-capability render list read 也收進 legacy render helper。
   最新 Dataset smart-parse cleanup 又把 parser dialog 的 file list 改成先讀
   `QueryStateCommand(query="state")` 裡的 `state.raw.files`；`DatasetController.get_filenames()`
   只保留在 query unavailable 的 mock / legacy fallback helper。
