@@ -330,6 +330,9 @@ applied-state enabled recipe-trace tooltip。最新 event-filter suggestion clea
 只略過建議選取，legacy controller suggestion 只留給 explicit mock / legacy fallback。最新 UI capability slice 又讓 real Study 的 Dataset
 sidebar 直接讀 backend `import_labels` 和 `preprocess` capability：button disabled state /
 tooltip 和 Channel Selection preflight 不再只靠 controller-local `has_data` / lock 判斷。latest
+label compatibility wording cleanup 也把 target-selection dialog / warning title 從
+`Import Label` 改成 `Add Labels to Loaded Data` / `Add Labels Blocked`，避免 compatibility UI
+把使用者帶回舊 Import Label 心智模型。latest
 follow-up 也把 Channel Selection 的 controller-local `has_data` / `is_locked` checks 限縮到
 mock / legacy path；real `Study` path 以 backend `preprocess` capability 為準。最新 follow-up
 又讓 Channel Selection dialog 的 loaded data list 先走

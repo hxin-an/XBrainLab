@@ -887,6 +887,8 @@
   - `Add Labels to Loaded Data` compatibility path 現在會在 empty state disable，tooltip 引導
     使用者先 interpret data source；action 也會尊重 backend `ImportLabelsCommand`
     capability block。
+  - 最新 label compatibility wording cleanup 也把 target-selection dialog / warning title 從
+    `Import Label` 改成 `Add Labels to Loaded Data` / `Add Labels Blocked`。
   - Channel Selection dialog 的 loaded data list 現在先走
     `QueryStateCommand(query="data_lists", include_objects=True)`；controller loaded-list read 只留在
     no-capability mock / legacy path。

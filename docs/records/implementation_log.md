@@ -5772,3 +5772,26 @@ has refreshed.
 
 - This is initial copy cleanup only. It does not complete full ChatPanel workflow acceptance or
   Data Interpretation wizard maturity.
+
+## 2026-05-06 Label Compatibility Wording Cleanup
+
+### 狀態
+
+Post-load label compatibility target selection no longer presents itself as `Import Label`.
+
+### 已可宣稱
+
+- No-selection target prompt title is `Add Labels to Loaded Data`.
+- Blocked target fallback warnings use `Add Labels Blocked`.
+- `rg -n "Import Label" XBrainLab/ui tests/unit/ui -g '*.py'` returns no matches.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/actions.py`
+- Tests：`tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is compatibility-path wording cleanup. It does not make post-load labels the primary data
+  entry workflow or complete embedded label editing in the Data Interpretation wizard.

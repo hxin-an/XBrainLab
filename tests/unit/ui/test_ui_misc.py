@@ -1257,6 +1257,10 @@ class TestDatasetActionHandler:
         handler.panel.controller.get_loaded_data_list.return_value = ["a", "b", "c"]
         result = handler._get_target_files_for_import()
         assert len(result) == 3
+        assert mock_mb.question.call_args.args[1] == "Add Labels to Loaded Data"
+        assert mock_mb.question.call_args.args[2] == (
+            "No files selected. Add labels to all loaded files?"
+        )
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_get_target_files_no_selection_cancel(self, mock_mb, handler):

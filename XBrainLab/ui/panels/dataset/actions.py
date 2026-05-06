@@ -1045,8 +1045,8 @@ class DatasetActionHandler:
         if not selected_rows:
             reply = QMessageBox.question(
                 self.panel,
-                "Import Label",
-                "No files selected. Apply to ALL?",
+                "Add Labels to Loaded Data",
+                "No files selected. Add labels to all loaded files?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if reply == QMessageBox.StandardButton.Yes:
@@ -1062,7 +1062,7 @@ class DatasetActionHandler:
         if controller is None:
             QMessageBox.warning(
                 self.panel,
-                "Import Label Blocked",
+                "Add Labels Blocked",
                 "Dataset controller unavailable.",
             )
             return []
@@ -1074,7 +1074,7 @@ class DatasetActionHandler:
         except LegacyControllerFallbackUnavailableError:
             QMessageBox.warning(
                 self.panel,
-                "Import Label Blocked",
+                "Add Labels Blocked",
                 LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
             )
             return []

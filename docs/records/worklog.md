@@ -14262,3 +14262,43 @@
 - 不能宣稱：
   - This does not complete ChatPanel long workflow acceptance, import wizard maturity, or human
     desktop validation.
+
+### 2026-05-06 Label compatibility target prompt wording
+
+- scope：
+  - Align post-load label compatibility target-selection wording with the sidebar action
+    `Add Labels to Loaded Data`.
+  - Remove visible `Import Label` titles from UI source.
+- red / focused tests：
+  - Extended `test_get_target_files_no_selection_apply_all` to expect
+    `Add Labels to Loaded Data` and `No files selected. Add labels to all loaded files?`.
+  - Red gate failed first because the dialog title was `Import Label`.
+- 做了什麼：
+  - `_get_target_files_for_import()` now uses `Add Labels to Loaded Data` for the no-selection
+    prompt.
+  - Fallback warning titles now use `Add Labels Blocked`.
+- validation：
+  - Focused gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_get_target_files_no_selection_apply_all -q`
+    -> red `1 failed`, then `1 passed`.
+  - Regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `77 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Source scan:
+    `rg -n "Import Label" XBrainLab/ui tests/unit/ui -g '*.py'` -> no matches.
+  - Quality / docs:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is UI compatibility wording cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not complete embedded label editing in the Data Interpretation wizard, and it does
+    not change post-load labels from compatibility path to primary data-entry workflow.
