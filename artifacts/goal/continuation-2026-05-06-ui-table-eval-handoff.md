@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+e5d1e20 ui: show metadata fallback warning
+40d3e22 docs: refresh handoff after remove files warning
 be0f188 ui: show remove files fallback warning
 e8e65bc ui: block missing data splitting context
 5851718 docs: refresh handoff after start training warning
@@ -140,6 +142,12 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Metadata Update fallback warning:
+  - real `Study` inline/context-menu metadata-update fallback refusal now shows
+    `Metadata Update Blocked`.
+  - the UI no longer lets the legacy fallback exception escape when `UpdateMetadataCommand`
+    returns `None`.
+  - mock / legacy metadata fallback still calls `DatasetController.update_metadata()`.
 - Remove Files fallback warning:
   - real `Study` remove-files fallback refusal now shows `Remove Files Blocked`.
   - the UI no longer lets the legacy fallback exception escape when `RemoveFilesCommand` returns
@@ -1788,6 +1796,32 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/integration/agent/test_tool_call_eval.py \
   -q
 # passed for be0f188; backend integration 7 passed; agent/tool gate 20 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_batch_set_refuses_real_study_controller_fallback \
+  -q
+# red first on escaped legacy fallback exception, then 1 passed for e5d1e20
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler \
+  -q
+# 69 passed for e5d1e20
+
+poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py
+poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py
+# passed for e5d1e20; basedpyright reported 0 errors, 0 warnings, 0 notes
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+poetry run pytest --capture=sys tests/integration/backend -q
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# passed for e5d1e20; backend integration 7 passed; agent/tool gate 20 passed
 
 git diff --check
 poetry run ruff check .
