@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+cf831b2 ui: guard preprocess fallback gates
 41a61d2 ui: guard dataset sidebar fallback state
 73e1e6e docs: refresh handoff after training fallback guard
 a697457 ui: guard training preflight fallback
@@ -179,6 +180,16 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Preprocess sidebar no-capability lock/data fallback boundary:
+  - `PreprocessSidebar.check_lock()` and `check_data_loaded()` now route no-capability fallback
+    reads through `run_legacy_controller_fallback()` via `_run_legacy_preprocess_fallback()`.
+  - Real `Study` no longer reads stale `PreprocessController.is_epoched()` / `has_data()` when
+    `preprocess` capability lookup is unexpectedly unavailable; mock / legacy contexts keep
+    controller compatibility behavior.
+  - Validation covered red stale-controller tests, Preprocess sidebar regression, full fast gate
+    (`git diff --check`, ruff, basedpyright, architecture compliance, mkdocs strict, backend
+    integration, and agent/tool deterministic regression).
+  - No local LLM eval was run; this was a UI fallback audit slice under the fast dev gate.
 - Dataset sidebar no-capability lock/data fallback boundary:
   - `DatasetSidebar.update_sidebar()` now routes no-capability lock/data reads through
     `run_legacy_controller_fallback()` instead of directly reading stale
