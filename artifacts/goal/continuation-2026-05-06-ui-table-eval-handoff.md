@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+be0f188 ui: show remove files fallback warning
 e8e65bc ui: block missing data splitting context
 5851718 docs: refresh handoff after start training warning
 5ad6b7d ui: show start training fallback warning
@@ -139,6 +140,11 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Remove Files fallback warning:
+  - real `Study` remove-files fallback refusal now shows `Remove Files Blocked`.
+  - the UI no longer lets the legacy fallback exception escape when `RemoveFilesCommand` returns
+    `None`.
+  - mock / legacy remove-files fallback still calls `DatasetController.remove_files()`.
 - Data Splitting context query-none boundary:
   - real `Study` dataset-generation context query-none now shows `Data Splitting Blocked`.
   - the UI no longer opens `DataSplittingDialog` without service-backed epoch/generator context.
@@ -1756,6 +1762,32 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/integration/agent/test_tool_call_eval.py \
   -q
 # 20 passed for e8e65bc
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_remove_files_refuses_real_study_controller_fallback \
+  -q
+# red first on escaped legacy fallback exception, then 1 passed for be0f188
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler \
+  -q
+# 68 passed for be0f188
+
+poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py
+poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py
+# passed for be0f188; basedpyright reported 0 errors, 0 warnings, 0 notes
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+poetry run pytest --capture=sys tests/integration/backend -q
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# passed for be0f188; backend integration 7 passed; agent/tool gate 20 passed
 
 git diff --check
 poetry run ruff check .
