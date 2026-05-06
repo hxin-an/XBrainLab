@@ -1204,7 +1204,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             )
         trace = self.preview.get("recipe_trace") or self.scan_result.get("recipe_trace")
         if trace:
-            rows.extend(("Recipe trace", "Saved", str(item)) for item in trace)
+            rows.extend(self._recipe_trace_rows(trace))
         format_capabilities = self.preview.get(
             "format_capabilities",
         ) or self.scan_result.get("format_capabilities")
@@ -1237,6 +1237,56 @@ class DataInterpretationPreviewDialog(BaseDialog):
             if message:
                 detail = f"{detail} {message}"
             rows.append(("Format capability", status[:1].upper() + status[1:], detail))
+        return rows
+
+    @staticmethod
+    def _recipe_trace_rows(values: Any) -> list[tuple[str, str, str]]:
+        if not isinstance(values, list):
+            return []
+        rows: list[tuple[str, str, str]] = []
+        trace_labels = {
+            "scan": "Source scan",
+            "candidate": "Interpretation candidate",
+            "preview": "Interpretation preview",
+            "validate": "Validation decision",
+            "validation": "Validation decision",
+            "apply": "Applied interpretation",
+            "metadata": "Metadata decision",
+            "metadata_override": "Metadata override",
+            "label": "Label decision",
+            "labels": "Label decision",
+            "label_carrier": "Label carrier decision",
+            "label_import": "Label import",
+            "class_map": "Class map decision",
+            "recipe": "Recipe",
+        }
+        choice_labels = {
+            "metadata_overrides": "Metadata choices",
+            "event_roles": "Event role choices",
+            "label_carriers": "Label carrier choices",
+            "class_map": "Class map choices",
+            "eeg_file_remap": "EEG file remap",
+            "label_carrier_remap": "Label carrier remap",
+        }
+        for value in values:
+            raw = str(value).strip()
+            if not raw:
+                continue
+            trace_key, _, trace_detail = raw.partition(":")
+            trace_key = trace_key.strip().lower()
+            trace_detail = trace_detail.strip().lower()
+            item = trace_labels.get(trace_key)
+            if trace_key == "choices":
+                item = choice_labels.get(trace_detail, "Saved choices")
+            if item is None:
+                item = DataInterpretationPreviewDialog._label_choice_display(trace_key)
+            rows.append(
+                (
+                    item,
+                    "Recorded",
+                    f"{item} is saved in the import recipe.",
+                )
+            )
         return rows
 
     def _confirmation_text(self) -> str:

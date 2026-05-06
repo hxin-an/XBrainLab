@@ -742,6 +742,41 @@ def test_data_interpretation_preview_dialog_shows_recipe_reload_summary(qtbot):
     assert "Saved recipe choices were reapplied before validation" in details
 
 
+def test_data_interpretation_preview_dialog_humanizes_recipe_trace(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={"source_path": "/tmp/source"},
+        preview={
+            "recipe_trace": [
+                "scan:scan-1",
+                "candidate:candidate-1",
+                "metadata:subject",
+                "metadata_override:session",
+                "choices:metadata_overrides",
+                "choices:event_roles",
+                "choices:label_carriers",
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+
+    details = _tree_text(dialog.review_tree)
+
+    assert "Source scan" in details
+    assert "Interpretation candidate" in details
+    assert "Metadata decision" in details
+    assert "Metadata override" in details
+    assert "Metadata choices" in details
+    assert "Event role choices" in details
+    assert "Label carrier choices" in details
+    assert "saved in the import recipe" in details
+    assert "scan:scan-1" not in details
+    assert "candidate:candidate-1" not in details
+    assert "metadata:subject" not in details
+    assert "choices:metadata_overrides" not in details
+
+
 def test_data_interpretation_preview_dialog_shows_recipe_reload_diff(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,

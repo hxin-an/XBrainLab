@@ -275,6 +275,14 @@ full backend `target_file=sub-01_task-mi_run-2_raw.fif` preserved in `review_cho
 `label_apply.file_mapping`. This supports the captured fixture only; it does not certify every
 real-data label carrier naming pattern.
 
+Data Interpretation recipe-trace wording gate:
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_humanizes_recipe_trace -q`
+-> `1 passed`。This supports the visible `Review Summary` wording boundary: raw backend trace
+tokens such as `scan:scan-1`, `choices:metadata_overrides`, and `metadata:subject` are rendered as
+user-facing rows like `Source scan`, `Metadata choices`, and `Metadata decision`. Backend JSON
+artifacts may still contain raw recipe trace tokens for diagnostics. This does not prove mature
+recipe diff UX, full real-data certification, or Windows human desktop acceptance.
+
 Human-like clipped-row quality gate:
 `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
 -> `21 passed`；

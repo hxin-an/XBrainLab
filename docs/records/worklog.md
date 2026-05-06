@@ -13597,3 +13597,55 @@
   - This guards one legacy-helper misuse class. It does not remove all explicit controller fallback
     branches, complete command-driven UI refresh coordinator closure, or satisfy human desktop
     acceptance.
+
+### 2026-05-06 Data Interpretation recipe trace wording
+
+- scope：
+  - Address a visible product-UX leak in the Data Interpretation wizard: `Review Summary` could
+    show backend recipe trace tokens such as `scan:scan-1`, `candidate:candidate-1`,
+    `metadata:subject`, or `choices:metadata_overrides`.
+  - Keep raw recipe trace values in backend / JSON diagnostics while making first-layer wizard text
+    user-facing.
+- red / focused tests：
+  - Added `test_data_interpretation_preview_dialog_humanizes_recipe_trace`.
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_humanizes_recipe_trace -q`
+    -> initially failed because `Review Summary` showed raw trace values.
+- 做了什麼：
+  - Added `_recipe_trace_rows()` in `DataInterpretationPreviewDialog`.
+  - Mapped trace entries to user-facing rows, including `Source scan`, `Interpretation candidate`,
+    `Metadata decision`, `Metadata override`, `Metadata choices`, `Event role choices`,
+    `Label carrier choices`, `Class map decision`, and `Label import`.
+  - Refreshed Data Interpretation screenshot artifacts:
+    `artifacts/ui/data-interpretation-preview.png`,
+    `artifacts/ui/data-interpretation-remap.png`,
+    `artifacts/ui/data-interpretation-applied.png`.
+- validation：
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_humanizes_recipe_trace -q`
+    -> `1 passed`.
+  - Dialog suite:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `21 passed`.
+  - Replay/unit gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `28 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+    -> `All checks passed!`;
+    `poetry run basedpyright XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Quality gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is a UI wording / artifact slice under the fast dev gate. It does not update
+    tool-call benchmark claims and does not justify full primary / fallback x3 local eval under
+    RTX 5070 Ti 16GB VRAM pressure.
+- 不能宣稱：
+  - This removes raw recipe trace wording from the visible wizard review surface. It does not
+    complete mature recipe diff UX, embedded label editor, full real-data certification, or human
+    Windows desktop acceptance.

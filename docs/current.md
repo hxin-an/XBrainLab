@@ -585,6 +585,11 @@ JSON 已保存 Dataset table headers、rows、resize modes 和 column widths，a
 最新 selector-fit replay 也顯示 label carrier row 為 `events.tsv | sub-01 run-2 | BIDS events |
 Trial type | Onset | Seconds | Trial | Class cue labels`，而 `review_choices` /
 `label_apply.file_mapping` 仍使用完整 target filename。
+最新 recipe-trace wording polish 又讓 `Review Summary` 不再把 `scan:scan-1`、
+`choices:metadata_overrides`、`label_import:timestamp:1` 這類 backend trace token 直接顯示給使用者；
+dialog 會顯示 `Source scan`、`Metadata choices`、`Label import` 等人話 rows，原始 recipe trace
+仍保留在 backend state / JSON artifact 作為 diagnostics。這改善可讀性，但不等於 mature recipe
+diff editor 或 final import wizard 完成。
 同一 `partial_visible_rows` evidence 也已進入 consolidated human-like walkthrough 的 top-level
 UI quality gate；未來任一被 capture 的 table/tree widget 出現半截 visible row，artifact 會 failed，
 不會只靠人工目視偶然發現。

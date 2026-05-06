@@ -5379,3 +5379,30 @@ requires their call sites to remain inside `run_legacy_controller_fallback()`.
 - This closes one helper-misuse class. It does not remove the remaining explicit legacy fallback
   branches, complete command-driven UI refresh coordinator closure, or replace human desktop
   acceptance.
+
+## 2026-05-06 Data Interpretation Recipe Trace Wording
+
+### 狀態
+
+The Data Interpretation wizard now renders recipe trace entries in `Review Summary` as user-facing
+rows instead of exposing backend trace tokens.
+
+### 已可宣稱
+
+- Visible Review Summary rows use wording such as `Source scan`, `Metadata choices`, `Event role
+  choices`, and `Label import`.
+- Raw `scan:*`, `choices:*`, and `label_import:*` trace tokens remain in backend diagnostics /
+  JSON artifacts, but are no longer first-layer wizard text.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py`
+- Tests：`tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+- UI screenshots：`artifacts/ui/data-interpretation-preview.png`,
+  `artifacts/ui/data-interpretation-remap.png`, `artifacts/ui/data-interpretation-applied.png`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is a visible wording polish slice. It does not complete the mature recipe diff editor,
+  embedded label editor, full import wizard certification, or human Windows desktop acceptance.

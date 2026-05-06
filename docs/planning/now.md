@@ -786,6 +786,10 @@
   - 最新 review-row polish 讓 `Review Summary` 高度只顯示完整 rows；超過可見列數時滾動，但不露出
     半截文字。Replay JSON 也新增 `vertical_scrollbar_max` / `partial_visible_rows` evidence，最新
     preview / remap dialog 都是 `partial_visible_rows=[]`。
+  - 最新 recipe-trace wording polish 讓 `Review Summary` 將 recipe trace token 轉成使用者可讀 rows，
+    例如 `Source scan`、`Metadata choices`、`Event role choices` 和 `Label import`；raw
+    `scan:*` / `choices:*` / `label_import:*` token 仍保留在 backend diagnostics，不顯示在 wizard
+    第一層 review。
   - Dataset table `Events` 欄現在用 `Events (n)` 表示 recording events、`Labels (n)` 表示外部
     labels；external labels 使用中性文字，不再用綠色表示成功狀態。
   - Dataset sidebar `Channel Selection` 也已改成中性 sidebar action；它會修改資料，不再用
