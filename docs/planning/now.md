@@ -409,6 +409,10 @@
 - 最新 Evaluation / Visualization observer wiring fallback cleanup 也把
   `controller.study.get_controller("training")` 退路收進 explicit legacy helper；real `Study`
   panel 缺 MainWindow 注入 controller 時不再自行回頭找 training controller 建 observer bridge。
+- 最新 panel constructor / AgentManager controller lookup cleanup 也把五個 workflow panel 的
+  `parent.study.get_controller(...)` fallback 和 AgentManager 初始化時的
+  `study.get_controller("preprocess")` 改成 `get_legacy_controller_from_study()`；real `Study`
+  runtime 不再用這些 fallback，MainWindow injection 是 product wiring truth。
 - 最新 Visualization fallback language slice 又把 Montage / Saliency Settings / Export Saliency 的
   real `Study` query-none / apply-none fallback refusal 改成 user-facing warning，避免 Qt slot
   外拋 `LegacyControllerFallbackUnavailableError`。
@@ -430,7 +434,10 @@
   controller 的 legacy / fallback helper 呼叫必須包在 `run_legacy_controller_fallback()` 內，
   避免 compatibility helper 被誤用成 real product runtime path。最新 observer wiring fallback
   guard 也會阻擋新的 `controller.study.get_controller(...)` product fallback；產品 observer
-  wiring 應由 MainWindow injection 或 explicit legacy helper 負責。
+  wiring 應由 MainWindow injection 或 explicit legacy helper 負責。最新 direct Study controller
+  lookup guard 也會阻擋新的 `study.get_controller(...)` / `parent.study.get_controller(...)`
+  product fallback；例外只保留給 MainWindow central wiring、InfoPanelService legacy/query bridge、
+  或明確 legacy / fallback helper。
 - 後續 Training sidebar bypass cleanup 修掉重新 split 前清 datasets 和 Clear History 的 direct
   controller mutation；destructive cleanup 會走 `ClearDatasetsCommand` /
   `ClearTrainingHistoryCommand`，且 Clear History 現在有 user confirmation。

@@ -196,6 +196,10 @@ replay artifact now also has a visible-text guard for raw command / recipe trace
      `study.epoch_data` / `study.loaded_data_list` 這類 mutable Study state；AgentManager montage
      picker 和 PreprocessPlotter original overlay 已改用 state / data-list query，legacy reads 只留在
      explicit fallback helper。
+   - Direct Study controller lookup guard 也已納入 architecture compliance：五個 workflow panel
+     constructor 和 AgentManager 不再把 `parent.study.get_controller(...)` /
+     `study.get_controller(...)` 當 real `Study` fallback；MainWindow injection 是 product wiring
+     truth，legacy lookup 只留在 explicit helper。
    - `tests/architecture_compliance.py` 現在會守住這條 boundary：missing command result branch 不可
      直接呼叫 controller mutation，必須走 explicit mock / legacy-only fallback helper。
    - 最新 architecture guard hardening 也讓 no-capability branch 不能直接呼叫 controller

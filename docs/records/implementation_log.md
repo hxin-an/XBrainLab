@@ -5613,3 +5613,31 @@ Evaluation and Visualization observer wiring no longer retrieves the training co
 
 - This closes one observer-wiring fallback class. It does not remove all observer refresh paths,
   replace controller-based panel construction, or complete the UI refresh coordinator milestone.
+
+## 2026-05-06 Panel Constructor Controller Lookup Guard
+
+### 狀態
+
+Workflow panel constructors and AgentManager no longer use direct real-`Study`
+`get_controller(...)` fallback for product wiring.
+
+### 已可宣稱
+
+- MainWindow injection is the product controller-wiring truth for Dataset, Preprocess, Training,
+  Evaluation, and Visualization panels.
+- AgentManager no longer fetches the preprocess controller from real `Study` during initialization.
+- Direct `study.get_controller(...)` UI fallback is now guarded by architecture compliance, with
+  exceptions only for central wiring, InfoPanelService compatibility, or explicit legacy helpers.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/application_capabilities.py`, `XBrainLab/ui/components/agent_manager.py`,
+  `XBrainLab/ui/panels/*/panel.py`, `tests/architecture_compliance.py`
+- Tests：`tests/unit/ui/test_panel_constructor_boundaries.py`,
+  `tests/unit/ui/test_agent_manager_coverage.py`, `tests/unit/test_architecture_compliance.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This removes one direct controller lookup fallback class. It does not remove injected controllers,
+  observer bridges, remaining legacy compatibility helpers, or human desktop acceptance blockers.

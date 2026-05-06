@@ -16,6 +16,7 @@ from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
     LegacyControllerFallbackUnavailableError,
     execute_application_command,
+    get_legacy_controller_from_study,
     run_legacy_controller_fallback,
 )
 from XBrainLab.ui.core.base_panel import BasePanel
@@ -72,11 +73,23 @@ class TrainingPanel(BasePanel):
         """
         # 1. Controller Resolution
         if controller is None and parent and hasattr(parent, "study"):
-            controller = parent.study.get_controller("training")
+            controller = get_legacy_controller_from_study(
+                parent,
+                parent.study,
+                "training",
+            )
         if dataset_controller is None and parent and hasattr(parent, "study"):
-            dataset_controller = parent.study.get_controller("dataset")
+            dataset_controller = get_legacy_controller_from_study(
+                parent,
+                parent.study,
+                "dataset",
+            )
         if preprocess_controller is None and parent and hasattr(parent, "study"):
-            preprocess_controller = parent.study.get_controller("preprocess")
+            preprocess_controller = get_legacy_controller_from_study(
+                parent,
+                parent.study,
+                "preprocess",
+            )
 
         # 2. Base Init
         super().__init__(parent=parent, controller=controller)

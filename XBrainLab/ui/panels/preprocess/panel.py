@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from XBrainLab.ui.application_capabilities import (
     LegacyControllerFallbackUnavailableError,
+    get_legacy_controller_from_study,
     run_legacy_controller_fallback,
 )
 from XBrainLab.ui.core.base_panel import BasePanel
@@ -36,9 +37,17 @@ class PreprocessPanel(BasePanel):
         """
         # 1. Controller Resolution
         if controller is None and parent and hasattr(parent, "study"):
-            controller = parent.study.get_controller("preprocess")
+            controller = get_legacy_controller_from_study(
+                parent,
+                parent.study,
+                "preprocess",
+            )
         if dataset_controller is None and parent and hasattr(parent, "study"):
-            dataset_controller = parent.study.get_controller("dataset")
+            dataset_controller = get_legacy_controller_from_study(
+                parent,
+                parent.study,
+                "dataset",
+            )
 
         # 2. Base Init
         super().__init__(parent=parent, controller=controller)

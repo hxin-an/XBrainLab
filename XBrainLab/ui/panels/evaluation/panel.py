@@ -19,6 +19,7 @@ from XBrainLab.backend.training.record.wrappers import PooledRecordWrapper
 from XBrainLab.ui.application_capabilities import (
     LegacyControllerFallbackUnavailableError,
     execute_application_command,
+    get_legacy_controller_from_study,
     run_legacy_controller_fallback,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
@@ -75,9 +76,17 @@ class EvaluationPanel(BasePanel):
         """
         # 1. Controller Resolution
         if controller is None and parent and hasattr(parent, "study"):
-            controller = parent.study.get_controller("evaluation")
+            controller = get_legacy_controller_from_study(
+                parent,
+                parent.study,
+                "evaluation",
+            )
         if preprocess_controller is None and parent and hasattr(parent, "study"):
-            preprocess_controller = parent.study.get_controller("preprocess")
+            preprocess_controller = get_legacy_controller_from_study(
+                parent,
+                parent.study,
+                "preprocess",
+            )
 
         # Store injected training controller
         self.training_controller = training_controller

@@ -3,6 +3,10 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from PyQt6.QtWidgets import QMainWindow
+
+from XBrainLab.backend.study import Study
+
 
 def _make_manager():
     """Create a stub AgentManager without calling __init__."""
@@ -22,6 +26,23 @@ def _make_manager():
     epoch_data.get_mne.return_value.info = {"ch_names": ["Cz", "Fz"]}
     m.study.epoch_data = epoch_data
     return m
+
+
+def test_agent_manager_does_not_fetch_preprocess_controller_from_real_study(qtbot):
+    from XBrainLab.ui.components.agent_manager import AgentManager
+
+    study = Study()
+    study.get_controller = MagicMock(
+        side_effect=AssertionError("real Study controller lookup is not allowed"),
+    )
+    main_window = QMainWindow()
+    qtbot.addWidget(main_window)
+
+    with patch("XBrainLab.ui.components.agent_manager.BackendFacade"):
+        manager = AgentManager(main_window, study)
+
+    study.get_controller.assert_not_called()
+    assert manager.preprocess_controller is None
 
 
 class TestAgentManagerPrepareModelDeletion:

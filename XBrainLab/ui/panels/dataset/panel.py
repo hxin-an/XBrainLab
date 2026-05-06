@@ -24,6 +24,7 @@ from XBrainLab.ui.application_capabilities import (
     blocked_reason,
     execute_application_command,
     get_command_capability,
+    get_legacy_controller_from_study,
     run_legacy_controller_fallback,
 )
 from XBrainLab.ui.core.base_panel import BasePanel
@@ -64,7 +65,11 @@ class DatasetPanel(BasePanel):
         """
         # 1. Controller Resolution (Legacy/Test support)
         if controller is None and parent and hasattr(parent, "study"):
-            controller = parent.study.get_controller("dataset")
+            controller = get_legacy_controller_from_study(
+                parent,
+                parent.study,
+                "dataset",
+            )
 
         # 2. Base Init (sets self.controller, self.main_window)
         super().__init__(parent=parent, controller=controller)

@@ -1175,6 +1175,11 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `controller.study.get_controller("training")` 退路收進 explicit legacy helper；real `Study`
   panel 若缺 MainWindow 注入的 `TrainingController`，不再自己回頭找 controller tree 來建立
   observer bridge。
+  最新 panel constructor / AgentManager lookup guard 也把五個 workflow panel 的
+  `parent.study.get_controller(...)` fallback 和 AgentManager 初始化時的
+  `study.get_controller("preprocess")` 收進 mock / legacy-only helper；product runtime 的 controller
+  wiring 現在應由 MainWindow injection 負責，static architecture compliance 也會擋住新的 direct
+  Study controller lookup。
   最新 no-refresh command guard 也讓 UI 中的 `execute_application_command(..., refresh=False)`
   只可用於 read/query commands；mutating command 必須保留 command-driven refresh。最新
   legacy-mutation helper guard 也要求會直接 mutate controller 的 legacy / fallback helper 只能在

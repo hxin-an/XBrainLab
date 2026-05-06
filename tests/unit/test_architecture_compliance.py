@@ -5,6 +5,7 @@ from tests.architecture_compliance import (
     check_ui_controller_study_get_controller_fallbacks,
     check_ui_direct_controller_mutations,
     check_ui_direct_loader_apply,
+    check_ui_direct_study_get_controller_lookups,
     check_ui_direct_study_state_reads,
     check_ui_legacy_mutation_helper_calls,
     check_ui_observer_direct_update_bridges,
@@ -865,3 +866,48 @@ def _legacy_training_controller_for_bridges(self):
     )
 
     assert check_ui_controller_study_get_controller_fallbacks(tmp_path) == []
+
+
+def test_direct_study_get_controller_guard_flags_product_parent_fallback(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def __init__(self, controller=None, parent=None):
+    if controller is None and parent and hasattr(parent, "study"):
+        controller = parent.study.get_controller("dataset")
+    super().__init__(parent=parent, controller=controller)
+""",
+    )
+
+    violations = check_ui_direct_study_get_controller_lookups(tmp_path)
+
+    assert len(violations) == 1
+    assert "study.get_controller" in violations[0]
+    assert "legacy/fallback helper" in violations[0]
+
+
+def test_direct_study_get_controller_guard_flags_product_study_lookup(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def __init__(self, study):
+    self.preprocess_controller = study.get_controller("preprocess")
+""",
+    )
+
+    violations = check_ui_direct_study_get_controller_lookups(tmp_path)
+
+    assert len(violations) == 1
+    assert "study.get_controller" in violations[0]
+
+
+def test_direct_study_get_controller_guard_allows_legacy_helper(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def _legacy_controller_from_parent(self, parent):
+    return parent.study.get_controller("dataset")
+""",
+    )
+
+    assert check_ui_direct_study_get_controller_lookups(tmp_path) == []

@@ -107,6 +107,10 @@ UI_DIRECT_STUDY_STATE_ATTRIBUTES = (
     "training_option",
     "trainer",
 )
+UI_DIRECT_STUDY_CONTROLLER_LOOKUP_ALLOWED_FILES = (
+    "main_window.py",
+    "info_panel_service.py",
+)
 UI_OBSERVER_REFRESH_EVENTS = (
     "data_changed",
     "preprocess_changed",
@@ -260,6 +264,15 @@ def check_architecture(root_dir: str) -> int:
     if controller_study_violations:
         print("\nUI Controller Study Fallback Violations Found:")
         for violation in controller_study_violations:
+            print(f" - {violation}")
+        return 1
+
+    study_controller_lookup_violations = check_ui_direct_study_get_controller_lookups(
+        Path(root_dir)
+    )
+    if study_controller_lookup_violations:
+        print("\nUI Direct Study Controller Lookup Violations Found:")
+        for violation in study_controller_lookup_violations:
             print(f" - {violation}")
         return 1
 
@@ -712,6 +725,41 @@ def check_ui_controller_study_get_controller_fallbacks(root_dir: Path) -> list[s
     return violations
 
 
+def check_ui_direct_study_get_controller_lookups(root_dir: Path) -> list[str]:
+    """Return direct Study controller lookup outside central wiring / legacy helpers."""
+    violations: list[str] = []
+    ui_dir = root_dir / "XBrainLab" / "ui"
+    if not ui_dir.exists():
+        return violations
+
+    for py_file in ui_dir.rglob("*.py"):
+        if (
+            py_file.name == "__init__.py"
+            or py_file.name in UI_DIRECT_STUDY_CONTROLLER_LOOKUP_ALLOWED_FILES
+        ):
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if _is_legacy_controller_mutation_helper(node.name):
+                continue
+            visitor = _DirectStudyGetControllerLookupVisitor()
+            visitor.visit(node)
+            violations.extend(
+                f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
+                "study.get_controller(); product UI controller lookup must be "
+                "centralized in MainWindow injection or limited to an explicit "
+                "legacy/fallback helper."
+                for call in visitor.violations
+            )
+    return violations
+
+
 class _DirectStudyStateReadVisitor(ast.NodeVisitor):
     def __init__(self) -> None:
         self.violations: list[ast.Attribute] = []
@@ -737,6 +785,17 @@ class _ControllerStudyGetControllerVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
+class _DirectStudyGetControllerLookupVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.violations: list[ast.Call] = []
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if _is_study_get_controller_call(node):
+            self.violations.append(node)
+            return
+        self.generic_visit(node)
+
+
 def _expression_mentions_study(node: ast.AST) -> bool:
     if isinstance(node, ast.Attribute) and node.attr == "study":
         return True
@@ -752,6 +811,17 @@ def _is_controller_study_get_controller_call(node: ast.Call) -> bool:
     if not isinstance(node.func, ast.Attribute):
         return False
     return _expression_mentions_controller_study(node.func.value)
+
+
+def _is_study_get_controller_call(node: ast.Call) -> bool:
+    if _call_name(node.func) != "get_controller":
+        return False
+    if not isinstance(node.func, ast.Attribute):
+        return False
+    receiver = node.func.value
+    if isinstance(receiver, ast.Name) and receiver.id == "study":
+        return True
+    return _expression_mentions_study(receiver)
 
 
 def _expression_mentions_controller_study(node: ast.AST) -> bool:

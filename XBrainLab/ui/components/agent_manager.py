@@ -32,6 +32,7 @@ from XBrainLab.ui.application_capabilities import (
     blocked_reason,
     execute_application_command,
     get_command_capability,
+    get_legacy_controller_from_study,
     run_legacy_controller_fallback,
 )
 from XBrainLab.ui.chat.panel import ChatPanel
@@ -133,7 +134,11 @@ class AgentManager(QObject):
         self.chat_controller.processing_state_changed.connect(
             self.on_processing_state_changed,
         )
-        self.preprocess_controller = study.get_controller("preprocess")  # M3.6
+        self.preprocess_controller = get_legacy_controller_from_study(
+            self,
+            study,
+            "preprocess",
+        )
         self.agent_controller = None
 
         self.agent_initialized = False
@@ -1190,10 +1195,19 @@ class AgentManager(QObject):
                     ),
                 )
                 if result is None:
+                    controller = self.preprocess_controller
+                    if controller is None:
+                        sb = self.main_window.statusBar()
+                        if sb:
+                            sb.showMessage(
+                                "Montage setup blocked: legacy controller unavailable.",
+                            )
+                        self.handle_user_input("Montage Selection Failed.")
+                        return
                     try:
                         run_legacy_controller_fallback(
                             self,
-                            lambda: self.preprocess_controller.apply_montage(
+                            lambda: controller.apply_montage(
                                 chs,
                                 positions,
                             ),

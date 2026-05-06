@@ -13975,3 +13975,67 @@
 - 不能宣稱：
   - This does not remove all observer paths, all controller construction, all legacy fallbacks, or
     human desktop acceptance.
+
+### 2026-05-06 Panel constructor / AgentManager direct Study controller lookup guard
+
+- scope：
+  - Close a direct Study controller lookup fallback class outside MainWindow central wiring.
+  - Five workflow panel constructors used `parent.study.get_controller(...)` when explicit
+    controllers were missing.
+  - AgentManager initialization used `study.get_controller("preprocess")` solely for legacy montage
+    apply fallback.
+- red / focused tests：
+  - Added
+    `test_direct_study_get_controller_guard_flags_product_parent_fallback`,
+    `test_direct_study_get_controller_guard_flags_product_study_lookup`, and
+    `test_direct_study_get_controller_guard_allows_legacy_helper`; red gate failed first because
+    `check_ui_direct_study_get_controller_lookups()` did not exist.
+  - Added `test_agent_manager_does_not_fetch_preprocess_controller_from_real_study`; red gate
+    failed first because AgentManager called real `Study.get_controller("preprocess")`.
+  - Added `test_real_study_panel_constructor_requires_injected_controller`; all five parametrized
+    panel cases failed first because constructors called real `Study.get_controller(...)`.
+- 做了什麼：
+  - Added `get_legacy_controller_from_study()` in `XBrainLab/ui/application_capabilities.py`.
+  - Dataset / Preprocess / Training / Evaluation / Visualization panel constructor fallback now
+    uses that helper, which refuses real `Study` and only returns controllers for mock / legacy
+    contexts.
+  - AgentManager initialization now uses the same helper for its legacy preprocess controller.
+  - Legacy montage apply now fails closed with a user-facing blocked status when the legacy
+    controller is unavailable.
+  - Added `check_ui_direct_study_get_controller_lookups()` to architecture compliance. MainWindow
+    central wiring and InfoPanelService compatibility are explicit exceptions; product UI code
+    elsewhere must use injection, command/query truth, or an explicit legacy helper.
+- validation：
+  - Focused gates:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_direct_study_get_controller_guard_flags_product_parent_fallback tests/unit/test_architecture_compliance.py::test_direct_study_get_controller_guard_flags_product_study_lookup tests/unit/test_architecture_compliance.py::test_direct_study_get_controller_guard_allows_legacy_helper -q`
+    -> `3 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py::test_agent_manager_does_not_fetch_preprocess_controller_from_real_study tests/unit/ui/test_panel_constructor_boundaries.py::test_real_study_panel_constructor_requires_injected_controller -q`
+    -> `6 passed`.
+  - Regression:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `52 passed`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_panel_constructor_boundaries.py tests/unit/ui/test_main_window.py tests/unit/ui/test_main_window_sync.py tests/unit/ui/test_panel_event_bridges.py -q`
+    -> `35 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py tests/unit/ui/dataset/test_panel_minimal.py tests/unit/ui/preprocess/test_preprocess_panel.py tests/unit/ui/training/test_training_panel.py -q`
+    -> `56 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_evaluation_panel_redesign.py tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/test_visualization_panel_coverage.py -q`
+    -> `42 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/components/test_agent_manager.py tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker tests/unit/ui/test_agent_manager_coverage.py::test_agent_manager_does_not_fetch_preprocess_controller_from_real_study -q`
+    -> `42 passed`.
+  - Focused lint/type:
+    `poetry run ruff check --fix XBrainLab/ui/application_capabilities.py XBrainLab/ui/components/agent_manager.py XBrainLab/ui/panels/dataset/panel.py XBrainLab/ui/panels/preprocess/panel.py XBrainLab/ui/panels/training/panel.py XBrainLab/ui/panels/evaluation/panel.py XBrainLab/ui/panels/visualization/panel.py tests/architecture_compliance.py tests/unit/test_architecture_compliance.py tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/test_panel_constructor_boundaries.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/application_capabilities.py XBrainLab/ui/components/agent_manager.py XBrainLab/ui/panels/dataset/panel.py XBrainLab/ui/panels/preprocess/panel.py XBrainLab/ui/panels/training/panel.py XBrainLab/ui/panels/evaluation/panel.py XBrainLab/ui/panels/visualization/panel.py tests/architecture_compliance.py tests/unit/test_architecture_compliance.py tests/unit/ui/test_panel_constructor_boundaries.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Quality / docs:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is a UI fallback architecture slice under the fast dev gate; it does not change
+    tool-call benchmark claims and does not justify primary / fallback x3.
+- 不能宣稱：
+  - This does not remove all injected controller usage, all observer bridges, InfoPanelService
+    compatibility lookups, remaining legacy helpers, or human desktop acceptance.

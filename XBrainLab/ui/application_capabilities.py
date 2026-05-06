@@ -108,3 +108,26 @@ def run_legacy_controller_fallback(
     if study is None or not isinstance(study, Study) or isinstance(study, Mock):
         return fallback()
     raise LegacyControllerFallbackUnavailableError(LEGACY_FALLBACK_UNAVAILABLE_MESSAGE)
+
+
+def get_legacy_controller_from_study(
+    context: Any,
+    study: Any,
+    controller_name: str,
+) -> Any | None:
+    """Return a controller only for mock / legacy UI contexts.
+
+    Product MainWindow wiring injects controllers into panels. This helper keeps
+    older tests and standalone contexts working without allowing real Study UI
+    components to walk back through the controller tree.
+    """
+    getter = getattr(study, "get_controller", None)
+    if not callable(getter):
+        return None
+    try:
+        return run_legacy_controller_fallback(
+            context,
+            lambda: getter(controller_name),
+        )
+    except LegacyControllerFallbackUnavailableError:
+        return None
