@@ -225,7 +225,10 @@
   `controller.is_training()`、`has_datasets()`、`get_trainer()` gating，除非在 explicit
   `capability is None` legacy branch。最新 extension 也覆蓋 `validate_ready()`、`has_model()`、
   `has_training_option()`；`TrainingSidebar.check_ready_to_train()` 已改成 explicit
-  service-capability / no-capability legacy branch。
+  service-capability / no-capability legacy branch。最新 follow-up 又讓 Training sidebar 的
+  no-capability preflight reads 也走 `run_legacy_controller_fallback()`：real `Study` 不再用
+  stale `TrainingController` 判斷 readiness、split preflight、configuration lock、Stop Training
+  或 Clear History；mock / legacy contexts 才保留 controller reads。
 - 最新 Training settings cleanup 也讓 settings dialog defaults 先走
   `QueryStateCommand(query="state")` 的 `state.training.training_option`；stale
   `TrainingController.get_training_option()` 只留在 query unavailable 的 mock / legacy path。

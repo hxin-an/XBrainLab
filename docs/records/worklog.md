@@ -13059,3 +13059,56 @@
 - 不能宣稱：
   - This does not replace human desktop copy review, Windows launcher acceptance, or long local
     ChatPanel sessions.
+
+### 2026-05-06 Training sidebar no-capability preflight fallback guard
+
+- scope：
+  - Close a remaining Training sidebar fallback-audit gap where explicit
+    `capability is None` branches still read `TrainingController` state directly.
+  - This covers readiness tooltip/state, data-splitting preflight, configuration lock checks,
+    Stop Training preflight, and Clear History preflight.
+- red / focused tests：
+  - Added real-`Study` tests that make stale controller reads raise when
+    `get_command_capability()` unexpectedly returns `None`.
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_check_ready_to_train_refuses_real_study_readiness_fallback tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_split_data_refuses_real_study_preflight_fallback tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_select_model_refuses_real_study_configuration_fallback tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_stop_training_refuses_real_study_preflight_fallback -q`
+    -> failed as expected because `TrainingSidebar` directly read `validate_ready()`,
+    `get_loaded_data_list()`, `get_epoch_data()`, and `is_training()`.
+- 做了什麼：
+  - Added `_legacy_controller_value()` so Training sidebar no-capability reads go through
+    `run_legacy_controller_fallback()`.
+  - Real `Study` now disables Start Training with `Training state is unavailable right now.` when
+    readiness capability is unavailable, and shows blocked warnings for Data Splitting,
+    configuration actions, Stop Training, and Clear History instead of reading stale controller
+    truth.
+  - Mock / legacy contexts still preserve existing controller compatibility behavior.
+- validation：
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_check_ready_to_train_refuses_real_study_readiness_fallback tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_split_data_refuses_real_study_preflight_fallback tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_select_model_refuses_real_study_configuration_fallback tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_stop_training_refuses_real_study_preflight_fallback -q`
+    -> `4 passed`.
+  - Training sidebar regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar -q`
+    -> `47 passed`.
+  - Focused lint/type/architecture:
+    `poetry run ruff check XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - Fast gate:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar -q`
+    -> `47 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a UI fallback audit slice under the fast dev gate; no tool-call benchmark
+    claim changed.
+- 不能宣稱：
+  - This does not finish the wider controller fallback audit, command-driven UI refresh
+    coordinator, Windows launcher acceptance, or long local-model ChatPanel verification.

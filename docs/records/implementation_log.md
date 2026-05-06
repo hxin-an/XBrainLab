@@ -5091,3 +5091,28 @@ names beyond the original Data Interpretation tool names.
 
 - This is an automated leakage guard. It is not a full human copy review of every desktop screen or
   a long local-model ChatPanel acceptance run.
+
+## 2026-05-06 Training Sidebar No-Capability Preflight Guard
+
+### 狀態
+
+`TrainingSidebar` no-capability fallback reads now go through the explicit mock / legacy-only
+fallback helper.
+
+### 已可宣稱
+
+- Real `Study` UI paths no longer read stale `TrainingController` state when training capability
+  lookup is unexpectedly unavailable for readiness, data-splitting preflight, configuration lock,
+  Stop Training, or Clear History.
+- Mock / legacy contexts keep the existing controller compatibility behavior.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/training/sidebar.py`
+- Tests：`tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is one fallback-audit slice. It does not finish the broader UI command refresh coordinator,
+  remove all observer/manual refresh, or complete Windows human desktop acceptance.

@@ -609,6 +609,33 @@ class TestTrainingSidebar:
         # Without datasets/model/option, not ready
         assert result is False or result is None
 
+    def test_check_ready_to_train_refuses_real_study_readiness_fallback(
+        self,
+        sidebar,
+    ):
+        from XBrainLab.backend.study import Study
+
+        sidebar.panel.main_window.study = Study()
+        sidebar.panel.controller.validate_ready.side_effect = AssertionError(
+            "stale controller readiness should not be read",
+        )
+        sidebar.panel.controller.has_datasets.side_effect = AssertionError(
+            "stale dataset readiness should not be read",
+        )
+        sidebar.panel.controller.validate_ready.reset_mock()
+        sidebar.panel.controller.has_datasets.reset_mock()
+
+        with patch(
+            "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+            return_value=None,
+        ):
+            sidebar.check_ready_to_train()
+
+        sidebar.panel.controller.validate_ready.assert_not_called()
+        sidebar.panel.controller.has_datasets.assert_not_called()
+        assert sidebar.btn_start.isEnabled() is False
+        assert "state is unavailable" in sidebar.btn_start.toolTip()
+
     def test_update_info_no_crash(self, sidebar):
         sidebar.update_info()  # smoke test: should not raise
 
@@ -700,6 +727,45 @@ class TestTrainingSidebar:
             "Data Splitting Blocked",
             "Create epochs before generating datasets.",
         )
+
+    def test_split_data_refuses_real_study_preflight_fallback(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.study import Study
+
+        sidebar.panel.main_window.study = Study()
+        sidebar.panel.controller.get_loaded_data_list.side_effect = AssertionError(
+            "stale loaded data list should not be read",
+        )
+        sidebar.panel.controller.get_epoch_data.side_effect = AssertionError(
+            "stale epoch data should not be read",
+        )
+        sidebar.panel.controller.is_training.side_effect = AssertionError(
+            "stale training state should not be read",
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                return_value=None,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog",
+            ) as mock_dialog,
+            patch.object(QMessageBox, "warning") as mock_warning,
+        ):
+            sidebar.split_data()
+
+        mock_dialog.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Data Splitting Blocked"
+        assert "could not safely complete" in mock_warning.call_args.args[2]
+        sidebar.panel.controller.get_loaded_data_list.assert_not_called()
+        sidebar.panel.controller.get_epoch_data.assert_not_called()
+        sidebar.panel.controller.is_training.assert_not_called()
 
     def test_split_data_allows_backend_replacement_boundary(
         self,
@@ -1177,6 +1243,37 @@ class TestTrainingSidebar:
             "Stop training before changing training configuration.",
         )
 
+    def test_select_model_refuses_real_study_configuration_fallback(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.study import Study
+
+        sidebar.panel.main_window.study = Study()
+        sidebar.panel.controller.is_training.side_effect = AssertionError(
+            "stale training state should not be read",
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                return_value=None,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ModelSelectionDialog",
+            ) as mock_dialog,
+            patch.object(QMessageBox, "warning") as mock_warning,
+        ):
+            sidebar.select_model()
+
+        mock_dialog.assert_not_called()
+        sidebar.panel.controller.is_training.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Training Configuration Blocked"
+        assert "could not safely complete" in mock_warning.call_args.args[2]
+
     def test_on_training_started_disables_buttons(self, sidebar):
         sidebar.on_training_started()
         # After training starts, stop button or UI state should update
@@ -1242,6 +1339,38 @@ class TestTrainingSidebar:
             sidebar.stop_training()
 
         sidebar.panel.controller.stop_training.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Stop Training Blocked"
+        assert "could not safely complete" in mock_warning.call_args.args[2]
+
+    def test_stop_training_refuses_real_study_preflight_fallback(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.study import Study
+
+        sidebar.panel.main_window.study = Study()
+        sidebar.panel.controller.is_training.side_effect = AssertionError(
+            "stale training state should not be read",
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                return_value=None,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+            ) as mock_execute,
+            patch.object(QMessageBox, "warning") as mock_warning,
+        ):
+            sidebar.stop_training()
+
+        sidebar.panel.controller.is_training.assert_not_called()
+        sidebar.panel.controller.stop_training.assert_not_called()
+        mock_execute.assert_not_called()
         mock_warning.assert_called_once()
         assert mock_warning.call_args.args[1] == "Stop Training Blocked"
         assert "could not safely complete" in mock_warning.call_args.args[2]
@@ -1361,6 +1490,33 @@ class TestTrainingSidebar:
             sidebar.clear_history()
 
         sidebar.panel.controller.clear_history.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Clear History Blocked"
+        assert "could not safely complete" in mock_warning.call_args.args[2]
+
+    def test_clear_history_refuses_real_study_preflight_fallback(self, sidebar):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.study import Study
+
+        sidebar.panel.main_window.study = Study()
+        sidebar.panel.controller.is_training.side_effect = AssertionError(
+            "stale training state should not be read",
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                return_value=None,
+            ),
+            patch.object(QMessageBox, "question") as mock_question,
+            patch.object(QMessageBox, "warning") as mock_warning,
+        ):
+            sidebar.clear_history()
+
+        sidebar.panel.controller.is_training.assert_not_called()
+        sidebar.panel.controller.clear_history.assert_not_called()
+        mock_question.assert_not_called()
         mock_warning.assert_called_once()
         assert mock_warning.call_args.args[1] == "Clear History Blocked"
         assert "could not safely complete" in mock_warning.call_args.args[2]

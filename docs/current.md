@@ -963,7 +963,12 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `capability is None` legacy branch。最新 guard extension 也把
   `validate_ready()`、`has_model()`、`has_training_option()` 納入 Training readiness echo
   防線；`check_ready_to_train()` 現在用明確 no-capability branch 讀 legacy controller
-  readiness，不再把 controller readiness call 藏在 capability conditional expression 裡。
+  readiness，不再把 controller readiness call 藏在 capability conditional expression 裡。最新
+  follow-up 又把這些 no-capability Training preflight reads 包進
+  `run_legacy_controller_fallback()`：real `Study` 如果 capability helper / command helper
+  unexpectedly unavailable，Start button 會 disabled 並顯示 state unavailable，Data Splitting /
+  Model/Settings configuration、Stop Training 和 Clear History 會顯示 user-facing blocked warning，
+  不再回讀 stale `TrainingController`。
   最新 Training settings cleanup 又把設定 dialog 預設值改成先讀
   `QueryStateCommand(query="state")` 的 `state.training.training_option` snapshot；dialog
   `controller.get_training_option()` 只保留給 query unavailable 的 mock / legacy path。

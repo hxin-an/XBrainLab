@@ -1,5 +1,8 @@
 """Sidebar widget for the training panel with configuration and execution controls."""
 
+from collections.abc import Callable
+from typing import Any
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
@@ -173,24 +176,48 @@ class TrainingSidebar(QWidget):
         # Initial check
         self.check_ready_to_train()
 
+    def _legacy_controller_value(
+        self,
+        fallback: Callable[[], Any],
+        *,
+        blocked_title: str | None = None,
+    ) -> tuple[bool, Any]:
+        """Read legacy controller state only for mock / legacy UI contexts."""
+        try:
+            return True, run_legacy_controller_fallback(self, fallback)
+        except LegacyControllerFallbackUnavailableError as exc:
+            if blocked_title is not None:
+                QMessageBox.warning(self, blocked_title, str(exc))
+            return False, None
+
     def check_ready_to_train(self, *args):
         """Check if all configurations are set and enable/disable start button."""
         train_capability = get_command_capability(self, CommandName.TRAIN)
         if train_capability is None:
-            ready = self.controller.validate_ready()
+            available, ready_value = self._legacy_controller_value(
+                self.controller.validate_ready,
+            )
+            if not available:
+                self.btn_start.setEnabled(False)
+                self.btn_start.setToolTip(
+                    "Training state is unavailable right now.",
+                )
+                return
+            ready = bool(ready_value)
         else:
             ready = train_capability.enabled
         self.btn_start.setEnabled(ready)
 
         if not ready:
             if train_capability is None:
-                missing = []
-                if not self.controller.has_datasets():
-                    missing.append("Data Splitting")
-                if not self.controller.has_model():
-                    missing.append("Model Selection")
-                if not self.controller.has_training_option():
-                    missing.append("Training Settings")
+                available, missing = self._legacy_controller_value(
+                    self._legacy_missing_training_config,
+                )
+                if not available:
+                    self.btn_start.setToolTip(
+                        "Training state is unavailable right now.",
+                    )
+                    return
                 self.btn_start.setToolTip(f"Please configure: {', '.join(missing)}")
             else:
                 self.btn_start.setToolTip(
@@ -201,6 +228,16 @@ class TrainingSidebar(QWidget):
                 )
         else:
             self.btn_start.setToolTip("Start Training")
+
+    def _legacy_missing_training_config(self) -> list[str]:
+        missing = []
+        if not self.controller.has_datasets():
+            missing.append("Data Splitting")
+        if not self.controller.has_model():
+            missing.append("Model Selection")
+        if not self.controller.has_training_option():
+            missing.append("Training Settings")
+        return missing
 
     def update_info(self):
         """Refresh the aggregate info panel (delegated to InfoPanelService)."""
@@ -224,7 +261,15 @@ class TrainingSidebar(QWidget):
                 blocked_reason(configure_capability, fallback_message),
             )
             return True
-        if configure_capability is None and self.controller.is_training():
+        if configure_capability is None:
+            available, is_training = self._legacy_controller_value(
+                self.controller.is_training,
+                blocked_title="Training Configuration Blocked",
+            )
+            if not available:
+                return True
+            if not is_training:
+                return False
             QMessageBox.warning(
                 self,
                 "Training Running",
@@ -246,28 +291,10 @@ class TrainingSidebar(QWidget):
             self,
             CommandName.GENERATE_DATASET,
         )
-        if generate_capability is None and not self.controller.get_loaded_data_list():
-            QMessageBox.warning(
-                self,
-                "No Data",
-                "Please load and preprocess data first.",
-            )
-            return
-
-        if generate_capability is None and self.controller.get_epoch_data() is None:
-            QMessageBox.warning(
-                self,
-                "No Epoched Data",
-                "Please perform epoching in the Preprocess panel first.",
-            )
-            return
-
-        if generate_capability is None and self.controller.is_training():
-            QMessageBox.warning(
-                self,
-                "Training Running",
-                "Cannot change data splitting while training is running.",
-            )
+        if (
+            generate_capability is None
+            and self._legacy_data_splitting_preflight_blocked()
+        ):
             return
 
         dialog_context = self._data_splitting_dialog_context()
@@ -346,6 +373,50 @@ class TrainingSidebar(QWidget):
             if generator:
                 self._check_ready_after_legacy_result(result)
 
+    def _legacy_data_splitting_preflight_blocked(self) -> bool:
+        available, data_list = self._legacy_controller_value(
+            self.controller.get_loaded_data_list,
+            blocked_title="Data Splitting Blocked",
+        )
+        if not available:
+            return True
+        if not data_list:
+            QMessageBox.warning(
+                self,
+                "No Data",
+                "Please load and preprocess data first.",
+            )
+            return True
+
+        available, epoch_data = self._legacy_controller_value(
+            self.controller.get_epoch_data,
+            blocked_title="Data Splitting Blocked",
+        )
+        if not available:
+            return True
+        if epoch_data is None:
+            QMessageBox.warning(
+                self,
+                "No Epoched Data",
+                "Please perform epoching in the Preprocess panel first.",
+            )
+            return True
+
+        available, is_training = self._legacy_controller_value(
+            self.controller.is_training,
+            blocked_title="Data Splitting Blocked",
+        )
+        if not available:
+            return True
+        if is_training:
+            QMessageBox.warning(
+                self,
+                "Training Running",
+                "Cannot change data splitting while training is running.",
+            )
+            return True
+        return False
+
     def _data_splitting_blocked(self) -> bool:
         generate_capability = get_command_capability(
             self,
@@ -415,7 +486,10 @@ class TrainingSidebar(QWidget):
             CommandName.GENERATE_DATASET,
         )
         if generate_capability is None:
-            return bool(self.controller.has_datasets() or self.controller.get_trainer())
+            available, should_clear = self._legacy_controller_value(
+                lambda: self.controller.has_datasets() or self.controller.get_trainer(),
+            )
+            return bool(should_clear) if available else False
         return self._can_replace_existing_dataset(generate_capability.reasons)
 
     def _check_ready_after_legacy_result(self, result) -> None:
@@ -631,7 +705,11 @@ class TrainingSidebar(QWidget):
 
     def _should_start_training(self, train_capability) -> bool:
         if train_capability is None:
-            return not self.controller.is_training()
+            available, is_training = self._legacy_controller_value(
+                self.controller.is_training,
+                blocked_title="Start Training Blocked",
+            )
+            return bool(available and not is_training)
         return train_capability.enabled
 
     def stop_training(self):
@@ -645,8 +723,13 @@ class TrainingSidebar(QWidget):
             )
             return
 
-        if stop_capability is None and not self.controller.is_training():
-            return
+        if stop_capability is None:
+            available, is_training = self._legacy_controller_value(
+                self.controller.is_training,
+                blocked_title="Stop Training Blocked",
+            )
+            if not available or not is_training:
+                return
 
         result = execute_application_command(self, StopTrainingCommand())
         if result is None:
@@ -685,13 +768,20 @@ class TrainingSidebar(QWidget):
                     ),
                 )
                 return
-            if clear_capability is None and self.controller.is_training():
-                QMessageBox.warning(
-                    self,
-                    "Warning",
-                    "Cannot clear history while training is running.",
+            if clear_capability is None:
+                available, is_training = self._legacy_controller_value(
+                    self.controller.is_training,
+                    blocked_title="Clear History Blocked",
                 )
-                return
+                if not available:
+                    return
+                if is_training:
+                    QMessageBox.warning(
+                        self,
+                        "Warning",
+                        "Cannot clear history while training is running.",
+                    )
+                    return
             reply = QMessageBox.question(
                 self,
                 "Clear Training History",
