@@ -37,6 +37,51 @@
 
 ## 2026-05-06
 
+### 08:10 Preprocess Reset fallback warning boundary
+
+- scope：
+  - Continue product-runtime fallback warning audit for Preprocess sidebar actions.
+  - Prevent real `Study` reset-preprocess fallback refusal from being wrapped in a generic critical
+    error.
+- red / focused tests：
+  - Tightened `test_reset_preprocess_refuses_real_study_controller_fallback`.
+  - Red gate failed because `PreprocessSidebar.reset_preprocess()` showed a generic critical reset
+    failure instead of `Reset Blocked`.
+- 做了什麼：
+  - `PreprocessSidebar.reset_preprocess()` now catches real `Study` legacy fallback refusal and
+    shows `Reset Blocked` with the shared safety message.
+  - Mock / legacy fallback still calls `PreprocessController.reset_preprocess()`.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_reset_preprocess_refuses_real_study_controller_fallback -q`
+    -> failed on missing `Reset Blocked` warning.
+  - Focused pass:
+    same command -> `1 passed`.
+  - PreprocessSidebar regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar -q`
+    -> `25 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/preprocess/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> pass.
+    `poetry run basedpyright XBrainLab/ui/panels/preprocess/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Full fast gate:
+    `git diff --check` -> pass.
+    `poetry run ruff check .` -> pass.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> pass.
+    `poetry run mkdocs build --strict` -> pass.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a Preprocess UI fallback language cleanup under the fast dev gate, not a
+    release / thesis benchmark update. It does not justify primary/fallback x3 local eval under
+    16GB VRAM pressure.
+- 不能宣稱：
+  - This does not audit every PreprocessSidebar fallback, complete long-running preprocessing
+    acceptance, or close all controller fallback debt.
+
 ### 08:05 Clear History fallback warning boundary
 
 - scope：

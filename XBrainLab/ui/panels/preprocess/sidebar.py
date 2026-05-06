@@ -628,7 +628,14 @@ class PreprocessSidebar(QWidget):
                 ResetPreprocessCommand(confirmed=True),
             )
             if result is None:
-                run_legacy_controller_fallback(self, self.controller.reset_preprocess)
+                try:
+                    run_legacy_controller_fallback(
+                        self,
+                        self.controller.reset_preprocess,
+                    )
+                except LegacyControllerFallbackUnavailableError as exc:
+                    QMessageBox.warning(self, "Reset Blocked", str(exc))
+                    return
             elif result.failed:
                 self._show_command_failure("Error", result.message)
                 return

@@ -539,12 +539,16 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=None,
             ),
+            patch.object(QMessageBox, "warning") as mock_warning,
             patch.object(QMessageBox, "critical") as mock_critical,
         ):
             sidebar.reset_preprocess()
 
         sidebar.panel.controller.reset_preprocess.assert_not_called()
-        visible_message = mock_critical.call_args.args[2]
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Reset Blocked"
+        mock_critical.assert_not_called()
+        visible_message = mock_warning.call_args.args[2]
         assert "could not safely complete" in visible_message
         assert "refusing controller fallback" not in visible_message
         assert "ApplicationService" not in visible_message

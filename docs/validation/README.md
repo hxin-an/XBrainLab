@@ -2717,6 +2717,36 @@ UI，也不是 human desktop acceptance。
 這批 evidence 支撐 post-load label compatibility path 不再在 empty / blocked state 裡鼓勵舊
 attach-label 心智模型。它仍不是完整 embedded Data Interpretation label editor。
 
+2026-05-06 Preprocess Reset fallback warning boundary：
+
+- Focused red/fixed gate:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_reset_preprocess_refuses_real_study_controller_fallback -q`
+  -> `1 passed` after failing on generic critical reset failure.
+- PreprocessSidebar regression:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar -q`
+  -> `25 passed`.
+- Focused lint/type:
+  `poetry run ruff check XBrainLab/ui/panels/preprocess/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+  -> pass;
+  `poetry run basedpyright XBrainLab/ui/panels/preprocess/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+  -> `0 errors`.
+- Full fast gate:
+  `git diff --check` -> pass;
+  `poetry run ruff check .` -> pass;
+  `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`;
+  `poetry run python tests/architecture_compliance.py` -> pass;
+  `poetry run mkdocs build --strict` -> pass;
+  `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`;
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+  -> `20 passed`.
+- Local eval:
+  not run. This was a fast dev gate Preprocess fallback language slice, not a release / thesis
+  benchmark update.
+
+This supports real `Study` Reset Preprocess fallback refusal showing a product warning instead of
+a generic critical error wrapper. It does not prove long-running preprocessing desktop acceptance
+or complete all PreprocessSidebar fallback cleanup.
+
 2026-05-06 Clear History fallback warning boundary：
 
 - Focused red/fixed gate:

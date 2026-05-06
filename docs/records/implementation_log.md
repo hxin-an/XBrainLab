@@ -42,6 +42,35 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Preprocess Reset Fallback Warning Boundary
+
+### 狀態
+
+`PreprocessSidebar.reset_preprocess()` now converts real `Study` legacy fallback refusal into a
+user-facing blocked warning. If `ResetPreprocessCommand` unexpectedly cannot dispatch in a real
+product context, the UI shows `Reset Blocked` instead of a generic critical reset failure.
+
+### 已可宣稱
+
+- Real `Study` reset-preprocess fallback refusal is visible as product language instead of a
+  generic critical error wrapper.
+- Mock / legacy reset fallback behavior remains available through the explicit fallback helper.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/preprocess/sidebar.py`
+- Tests: `tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not audit every PreprocessSidebar operation fallback or complete long-running
+  preprocessing desktop acceptance.
+
+### 下一手重點
+
+Continue converting remaining real `Study` fallback refusals into blocked user-facing states.
+
 ## 2026-05-06 Clear History Fallback Warning Boundary
 
 ### 狀態
