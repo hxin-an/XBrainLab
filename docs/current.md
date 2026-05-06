@@ -617,8 +617,11 @@ Trial type | Onset | Seconds | Trial | Class cue labels`，而 `review_choices` 
 最新 class-map preview slice 又讓 BIDS events / CSV / TSV label carrier 在未提供 explicit
 `choices.class_map` 時，從已選 label 欄位擷取去重後的 observed label values，作為 wizard 可審查
 class map row；artifact 顯示 `left` / `right` class map rows，且未修改時不會把它記成
-`choices:class_map`。這是 preview/default review support，不是 silent safe guess；label carrier
-仍保持 `needs_confirmation`，MAT 複雜 anchor reconciliation 和 full embedded label editor 仍未完成。
+`choices:class_map`。後續 MAT follow-up 也支援基本 numeric MAT label variable preview，會把
+`classlabel=[1, 2, ...]` 顯示成 `1` / `2` class map defaults，並跳過 NaN / struct / cell-like
+payload。這是 preview/default review support，不是 silent safe guess；label carrier 仍保持
+`needs_confirmation`，MAT 複雜 anchor reconciliation、raw trigger selector 和 full embedded label
+editor 仍未完成。
 最新 recipe-trace wording polish 又讓 `Review Summary` 不再把 `scan:scan-1`、
 `choices:metadata_overrides`、`label_import:timestamp:1` 這類 backend trace token 直接顯示給使用者；
 dialog 會顯示 `Source scan`、`Metadata choices`、`Label import` 等人話 rows，原始 recipe trace

@@ -538,8 +538,9 @@
 - 最新 class-map preview slice 已讓 BIDS events / CSV / TSV label carrier 在未提供 explicit
   class map 時，從 selected label field 的 observed values 產生可審查 class map rows；wizard
   會用 editable selector 顯示 `left` / `right` 等 labels，未修改時不寫入 `choices:class_map`。
-  這只支撐 tabular label carrier preview；MAT 複雜 anchor reconciliation 和 embedded label
-  editor 仍是後續工作。
+  最新 follow-up 也讓基本 numeric MAT label variable 產生 `1` / `2` 這類 class map defaults，
+  並跳過 NaN / struct / cell-like payload。這仍只支撐 preview default，不是 MAT/GDF
+  複雜 anchor reconciliation 或 embedded label editor 完成。
 - 最新 decision-copy polish 已把 wizard 頂部狀態從 `Validation needs confirmation...` 改成
   `Review and confirm these choices before applying.` / `Ready to apply.` / replacement-file
   guidance，減少 backend wording 暴露。

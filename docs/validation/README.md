@@ -306,6 +306,14 @@ events / CSV / TSV observed label values becoming editable review defaults in th
 not a silent safe decision, a MAT/GDF anchor reconciliation proof, or human Windows desktop
 acceptance.
 
+Data Interpretation MAT class-map preview gate:
+`poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_candidate.py::test_build_interpretation_candidate_previews_mat_label_class_values tests/unit/backend/application/test_data_interpretation_label_carriers.py::test_infer_class_map_from_mat_label_carrier_plan -q`
+-> `2 passed` after the red gate first failed on empty class maps；
+`poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_candidate.py tests/unit/backend/application/test_application_service.py::test_data_interpretation_label_carrier_choices_flow_into_recipe tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_mat_sample_anchor_label_carrier tests/unit/backend/application/test_data_interpretation_service.py -q`
+-> `17 passed`。This supports basic numeric MAT label variables becoming editable review defaults
+such as `1` / `2`. It skips NaN / struct / cell-like MAT payloads and does not prove complex
+MAT/GDF anchor reconciliation, nonnumeric label semantics, or human desktop acceptance.
+
 Data Interpretation recipe-trace wording gate:
 `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_humanizes_recipe_trace -q`
 -> `1 passed`。This supports the visible `Review Summary` wording boundary: raw backend trace

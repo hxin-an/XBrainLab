@@ -98,6 +98,46 @@ def test_build_interpretation_candidate_previews_tabular_label_class_values(tmp_
     assert "choices:class_map" not in candidate.recipe_trace
 
 
+def test_build_interpretation_candidate_previews_mat_label_class_values(tmp_path):
+    from scipy.io import savemat
+
+    label_path = tmp_path / "A01T.mat"
+    savemat(
+        label_path,
+        {
+            "classlabel": [1, 2, 1, 2],
+            "cue_onset": [100, 250, 400, 550],
+        },
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            label_carriers=[str(label_path)],
+            bids={"is_bids": False, "events_files": []},
+        ),
+        choices={
+            "label_carrier_choices": {
+                str(label_path): {
+                    "label_field": "classlabel",
+                    "anchor": "cue_onset",
+                    "time_model": "sample_index",
+                    "granularity": "trial",
+                }
+            },
+        },
+    )
+
+    assert candidate.label_carrier_plan[0]["format"] == "MAT"
+    assert candidate.label_carrier_plan[0]["selected_label_field"] == "classlabel"
+    assert candidate.class_map == {"1": "1", "2": "2"}
+    assert (
+        "Confirm label carrier alignment, anchor event, and class map before applying."
+        in candidate.confirmation_items
+    )
+    assert "choices:class_map" not in candidate.recipe_trace
+
+
 def test_build_interpretation_candidate_blocks_empty_selection():
     candidate = build_interpretation_candidate(
         candidate_id="candidate-1",

@@ -74,3 +74,27 @@ def test_infer_class_map_from_tabular_label_carrier_plan(tmp_path):
         "left": "left",
         "right": "right",
     }
+
+
+def test_infer_class_map_from_mat_label_carrier_plan(tmp_path):
+    import numpy as np
+    from scipy.io import savemat
+
+    labels = tmp_path / "A01T.mat"
+    savemat(
+        labels,
+        {
+            "classlabel": np.array([1.0, 2.0, np.nan, 2.0]),
+            "cue_onset": np.array([100, 250, 400, 550]),
+        },
+    )
+
+    plan = build_label_carrier_plan(
+        [str(labels)],
+        {labels.name: {"label_field": "classlabel", "anchor": "cue_onset"}},
+    )
+
+    assert infer_class_map_from_label_carrier_plan(plan) == {
+        "1": "1",
+        "2": "2",
+    }

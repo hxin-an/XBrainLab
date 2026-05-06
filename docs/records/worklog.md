@@ -37,6 +37,45 @@
 
 ## 2026-05-06
 
+### 19:00 MAT class-map preview defaults
+
+- 做了什麼：
+  - Extended label-carrier class-map preview inference from tabular carriers to basic numeric MAT
+    label variables.
+  - MAT `classlabel=[1, 2, ...]` now previews `{"1": "1", "2": "2"}` when no explicit
+    `choices.class_map` is supplied.
+  - NaN values are skipped, integer-valued floats are shown as integer strings, and struct /
+    cell-like MAT payloads are not inferred.
+- red / focused tests：
+  - Added `test_build_interpretation_candidate_previews_mat_label_class_values` and
+    `test_infer_class_map_from_mat_label_carrier_plan`.
+  - Red gate first failed because MAT class maps were `{}`.
+- validation：
+  - Red gate:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_candidate.py::test_build_interpretation_candidate_previews_mat_label_class_values tests/unit/backend/application/test_data_interpretation_label_carriers.py::test_infer_class_map_from_mat_label_carrier_plan -q`
+    -> failed on empty class maps.
+  - Focused pass:
+    same command -> `2 passed`.
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_candidate.py tests/unit/backend/application/test_application_service.py::test_data_interpretation_label_carrier_choices_flow_into_recipe tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_mat_sample_anchor_label_carrier tests/unit/backend/application/test_data_interpretation_service.py -q`
+    -> `17 passed`.
+  - Lint/type/docs:
+    `poetry run ruff check XBrainLab/backend/application/data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_candidate.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/backend/application/data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_candidate.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is Data Interpretation preview inference, not a formal tool-call benchmark claim
+    update.
+- 不能宣稱：
+  - This is basic numeric MAT label preview only. It does not complete complex MAT/GDF anchor
+    reconciliation, raw trigger selection, nonnumeric MAT label semantics, XDF/LSL parsing,
+    embedded label editor, real-data manual certification, or human desktop acceptance.
+
 ### 18:56 Roadmap benchmark claim boundary cleanup
 
 - 做了什麼：

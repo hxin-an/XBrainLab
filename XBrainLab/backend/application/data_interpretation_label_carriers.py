@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import csv
+import math
+from numbers import Real
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from scipy.io import loadmat
 
 NEEDS_CONFIRMATION = "needs_confirmation"
@@ -223,6 +226,8 @@ def _observed_label_values(carrier: dict[str, Any], *, limit: int) -> list[str]:
         return []
     if path.suffix.lower() in {".csv", ".tsv"} or _is_bids_events_file(path):
         return _tabular_label_values(path, label_field, limit=limit)
+    if path.suffix.lower() == ".mat":
+        return _mat_label_values(path, label_field, limit=limit)
     return []
 
 
@@ -249,10 +254,57 @@ def _tabular_label_values(path: Path, label_field: str, *, limit: int) -> list[s
 
 
 def _clean_label_value(value: Any) -> str:
+    if isinstance(value, Real):
+        numeric = float(value)
+        if not math.isfinite(numeric):
+            return ""
+        if numeric.is_integer():
+            return str(int(numeric))
+        return str(value).strip()
     text = str(value or "").strip()
     if not text or text.lower() in {"n/a", "na", "nan", "null"}:
         return ""
     return text
+
+
+def _mat_label_values(path: Path, label_field: str, *, limit: int) -> list[str]:
+    try:
+        payload = loadmat(str(path), squeeze_me=True, struct_as_record=False)
+    except Exception:
+        return []
+    value = _mat_variable(payload, label_field)
+    if value is None:
+        return []
+    array = np.asarray(value)
+    if array.dtype.names is not None or array.dtype == object:
+        return []
+    values: list[str] = []
+    for item in array.reshape(-1):
+        label = _clean_label_value(item.item() if hasattr(item, "item") else item)
+        if not label or label in values:
+            continue
+        values.append(label)
+        if len(values) >= limit:
+            break
+    return values
+
+
+def _mat_variable(payload: dict[str, Any], label_field: str) -> Any | None:
+    requested = str(label_field).strip()
+    if not requested:
+        return None
+    for key, value in payload.items():
+        if str(key).startswith("__"):
+            continue
+        if key == requested:
+            return value
+    normalized = requested.lower()
+    for key, value in payload.items():
+        if str(key).startswith("__"):
+            continue
+        if str(key).lower() == normalized:
+            return value
+    return None
 
 
 def _mat_variables(path: Path) -> list[str]:
