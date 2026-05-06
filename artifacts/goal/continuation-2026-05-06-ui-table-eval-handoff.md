@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+c26cb99 ui: show inline metadata fallback warning
+789b520 docs: refresh handoff after preprocess warnings
 fc14dd3 ui: show preprocess fallback warnings
 f03f8d4 docs: refresh handoff after direct load warning
 3d1321a ui: show direct load fallback warning
@@ -152,6 +154,11 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Dataset inline metadata fallback warning:
+  - real `Study` inline subject/session edits now show `Metadata blocked` when
+    `UpdateMetadataCommand` returns `None`.
+  - the UI no longer lets legacy fallback refusal escape from `DatasetPanel.on_item_changed()`.
+  - mock / legacy inline metadata fallback still calls `DatasetController.update_metadata()`.
 - Preprocess operation fallback warning:
   - real `Study` filtering, resampling, re-reference, normalization, and epoching fallback refusal
     now shows operation-specific Blocked warnings.
@@ -2001,6 +2008,33 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/integration/agent/test_tool_call_eval.py \
   -q
 # passed for fc14dd3; architecture unit 32 passed; backend integration 7 passed; agent/tool 20 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/dataset/test_panel.py::test_dataset_panel_metadata_edit_refuses_real_study_controller_fallback \
+  -q
+# red first on escaped legacy fallback exception, then 1 passed for c26cb99
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/dataset/test_panel.py \
+  tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler \
+  -q
+# 88 passed for c26cb99
+
+poetry run ruff check XBrainLab/ui/panels/dataset/panel.py tests/unit/ui/dataset/test_panel.py
+poetry run basedpyright XBrainLab/ui/panels/dataset/panel.py tests/unit/ui/dataset/test_panel.py
+# passed for c26cb99; basedpyright reported 0 errors, 0 warnings, 0 notes
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+poetry run pytest --capture=sys tests/integration/backend -q
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# passed for c26cb99; backend integration 7 passed; agent/tool 20 passed
 
 git diff --check
 poetry run ruff check .
