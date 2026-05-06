@@ -44,7 +44,8 @@ def find_study(context: Any) -> Any | None:
         if study is not None:
             return study
 
-        for attr_name, maybe_controller in vars(current).items():
+        current_attrs = getattr(current, "__dict__", {})
+        for attr_name, maybe_controller in current_attrs.items():
             if attr_name == "controller" or not attr_name.endswith("_controller"):
                 continue
             study = getattr(maybe_controller, "study", None)

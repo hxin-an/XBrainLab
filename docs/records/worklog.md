@@ -13472,13 +13472,19 @@
     `.study` when present.
   - This keeps named-controller contexts on the ApplicationService / capability / legacy-refusal
     path instead of treating them as non-Study compatibility contexts.
+  - Follow-up safety fix: use `getattr(current, "__dict__", {})` for named-controller scanning so
+    plain objects without `__dict__` still behave as non-Study legacy/mock contexts instead of
+    raising `TypeError`.
 - validation：
   - Focused pass:
     `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_application_capabilities.py::test_named_controller_context_uses_application_service tests/unit/ui/test_application_capabilities.py::test_legacy_controller_fallback_refuses_named_real_controller -q`
     -> `2 passed`.
+  - Plain non-Study guard:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_application_capabilities.py::test_legacy_controller_fallback_allows_plain_non_study_context tests/unit/ui/test_application_capabilities.py::test_named_controller_context_uses_application_service tests/unit/ui/test_application_capabilities.py::test_legacy_controller_fallback_refuses_named_real_controller -q`
+    -> `3 passed`.
   - UI capability / montage regression:
     `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_application_capabilities.py tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker -q`
-    -> `16 passed`.
+    -> `17 passed`.
   - Focused lint / type:
     `poetry run ruff check XBrainLab/ui/application_capabilities.py tests/unit/ui/test_application_capabilities.py`
     -> `All checks passed!`.

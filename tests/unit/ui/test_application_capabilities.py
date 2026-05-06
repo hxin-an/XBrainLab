@@ -188,3 +188,12 @@ def test_legacy_controller_fallback_refuses_named_real_controller(qtbot):
         run_legacy_controller_fallback(widget, fallback)
 
     fallback.assert_not_called()
+
+
+def test_legacy_controller_fallback_allows_plain_non_study_context():
+    fallback = MagicMock(return_value="legacy-ok")
+
+    result = run_legacy_controller_fallback(object(), fallback)
+
+    assert result == "legacy-ok"
+    fallback.assert_called_once_with()

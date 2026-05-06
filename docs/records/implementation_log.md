@@ -5312,6 +5312,8 @@ such as `self.preprocess_controller`, not only from `.controller`.
 - Named-controller UI contexts use ApplicationService capability lookup when backed by a real
   `Study`.
 - Legacy controller fallback is refused for named-controller real `Study` contexts.
+- Plain non-Study contexts without `__dict__` still run mock / legacy fallback instead of raising
+  during study lookup.
 
 ### Evidence 入口
 
