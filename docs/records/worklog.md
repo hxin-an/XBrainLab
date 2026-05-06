@@ -37,6 +37,51 @@
 
 ## 2026-05-06
 
+### 09:03 Remove Files fallback warning boundary
+
+- scope：
+  - Continue product-runtime fallback warning audit for Dataset table actions.
+  - Prevent real `Study` remove-files fallback refusal from escaping as a raw legacy fallback
+    exception.
+- red / focused tests：
+  - Tightened `test_remove_files_refuses_real_study_controller_fallback`.
+  - Red gate failed because `_remove_files()` let `LegacyControllerFallbackUnavailableError` escape
+    when `RemoveFilesCommand` returned `None`.
+- 做了什麼：
+  - `DatasetActionHandler._remove_files()` now catches real `Study` legacy fallback refusal and
+    shows `Remove Files Blocked`.
+  - Mock / legacy fallback still calls `DatasetController.remove_files()`.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_remove_files_refuses_real_study_controller_fallback -q`
+    -> failed on escaped legacy fallback exception.
+  - Focused pass:
+    same command -> `1 passed`.
+  - DatasetActionHandler regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `68 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> pass.
+    `poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Full fast gate:
+    `git diff --check` -> pass.
+    `poetry run ruff check .` -> pass.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> pass.
+    `poetry run mkdocs build --strict` -> pass.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a Dataset UI fallback language cleanup under the fast dev gate, not a release /
+    thesis benchmark update. It does not justify primary/fallback x3 local eval under 16GB VRAM
+    pressure.
+- 不能宣稱：
+  - This does not audit every DatasetActionHandler fallback, complete Dataset page desktop
+    acceptance, or close all controller fallback debt.
+
 ### 08:56 Data Splitting context query-none boundary
 
 - scope：

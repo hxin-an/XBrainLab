@@ -1227,10 +1227,18 @@ class DatasetActionHandler:
                         "Dataset controller unavailable.",
                     )
                     return
-                run_legacy_controller_fallback(
-                    self.panel,
-                    lambda: controller.remove_files(rows),
-                )
+                try:
+                    run_legacy_controller_fallback(
+                        self.panel,
+                        lambda: controller.remove_files(rows),
+                    )
+                except LegacyControllerFallbackUnavailableError as exc:
+                    QMessageBox.warning(
+                        self.panel,
+                        "Remove Files Blocked",
+                        str(exc),
+                    )
+                    return
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
                 return

@@ -1056,7 +1056,6 @@ class TestDatasetActionHandler:
                 "XBrainLab.ui.panels.dataset.actions.execute_application_command",
                 return_value=None,
             ),
-            pytest.raises(RuntimeError, match="could not safely complete"),
         ):
             mock_mb.StandardButton.Yes = 1
             mock_mb.StandardButton.No = 2
@@ -1064,6 +1063,9 @@ class TestDatasetActionHandler:
             handler._remove_files([0])
 
         handler.panel.controller.remove_files.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert mock_mb.warning.call_args.args[1] == "Remove Files Blocked"
+        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
 
     def test_remove_files_service_success_uses_coordinator_refresh(self, handler):
         handler.panel.controller = MagicMock()
