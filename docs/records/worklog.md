@@ -56,7 +56,7 @@
   - HTTP `tools/call(train)` now creates an `mcp-http-job-*` when backend capability enables
     training; the job snapshot exposes status, progress message, finished/run counts, and original
     command result.
-  - Added `GET /jobs/{id}` and `POST /jobs/{id}/cancel`; cancellation executes
+  - Added `GET /jobs`, `GET /jobs/{id}` and `POST /jobs/{id}/cancel`; cancellation executes
     `StopTrainingCommand` through `execute_automation_payload()`.
   - Refreshed `scripts/dev/capture_mcp_http_walkthrough.py` and
     `artifacts/mcp/http-walkthrough.json` / `.md`; artifact now shows train job running before
@@ -77,7 +77,7 @@
     -> `0 errors, 0 warnings, 0 notes`.
   - Artifact:
     `poetry run python scripts/dev/capture_mcp_http_walkthrough.py --output-dir artifacts/mcp`
-    -> `train_job_created=True`, `job_status_running=True`, `cancel_ok=True`.
+    -> `train_job_created=True`, `job_listed=True`, `job_status_running=True`, `cancel_ok=True`.
   - Regression / final gates:
     `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q`
     -> `15 passed`.

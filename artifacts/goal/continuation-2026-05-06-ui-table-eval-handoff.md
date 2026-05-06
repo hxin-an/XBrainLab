@@ -234,8 +234,9 @@ bb57beb ui: use backend truth for split replacement
     optional Bearer token support, and no client-side XBrainLab dependency requirement.
   - Follow-up hardening added constant-time Bearer token comparison and a bounded JSON-RPC request
     body limit with `payload_too_large` response.
-  - Follow-up train job slice added in-memory `mcp-http-job-*` records, `GET /jobs/{id}` status, and
-    `POST /jobs/{id}/cancel` routed through `StopTrainingCommand` / `ApplicationService`.
+  - Follow-up train job slice added in-memory `mcp-http-job-*` records, `GET /jobs`,
+    `GET /jobs/{id}` status, and `POST /jobs/{id}/cancel` routed through `StopTrainingCommand` /
+    `ApplicationService`.
   - `MCPServer` now carries transport-scoped adapter metadata:
     `mode=headless_mcp_http`, `transport=http`, stable `session_id`, and
     `ui_refresh.supported=False` for HTTP.

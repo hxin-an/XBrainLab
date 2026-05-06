@@ -50,6 +50,7 @@ def capture_http_walkthrough(output_dir: Path) -> dict[str, Any]:
     thread.start()
     try:
         health = _request("GET", port, "/health")
+        initial_jobs = _request("GET", port, "/jobs")
         initialized = _request(
             "POST",
             port,
@@ -104,6 +105,7 @@ def capture_http_walkthrough(output_dir: Path) -> dict[str, Any]:
             },
         )
         job_id = _summary_job_id(train_job)
+        listed_jobs = _request("GET", port, "/jobs")
         job_status = _request("GET", port, f"/jobs/{job_id}")
         cancelled_job = _request("POST", port, f"/jobs/{job_id}/cancel", {})
         job_after_cancel = _request("GET", port, f"/jobs/{job_id}")
@@ -114,11 +116,13 @@ def capture_http_walkthrough(output_dir: Path) -> dict[str, Any]:
 
     responses = {
         "health": health,
+        "initial_jobs": initial_jobs,
         "initialize": initialized,
         "tools_list": listed,
         "scan_source": scanned,
         "preview_interpretation": previewed,
         "train_job": train_job,
+        "jobs": listed_jobs,
         "job_status": job_status,
         "cancel_job": cancelled_job,
         "job_after_cancel": job_after_cancel,
@@ -165,6 +169,7 @@ def validate_http_walkthrough_payload(payload: dict[str, Any]) -> None:
         "preview_ok": True,
         "headless_http_adapter": True,
         "train_job_created": True,
+        "job_listed": True,
         "job_status_running": True,
         "cancel_ok": True,
     }
@@ -189,6 +194,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
             f"- scan ok: `{summary['scan_ok']}`",
             f"- preview ok: `{summary['preview_ok']}`",
             f"- train job: `{summary['train_job_id']}`",
+            f"- job listed: `{summary['job_listed']}`",
             f"- job status before cancel: `{summary['train_job_status']}`",
             f"- job status after cancel: `{summary['cancelled_job_status']}`",
             "",
@@ -208,6 +214,7 @@ def _summary(responses: dict[str, Any]) -> dict[str, Any]:
     scan = responses["scan_source"]["body"]["result"]["structuredContent"]
     preview = responses["preview_interpretation"]["body"]["result"]["structuredContent"]
     train = responses["train_job"]["body"]["result"]["structuredContent"]
+    jobs = responses["jobs"]["body"]["jobs"]
     job_status = responses["job_status"]["body"]["job"]
     cancelled = responses["cancel_job"]["body"]["job"]
     adapter = scan["adapter"]
@@ -224,6 +231,10 @@ def _summary(responses: dict[str, Any]) -> dict[str, Any]:
         and adapter.get("ui_refresh", {}).get("supported") is False,
         "train_job_id": train.get("result", {}).get("job", {}).get("job_id"),
         "train_job_created": train.get("result", {}).get("status") == "running",
+        "job_listed": any(
+            job.get("job_id") == train.get("result", {}).get("job", {}).get("job_id")
+            for job in jobs
+        ),
         "train_job_status": job_status.get("status"),
         "job_status_running": job_status.get("status") == "running",
         "cancelled_job_status": cancelled.get("status"),

@@ -53,7 +53,8 @@ HTTP adapter.
 ### 已可宣稱
 
 - HTTP `tools/call(train)` creates an `mcp-http-job-*` when backend capability allows training.
-- `GET /jobs/{id}` returns job status, progress snapshot, and command result.
+- `GET /jobs` lists in-memory jobs for the current headless session; `GET /jobs/{id}` returns job
+  status, progress snapshot, and command result.
 - `POST /jobs/{id}/cancel` routes through `StopTrainingCommand` / `ApplicationService.execute()`;
   it does not directly mutate controller internals.
 - The walkthrough artifact now records train job creation, running status, and cancelled status.

@@ -61,6 +61,9 @@ class MCPHTTPRequestHandler(BaseHTTPRequestHandler):
         if not self._authorized():
             return
         path = urlparse(self.path).path
+        if path == "/jobs":
+            self._write_json({"jobs": self.server.job_registry.list_jobs()})
+            return
         if path.startswith("/jobs/"):
             self._handle_job_get(path)
             return
@@ -236,6 +239,11 @@ class MCPHTTPJobRegistry:
     def job_count(self) -> int:
         with self._lock:
             return len(self._jobs)
+
+    def list_jobs(self) -> list[dict[str, Any]]:
+        with self._lock:
+            records = list(self._jobs.values())
+        return [self._job_snapshot(record) for record in records]
 
     def start_job(
         self,

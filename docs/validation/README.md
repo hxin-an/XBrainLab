@@ -1705,9 +1705,10 @@ long-running training through MCP、Windows Desktop 真人啟動或 product comp
     remote multi-user service。
   - Token comparison uses constant-time comparison, and JSON-RPC request bodies are bounded before
     parsing.
-  - Backend-ready HTTP `train` now creates an in-memory job. Clients can read
-    `GET /jobs/{id}` for status/progress snapshot and call `POST /jobs/{id}/cancel`; cancel is
-    routed through `StopTrainingCommand` / `ApplicationService.execute()`.
+  - Backend-ready HTTP `train` now creates an in-memory job. Clients can read `GET /jobs` to list
+    jobs in the current session, read `GET /jobs/{id}` for status/progress snapshot, and call
+    `POST /jobs/{id}/cancel`; cancel is routed through `StopTrainingCommand` /
+    `ApplicationService.execute()`.
 - 新增 `scripts/dev/run_mcp_http_server.py` 作為 local HTTP entrypoint。
 - 新增 `scripts/dev/capture_mcp_http_walkthrough.py`：
   - client calls 只用 Python standard library `http.client` / `json`。
@@ -1722,6 +1723,7 @@ long-running training through MCP、Windows Desktop 真人啟動或 product comp
   - `scan_ok`：`True`
   - `preview_ok`：`True`
   - `train_job_created`：`True`
+  - `job_listed`：`True`
   - `job_status_running`：`True`
   - `cancel_ok`：`True`
 - focused validation：

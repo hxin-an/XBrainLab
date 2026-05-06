@@ -247,6 +247,10 @@ def test_http_mcp_train_uses_job_api_with_status_and_cancel():
     service, calls = _training_ready_service()
     httpd, port, thread = _start_server(service=service)
     try:
+        status, initial_jobs = _get_json(port, "/jobs")
+        assert status == 200
+        assert initial_jobs == {"jobs": []}
+
         _post_json(
             port,
             "/mcp",
@@ -284,6 +288,11 @@ def test_http_mcp_train_uses_job_api_with_status_and_cancel():
         assert calls["started"] == 1
         assert structured["adapter"]["mode"] == "headless_mcp_http"
         assert structured["adapter"]["transport"] == "http"
+
+        status, listed_jobs = _get_json(port, "/jobs")
+        assert status == 200
+        assert [item["job_id"] for item in listed_jobs["jobs"]] == [job["job_id"]]
+        assert listed_jobs["jobs"][0]["status"] == "running"
 
         status, job_status = _get_json(port, f"/jobs/{job['job_id']}")
         assert status == 200

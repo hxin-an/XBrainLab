@@ -2,11 +2,12 @@
 
 - transport: `http`
 - endpoint: `127.0.0.1:<ephemeral>/mcp`
-- session id: `mcp-http-4b82929da97e`
+- session id: `mcp-http-06a1543fa565`
 - tools listed: `28`
 - scan ok: `True`
 - preview ok: `True`
-- train job: `mcp-http-job-3bf9433f4175`
+- train job: `mcp-http-job-0e72dcda1545`
+- job listed: `True`
 - job status before cancel: `running`
 - job status after cancel: `cancelled`
 

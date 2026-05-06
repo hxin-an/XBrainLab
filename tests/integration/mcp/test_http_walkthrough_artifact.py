@@ -30,6 +30,7 @@ def test_capture_mcp_http_walkthrough_writes_client_artifact(tmp_path: Path):
     assert payload["summary"]["preview_ok"] is True
     assert payload["summary"]["headless_http_adapter"] is True
     assert payload["summary"]["train_job_created"] is True
+    assert payload["summary"]["job_listed"] is True
     assert payload["summary"]["job_status_running"] is True
     assert payload["summary"]["cancel_ok"] is True
     assert payload["summary"]["train_job_id"].startswith("mcp-http-job-")

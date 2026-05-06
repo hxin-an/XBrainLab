@@ -296,8 +296,9 @@ HTTP structured result 標示 `adapter.mode=headless_mcp_http`、`transport=http
 id 和 `ui_refresh.supported=False`。HTTP server 預設 bind `127.0.0.1`，並支援 optional Bearer
 token；token 比對使用 constant-time compare，JSON-RPC body 也有 bounded size limit。這是
 local external-agent adapter，不是遠端多使用者服務或完整 authorization server。Backend-ready
-long-running `train` over HTTP 現在會建立 in-memory job，並提供 `GET /jobs/{id}` status /
-progress snapshot 和 `POST /jobs/{id}/cancel` cancellation endpoint；cancel 仍透過
+long-running `train` over HTTP 現在會建立 in-memory job，並提供 `GET /jobs` list、
+`GET /jobs/{id}` status / progress snapshot 和 `POST /jobs/{id}/cancel` cancellation endpoint；
+cancel 仍透過
 `StopTrainingCommand` / `ApplicationService.execute()`，不直接碰 controller。這是 train-only
 HTTP job baseline；evaluation / visualization jobs、job persistence / recovery、multi-client
 resource lock 和 full remote authorization 仍是後續 architecture work。

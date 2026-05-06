@@ -669,7 +669,8 @@
     visualization jobs 和 recovery 仍未完成。
 - MCP local HTTP transport baseline 已新增：
   - `XBrainLab.mcp.http_server` 和 `scripts/dev/run_mcp_http_server.py` 提供 local-only
-    `POST /mcp` JSON-RPC / `GET /health` / `GET /jobs/{id}` / `POST /jobs/{id}/cancel`。
+    `POST /mcp` JSON-RPC / `GET /health` / `GET /jobs` / `GET /jobs/{id}` /
+    `POST /jobs/{id}/cancel`。
   - HTTP adapter 仍使用同一個 `MCPServer` / automation schema / `ApplicationService.execute()`；
     structured result 標示 `mode=headless_mcp_http`、`transport=http`、stable `session_id` 和
     `ui_refresh.supported=False`。

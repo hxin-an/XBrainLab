@@ -131,7 +131,8 @@ option 尚未 ready 時會回「Generate datasets before training」這類 readi
 health / initialize / tools/list / scan_source / preview_interpretation / train job / job status /
 cancel，並保存 `artifacts/mcp/http-walkthrough.json` / `.md`；同 artifact 也確認
 backend-ready long-running `train` over HTTP 會建立 `mcp-http-job-*`、可用 `GET /jobs/{id}`
-查狀態，並可用 `POST /jobs/{id}/cancel` 透過 `StopTrainingCommand` 取消。這是 in-memory
+查狀態，也可用 `GET /jobs` 在同一 session 內重新列出 jobs，並可用
+`POST /jobs/{id}/cancel` 透過 `StopTrainingCommand` 取消。這是 in-memory
 headless HTTP train job baseline；仍不是 evaluation / visualization job API、job persistence /
 recovery、remote authorization certification、Windows human launcher acceptance 或 full MCP client
 certification。後續 hardening slice 又讓 HTTP adapter
