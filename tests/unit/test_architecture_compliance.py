@@ -646,6 +646,21 @@ def run_training(self):
     assert "controller.start_training" in violations[0]
 
 
+def test_direct_controller_mutation_guard_flags_named_controller_attribute(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def apply_montage(self):
+    self.preprocess_controller.apply_montage(["C3", "C4"])
+""",
+    )
+
+    violations = check_ui_direct_controller_mutations(tmp_path)
+
+    assert len(violations) == 1
+    assert "controller.apply_montage" in violations[0]
+
+
 def test_direct_controller_mutation_guard_allows_legacy_fallback_call(tmp_path):
     _write_ui_file(
         tmp_path,

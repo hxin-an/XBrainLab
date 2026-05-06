@@ -1138,7 +1138,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   UI `result is None` branch 直接 controller mutation。最新 guard follow-up 又會阻擋 UI
   product path 直接呼叫 `controller.update_metadata()` / `controller.start_training()` 這類
   mutating controller method；合法 controller mutation 必須在 `run_legacy_controller_fallback()`
-  或明確 legacy / fallback helper 裡。這是 product runtime fallback boundary，
+  或明確 legacy / fallback helper 裡。最新 named-controller receiver guard 又把
+  `self.preprocess_controller` 這類具名 controller attribute 納入同一條規則，避免 direct
+  mutation 因為不是剛好叫 `self.controller` 而逃過 static audit。這是 product runtime fallback boundary，
   不是 controller 已完全退場；下一個 architecture cleanup milestone 仍是確認 product runtime
   mutating path 不 silent fallback 到 controller mutation，controller fallback 只可保留給 explicit
   mock / unit-test compatibility 或 isolated legacy adapter。
@@ -1222,7 +1224,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
    `result is None` branch 不可直接呼叫 controller mutation；mock / legacy-only fallback 必須經過
    `run_legacy_controller_fallback()`。最新 observer-handler guard 也把 callback-specific
    observer path 納入 architecture compliance：known refresh events 的 named handler 必須呼叫
-   `refresh_after_observer()`，不能只做局部 `update_loop()` / local UI 更新。
+   `refresh_after_observer()`，不能只做局部 `update_loop()` / local UI 更新。最新 named-controller
+   receiver guard 也讓 `self.preprocess_controller` / `preprocess_controller` 這類 controller
+   receiver 受到 direct mutation static audit 約束。
    Agent primary stage prompt 已先把 legacy `load_data / attach_labels` 降權，後續要繼續檢查
    UI 是否也完全以 Data Interpretation 作為新資料入口語言；MCP/headless schema 已先把
    legacy commands 標成非 primary workflow。

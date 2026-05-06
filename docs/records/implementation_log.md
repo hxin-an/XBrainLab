@@ -5275,3 +5275,27 @@ clarification instead of calling a mutating label tool.
 - The source suite is now `122` cases, but local primary / fallback x3 was not rerun. Formal
   release / thesis score evidence remains the prior `121` case gate until the full `122` case suite
   is rerun with resource preflight.
+
+## 2026-05-06 Named Controller Mutation Guard
+
+### 狀態
+
+Architecture compliance now treats named controller attributes such as `self.preprocess_controller`
+or local `preprocess_controller` variables as controller receivers for UI mutation checks.
+
+### 已可宣稱
+
+- Direct UI mutations like `self.preprocess_controller.apply_montage(...)` are now blocked unless
+  they are inside explicit legacy / fallback boundaries.
+- The current `XBrainLab/ui` source passes the stricter guard.
+
+### Evidence 入口
+
+- Source：`tests/architecture_compliance.py`
+- Tests：`tests/unit/test_architecture_compliance.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This hardens one static audit gap. It does not remove all remaining controller fallback paths or
+  complete command-driven UI refresh coordinator closure.

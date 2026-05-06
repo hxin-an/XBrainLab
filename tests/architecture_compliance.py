@@ -471,10 +471,10 @@ def _call_receiver_is_controller(func: ast.expr) -> bool:
         return False
     receiver = func.value
     if isinstance(receiver, ast.Name):
-        return receiver.id == "controller"
+        return receiver.id == "controller" or receiver.id.endswith("_controller")
     return (
         isinstance(receiver, ast.Attribute)
-        and receiver.attr == "controller"
+        and (receiver.attr == "controller" or receiver.attr.endswith("_controller"))
         and isinstance(receiver.value, ast.Name)
         and receiver.value.id == "self"
     )

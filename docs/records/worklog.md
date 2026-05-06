@@ -13411,3 +13411,43 @@
   - Formal local-model benchmark evidence remains the prior `121` case primary / fallback x3 run.
     This slice does not update thesis score claim, ChatPanel local-model acceptance, UI product
     completion, or Windows launcher acceptance.
+
+### 2026-05-06 Named controller mutation architecture guard
+
+- scope：
+  - Close a static architecture guard gap where direct UI mutation checks recognized `self.controller`
+    and local `controller`, but not named controller attributes such as `self.preprocess_controller`.
+  - This matters because product runtime mutation must remain on `ApplicationService`; controller
+    mutation is only acceptable in explicit mock / legacy fallback boundaries.
+- red / focused tests：
+  - Added `test_direct_controller_mutation_guard_flags_named_controller_attribute` with
+    `self.preprocess_controller.apply_montage(...)`.
+  - Red gate:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_direct_controller_mutation_guard_flags_named_controller_attribute -q`
+    -> failed as expected because the checker returned no violations.
+- 做了什麼：
+  - Updated `_call_receiver_is_controller()` so local variables ending in `_controller` and
+    `self.<name>_controller` attributes count as controller receivers for static mutation,
+    render-fallback, readiness, and post-command echo checks.
+- validation：
+  - Focused pass:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_direct_controller_mutation_guard_flags_named_controller_attribute tests/unit/test_architecture_compliance.py::test_direct_controller_mutation_guard_allows_legacy_fallback_call tests/unit/test_architecture_compliance.py::test_direct_controller_mutation_guard_ignores_non_controller_methods -q`
+    -> `3 passed`.
+  - Architecture compliance:
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - Fast gate:
+    `git diff --check` -> passed.
+    `poetry run ruff check tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> `All checks passed!`.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` -> `40 passed`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is an architecture guard slice under the fast dev gate; no tool-call benchmark
+    claim changed.
+- 不能宣稱：
+  - This does not complete the full controller fallback audit, remove existing explicit legacy
+    fallbacks, or finish command-driven UI refresh coordinator closure.
