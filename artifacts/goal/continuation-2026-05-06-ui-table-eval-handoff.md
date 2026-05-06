@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+5c390da ui: route live training updates
+4d58ff5 docs: refresh handoff after chat evidence
 cd1a94b test: capture chat bubble visible text
 8f60a6c docs: refresh handoff after selector fit
 2a711d4 ui: fit interpretation label selectors
@@ -164,6 +166,15 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Training updated observer handler routing:
+  - `TrainingPanel` no longer wires `training_updated` to a lambda that only calls `update_loop()`.
+  - A named `_on_training_updated()` keeps the live progress update and then calls
+    `refresh_after_observer(self, event_name="training_updated")`.
+  - This aligns the actual observer callback with the coordinator route that already maps
+    `training_updated` to Training / Evaluation / Visualization, aggregate info, and assistant
+    status refresh.
+  - Updated `docs/architecture/ui.md` to remove the stale statement that high-frequency
+    `training_updated` stays Training-panel-only.
 - ChatPanel walkthrough visible-text evidence:
   - `visible_text_snapshot()` now includes `QTextBrowser.toPlainText()`, so ChatPanel bubble text is
     represented in JSON visible-text snapshots instead of only in screenshots.
@@ -648,6 +659,33 @@ bb57beb ui: use backend truth for split replacement
 ## Validation Already Run
 
 ```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/training/test_training_panel.py::test_training_updated_observer_enters_refresh_coordinator \
+  tests/unit/ui/training/test_training_panel.py::test_training_panel_refreshes_progress_and_plot_on_training_updated \
+  tests/unit/ui/test_refresh_coordinator.py::test_training_updated_observer_uses_training_owner_scope -q
+# 3 passed for 5c390da focused observer-routing regression
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/training/test_training_panel.py \
+  tests/unit/ui/test_refresh_coordinator.py \
+  tests/unit/ui/test_panel_event_bridges.py -q
+# 56 passed
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 5c390da; mkdocs still prints the existing Material advisory
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py -q
+# 20 passed
+
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/scripts/test_capture_human_like_product_walkthrough.py -q
 # 19 passed for cd1a94b focused walkthrough unit regression
