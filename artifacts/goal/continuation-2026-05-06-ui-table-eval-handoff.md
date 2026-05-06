@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+6f6ca72 ui: show preprocess reset fallback warning
+088cb5c docs: refresh handoff after clear history warning
 9c81f4d ui: show clear history fallback warning
 0679cec docs: refresh handoff after stop training warning
 85b4200 ui: show stop training fallback warning
@@ -121,6 +123,10 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Preprocess Reset fallback warning:
+  - real `Study` reset-preprocess fallback refusal now shows `Reset Blocked`.
+  - the UI no longer wraps the safe refusal in a generic critical reset failure.
+  - mock / legacy reset fallback still calls `PreprocessController.reset_preprocess()`.
 - Clear History fallback warning:
   - real `Study` clear-history fallback refusal now shows `Clear History Blocked`.
   - the UI no longer wraps the refusal in generic `Warning` / `Error clearing history: ...` text.
@@ -1430,6 +1436,36 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 9c81f4d; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_reset_preprocess_refuses_real_study_controller_fallback \
+  -q
+# 1 passed for 6f6ca72 after red failure on generic critical reset failure
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar \
+  -q
+# 25 passed for 6f6ca72
+
+poetry run ruff check XBrainLab/ui/panels/preprocess/sidebar.py tests/unit/ui/test_sidebars_and_components.py
+poetry run basedpyright XBrainLab/ui/panels/preprocess/sidebar.py tests/unit/ui/test_sidebars_and_components.py
+# focused lint/type passed for 6f6ca72
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for 6f6ca72
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for 6f6ca72
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 6f6ca72; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
