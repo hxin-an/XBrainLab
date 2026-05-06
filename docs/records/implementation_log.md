@@ -42,6 +42,38 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Smart Parse Apply Fallback Warning Boundary
+
+### 狀態
+
+`DatasetActionHandler.open_smart_parser()` now converts real `Study` smart-parse apply fallback
+refusal into a user-facing blocked warning. If `ApplySmartParseCommand` unexpectedly cannot
+dispatch in a real product context, the UI shows `Smart Parse Blocked` instead of letting the
+legacy fallback exception escape.
+
+### 已可宣稱
+
+- Real `Study` smart-parse apply fallback refusal is visible as product language instead of a raw
+  exception.
+- Mock / legacy smart-parse fallback behavior remains available through the explicit fallback
+  helper.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/dataset/actions.py`
+- Tests: `tests/unit/ui/test_ui_misc.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not audit every DatasetActionHandler mutating fallback or complete Dataset page desktop
+  acceptance.
+
+### 下一手重點
+
+Continue converting remaining real `Study` Dataset action fallback refusals into blocked
+user-facing states.
+
 ## 2026-05-06 Metadata Update Fallback Warning Boundary
 
 ### 狀態

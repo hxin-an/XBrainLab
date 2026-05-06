@@ -711,10 +711,18 @@ class DatasetActionHandler:
                 ApplySmartParseCommand(results=results),
             )
             if result is None:
-                count = run_legacy_controller_fallback(
-                    self.panel,
-                    lambda: controller.apply_smart_parse(results),
-                )
+                try:
+                    count = run_legacy_controller_fallback(
+                        self.panel,
+                        lambda: controller.apply_smart_parse(results),
+                    )
+                except LegacyControllerFallbackUnavailableError as exc:
+                    QMessageBox.warning(
+                        self.panel,
+                        "Smart Parse Blocked",
+                        str(exc),
+                    )
+                    return
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
                 return

@@ -1258,6 +1258,50 @@ class TestDatasetActionHandler:
         handler.panel.controller.apply_smart_parse.assert_not_called()
         mock_mb.warning.assert_not_called()
 
+    def test_open_smart_parser_refuses_real_study_controller_fallback(
+        self,
+        handler,
+    ):
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        raw = MagicMock()
+        raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
+        raw.get_filepath.return_value = "/tmp/sub-01_task-mi_raw.fif"
+        study.data_manager.loaded_data_list = [raw]
+        handler.panel.study = study
+        handler.panel.controller = MagicMock()
+
+        query_result = _command_result()
+        query_result.diagnostics = {
+            "state": {
+                "raw": {
+                    "files": ["sub-01_task-mi_raw.fif"],
+                },
+            },
+        }
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.SmartParserDialog",
+            ) as mock_dialog,
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                side_effect=[query_result, None],
+            ),
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            mock_dialog.return_value.get_result.return_value = {
+                "/tmp/sub-01_task-mi_raw.fif": ("S01", "session-01")
+            }
+            handler.open_smart_parser()
+
+        handler.panel.controller.apply_smart_parse.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert mock_mb.warning.call_args.args[1] == "Smart Parse Blocked"
+        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
+
     def test_import_label_returns_early_no_files(self, handler):
         """import_label calls _get_target_files_for_import first; if empty, returns."""
         handler.panel.table.selectedIndexes.return_value = []

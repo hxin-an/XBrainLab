@@ -2717,6 +2717,36 @@ UI，也不是 human desktop acceptance。
 這批 evidence 支撐 post-load label compatibility path 不再在 empty / blocked state 裡鼓勵舊
 attach-label 心智模型。它仍不是完整 embedded Data Interpretation label editor。
 
+2026-05-06 Smart Parse apply fallback warning boundary：
+
+- Focused red/fixed gate:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_open_smart_parser_refuses_real_study_controller_fallback -q`
+  -> `1 passed` after failing on escaped legacy fallback exception.
+- DatasetActionHandler regression:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+  -> `70 passed`.
+- Focused lint/type:
+  `poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+  -> pass;
+  `poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+  -> `0 errors`.
+- Full fast gate:
+  `git diff --check` -> pass;
+  `poetry run ruff check .` -> pass;
+  `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`;
+  `poetry run python tests/architecture_compliance.py` -> pass;
+  `poetry run mkdocs build --strict` -> pass;
+  `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`;
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+  -> `20 passed`.
+- Local eval:
+  not run. This was a fast dev gate Dataset fallback language slice, not a release / thesis
+  benchmark update.
+
+This supports real `Study` Smart Parse apply fallback refusal showing a product warning instead of
+an escaped legacy fallback exception. It does not prove Dataset page desktop acceptance or complete
+all DatasetActionHandler fallback cleanup.
+
 2026-05-06 Metadata Update fallback warning boundary：
 
 - Focused red/fixed gate:
