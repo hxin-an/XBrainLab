@@ -71,6 +71,33 @@ def test_build_interpretation_candidate_applies_user_choices_and_recipe_trace():
     assert "choices:label_carriers" in candidate.recipe_trace
 
 
+def test_build_interpretation_candidate_previews_tabular_label_class_values(tmp_path):
+    events = tmp_path / "sub-01_task-mi_events.tsv"
+    events.write_text(
+        "onset\tduration\ttrial_type\n"
+        "0.0\t1.0\tleft\n"
+        "1.0\t1.0\tright\n"
+        "2.0\t1.0\tleft\n",
+        encoding="utf-8",
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            label_carriers=[str(events)],
+            bids={"is_bids": True, "events_files": [str(events)]},
+        ),
+    )
+
+    assert candidate.label_carrier_plan[0]["selected_label_field"] == "trial_type"
+    assert candidate.class_map == {"left": "left", "right": "right"}
+    assert (
+        "Confirm label carrier alignment, anchor event, and class map before applying."
+        in candidate.confirmation_items
+    )
+    assert "choices:class_map" not in candidate.recipe_trace
+
+
 def test_build_interpretation_candidate_blocks_empty_selection():
     candidate = build_interpretation_candidate(
         candidate_id="candidate-1",

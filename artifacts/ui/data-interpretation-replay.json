@@ -592,7 +592,10 @@
             "duration": "event duration",
             "trial_type": "class label candidate"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "left",
+            "right": "right"
+          },
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -667,7 +670,10 @@
             "duration": "event duration",
             "trial_type": "class label candidate"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "left",
+            "right": "right"
+          },
           "time_model": "sample_index_or_annotation_time",
           "granularity": "trial_or_event",
           "metadata": [
@@ -968,7 +974,10 @@
             "duration": "event duration",
             "trial_type": "class label candidate"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "left",
+            "right": "right"
+          },
           "recipe_reload_summary": {}
         }
       }
@@ -1226,7 +1235,10 @@
             "duration": "event duration",
             "trial_type": "class label candidate"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "left",
+            "right": "right"
+          },
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -1541,7 +1553,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "left",
+            "right": "right"
+          },
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -1616,7 +1631,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "left",
+            "right": "right"
+          },
           "time_model": "sample_index_or_annotation_time",
           "granularity": "trial_or_event",
           "metadata": [
@@ -1950,7 +1968,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "left",
+            "right": "right"
+          },
           "recipe_reload_summary": {}
         }
       }
@@ -2212,7 +2233,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "left",
+            "right": "right"
+          },
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -2526,7 +2550,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "left",
+            "right": "right"
+          },
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -2859,7 +2886,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "left",
+            "right": "right"
+          },
           "label_import_count": 1,
           "label_imports": [
             {
@@ -2874,7 +2904,10 @@
                 "<replay_source>/sub-01_task-mi_run-2_raw.fif": "<replay_source>/events.tsv"
               },
               "selected_event_names": [],
-              "class_map": {},
+              "class_map": {
+                "left": "left",
+                "right": "right"
+              },
               "success_count": 1
             }
           ],
@@ -3079,7 +3112,10 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {},
+          "class_map": {
+            "left": "left",
+            "right": "right"
+          },
           "label_imports": [
             {
               "mode": "timestamp",
@@ -3093,7 +3129,10 @@
                 "<replay_source>/sub-01_task-mi_run-2_raw.fif": "<replay_source>/events.tsv"
               },
               "selected_event_names": [],
-              "class_map": {},
+              "class_map": {
+                "left": "left",
+                "right": "right"
+              },
               "success_count": 1
             }
           ],
@@ -3143,7 +3182,10 @@
               "<replay_source>/sub-01_task-mi_run-2_raw.fif": "<replay_source>/events.tsv"
             },
             "selected_event_names": [],
-            "class_map": {},
+            "class_map": {
+              "left": "left",
+              "right": "right"
+            },
             "success_count": 1
           },
           "label_carrier": "<replay_source>/events.tsv",
@@ -3227,6 +3269,16 @@
           "Trial type",
           "event role",
           "Class cue"
+        ],
+        [
+          "left",
+          "class map",
+          "Left"
+        ],
+        [
+          "right",
+          "class map",
+          "Right"
         ]
       ],
       "review_summary_rows": [
@@ -3407,6 +3459,16 @@
               "Trial type",
               "event role",
               "Class cue"
+            ],
+            [
+              "left",
+              "class map",
+              "Left"
+            ],
+            [
+              "right",
+              "class map",
+              "Right"
             ]
           ],
           "resize_modes": [
@@ -4033,7 +4095,7 @@
             "Role",
             "Meaning"
           ],
-          "row_count": 5,
+          "row_count": 7,
           "header_length": 982,
           "viewport_width": 982,
           "width_gap": 0,

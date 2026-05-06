@@ -11,6 +11,9 @@ from .data_interpretation_label_carriers import (
     build_label_carrier_plan as _build_label_carrier_plan,
 )
 from .data_interpretation_label_carriers import (
+    infer_class_map_from_label_carrier_plan as _infer_class_map_from_label_carrier_plan,
+)
+from .data_interpretation_label_carriers import (
     normalize_label_carrier_choices as _normalize_label_carrier_choices,
 )
 from .data_interpretation_metadata import (
@@ -85,6 +88,8 @@ def build_interpretation_candidate(
         scan.label_carriers,
         label_carrier_choices,
     )
+    if not class_map:
+        class_map = _infer_class_map_from_label_carrier_plan(label_carrier_plan)
 
     if scan.label_carriers:
         event_roles["label_carrier"] = "external label or event source"

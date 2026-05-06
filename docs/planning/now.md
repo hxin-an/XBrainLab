@@ -535,6 +535,11 @@
   又讓 Matched EEG / Time / Granularity / Role 欄位在 product-width dialog 中保留足夠寬度：
   visible target 顯示成 `sub-01 run-2`，`Needs review` 不再被截成 `Needs re`，但
   `review_choices` / recipe apply 仍保存完整 `sub-01_task-mi_run-2_raw.fif`。
+- 最新 class-map preview slice 已讓 BIDS events / CSV / TSV label carrier 在未提供 explicit
+  class map 時，從 selected label field 的 observed values 產生可審查 class map rows；wizard
+  會用 editable selector 顯示 `left` / `right` 等 labels，未修改時不寫入 `choices:class_map`。
+  這只支撐 tabular label carrier preview；MAT 複雜 anchor reconciliation 和 embedded label
+  editor 仍是後續工作。
 - 最新 decision-copy polish 已把 wizard 頂部狀態從 `Validation needs confirmation...` 改成
   `Review and confirm these choices before applying.` / `Ready to apply.` / replacement-file
   guidance，減少 backend wording 暴露。

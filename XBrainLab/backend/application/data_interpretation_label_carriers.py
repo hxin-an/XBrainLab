@@ -23,6 +23,23 @@ def build_label_carrier_plan(
     ]
 
 
+def infer_class_map_from_label_carrier_plan(
+    label_carrier_plan: list[dict[str, Any]],
+    *,
+    limit: int = 20,
+) -> dict[str, str]:
+    """Return observed tabular label values for human review in the wizard."""
+    class_map: dict[str, str] = {}
+    for carrier in label_carrier_plan:
+        remaining = max(limit - len(class_map), 0)
+        if remaining <= 0:
+            break
+        for value in _observed_label_values(carrier, limit=remaining):
+            if value not in class_map:
+                class_map[value] = value
+    return class_map
+
+
 def normalize_label_carrier_choices(payload: Any) -> dict[str, dict[str, str]]:
     """Return cleaned wizard choices keyed by carrier path or file name."""
     if not isinstance(payload, dict):
@@ -195,6 +212,47 @@ def _tabular_columns(path: Path) -> list[str]:
     except (OSError, UnicodeDecodeError, csv.Error, StopIteration):
         return []
     return [str(column).strip() for column in header if str(column).strip()]
+
+
+def _observed_label_values(carrier: dict[str, Any], *, limit: int) -> list[str]:
+    if limit <= 0:
+        return []
+    path = Path(str(carrier.get("path") or ""))
+    label_field = str(carrier.get("selected_label_field") or "").strip()
+    if not label_field:
+        return []
+    if path.suffix.lower() in {".csv", ".tsv"} or _is_bids_events_file(path):
+        return _tabular_label_values(path, label_field, limit=limit)
+    return []
+
+
+def _tabular_label_values(path: Path, label_field: str, *, limit: int) -> list[str]:
+    delimiter = (
+        "\t" if path.suffix.lower() == ".tsv" or _is_bids_events_file(path) else ","
+    )
+    values: list[str] = []
+    try:
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle, delimiter=delimiter)
+            if not reader.fieldnames or label_field not in reader.fieldnames:
+                return []
+            for row in reader:
+                value = _clean_label_value(row.get(label_field))
+                if not value or value in values:
+                    continue
+                values.append(value)
+                if len(values) >= limit:
+                    break
+    except (OSError, UnicodeDecodeError, csv.Error):
+        return []
+    return values
+
+
+def _clean_label_value(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text or text.lower() in {"n/a", "na", "nan", "null"}:
+        return ""
+    return text
 
 
 def _mat_variables(path: Path) -> list[str]:

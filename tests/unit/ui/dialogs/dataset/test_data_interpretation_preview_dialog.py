@@ -321,7 +321,10 @@ def test_data_interpretation_preview_dialog_returns_review_edits(qtbot):
     for index in range(dialog.event_tree.topLevelItemCount()):
         item = dialog.event_tree.topLevelItem(index)
         if item is not None and item.text(0) == "1":
-            item.setText(2, "left hand")
+            class_selector = dialog.event_tree.itemWidget(item, 2)
+            assert isinstance(class_selector, QComboBox)
+            assert class_selector.isEditable()
+            class_selector.setCurrentText("Left hand")
 
     result = dialog.get_result()
 
@@ -332,6 +335,93 @@ def test_data_interpretation_preview_dialog_returns_review_edits(qtbot):
         "1": "left hand",
         "2": "right",
     }
+
+
+def test_data_interpretation_preview_dialog_class_map_editor_has_bci_suggestions(
+    qtbot,
+):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={"source_path": "/tmp/source"},
+        preview={"class_map": {"769": "left", "770": "right"}},
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+
+    left_item = dialog.event_tree.topLevelItem(0)
+    assert left_item is not None
+    selector = dialog.event_tree.itemWidget(left_item, 2)
+    assert isinstance(selector, QComboBox)
+    assert selector.isEditable()
+    assert [selector.itemText(index) for index in range(selector.count())][:6] == [
+        "Left",
+        "Left hand",
+        "Right hand",
+        "Feet",
+        "Tongue",
+        "Rest",
+    ]
+
+    selector.setCurrentText("Feet")
+
+    assert dialog.get_result()["choices"]["class_map"] == {
+        "769": "feet",
+        "770": "right",
+    }
+
+
+def test_data_interpretation_preview_dialog_class_map_preserves_custom_label(
+    qtbot,
+):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={"source_path": "/tmp/source"},
+        preview={"class_map": {"custom": "custom"}},
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+
+    class_item = dialog.event_tree.topLevelItem(0)
+    assert class_item is not None
+    selector = dialog.event_tree.itemWidget(class_item, 2)
+    assert isinstance(selector, QComboBox)
+
+    selector.setCurrentText("MI_A")
+
+    assert dialog.get_result()["choices"]["class_map"] == {
+        "custom": "MI A",
+    }
+
+
+def test_data_interpretation_preview_dialog_event_rows_fit_after_class_map_preview(
+    qtbot,
+):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "label_carriers": ["/tmp/source/events.tsv"],
+        },
+        preview={
+            "event_roles": {
+                "label_carrier": "external label or event source",
+                "onset": "time anchor",
+                "duration": "event duration",
+                "trial_type": "class label candidate",
+            },
+            "class_map": {"left": "left", "right": "right"},
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(1040, 760)
+    dialog.show()
+    qtbot.wait(0)
+    dialog._fit_event_tree_height()
+    qtbot.wait(0)
+
+    assert dialog.event_tree.topLevelItemCount() == 7
+    assert _partial_visible_tree_rows(dialog.event_tree) == []
 
 
 def test_data_interpretation_preview_dialog_returns_event_role_review(qtbot):
@@ -1031,3 +1121,19 @@ def _tree_text(tree) -> str:
             if text:
                 values.append(text)
     return "\n".join(values)
+
+
+def _partial_visible_tree_rows(tree) -> list[int]:
+    viewport = tree.viewport()
+    if viewport is None:
+        return []
+    viewport_bottom = viewport.rect().bottom()
+    partial: list[int] = []
+    for row in range(tree.topLevelItemCount()):
+        item = tree.topLevelItem(row)
+        if item is None:
+            continue
+        rect = tree.visualItemRect(item)
+        if rect.isValid() and rect.top() < viewport_bottom < rect.bottom():
+            partial.append(row)
+    return partial

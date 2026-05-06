@@ -42,6 +42,48 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Data Interpretation Class-map Preview
+
+### 狀態
+
+Data Interpretation preview now derives reviewable class-map defaults from BIDS events / CSV / TSV
+label carriers when the selected label field contains observed values and the user has not supplied
+an explicit `choices.class_map`. The wizard renders those values as editable class-map selectors.
+
+### 已可宣稱
+
+- Tabular label carriers can surface observed labels such as `left` / `right` in the preview
+  instead of showing an empty class map.
+- Explicit user class-map choices still take precedence.
+- Inferred class-map defaults remain under the existing label-carrier `needs_confirmation`
+  boundary; unchanged defaults are not recorded as `choices:class_map`.
+- The replay artifact confirms the class-map rows are visible and the dialog geometry guard still
+  passes after adding those rows.
+
+### Evidence 入口
+
+- Source：`XBrainLab/backend/application/data_interpretation_label_carriers.py`,
+  `XBrainLab/backend/application/data_interpretation_candidate.py`,
+  `XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py`
+- Tests：`tests/unit/backend/application/test_data_interpretation_label_carriers.py`,
+  `tests/unit/backend/application/test_data_interpretation_candidate.py`,
+  `tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+- Artifacts：`artifacts/ui/data-interpretation-preview.png`,
+  `artifacts/ui/data-interpretation-replay.json`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+This does not complete a mature embedded label editor, raw trigger selector, complex GDF / MAT
+anchor reconciliation, XDF / LSL parser, full real-data manual certification, or human Windows
+desktop acceptance.
+
+### 下一手重點
+
+Continue Data Interpretation review UX hardening without turning observed label defaults into
+silent safe decisions. The remaining high-value import gaps are embedded label editing, raw trigger
+selection, complex anchor reconciliation, and real-data certification.
+
 ## 2026-05-06 MCP HTTP Train Job Baseline
 
 ### 狀態

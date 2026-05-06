@@ -1,5 +1,6 @@
 from XBrainLab.backend.application.data_interpretation_label_carriers import (
     build_label_carrier_plan,
+    infer_class_map_from_label_carrier_plan,
     normalize_label_carrier_choices,
 )
 
@@ -55,3 +56,21 @@ def test_normalize_label_carrier_choices_accepts_path_or_name_keys(tmp_path):
 
     assert choices[str(carrier)]["label_field"] == "label"
     assert choices[carrier.name]["role"] == "artifact markers"
+
+
+def test_infer_class_map_from_tabular_label_carrier_plan(tmp_path):
+    labels = tmp_path / "labels.csv"
+    labels.write_text(
+        "sample,label\n128,left\n256,right\n384,n/a\n512,left\n",
+        encoding="utf-8",
+    )
+
+    plan = build_label_carrier_plan(
+        [str(labels)],
+        {labels.name: {"label_field": "label", "anchor": "sample"}},
+    )
+
+    assert infer_class_map_from_label_carrier_plan(plan) == {
+        "left": "left",
+        "right": "right",
+    }

@@ -61,6 +61,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._event_role_widgets: dict[int, QComboBox] = {}
         self._event_role_items: list[tuple[QTreeWidgetItem, str, str]] = []
         self._class_map_items: list[tuple[QTreeWidgetItem, str, str]] = []
+        self._class_map_widgets: dict[int, QComboBox] = {}
         self._tree_column_specs: dict[int, tuple[int, ...]] = {}
         super().__init__(
             parent=parent,
@@ -187,6 +188,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         self._populate_event_tree()
         self._fit_tree_columns(self.event_tree, (220, 150, 420), stretch_column=2)
+        self._fit_event_tree_height()
         label_layout.addWidget(self.event_tree)
         layout.addWidget(label_group, stretch=1)
 
@@ -248,10 +250,13 @@ class DataInterpretationPreviewDialog(BaseDialog):
         super().resizeEvent(event)
         if hasattr(self, "review_tree"):
             self._fit_all_tree_columns_to_viewport()
+            self._fit_event_tree_height()
+            self._fit_review_tree_height()
 
     def showEvent(self, event):  # noqa: N802
         super().showEvent(event)
         QTimer.singleShot(0, self._fit_all_tree_columns_to_viewport)
+        QTimer.singleShot(0, self._fit_event_tree_height)
         QTimer.singleShot(0, self._fit_review_tree_height)
 
     def get_result(self) -> dict[str, Any]:
@@ -376,6 +381,24 @@ class DataInterpretationPreviewDialog(BaseDialog):
         bounded_height = min(max(target_height, 132), 220)
         self.review_tree.setMinimumHeight(bounded_height)
         self.review_tree.setMaximumHeight(bounded_height)
+
+    def _fit_event_tree_height(self) -> None:
+        if not hasattr(self, "event_tree"):
+            return
+        row_count = max(1, self.event_tree.topLevelItemCount())
+        visible_rows = min(row_count, 7)
+        row_heights = [
+            self.event_tree.sizeHintForRow(index)
+            for index in range(min(row_count, visible_rows))
+        ]
+        row_height = max(24, *(height for height in row_heights if height > 0))
+        header = self.event_tree.header()
+        header_height = header.height() if header is not None else 28
+        frame_padding = self.event_tree.frameWidth() * 2
+        target_height = header_height + (visible_rows * row_height) + frame_padding
+        bounded_height = min(max(target_height, 160), 260)
+        self.event_tree.setMinimumHeight(bounded_height)
+        self.event_tree.setMaximumHeight(bounded_height)
 
     @staticmethod
     def _apply_tree_palette(tree: QTreeWidget) -> None:
@@ -502,9 +525,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if isinstance(class_map, dict):
             for code, label in class_map.items():
                 tree_item = QTreeWidgetItem([str(code), "class map", str(label)])
-                tree_item.setFlags(tree_item.flags() | Qt.ItemFlag.ItemIsEditable)
                 self._class_map_items.append((tree_item, str(code), str(label)))
                 self.event_tree.addTopLevelItem(tree_item)
+                self._install_class_map_selector(tree_item, str(label))
 
         if self.event_tree.topLevelItemCount() == 0:
             self.event_tree.addTopLevelItem(
@@ -670,15 +693,53 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if not self._class_map_items:
             return {}
         current = {
-            code: tree_item.text(2).strip()
+            code: self._class_map_item_text(tree_item).strip()
             for tree_item, code, _original in self._class_map_items
-            if tree_item.text(2).strip()
+            if self._class_map_item_text(tree_item).strip()
         }
         changed = any(
             current.get(code, "") != original
             for _tree_item, code, original in self._class_map_items
         )
         return current if changed else {}
+
+    def _install_class_map_selector(
+        self,
+        item: QTreeWidgetItem,
+        current_value: str,
+    ) -> None:
+        selector = QComboBox(self.event_tree)
+        self._prepare_table_combo(selector)
+        selector.setEditable(True)
+        selector.setToolTip("Edit the class label used for training and recipe replay.")
+        seen_values: set[str] = set()
+        for display, value in self._class_label_choices(current_value):
+            if value in seen_values:
+                continue
+            selector.addItem(display, value)
+            seen_values.add(value)
+        current_index = selector.findData(current_value)
+        if current_index >= 0:
+            selector.setCurrentIndex(current_index)
+        elif current_value:
+            selector.setEditText(self._label_choice_display(current_value))
+        self._class_map_widgets[id(item)] = selector
+        self.event_tree.setItemWidget(item, 2, selector)
+
+    def _class_map_item_text(self, item: QTreeWidgetItem) -> str:
+        selector = self._class_map_widgets.get(id(item))
+        if selector is None:
+            return item.text(2)
+        current_text = selector.currentText().strip()
+        matching_index = selector.findText(
+            current_text,
+            Qt.MatchFlag.MatchFixedString,
+        )
+        if matching_index >= 0:
+            data = selector.itemData(matching_index)
+            if isinstance(data, str) and data.strip():
+                return data.strip()
+        return current_text.replace("_", " ").strip()
 
     def _event_role_overrides(self) -> dict[str, str]:
         if not self._event_role_items:
@@ -950,6 +1011,32 @@ class DataInterpretationPreviewDialog(BaseDialog):
     def _label_choice_display(value: str) -> str:
         cleaned = value.replace("_", " ").strip()
         return cleaned[:1].upper() + cleaned[1:] if cleaned else value
+
+    @staticmethod
+    def _class_label_choices(current_value: str) -> list[tuple[str, str]]:
+        common_values = [
+            "left",
+            "left hand",
+            "right hand",
+            "feet",
+            "tongue",
+            "rest",
+            "target",
+            "non-target",
+            "artifact",
+            "ignored",
+        ]
+        normalized_current = current_value.replace("_", " ").strip().lower()
+        values = (
+            [normalized_current, *common_values]
+            if normalized_current and normalized_current not in common_values
+            else common_values
+        )
+        return [
+            (DataInterpretationPreviewDialog._label_choice_display(value), value)
+            for value in values
+            if value
+        ]
 
     @staticmethod
     def _event_role_display_name(value: str) -> str:

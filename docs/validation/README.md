@@ -293,6 +293,19 @@ full backend `target_file=sub-01_task-mi_run-2_raw.fif` preserved in `review_cho
 `label_apply.file_mapping`. This supports the captured fixture only; it does not certify every
 real-data label carrier naming pattern.
 
+Data Interpretation class-map preview gate:
+`poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_candidate.py::test_build_interpretation_candidate_previews_tabular_label_class_values -q`
+-> `4 passed`；
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+-> `24 passed`；
+`QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py --output-dir artifacts/ui`
+refreshed `artifacts/ui/data-interpretation-preview.png` and
+`artifacts/ui/data-interpretation-replay.json` with visible `left` / `right` class-map rows and
+`ui_quality_review.geometry.passed=true` / `visible_text.passed=true`. This supports BIDS
+events / CSV / TSV observed label values becoming editable review defaults in the wizard. It is
+not a silent safe decision, a MAT/GDF anchor reconciliation proof, or human Windows desktop
+acceptance.
+
 Data Interpretation recipe-trace wording gate:
 `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_humanizes_recipe_trace -q`
 -> `1 passed`。This supports the visible `Review Summary` wording boundary: raw backend trace

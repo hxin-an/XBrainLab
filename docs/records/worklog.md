@@ -37,6 +37,66 @@
 
 ## 2026-05-06
 
+### 18:47 Data Interpretation class-map preview defaults
+
+- 做了什麼：
+  - Added tabular label-carrier class-map preview inference in the label-carrier boundary, not in
+    `ApplicationService`.
+  - BIDS events / CSV / TSV carriers now collect unique observed values from the selected label
+    field and expose them as reviewable class-map defaults when no explicit `choices.class_map` is
+    supplied.
+  - Added editable BCI-oriented class-map selectors in the Data Interpretation wizard, plus event
+    table height fitting so added class-map rows do not leave half-visible rows.
+  - Class-map selectors normalize known BCI suggestions such as `Feet` to backend values like
+    `feet`, while preserving user-entered custom labels except underscore-to-space cleanup.
+  - Refreshed `artifacts/ui/data-interpretation-preview.png` and
+    `artifacts/ui/data-interpretation-replay.json`; replay now shows `left` / `right` class-map
+    rows and `ui_quality_review.geometry.passed=true` / `visible_text.passed=true`.
+- red / focused tests：
+  - Added `test_build_interpretation_candidate_previews_tabular_label_class_values`.
+  - Red gate first failed because `candidate.class_map` was `{}` for a real `events.tsv`.
+  - Added helper coverage for CSV label value de-duplication and `n/a` filtering.
+  - Added UI coverage that class-map selectors have BCI suggestions and event rows show no clipped
+    visible row after class-map preview adds rows.
+- validation：
+  - Red gate:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_candidate.py::test_build_interpretation_candidate_previews_tabular_label_class_values -q`
+    -> failed on `{}` vs `{"left": "left", "right": "right"}`.
+  - Focused pass:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_candidate.py::test_build_interpretation_candidate_previews_tabular_label_class_values -q`
+    -> `4 passed`.
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_service.py -q`
+    -> `12 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_event_rows_fit_after_class_map_preview -q`
+    -> `1 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `24 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
+    -> `9 passed`.
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/integration/backend/test_application_service_workflow.py -q`
+    -> `55 passed`.
+  - Artifact:
+    `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py --output-dir artifacts/ui`
+    -> passed after the event-tree height fix. The first replay attempt correctly failed on a
+    clipped event-table row after class-map rows were introduced.
+  - Lint/type/docs:
+    `poetry run ruff check XBrainLab/backend/application/data_interpretation_label_carriers.py XBrainLab/backend/application/data_interpretation_candidate.py XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/backend/application/test_data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_candidate.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/backend/application/data_interpretation_label_carriers.py XBrainLab/backend/application/data_interpretation_candidate.py XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/backend/application/test_data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_candidate.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is Data Interpretation preview / UI replay work, not a formal tool-call benchmark
+    claim update.
+- 不能宣稱：
+  - This is tabular observed-value preview only. It does not complete MAT/GDF complex anchor
+    reconciliation, raw trigger selection, XDF/LSL parsing, embedded label editor, real-data manual
+    certification, or human Windows desktop acceptance.
+
 ### 18:28 MCP execution boundary metadata
 
 - 做了什麼：
