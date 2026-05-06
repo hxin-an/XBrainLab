@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+cd1a94b test: capture chat bubble visible text
+8f60a6c docs: refresh handoff after selector fit
 2a711d4 ui: fit interpretation label selectors
 2f5ccb0 ui: gate dataset clear action
 48af56d ui: deduplicate aggregate info refresh
@@ -162,6 +164,18 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- ChatPanel walkthrough visible-text evidence:
+  - `visible_text_snapshot()` now includes `QTextBrowser.toPlainText()`, so ChatPanel bubble text is
+    represented in JSON visible-text snapshots instead of only in screenshots.
+  - `run_chatpanel_walkthrough()` captures `visible_messages`, send/input state, and processing
+    state before `start_new_conversation()` clears the bubbles for the reset/new-session boundary.
+  - Refreshed `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` and `.md`;
+    assistant normal / clarification / blocked / success / narrow phases now include visible user
+    and assistant bubble text.
+  - `chatpanel.visible_messages` now records the eight visible user/assistant bubbles before reset.
+  - This strengthens automated UI-observable evidence only; it is not human Windows desktop
+    acceptance, true local-model long-session testing, or proof of every autonomous ChatPanel
+    workflow.
 - Data Interpretation selector-fit polish:
   - `DataInterpretationPreviewDialog` rebalanced the label carrier table columns so Time /
     Granularity `Needs review` selectors are no longer visibly clipped in product-width replay.
@@ -634,6 +648,35 @@ bb57beb ui: use backend truth for split replacement
 ## Validation Already Run
 
 ```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/scripts/test_capture_human_like_product_walkthrough.py -q
+# 19 passed for cd1a94b focused walkthrough unit regression
+
+QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py
+# exit 0 for cd1a94b; status passed, 26/26 phases, 20 screenshots
+# ChatPanel visible_text now includes bubble text and chatpanel.visible_messages has 8 entries
+# resource smoke passed; RSS growth 231884 KB / 600000 KB, Qt active threads 0
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for cd1a94b; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/scripts/test_capture_human_like_product_walkthrough.py \
+  tests/integration/ui/test_product_walkthrough.py -q
+# 22 passed
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py -q
+# 20 passed
+
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
   tests/unit/scripts/test_capture_data_interpretation_replay.py \
