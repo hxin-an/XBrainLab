@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+9e3a8cb ui: guard dataset action fallback gates
+5330278 docs: refresh handoff after preprocess fallback guard
 cf831b2 ui: guard preprocess fallback gates
 41a61d2 ui: guard dataset sidebar fallback state
 73e1e6e docs: refresh handoff after training fallback guard
@@ -180,6 +182,19 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Dataset action handler no-capability preflight fallback boundary:
+  - `DatasetActionHandler.import_data()`, `_can_start_interpretation()`, and
+    `open_smart_parser()` no longer directly read `DatasetController.is_locked()` / `has_data()`
+    when command capability lookup is unexpectedly unavailable.
+  - File import preserves the existing service-backed `LoadDataCommand` compatibility path while
+    avoiding stale lock reads; folder/BIDS and Smart Parse use explicit legacy fallback boundaries.
+  - Static scan now has no matches for
+    `capability is None and self.controller...` / `capability is None and controller...` in
+    `XBrainLab/ui`.
+  - Validation covered red stale-controller tests, Dataset action regression, full fast gate
+    (`git diff --check`, ruff, basedpyright, architecture compliance, mkdocs strict, backend
+    integration, and agent/tool deterministic regression).
+  - No local LLM eval was run; this was a UI fallback audit slice under the fast dev gate.
 - Preprocess sidebar no-capability lock/data fallback boundary:
   - `PreprocessSidebar.check_lock()` and `check_data_loaded()` now route no-capability fallback
     reads through `run_legacy_controller_fallback()` via `_run_legacy_preprocess_fallback()`.
