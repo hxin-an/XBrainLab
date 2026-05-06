@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+dd6e4b3 test: guard no-refresh mutating commands
 8437e3f ui: guard plain context study lookup
 8819185 docs: refresh handoff after named controller lookup
 2a940de ui: find study from named controllers
@@ -195,6 +196,17 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- No-refresh mutating command architecture guard:
+  - `tests/architecture_compliance.py` now rejects `execute_application_command(..., refresh=False)`
+    for mutating commands.
+  - `refresh=False` remains allowed for `QueryStateCommand`, `EvaluateCommand`,
+    `VisualizeCommand`, and query-only `SaliencyCommand()`.
+  - Mutating examples such as `ApplySmartParseCommand(..., refresh=False)` and
+    `SaliencyCommand(params=..., refresh=False)` now fail the guard.
+  - Validation covered red focused architecture tests, `tests/unit/test_architecture_compliance.py`
+    (`43 passed`), full architecture compliance, full ruff, full basedpyright, `git diff --check`,
+    and `mkdocs build --strict`.
+  - No local LLM eval was run; this was a UI architecture guard slice under the fast dev gate.
 - Named controller runtime study lookup:
   - `find_study()` in `XBrainLab/ui/application_capabilities.py` now resolves real `Study`
     instances from attributes ending in `_controller`, not only `.controller`.
@@ -2837,6 +2849,17 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 8437e3f; mkdocs still prints the existing Material advisory
+
+poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_refresh_false_guard_flags_mutating_command tests/unit/test_architecture_compliance.py::test_refresh_false_guard_allows_query_commands tests/unit/test_architecture_compliance.py::test_refresh_false_guard_flags_saliency_configuration -q
+# red first at missing checker import, then 3 passed for dd6e4b3
+poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q
+# 43 passed for dd6e4b3
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for dd6e4b3; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard and changed-case eval
