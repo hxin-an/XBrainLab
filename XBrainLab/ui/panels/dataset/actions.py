@@ -148,10 +148,18 @@ class DatasetActionHandler:
                         )
                         return
                     if result is None:
-                        run_legacy_controller_fallback(
-                            self.panel,
-                            lambda: controller.import_files(filepaths),
-                        )
+                        try:
+                            run_legacy_controller_fallback(
+                                self.panel,
+                                lambda: controller.import_files(filepaths),
+                            )
+                        except LegacyControllerFallbackUnavailableError as exc:
+                            QMessageBox.warning(
+                                self.panel,
+                                "Interpretation Blocked",
+                                str(exc),
+                            )
+                            return
                         return
                     QMessageBox.information(
                         self.panel,

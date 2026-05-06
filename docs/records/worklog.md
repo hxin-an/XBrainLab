@@ -37,6 +37,51 @@
 
 ## 2026-05-06
 
+### 09:33 Direct Load compatibility fallback warning boundary
+
+- scope：
+  - Continue product-runtime fallback warning audit for legacy direct load compatibility.
+  - Prevent real `Study` direct `LoadDataCommand` compatibility fallback from trying
+    `DatasetController.import_files()` or surfacing as generic import error.
+- red / focused tests：
+  - Added `test_import_data_refuses_real_study_direct_load_fallback`.
+  - Red gate failed because no product blocked warning was shown when the direct load fallback
+    refused real `Study` runtime.
+- 做了什麼：
+  - `DatasetActionHandler.import_data()` now catches real `Study` legacy fallback refusal around
+    direct import compatibility fallback and shows `Interpretation Blocked`.
+  - Mock / legacy fallback still calls `DatasetController.import_files()`.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_refuses_real_study_direct_load_fallback -q`
+    -> failed because no blocked warning was shown.
+  - Focused pass:
+    same command -> `1 passed`.
+  - DatasetActionHandler regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `73 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> pass.
+    `poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Full fast gate:
+    `git diff --check` -> pass.
+    `poetry run ruff check .` -> pass.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> pass.
+    `poetry run mkdocs build --strict` -> pass.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a Dataset UI fallback language cleanup under the fast dev gate, not a release /
+    thesis benchmark update. It does not justify primary/fallback x3 local eval under 16GB VRAM
+    pressure.
+- 不能宣稱：
+  - This does not make direct `load_data` the product data-entry model or complete Dataset page
+    desktop acceptance.
+
 ### 09:28 Smart Parse filename fallback warning boundary
 
 - scope：

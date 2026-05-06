@@ -262,6 +262,9 @@
   `Failed: ...` error。
 - 最新 Smart Parse filename fallback warning slice 也讓 real `Study` state query 無法提供
   filenames 時顯示 `Smart Parse Blocked`，不再回讀 stale controller filename list。
+- 最新 Direct Load compatibility fallback warning slice 也讓 real `Study` direct `LoadDataCommand`
+  compatibility command 無法 dispatch 時顯示 `Interpretation Blocked`，不再嘗試 controller
+  `import_files()` 或包成 generic import error。
 - 最新 Dataset sidebar render cleanup 也把 `is_locked()` / `has_data()` 納入同一 guard：
   有 backend capability 時，button state / tooltip 不再先讀 stale controller lock/data state；
   legacy lock/data reads 只留在 explicit no-capability branch。

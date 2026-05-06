@@ -157,6 +157,44 @@ class TestDatasetActionHandler:
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_data_refuses_real_study_direct_load_fallback(
+        self,
+        mock_mb,
+        mock_fd,
+        handler,
+    ):
+        from XBrainLab.backend.application import LoadDataCommand
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileNames.return_value = (["/a.set"], "")
+
+        with (
+            patch.object(
+                handler, "_run_data_interpretation_import", return_value=False
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.get_command_capability",
+                return_value=None,
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                return_value=None,
+            ) as mock_execute,
+        ):
+            handler.import_data()
+
+        assert isinstance(mock_execute.call_args.args[1], LoadDataCommand)
+        handler.panel.controller.import_files.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert mock_mb.warning.call_args.args[1] == "Interpretation Blocked"
+        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
+        mock_mb.critical.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_import_data_does_not_bypass_interpretation_when_command_surface_exists(
         self,
         mock_mb,

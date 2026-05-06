@@ -42,6 +42,38 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Direct Load Compatibility Fallback Warning Boundary
+
+### 狀態
+
+`DatasetActionHandler.import_data()` now converts real `Study` direct-load compatibility fallback
+refusal into a user-facing blocked warning. If the Data Interpretation flow and direct
+`LoadDataCommand` compatibility path unexpectedly cannot dispatch in a real product context, the UI
+shows `Interpretation Blocked` instead of trying `DatasetController.import_files()` or wrapping the
+refusal in a generic import error.
+
+### 已可宣稱
+
+- Real `Study` direct-load compatibility fallback refusal is visible as product language instead of
+  a generic import failure.
+- Mock / legacy direct import fallback behavior remains available through the explicit fallback
+  helper.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/dataset/actions.py`
+- Tests: `tests/unit/ui/test_ui_misc.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not make direct `load_data` the product data-entry model; Data Interpretation remains
+  the new UI main path.
+
+### 下一手重點
+
+Continue auditing remaining UI direct-mutation paths and keep direct load as isolated compatibility.
+
 ## 2026-05-06 Smart Parse Filename Fallback Warning Boundary
 
 ### 狀態
