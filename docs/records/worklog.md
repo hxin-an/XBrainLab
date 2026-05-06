@@ -37,6 +37,63 @@
 
 ## 2026-05-06
 
+### 12:30 Data Interpretation replay geometry gate
+
+- scope：
+  - Strengthen UI-observable evidence for the user-reported Data Interpretation preview table
+    overflow / underfill / clipped-row issues.
+  - The consolidated human-like walkthrough already had a geometry quality gate, but the standalone
+    Data Interpretation replay only saved raw per-widget geometry fields.
+- red / focused tests：
+  - Added `test_replay_geometry_review_flags_underfilled_tree`.
+  - Red gate failed because `build_replay_geometry_review` did not exist.
+- 做了什麼：
+  - Added `build_replay_geometry_review()` and `ensure_replay_geometry_passed()` to
+    `scripts/dev/capture_data_interpretation_replay.py`.
+  - The replay now writes `ui_quality_review.geometry` and fails if preview/remap wizard trees or
+    the Dataset table show horizontal overflow, viewport underfill, content-boundary gap, or
+    clipped visible rows.
+  - Refreshed `artifacts/ui/data-interpretation-replay.json`; the latest artifact reports
+    `passed=true`, `checked_widgets=9`, `findings=[]`, with preview/remap metadata,
+    label/event, review summary tables and the loaded Dataset table included.
+  - Screenshots were spot-reviewed via `view_image`; preview/remap tables are nonblank and fill
+    their panels under the replay geometry.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py::test_replay_geometry_review_flags_underfilled_tree -q`
+    -> failed on missing `build_replay_geometry_review` import.
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
+    -> `7 passed`.
+  - Focused lint/type:
+    `poetry run ruff check scripts/dev/capture_data_interpretation_replay.py tests/unit/scripts/test_capture_data_interpretation_replay.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright scripts/dev/capture_data_interpretation_replay.py tests/unit/scripts/test_capture_data_interpretation_replay.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - UI-observable replay:
+    `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`; refreshed `artifacts/ui/data-interpretation-preview.png`,
+    `artifacts/ui/data-interpretation-remap.png`,
+    `artifacts/ui/data-interpretation-applied.png`, and
+    `artifacts/ui/data-interpretation-replay.json`.
+  - Fast gate:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/integration/ui/test_product_walkthrough.py -q`
+    -> `29 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is UI-observable replay evidence under the fast dev gate.
+- 不能宣稱：
+  - This does not certify every real dataset format, human Windows desktop acceptance, or final
+    import wizard UX maturity.
+
 ### 12:22 Dataset clear availability fallback boundary
 
 - scope：

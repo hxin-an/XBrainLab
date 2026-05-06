@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 
 from scripts.dev.capture_data_interpretation_replay import (
     apply_replay_review_choices,
+    build_replay_geometry_review,
     dataset_sidebar_state,
     source_event_field_matches,
     table_state,
@@ -208,6 +209,86 @@ def test_tree_state_records_rows_and_fit_geometry(qtbot) -> None:
     assert state["partial_visible_rows"] == []
     assert state["text_elide_mode"] == "ElideRight"
     assert state["alternating_row_colors"] is True
+
+
+def test_replay_geometry_review_checks_all_wizard_tables(qtbot) -> None:
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/sub-01_task-mi_run-01.fif"],
+            "label_carriers": ["/tmp/source/sub-01_task-mi_run-01_events.tsv"],
+        },
+        preview={
+            "label_carrier_preview": [
+                {
+                    "path": "/tmp/source/sub-01_task-mi_run-01_events.tsv",
+                    "name": "sub-01_task-mi_run-01_events.tsv",
+                    "format": "BIDS events",
+                    "label_candidates": ["trial_type"],
+                    "anchor_candidates": ["onset"],
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                    "time_model": "seconds",
+                    "granularity": "trial",
+                    "role": "class cue labels",
+                },
+            ],
+            "event_roles": {"trial_type": "class cue"},
+            "recipe_trace": ["scan:scan-1", "candidate:candidate-1"],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(900, 740)
+    dialog.show()
+    qtbot.wait(0)
+    dialog._fit_all_tree_columns_to_viewport()
+
+    review = build_replay_geometry_review(
+        {
+            "dialog": {
+                "tables": {
+                    "metadata": tree_state(dialog.file_tree),
+                    "label_carriers": tree_state(dialog.label_carrier_tree),
+                    "events": tree_state(dialog.event_tree),
+                    "review_summary": tree_state(dialog.review_tree),
+                },
+            },
+        },
+    )
+
+    assert review["passed"] is True
+    assert review["checked_widgets"] == 4
+    assert {row["widget"] for row in review["rows"]} == {
+        "dialog.tables.metadata",
+        "dialog.tables.label_carriers",
+        "dialog.tables.events",
+        "dialog.tables.review_summary",
+    }
+
+
+def test_replay_geometry_review_flags_underfilled_tree() -> None:
+    review = build_replay_geometry_review(
+        {
+            "dialog": {
+                "tables": {
+                    "label_carriers": {
+                        "headers": ["File", "Role"],
+                        "rows": [["events.tsv", "Class cue"]],
+                        "header_length": 500,
+                        "viewport_width": 760,
+                        "horizontal_scrollbar_max": 0,
+                        "partial_visible_rows": [],
+                    },
+                },
+            },
+        },
+    )
+
+    assert review["passed"] is False
+    assert review["findings"][0]["widget"] == "dialog.tables.label_carriers"
+    assert review["findings"][0]["fills_viewport"] is False
 
 
 def table_item(text: str) -> QTableWidgetItem:

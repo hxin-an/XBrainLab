@@ -3928,5 +3928,378 @@
       "import_label_button_enabled": false,
       "import_label_button_tooltip": "Load raw data before attaching labels."
     }
+  },
+  "ui_quality_review": {
+    "geometry": {
+      "passed": true,
+      "checked_widgets": 9,
+      "width_tolerance_px": 2,
+      "findings": [],
+      "clipped_row_findings": [],
+      "rows": [
+        {
+          "widget": "dialog.tables.metadata",
+          "headers": [
+            "File",
+            "Subject",
+            "Session",
+            "Task",
+            "Run"
+          ],
+          "row_count": 2,
+          "header_length": 982,
+          "viewport_width": 982,
+          "width_gap": 0,
+          "widget_width": 0,
+          "panel_width": 0,
+          "right_gap_to_boundary": 0,
+          "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
+          "fits_viewport": true,
+          "fills_viewport": true,
+          "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            360,
+            152,
+            166,
+            207,
+            97
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        {
+          "widget": "dialog.tables.label_carriers",
+          "headers": [
+            "Carrier",
+            "Matched EEG",
+            "Format",
+            "Label field",
+            "Anchor",
+            "Time",
+            "Granularity",
+            "Role"
+          ],
+          "row_count": 1,
+          "header_length": 982,
+          "viewport_width": 982,
+          "width_gap": 0,
+          "widget_width": 0,
+          "panel_width": 0,
+          "right_gap_to_boundary": 0,
+          "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
+          "fits_viewport": true,
+          "fills_viewport": true,
+          "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            130,
+            135,
+            100,
+            110,
+            95,
+            125,
+            130,
+            157
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        {
+          "widget": "dialog.tables.events",
+          "headers": [
+            "Item",
+            "Role",
+            "Meaning"
+          ],
+          "row_count": 5,
+          "header_length": 982,
+          "viewport_width": 982,
+          "width_gap": 0,
+          "widget_width": 0,
+          "panel_width": 0,
+          "right_gap_to_boundary": 0,
+          "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
+          "fits_viewport": true,
+          "fills_viewport": true,
+          "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            274,
+            186,
+            522
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        {
+          "widget": "dialog.tables.review_summary",
+          "headers": [
+            "Item",
+            "Status",
+            "What it means"
+          ],
+          "row_count": 9,
+          "header_length": 972,
+          "viewport_width": 972,
+          "width_gap": 0,
+          "widget_width": 0,
+          "panel_width": 0,
+          "right_gap_to_boundary": 0,
+          "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 4,
+          "partial_visible_rows": [],
+          "fits_viewport": true,
+          "fills_viewport": true,
+          "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            179,
+            173,
+            620
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": true
+        },
+        {
+          "widget": "remap_dialog.tables.metadata",
+          "headers": [
+            "File",
+            "Subject",
+            "Session",
+            "Task",
+            "Run"
+          ],
+          "row_count": 2,
+          "header_length": 982,
+          "viewport_width": 982,
+          "width_gap": 0,
+          "widget_width": 0,
+          "panel_width": 0,
+          "right_gap_to_boundary": 0,
+          "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
+          "fits_viewport": true,
+          "fills_viewport": true,
+          "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            360,
+            152,
+            166,
+            207,
+            97
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        {
+          "widget": "remap_dialog.tables.label_carriers",
+          "headers": [
+            "Carrier",
+            "Matched EEG",
+            "Format",
+            "Label field",
+            "Anchor",
+            "Time",
+            "Granularity",
+            "Role"
+          ],
+          "row_count": 1,
+          "header_length": 982,
+          "viewport_width": 982,
+          "width_gap": 0,
+          "widget_width": 0,
+          "panel_width": 0,
+          "right_gap_to_boundary": 0,
+          "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
+          "fits_viewport": true,
+          "fills_viewport": true,
+          "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            130,
+            135,
+            100,
+            110,
+            95,
+            125,
+            130,
+            157
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        {
+          "widget": "remap_dialog.tables.events",
+          "headers": [
+            "Item",
+            "Role",
+            "Meaning"
+          ],
+          "row_count": 1,
+          "header_length": 982,
+          "viewport_width": 982,
+          "width_gap": 0,
+          "widget_width": 0,
+          "panel_width": 0,
+          "right_gap_to_boundary": 0,
+          "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
+          "fits_viewport": true,
+          "fills_viewport": true,
+          "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            274,
+            186,
+            522
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        {
+          "widget": "remap_dialog.tables.review_summary",
+          "headers": [
+            "Item",
+            "Status",
+            "What it means"
+          ],
+          "row_count": 5,
+          "header_length": 982,
+          "viewport_width": 982,
+          "width_gap": 0,
+          "widget_width": 0,
+          "panel_width": 0,
+          "right_gap_to_boundary": 0,
+          "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
+          "fits_viewport": true,
+          "fills_viewport": true,
+          "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            181,
+            175,
+            626
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": true
+        },
+        {
+          "widget": "dataset_panel.table",
+          "headers": [
+            "File",
+            "Subject",
+            "Session",
+            "Chan",
+            "Hz",
+            "Epochs",
+            "Events"
+          ],
+          "row_count": 2,
+          "header_length": 993,
+          "viewport_width": 994,
+          "width_gap": 1,
+          "widget_width": 1020,
+          "panel_width": 1280,
+          "right_gap_to_boundary": 0,
+          "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
+          "fits_viewport": true,
+          "fills_viewport": true,
+          "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            321,
+            112,
+            150,
+            75,
+            86,
+            99,
+            150
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": null
+        }
+      ],
+      "boundary": "Automated replay geometry checks table/tree header width, viewport fill, horizontal scrollbar state, optional content-boundary gap, and clipped visible rows. It is not a substitute for human UI review."
+    },
+    "human_design_review_boundary": "This automated replay catches obvious table/tree geometry regressions. Human desktop review still decides polish, DPI, and Windows launcher acceptance."
   }
 }

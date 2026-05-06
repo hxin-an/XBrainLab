@@ -42,6 +42,32 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Data Interpretation Replay Geometry Gate
+
+### 狀態
+
+The standalone Data Interpretation replay now has its own `ui_quality_review.geometry` gate. The
+replay script fails when preview/remap wizard tables or the loaded Dataset table show horizontal
+overflow, viewport underfill, content-boundary gaps, or clipped visible rows.
+
+### 已可宣稱
+
+- `artifacts/ui/data-interpretation-replay.json` now records pass/fail geometry review rows, not
+  only raw per-widget geometry fields.
+- The replay currently checks `9` table/tree widgets with `0` findings in the synthetic UI replay.
+
+### Evidence 入口
+
+- Source：`scripts/dev/capture_data_interpretation_replay.py`
+- Tests：`tests/unit/scripts/test_capture_data_interpretation_replay.py`
+- Artifact：`artifacts/ui/data-interpretation-replay.json`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is automated replay evidence for one synthetic fixture. It does not replace human desktop
+  UI review, real-data manual certification, or mature final import wizard acceptance.
+
 ## 2026-05-06 Dataset Clear Availability Fallback Boundary
 
 ### 狀態

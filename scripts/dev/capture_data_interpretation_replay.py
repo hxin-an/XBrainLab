@@ -53,6 +53,7 @@ REMAP_SCREENSHOT = ARTIFACTS_DIR / "data-interpretation-remap.png"
 APPLIED_SCREENSHOT = ARTIFACTS_DIR / "data-interpretation-applied.png"
 REPLAY_JSON = ARTIFACTS_DIR / "data-interpretation-replay.json"
 WINDOW_SIZE = QSize(1280, 800)
+GEOMETRY_WIDTH_TOLERANCE_PX = 2
 
 
 def write_synthetic_raw_fif() -> Path:
@@ -298,6 +299,129 @@ def tree_state(tree: QTreeWidget) -> dict[str, Any]:
         "text_elide_mode": tree.textElideMode().name,
         "alternating_row_colors": tree.alternatingRowColors(),
     }
+
+
+def build_replay_geometry_review(ui_state: dict[str, Any]) -> dict[str, Any]:
+    """Check replay table/tree geometry for overflow, underfill, and clipped rows."""
+    rows: list[dict[str, Any]] = []
+    findings: list[dict[str, Any]] = []
+    for widget_name, state in iter_geometry_states(ui_state):
+        header_length = geometry_int(state, "header_length")
+        viewport_width = geometry_int(state, "viewport_width")
+        if header_length <= 0 or viewport_width <= 0:
+            continue
+        horizontal_scrollbar_max = geometry_int(state, "horizontal_scrollbar_max")
+        width_gap = viewport_width - header_length
+        partial_visible_rows = geometry_int_list(state, "partial_visible_rows")
+        has_right_boundary = "right_gap_to_boundary" in state
+        right_gap_to_boundary = (
+            geometry_int(state, "right_gap_to_boundary") if has_right_boundary else 0
+        )
+        fits_viewport = (
+            header_length <= viewport_width + GEOMETRY_WIDTH_TOLERANCE_PX
+            and horizontal_scrollbar_max == 0
+        )
+        fills_viewport = width_gap <= GEOMETRY_WIDTH_TOLERANCE_PX
+        fills_content_boundary = (
+            not has_right_boundary
+            or abs(right_gap_to_boundary) <= GEOMETRY_WIDTH_TOLERANCE_PX
+        )
+        shows_only_complete_rows = not partial_visible_rows
+        row = {
+            "widget": widget_name,
+            "headers": list(state.get("headers", [])),
+            "row_count": len(state.get("rows", []))
+            if isinstance(state.get("rows"), list)
+            else 0,
+            "header_length": header_length,
+            "viewport_width": viewport_width,
+            "width_gap": width_gap,
+            "widget_width": geometry_int(state, "widget_width"),
+            "panel_width": geometry_int(state, "panel_width"),
+            "right_gap_to_boundary": right_gap_to_boundary,
+            "horizontal_scrollbar_max": horizontal_scrollbar_max,
+            "vertical_scrollbar_max": geometry_int(state, "vertical_scrollbar_max"),
+            "partial_visible_rows": partial_visible_rows,
+            "fits_viewport": fits_viewport,
+            "fills_viewport": fills_viewport,
+            "fills_content_boundary": fills_content_boundary,
+            "shows_only_complete_rows": shows_only_complete_rows,
+            "resize_modes": list(state.get("resize_modes", [])),
+            "column_widths": list(state.get("column_widths", [])),
+            "text_elide_mode": state.get("text_elide_mode"),
+            "alternating_row_colors": state.get("alternating_row_colors"),
+        }
+        rows.append(row)
+        if (
+            not fits_viewport
+            or not fills_viewport
+            or not fills_content_boundary
+            or not shows_only_complete_rows
+        ):
+            findings.append(row)
+    return {
+        "passed": bool(rows) and not findings,
+        "checked_widgets": len(rows),
+        "width_tolerance_px": GEOMETRY_WIDTH_TOLERANCE_PX,
+        "findings": findings,
+        "clipped_row_findings": [
+            row for row in findings if not row.get("shows_only_complete_rows", True)
+        ],
+        "rows": rows,
+        "boundary": (
+            "Automated replay geometry checks table/tree header width, viewport "
+            "fill, horizontal scrollbar state, optional content-boundary gap, "
+            "and clipped visible rows. It is not a substitute for human UI review."
+        ),
+    }
+
+
+def ensure_replay_geometry_passed(geometry_review: dict[str, Any]) -> None:
+    """Raise when replay geometry evidence contains findings."""
+    if geometry_review["passed"]:
+        return
+    raise RuntimeError(
+        "Data Interpretation replay geometry review failed: "
+        f"{geometry_review['findings']}",
+    )
+
+
+def iter_geometry_states(
+    value: Any,
+    prefix: str = "",
+) -> list[tuple[str, dict[str, Any]]]:
+    """Flatten nested replay state maps into named geometry states."""
+    if not isinstance(value, dict):
+        return []
+    if "header_length" in value and "viewport_width" in value:
+        return [(prefix or "widget", value)]
+    rows: list[tuple[str, dict[str, Any]]] = []
+    for key, item in value.items():
+        name = f"{prefix}.{key}" if prefix else str(key)
+        rows.extend(iter_geometry_states(item, name))
+    return rows
+
+
+def geometry_int(state: dict[str, Any], key: str) -> int:
+    """Read an integer geometry field from an artifact row."""
+    try:
+        return int(state.get(key, 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def geometry_int_list(state: dict[str, Any], key: str) -> list[int]:
+    """Read a list of integer geometry fields from an artifact row."""
+    value = state.get(key, [])
+    if not isinstance(value, list):
+        return []
+    rows: list[int] = []
+    for item in value:
+        try:
+            rows.append(int(item))
+        except (TypeError, ValueError):
+            continue
+    return rows
 
 
 def partial_visible_tree_rows(tree: QTreeWidget) -> list[int]:
@@ -645,6 +769,16 @@ def capture_replay(app: QApplication) -> int:
                     "empty_dataset_sidebar": empty_sidebar_state,
                 },
             }
+            geometry_review = build_replay_geometry_review(replay["ui_state"])
+            replay["ui_quality_review"] = {
+                "geometry": geometry_review,
+                "human_design_review_boundary": (
+                    "This automated replay catches obvious table/tree geometry "
+                    "regressions. Human desktop review still decides polish, DPI, "
+                    "and Windows launcher acceptance."
+                ),
+            }
+            ensure_replay_geometry_passed(geometry_review)
             REPLAY_JSON.write_text(
                 json.dumps(replay, indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",

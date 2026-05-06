@@ -60,6 +60,12 @@ refreshing `latest.json` when invoked as a full-suite fast run. Full-suite deter
 refreshes must pass `--eval-gate release` or `--eval-gate thesis`. The Python `run_eval()` API
 remains available for tests and focused scorer checks.
 
+`scripts/dev/capture_data_interpretation_replay.py` now writes a replay-level
+`ui_quality_review.geometry` section and fails the replay when the captured Data Interpretation
+preview/remap tables or loaded Dataset table show horizontal overflow, viewport underfill, a
+content-boundary gap, or clipped visible rows. This is UI-observable automated evidence for the
+synthetic replay fixture; it still does not replace human Windows desktop review.
+
 2026-05-06 explicit local eval gate guard:
 
 - `run_local_tool_call_eval.py` now blocks full-suite repeat `3` local eval on the default

@@ -136,7 +136,10 @@ metadata、label carriers、event roles、Review Summary tables 都有 `header_l
 `viewport_width`、`column_widths`、`horizontal_scrollbar_max` 和 `text_elide_mode`，可重跑確認欄位填滿
 容器且沒有水平外溢。最新 geometry evidence 又對 Dataset table 增加 `widget_width`、
 `panel_width`、`table_right_x`、`right_boundary_x` 和 `right_gap_to_boundary`，確認載入資料後
-table 會貼齊 sidebar 邊界而不是只讓欄位填滿一個內縮 viewport。Data Interpretation preview dialog 已硬化成第一版 import wizard review surface：
+table 會貼齊 sidebar 邊界而不是只讓欄位填滿一個內縮 viewport。最新 replay-level gate 也會在
+`ui_quality_review.geometry` 檢查 preview / remap wizard 的 metadata、label/event、Review
+Summary tables 和 Dataset table；若出現水平 overflow、underfill 或半截 visible row，replay
+script 會 fail，而不是只把問題藏在 screenshot 裡。Data Interpretation preview dialog 已硬化成第一版 import wizard review surface：
 可見 `Select source | Scan result | Preview | Confirm | Apply | Save recipe` 流程、source/readiness、
 BIDS status、metadata preview、label/event/recipe trace、confirmation 和 recipe save 選項；最新 UI
 polish 已把 warning / confirmation / downstream impact / format boundary 從大段文字框改成
