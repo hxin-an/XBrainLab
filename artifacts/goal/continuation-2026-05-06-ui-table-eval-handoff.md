@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+dc3c486 ui: show dataset clear fallback warning
+a6f140e docs: refresh handoff after preprocess reset warning
 6f6ca72 ui: show preprocess reset fallback warning
 088cb5c docs: refresh handoff after clear history warning
 9c81f4d ui: show clear history fallback warning
@@ -123,6 +125,10 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Dataset Clear fallback warning:
+  - real `Study` clear-dataset fallback refusal now shows `Clear Dataset Blocked`.
+  - the UI no longer wraps the safe refusal in a generic critical clear-dataset failure.
+  - mock / legacy clear fallback still calls `DatasetController.clean_dataset()`.
 - Preprocess Reset fallback warning:
   - real `Study` reset-preprocess fallback refusal now shows `Reset Blocked`.
   - the UI no longer wraps the safe refusal in a generic critical reset failure.
@@ -1466,6 +1472,36 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 6f6ca72; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_clear_dataset_refuses_real_study_controller_fallback \
+  -q
+# 1 passed for dc3c486 after red failure on missing blocked warning
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar \
+  -q
+# 13 passed for dc3c486
+
+poetry run ruff check XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/test_sidebars_and_components.py
+poetry run basedpyright XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/test_sidebars_and_components.py
+# focused lint/type passed for dc3c486
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for dc3c486
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for dc3c486
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for dc3c486; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
