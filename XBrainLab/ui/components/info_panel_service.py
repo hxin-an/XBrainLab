@@ -6,10 +6,12 @@ from unittest.mock import Mock
 from PyQt6.QtCore import QObject
 
 from XBrainLab.backend.application import QueryStateCommand
-from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.logger import logger
-from XBrainLab.ui.application_capabilities import get_legacy_controller_from_study
+from XBrainLab.ui.application_capabilities import (
+    execute_application_command,
+    get_legacy_controller_from_study,
+)
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 
 
@@ -146,11 +148,18 @@ class InfoPanelService(QObject):
         """Return raw/preprocessed lists through ApplicationService when possible."""
         if isinstance(self.study, Study) and not isinstance(self.study, Mock):
             try:
-                result = BackendFacade(self.study).service.execute(
+                result = execute_application_command(
+                    self,
                     QueryStateCommand(query="data_lists", include_objects=True),
+                    refresh=False,
                 )
             except Exception as exc:
                 logger.error("Info panel state query failed: %s", exc)
+                return [], []
+            if result is None:
+                logger.debug(
+                    "Info panel state query unavailable for real Study context",
+                )
                 return [], []
             if result.ok:
                 return (

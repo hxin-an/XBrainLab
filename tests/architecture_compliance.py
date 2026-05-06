@@ -241,6 +241,13 @@ def check_architecture(root_dir: str) -> int:
             print(f" - {violation}")
         return 1
 
+    backend_execute_violations = check_ui_direct_backend_service_execute(Path(root_dir))
+    if backend_execute_violations:
+        print("\nUI Direct Backend Service Execute Violations Found:")
+        for violation in backend_execute_violations:
+            print(f" - {violation}")
+        return 1
+
     loader_apply_violations = check_ui_direct_loader_apply(Path(root_dir))
     if loader_apply_violations:
         print("\nUI Direct Loader Apply Violations Found:")
@@ -599,6 +606,61 @@ def _call_receiver_is_controller(func: ast.expr) -> bool:
         and (receiver.attr == "controller" or receiver.attr.endswith("_controller"))
         and isinstance(receiver.value, ast.Name)
         and receiver.value.id == "self"
+    )
+
+
+def check_ui_direct_backend_service_execute(root_dir: Path) -> list[str]:
+    """Return UI code that bypasses the shared command execution helper."""
+    violations: list[str] = []
+    ui_dir = root_dir / "XBrainLab" / "ui"
+    if not ui_dir.exists():
+        return violations
+
+    for py_file in ui_dir.rglob("*.py"):
+        if py_file.name in {"__init__.py", "application_capabilities.py"}:
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+        visitor = _DirectBackendServiceExecuteVisitor()
+        visitor.visit(tree)
+        violations.extend(
+            f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
+            "BackendFacade(...).service.execute() directly; UI command/query "
+            "execution must go through execute_application_command() so the "
+            "shared Study detection, mock/legacy boundary, and refresh policy "
+            "stay centralized."
+            for call in visitor.violations
+        )
+    return violations
+
+
+class _DirectBackendServiceExecuteVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.violations: list[ast.Call] = []
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if _is_backend_facade_service_execute_call(node):
+            self.violations.append(node)
+            return
+        self.generic_visit(node)
+
+
+def _is_backend_facade_service_execute_call(node: ast.Call) -> bool:
+    if _call_name(node.func) != "execute":
+        return False
+    if not isinstance(node.func, ast.Attribute):
+        return False
+    service_attr = node.func.value
+    if not isinstance(service_attr, ast.Attribute) or service_attr.attr != "service":
+        return False
+    receiver = service_attr.value
+    return (
+        isinstance(receiver, ast.Call)
+        and isinstance(receiver.func, ast.Name)
+        and receiver.func.id == "BackendFacade"
     )
 
 

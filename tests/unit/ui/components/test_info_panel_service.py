@@ -128,20 +128,14 @@ def test_real_study_query_failure_does_not_fallback_to_controller_lists():
     )
     panel = MagicMock()
 
-    facade = SimpleNamespace(
-        service=SimpleNamespace(
-            execute=MagicMock(
-                return_value=SimpleNamespace(ok=False, message="query failed"),
-            ),
-        ),
-    )
-
     with patch(
-        "XBrainLab.ui.components.info_panel_service.BackendFacade",
-        return_value=facade,
-    ):
+        "XBrainLab.ui.components.info_panel_service.execute_application_command",
+        MagicMock(return_value=SimpleNamespace(ok=False, message="query failed")),
+    ) as execute_command:
         service.register(panel)
 
+    execute_command.assert_called_once()
+    assert execute_command.call_args.kwargs == {"refresh": False}
     panel.update_info.assert_called_once_with(
         loaded_data_list=[],
         preprocessed_data_list=[],

@@ -14087,3 +14087,53 @@
 - 不能宣稱：
   - This does not remove injected controller usage, all observer bridges, command/manual refresh
     mixing, controller fallback audit debt, or human desktop acceptance.
+
+### 2026-05-06 UI direct backend service execute guard
+
+- scope：
+  - Close the UI command-helper bypass where `InfoPanelService` directly called
+    `BackendFacade(...).service.execute(QueryStateCommand(...))`.
+  - Keep UI command/query execution centralized in `execute_application_command()` so real `Study`
+    detection, mock / legacy fallback boundaries, and refresh policy stay in one helper.
+- red / focused tests：
+  - Added `test_direct_backend_service_execute_guard_flags_ui_bypass` and
+    `test_direct_backend_service_execute_guard_allows_application_helper`.
+  - Red gate first failed at collection because
+    `check_ui_direct_backend_service_execute()` did not exist.
+  - After adding the checker, `poetry run python tests/architecture_compliance.py` failed on
+    `XBrainLab/ui/components/info_panel_service.py:149`.
+- 做了什麼：
+  - `InfoPanelService._query_data_lists()` now uses
+    `execute_application_command(self, QueryStateCommand(query="data_lists", include_objects=True),
+    refresh=False)`.
+  - Removed the direct `BackendFacade` import from InfoPanelService.
+  - Added architecture compliance coverage that permits direct service execution only inside
+    `XBrainLab/ui/application_capabilities.py`.
+- validation：
+  - Red / focused gates:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_direct_backend_service_execute_guard_flags_ui_bypass tests/unit/test_architecture_compliance.py::test_direct_backend_service_execute_guard_allows_application_helper -q`
+    -> initially import-error red, then `2 passed`.
+    `poetry run python tests/architecture_compliance.py` -> initially failed on InfoPanelService,
+    then `Architecture compliant!`.
+  - Regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/components/test_info_panel_service.py tests/unit/ui/components/test_info_panel.py tests/unit/ui/test_refresh_coordinator.py -q`
+    -> `35 passed`.
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `54 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/components/info_panel_service.py tests/architecture_compliance.py tests/unit/test_architecture_compliance.py tests/unit/ui/components/test_info_panel_service.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/components/info_panel_service.py tests/architecture_compliance.py tests/unit/test_architecture_compliance.py tests/unit/ui/components/test_info_panel_service.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Quality / docs:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is a UI architecture fast-gate slice; it does not change tool-call benchmark
+    claims and does not justify primary / fallback x3.
+- 不能宣稱：
+  - This does not complete full command-driven UI refresh, remove all direct controller usage, or
+    prove human desktop acceptance.

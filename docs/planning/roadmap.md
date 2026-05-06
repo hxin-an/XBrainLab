@@ -249,6 +249,9 @@ replay artifact now also has a visible-text guard for raw command / recipe trace
    - InfoPanelService 的 direct `Study.get_controller(...)` bridge / list fallback 也已收進
      `get_legacy_controller_from_study()`；real `Study` aggregate info refresh 只走 state query /
      coordinator `notify_all()`，mock / legacy context 才可使用 controller bridge compatibility。
+   - UI direct backend service execute guard 已補上：除 `application_capabilities.py` 的 shared
+     helper 外，UI 不可直接 `BackendFacade(...).service.execute()`；InfoPanelService aggregate
+     query 已改走 `execute_application_command(..., refresh=False)`。
    - training lifecycle observer events 也交由 TrainingPanel owner callbacks 觸發 centralized
      Training / Evaluation / Visualization refresh scope；Evaluation / Visualization 同事件 subscriber
      不重複刷新。

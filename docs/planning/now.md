@@ -440,6 +440,10 @@
   最新 InfoPanelService follow-up 也把 aggregate-info controller bridge / list fallback 收進
   `get_legacy_controller_from_study()`，real `Study` 不再用 direct controller lookup 建立
   dataset / preprocess bridge。
+- 最新 UI command-helper boundary cleanup 又把 InfoPanelService aggregate data-list query 改成
+  `execute_application_command(..., refresh=False)`，並新增 static guard 防止 UI 其他地方直接
+  `BackendFacade(...).service.execute()`，避免 read/query path 繞過 shared Study detection /
+  mock-legacy boundary / refresh policy。
 - 後續 Training sidebar bypass cleanup 修掉重新 split 前清 datasets 和 Clear History 的 direct
   controller mutation；destructive cleanup 會走 `ClearDatasetsCommand` /
   `ClearTrainingHistoryCommand`，且 Clear History 現在有 user confirmation。

@@ -5671,3 +5671,30 @@ info observer bridges or data-list fallback.
 
 - This closes one aggregate-info lookup fallback. It does not remove injected controllers, observer
   bridges elsewhere, command/manual refresh mixing, or human desktop acceptance blockers.
+
+## 2026-05-06 UI Command Helper Boundary Guard
+
+### 狀態
+
+UI data-list query execution is now centralized behind `execute_application_command()`.
+
+### 已可宣稱
+
+- `InfoPanelService` no longer calls `BackendFacade(...).service.execute()` directly for aggregate
+  data-list queries.
+- `tests/architecture_compliance.py` now rejects direct
+  `BackendFacade(...).service.execute()` in UI code outside `application_capabilities.py`.
+- Real `Study` InfoPanelService query paths share the same Study detection, mock / legacy boundary,
+  and `refresh=False` read-command policy as the rest of UI.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/components/info_panel_service.py`, `tests/architecture_compliance.py`
+- Tests：`tests/unit/ui/components/test_info_panel_service.py`,
+  `tests/unit/test_architecture_compliance.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This closes one direct UI command-helper bypass. It does not complete full command-driven refresh,
+  remove injected controllers, or finish controller fallback audit.

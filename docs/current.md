@@ -914,6 +914,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `Study.get_controller(...)` bridge / list fallback 收進 `get_legacy_controller_from_study()`；
   real `Study` aggregate summary 只走 `QueryStateCommand(query="data_lists", include_objects=True)`
   或 command-coordinator `notify_all()`，mock / legacy context 才可建立 controller observer bridge。
+  最新 UI command-helper boundary 又把 InfoPanelService 的 data-list query 改成
+  `execute_application_command(..., refresh=False)`，並新增 architecture guard 阻擋 UI code 直接
+  `BackendFacade(...).service.execute()`；`application_capabilities.py` 是唯一保留的 UI command
+  execution helper。
   最新 architecture
   guard follow-up 也會阻止新的 `import_finished` simple refresh bridge：
   若需要處理 import warnings 或特殊 event 語意，必須用 named callback handler。最新 helper cleanup 又把 Dataset / Preprocess / Training / Evaluation /
