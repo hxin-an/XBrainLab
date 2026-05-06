@@ -322,6 +322,19 @@ Data Interpretation BIDS Levels class-map preview gate:
 `trial_type.Levels` mapping in class-map preview. It does not certify every BIDS inheritance rule,
 sidecar collision case, or real-data manual acceptance.
 
+Data Interpretation BIDS Levels UI replay gate:
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_keeps_unchanged_sidecar_class_label tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_class_map_editor_has_bci_suggestions tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_class_map_preserves_custom_label -q`
+-> `3 passed`；
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+-> `25 passed`；
+`QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py --output-dir artifacts/ui`
+-> exit `0` and refreshed `artifacts/ui/data-interpretation-preview.png` /
+`artifacts/ui/data-interpretation-replay.json`。The replay fixture now writes a same-directory
+`events.json` sidecar, shows `Left hand` / `Right hand` in the class-map rows, keeps
+`ui_quality_review.geometry.passed=true` / `visible_text.passed=true`, and does not emit
+`choices:class_map` when the user leaves sidecar defaults unchanged. This remains automated
+offscreen UI-observable evidence, not human Windows desktop acceptance.
+
 Data Interpretation recipe-trace wording gate:
 `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_humanizes_recipe_trace -q`
 -> `1 passed`。This supports the visible `Review Summary` wording boundary: raw backend trace

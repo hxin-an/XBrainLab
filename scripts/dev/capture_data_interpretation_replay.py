@@ -49,6 +49,7 @@ SOURCE_DIR = Path(tempfile.gettempdir()) / "xbrainlab_data_interpretation_replay
 SOURCE_PATH = SOURCE_DIR / "sub-01_task-mi_run-1_raw.fif"
 SECOND_SOURCE_PATH = SOURCE_DIR / "sub-01_task-mi_run-2_raw.fif"
 LABEL_PATH = SOURCE_DIR / "events.tsv"
+LABEL_SIDECAR_PATH = SOURCE_DIR / "events.json"
 PREVIEW_SCREENSHOT = ARTIFACTS_DIR / "data-interpretation-preview.png"
 REMAP_SCREENSHOT = ARTIFACTS_DIR / "data-interpretation-remap.png"
 APPLIED_SCREENSHOT = ARTIFACTS_DIR / "data-interpretation-applied.png"
@@ -83,6 +84,21 @@ def write_synthetic_raw_fif() -> Path:
         "2.0\t0.5\tright\n"
         "3.0\t0.5\tleft\n"
         "4.0\t0.5\tright\n",
+        encoding="utf-8",
+    )
+    LABEL_SIDECAR_PATH.write_text(
+        json.dumps(
+            {
+                "trial_type": {
+                    "Levels": {
+                        "left": "Left hand",
+                        "right": "Right hand",
+                    },
+                },
+            },
+            indent=2,
+        )
+        + "\n",
         encoding="utf-8",
     )
     return SOURCE_PATH

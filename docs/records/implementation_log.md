@@ -62,8 +62,9 @@ The wizard renders those values as editable class-map selectors.
 - Explicit user class-map choices still take precedence.
 - Inferred class-map defaults remain under the existing label-carrier `needs_confirmation`
   boundary; unchanged defaults are not recorded as `choices:class_map`.
-- The replay artifact confirms the class-map rows are visible and the dialog geometry guard still
-  passes after adding those rows.
+- The replay artifact now includes a same-directory BIDS `events.json` sidecar fixture, confirms
+  `Left hand` / `Right hand` rows are visible, and keeps unchanged sidecar defaults out of
+  `choices:class_map`.
 
 ### Evidence 入口
 

@@ -731,6 +731,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if selector is None:
             return item.text(2)
         current_text = selector.currentText().strip()
+        original_text = item.text(2).strip()
+        if current_text == original_text:
+            return original_text
         matching_index = selector.findText(
             current_text,
             Qt.MatchFlag.MatchFixedString,

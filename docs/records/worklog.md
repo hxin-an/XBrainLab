@@ -37,6 +37,47 @@
 
 ## 2026-05-06
 
+### 19:16 BIDS Levels UI replay sidecar evidence
+
+- 做了什麼：
+  - Updated the Data Interpretation replay fixture to write a same-directory BIDS `events.json`
+    sidecar with `trial_type.Levels` for `left -> Left hand` and `right -> Right hand`.
+  - Fixed the class-map selector readback so an untouched sidecar display label is preserved as
+    the original default and does not get normalized into an explicit `choices.class_map`
+    override.
+  - Added UI regression coverage for unchanged BIDS sidecar class labels.
+  - Refreshed `artifacts/ui/data-interpretation-preview.png` and
+    `artifacts/ui/data-interpretation-replay.json`; replay shows `Left hand` / `Right hand`,
+    `ui_quality_review.geometry.passed=true`, `ui_quality_review.visible_text.passed=true`, and
+    no `choices:class_map` trace from unchanged sidecar defaults.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_keeps_unchanged_sidecar_class_label tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_class_map_editor_has_bci_suggestions tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_class_map_preserves_custom_label -q`
+    -> `3 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `25 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py --output-dir artifacts/ui`
+    -> exit `0`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
+    -> `9 passed`.
+  - Focused lint/type:
+    `poetry run ruff check scripts/dev/capture_data_interpretation_replay.py XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright scripts/dev/capture_data_interpretation_replay.py XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Full gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is a UI replay / Data Interpretation fixture and selector behavior slice, not a
+    release / thesis benchmark claim update.
+- 不能宣稱：
+  - This is automated offscreen UI-observable evidence for BIDS Levels display and unchanged
+    default handling. It does not certify full BIDS inheritance, sidecar conflict resolution,
+    embedded label editing, real-data manual acceptance, or Windows human desktop acceptance.
+
 ### 19:06 BIDS events.json Levels class-map preview
 
 - 做了什麼：

@@ -617,9 +617,10 @@ Trial type | Onset | Seconds | Trial | Class cue labels`，而 `review_choices` 
 最新 class-map preview slice 又讓 BIDS events / CSV / TSV label carrier 在未提供 explicit
 `choices.class_map` 時，從已選 label 欄位擷取去重後的 observed label values，作為 wizard 可審查
 class map row；artifact 顯示 `left` / `right` class map rows，且未修改時不會把它記成
-`choices:class_map`。後續 BIDS sidecar follow-up 也會讀 same-directory 或簡化 inherited
-`events.json` / `*_events.json` 的 `trial_type.Levels`，把 observed value 轉成 `Left hand` /
-`Right hand` 這類 user-facing class labels；找不到 sidecar 時仍 fallback 到 observed value。
+`choices:class_map`。最新 BIDS sidecar UI replay follow-up 也把 same-directory
+`events.json` 的 `trial_type.Levels` 納入 synthetic fixture，artifact 現在顯示 `Left hand` /
+`Right hand` 這類 user-facing class labels；未編輯的 sidecar default 仍不會寫成
+`choices:class_map`，找不到 sidecar 時則 fallback 到 observed value。
 MAT follow-up 也支援基本 numeric MAT label variable preview，會把 `classlabel=[1, 2, ...]`
 顯示成 `1` / `2` class map defaults，並跳過 NaN / struct / cell-like payload。這是
 preview/default review support，不是 silent safe guess；label carrier 仍保持 `needs_confirmation`，

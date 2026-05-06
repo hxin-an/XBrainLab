@@ -593,8 +593,8 @@
             "trial_type": "class label candidate"
           },
           "class_map": {
-            "left": "left",
-            "right": "right"
+            "left": "Left hand",
+            "right": "Right hand"
           },
           "label_import_count": 0,
           "label_imports": [],
@@ -671,8 +671,8 @@
             "trial_type": "class label candidate"
           },
           "class_map": {
-            "left": "left",
-            "right": "right"
+            "left": "Left hand",
+            "right": "Right hand"
           },
           "time_model": "sample_index_or_annotation_time",
           "granularity": "trial_or_event",
@@ -975,8 +975,8 @@
             "trial_type": "class label candidate"
           },
           "class_map": {
-            "left": "left",
-            "right": "right"
+            "left": "Left hand",
+            "right": "Right hand"
           },
           "recipe_reload_summary": {}
         }
@@ -1236,8 +1236,8 @@
             "trial_type": "class label candidate"
           },
           "class_map": {
-            "left": "left",
-            "right": "right"
+            "left": "Left hand",
+            "right": "Right hand"
           },
           "label_import_count": 0,
           "label_imports": [],
@@ -1554,8 +1554,8 @@
             "trial_type": "class cue"
           },
           "class_map": {
-            "left": "left",
-            "right": "right"
+            "left": "Left hand",
+            "right": "Right hand"
           },
           "label_import_count": 0,
           "label_imports": [],
@@ -1632,8 +1632,8 @@
             "trial_type": "class cue"
           },
           "class_map": {
-            "left": "left",
-            "right": "right"
+            "left": "Left hand",
+            "right": "Right hand"
           },
           "time_model": "sample_index_or_annotation_time",
           "granularity": "trial_or_event",
@@ -1969,8 +1969,8 @@
             "trial_type": "class cue"
           },
           "class_map": {
-            "left": "left",
-            "right": "right"
+            "left": "Left hand",
+            "right": "Right hand"
           },
           "recipe_reload_summary": {}
         }
@@ -2234,8 +2234,8 @@
             "trial_type": "class cue"
           },
           "class_map": {
-            "left": "left",
-            "right": "right"
+            "left": "Left hand",
+            "right": "Right hand"
           },
           "label_import_count": 0,
           "label_imports": [],
@@ -2551,8 +2551,8 @@
             "trial_type": "class cue"
           },
           "class_map": {
-            "left": "left",
-            "right": "right"
+            "left": "Left hand",
+            "right": "Right hand"
           },
           "label_import_count": 0,
           "label_imports": [],
@@ -2887,8 +2887,8 @@
             "trial_type": "class cue"
           },
           "class_map": {
-            "left": "left",
-            "right": "right"
+            "left": "Left hand",
+            "right": "Right hand"
           },
           "label_import_count": 1,
           "label_imports": [
@@ -2905,8 +2905,8 @@
               },
               "selected_event_names": [],
               "class_map": {
-                "left": "left",
-                "right": "right"
+                "left": "Left hand",
+                "right": "Right hand"
               },
               "success_count": 1
             }
@@ -3113,8 +3113,8 @@
             "trial_type": "class cue"
           },
           "class_map": {
-            "left": "left",
-            "right": "right"
+            "left": "Left hand",
+            "right": "Right hand"
           },
           "label_imports": [
             {
@@ -3130,8 +3130,8 @@
               },
               "selected_event_names": [],
               "class_map": {
-                "left": "left",
-                "right": "right"
+                "left": "Left hand",
+                "right": "Right hand"
               },
               "success_count": 1
             }
@@ -3183,8 +3183,8 @@
             },
             "selected_event_names": [],
             "class_map": {
-              "left": "left",
-              "right": "right"
+              "left": "Left hand",
+              "right": "Right hand"
             },
             "success_count": 1
           },
@@ -3273,12 +3273,12 @@
         [
           "left",
           "class map",
-          "Left"
+          "Left hand"
         ],
         [
           "right",
           "class map",
-          "Right"
+          "Right hand"
         ]
       ],
       "review_summary_rows": [
@@ -3463,12 +3463,12 @@
             [
               "left",
               "class map",
-              "Left"
+              "Left hand"
             ],
             [
               "right",
               "class map",
-              "Right"
+              "Right hand"
             ]
           ],
           "resize_modes": [

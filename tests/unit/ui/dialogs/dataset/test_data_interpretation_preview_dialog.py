@@ -393,6 +393,20 @@ def test_data_interpretation_preview_dialog_class_map_preserves_custom_label(
     }
 
 
+def test_data_interpretation_preview_dialog_keeps_unchanged_sidecar_class_label(
+    qtbot,
+):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={"source_path": "/tmp/source"},
+        preview={"class_map": {"left": "Left hand", "right": "Right hand"}},
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+
+    assert dialog.get_result()["choices"] == {}
+
+
 def test_data_interpretation_preview_dialog_event_rows_fit_after_class_map_preview(
     qtbot,
 ):
