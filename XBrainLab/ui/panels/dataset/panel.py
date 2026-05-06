@@ -240,7 +240,17 @@ class DatasetPanel(BasePanel):
         if controller is None:
             data_list = []
         elif queried_data_list is None:
-            data_list = controller.get_loaded_data_list()
+            try:
+                data_list = run_legacy_controller_fallback(
+                    self,
+                    controller.get_loaded_data_list,
+                )
+            except LegacyControllerFallbackUnavailableError:
+                logger.warning(
+                    "Blocked stale dataset controller render fallback in real "
+                    "Study context.",
+                )
+                data_list = []
         else:
             data_list = queried_data_list
         metadata_capability = get_command_capability(self, CommandName.UPDATE_METADATA)

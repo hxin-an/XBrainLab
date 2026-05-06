@@ -12409,3 +12409,39 @@
 - 不能宣稱：
   - This does not complete all ChatPanel blocked/recovery UX, the full command-driven UI refresh
     coordinator, or Windows human desktop acceptance.
+
+### 2026-05-06 DatasetPanel query-none render fallback boundary
+
+- scope：
+  - Close one remaining Dataset render stale-truth fallback.
+  - Real `Study` Dataset table refresh must not read `DatasetController.get_loaded_data_list()` when
+    the service-backed `QueryStateCommand(query="data_lists", include_objects=True)` path returns
+    `None`.
+- red / focused tests：
+  - Added `test_update_panel_refuses_real_study_query_none_controller_fallback`.
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py::test_update_panel_refuses_real_study_query_none_controller_fallback -q`
+    -> failed as expected on stale controller read.
+- 做了什麼：
+  - Wrapped the Dataset table render fallback in `run_legacy_controller_fallback()`.
+  - Real `Study` query-none path now logs a blocked fallback and renders an empty table instead of
+    reading stale controller data.
+  - Mock / legacy non-`Study` contexts still use `DatasetController.get_loaded_data_list()` for
+    compatibility.
+- validation：
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py::test_update_panel_refuses_real_study_query_none_controller_fallback -q`
+    -> `1 passed`.
+  - Dataset / replay regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
+    -> `35 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/dataset/panel.py tests/unit/ui/dataset/test_panel.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/dataset/panel.py tests/unit/ui/dataset/test_panel.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+- local eval：
+  - Not run. This is a UI render-truth cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not complete all Dataset render fallback audit, all UI refresh coordinator work, or
+    human desktop acceptance.

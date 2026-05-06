@@ -3524,6 +3524,27 @@ This supports the safety boundary that real `Study` Channel Selection / Epoching
 fallbacks will block rather than read stale controller lists if the service query path unexpectedly
 returns no result. It does not prove all controller read fallbacks are gone.
 
+2026-05-06 DatasetPanel query-none render fallback boundary：
+
+- Focused red/fixed gate:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py::test_update_panel_refuses_real_study_query_none_controller_fallback -q`
+  -> failed as expected on stale `DatasetController.get_loaded_data_list()` read before the fix,
+  then `1 passed`.
+- Dataset / replay regression:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
+  -> `35 passed`.
+- Focused lint/type:
+  `poetry run ruff check XBrainLab/ui/panels/dataset/panel.py tests/unit/ui/dataset/test_panel.py`
+  -> pass;
+  `poetry run basedpyright XBrainLab/ui/panels/dataset/panel.py tests/unit/ui/dataset/test_panel.py`
+  -> `0 errors`.
+- Local eval:
+  not run. This was a fast dev gate UI render-truth cleanup.
+
+This supports real `Study` Dataset table refresh refusing stale controller list reads when the
+service query path unexpectedly returns no result. It does not prove all Dataset render fallbacks,
+UI refresh debt, or human desktop acceptance are complete.
+
 2026-05-06 Dataset label target fallback boundary：
 
 - Focused gate:

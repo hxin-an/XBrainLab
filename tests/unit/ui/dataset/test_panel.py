@@ -91,6 +91,34 @@ def test_update_panel_uses_query_data_list_before_stale_controller(qtbot):
     real_window.close()
 
 
+def test_update_panel_refuses_real_study_query_none_controller_fallback(qtbot):
+    study = Study()
+    study.loaded_data_list = [loaded_data_stub("sub-01_task-mi_raw.fif")]
+
+    controller = MagicMock()
+    controller.study = study
+    controller.is_locked.return_value = False
+    controller.get_loaded_data_list.side_effect = AssertionError(
+        "stale loaded list should not be read",
+    )
+
+    real_window = QMainWindow()
+    cast(Any, real_window).study = study
+    panel = DatasetPanel(controller=controller, parent=real_window)
+    qtbot.addWidget(real_window)
+    qtbot.addWidget(panel)
+
+    with patch(
+        "XBrainLab.ui.panels.dataset.panel.execute_application_command",
+        return_value=None,
+    ):
+        panel.update_panel()
+
+    controller.get_loaded_data_list.assert_not_called()
+    assert panel.table.rowCount() == 0
+    real_window.close()
+
+
 def test_dataset_panel_init_controller(mock_main_window, mock_controller, qtbot):
     """Test initialization creates controller."""
     # Create a REAL QMainWindow to serve as parent

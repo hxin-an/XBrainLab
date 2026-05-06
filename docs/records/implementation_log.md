@@ -4717,3 +4717,28 @@ raw exception.
 
 - This is one assistant UI fallback-language slice. It does not complete all ChatPanel workflow
   recovery, full command-driven UI refresh, or Windows human desktop acceptance.
+
+## 2026-05-06 DatasetPanel Query-None Render Fallback Boundary
+
+### 狀態
+
+Dataset table refresh no longer reads stale `DatasetController.get_loaded_data_list()` when the
+real `Study` service-backed data-list query unexpectedly returns no result.
+
+### 已可宣稱
+
+- Real `Study` Dataset table render clears to an empty table and logs the blocked fallback when
+  `QueryStateCommand(query="data_lists")` cannot dispatch.
+- Mock / legacy non-`Study` contexts retain controller-list fallback for compatibility.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/panel.py`
+- Tests：`tests/unit/ui/dataset/test_panel.py`,
+  `tests/unit/scripts/test_capture_data_interpretation_replay.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is one render-truth cleanup. It does not complete all Dataset page UX, all controller read
+  audits, or the broader command-driven UI refresh target.

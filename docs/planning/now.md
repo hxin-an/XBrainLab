@@ -274,6 +274,9 @@
 - 最新 AgentManager montage fallback warning slice 也讓 assistant montage confirmation 在
   real `Study` `ApplyMontageCommand` 無法 dispatch 時顯示 `Montage setup blocked`，不再外拋
   legacy fallback exception 或嘗試 preprocess controller mutation。
+- 最新 DatasetPanel query-none render fallback boundary 也讓 real `Study` Dataset table refresh
+  在 data-list query 意外無法 dispatch 時清成空表，不再回讀 stale
+  `DatasetController.get_loaded_data_list()`。
 - 最新 Dataset sidebar render cleanup 也把 `is_locked()` / `has_data()` 納入同一 guard：
   有 backend capability 時，button state / tooltip 不再先讀 stale controller lock/data state；
   legacy lock/data reads 只留在 explicit no-capability branch。
