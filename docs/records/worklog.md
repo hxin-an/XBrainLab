@@ -37,6 +37,44 @@
 
 ## 2026-05-06
 
+### 19:06 BIDS events.json Levels class-map preview
+
+- 做了什麼：
+  - Extended class-map preview inference to read BIDS `events.json` / `*_events.json`
+    `trial_type.Levels` mappings for same-directory and simplified inherited sidecars.
+  - Preview now maps observed event values such as `left` / `right` to user-facing labels such as
+    `Left hand` / `Right hand` when sidecar Levels are available.
+  - Missing or invalid sidecars keep the existing observed-value identity fallback.
+- red / focused tests：
+  - Added same-directory sidecar, inherited `task-mi_events.json`, and candidate-level BIDS Levels
+    tests.
+  - Red gate first failed because preview still returned identity labels.
+- validation：
+  - Red gate:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_label_carriers.py::test_infer_class_map_uses_bids_events_json_levels tests/unit/backend/application/test_data_interpretation_label_carriers.py::test_infer_class_map_uses_inherited_bids_events_json_levels -q`
+    -> failed on identity labels.
+  - Focused pass:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_candidate.py::test_build_interpretation_candidate_previews_bids_level_labels tests/unit/backend/application/test_data_interpretation_label_carriers.py::test_infer_class_map_uses_bids_events_json_levels tests/unit/backend/application/test_data_interpretation_label_carriers.py::test_infer_class_map_uses_inherited_bids_events_json_levels -q`
+    -> `3 passed`.
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_timestamp_label_carrier tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_timestamp_label_carriers_by_stem -q`
+    -> `19 passed`.
+  - Lint/type/docs:
+    `poetry run ruff check XBrainLab/backend/application/data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_candidate.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/backend/application/data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_candidate.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is Data Interpretation preview inference, not a formal tool-call benchmark claim
+    update.
+- 不能宣稱：
+  - This is BIDS sidecar Levels preview support, not full BIDS inheritance certification, sidecar
+    conflict resolution, real-data manual acceptance, or mature import wizard completion.
+
 ### 19:00 MAT class-map preview defaults
 
 - 做了什麼：

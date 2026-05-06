@@ -538,9 +538,12 @@
 - 最新 class-map preview slice 已讓 BIDS events / CSV / TSV label carrier 在未提供 explicit
   class map 時，從 selected label field 的 observed values 產生可審查 class map rows；wizard
   會用 editable selector 顯示 `left` / `right` 等 labels，未修改時不寫入 `choices:class_map`。
+  最新 BIDS sidecar follow-up 也會讀 same-directory 或簡化 inherited `events.json` /
+  `*_events.json` 的 `trial_type.Levels`，讓 preview 顯示 `Left hand` / `Right hand` 這類
+  user-facing labels，而不是只顯示 raw code。
   最新 follow-up 也讓基本 numeric MAT label variable 產生 `1` / `2` 這類 class map defaults，
   並跳過 NaN / struct / cell-like payload。這仍只支撐 preview default，不是 MAT/GDF
-  複雜 anchor reconciliation 或 embedded label editor 完成。
+  複雜 anchor reconciliation、完整 BIDS inheritance certification 或 embedded label editor 完成。
 - 最新 decision-copy polish 已把 wizard 頂部狀態從 `Validation needs confirmation...` 改成
   `Review and confirm these choices before applying.` / `Ready to apply.` / replacement-file
   guidance，減少 backend wording 暴露。

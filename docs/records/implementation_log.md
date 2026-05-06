@@ -47,14 +47,16 @@
 ### 狀態
 
 Data Interpretation preview now derives reviewable class-map defaults from BIDS events / CSV / TSV
-label carriers and basic numeric MAT label variables when the selected label field contains
-observed values and the user has not supplied an explicit `choices.class_map`. The wizard renders
-those values as editable class-map selectors.
+label carriers, BIDS `events.json` Levels, and basic numeric MAT label variables when the selected
+label field contains observed values and the user has not supplied an explicit `choices.class_map`.
+The wizard renders those values as editable class-map selectors.
 
 ### 已可宣稱
 
 - Tabular label carriers can surface observed labels such as `left` / `right` in the preview
   instead of showing an empty class map.
+- BIDS same-directory or simplified inherited `events.json` / `*_events.json` sidecars can map
+  observed values through `trial_type.Levels`, for example `left -> Left hand`.
 - Basic numeric MAT label variables can surface observed labels such as `1` / `2` in the same
   review path, while NaN / struct / cell-like payloads are skipped.
 - Explicit user class-map choices still take precedence.
@@ -77,9 +79,9 @@ those values as editable class-map selectors.
 
 ### 不能宣稱完成
 
-This does not complete a mature embedded label editor, raw trigger selector, complex GDF / MAT
-anchor reconciliation, nonnumeric MAT labels, XDF / LSL parser, full real-data manual certification,
-or human Windows desktop acceptance.
+This does not complete a mature embedded label editor, raw trigger selector, full BIDS inheritance
+certification, complex GDF / MAT anchor reconciliation, nonnumeric MAT labels, XDF / LSL parser,
+full real-data manual certification, or human Windows desktop acceptance.
 
 ### 下一手重點
 

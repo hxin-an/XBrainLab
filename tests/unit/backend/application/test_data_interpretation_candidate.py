@@ -98,6 +98,33 @@ def test_build_interpretation_candidate_previews_tabular_label_class_values(tmp_
     assert "choices:class_map" not in candidate.recipe_trace
 
 
+def test_build_interpretation_candidate_previews_bids_level_labels(tmp_path):
+    events = tmp_path / "sub-01_task-mi_events.tsv"
+    sidecar = tmp_path / "sub-01_task-mi_events.json"
+    events.write_text(
+        "onset\tduration\ttrial_type\n0.0\t1.0\tleft\n1.0\t1.0\tright\n",
+        encoding="utf-8",
+    )
+    sidecar.write_text(
+        '{"trial_type":{"Levels":{"left":"Left hand","right":"Right hand"}}}',
+        encoding="utf-8",
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            label_carriers=[str(events)],
+            bids={"is_bids": True, "events_files": [str(events)]},
+        ),
+    )
+
+    assert candidate.class_map == {
+        "left": "Left hand",
+        "right": "Right hand",
+    }
+    assert "choices:class_map" not in candidate.recipe_trace
+
+
 def test_build_interpretation_candidate_previews_mat_label_class_values(tmp_path):
     from scipy.io import savemat
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import math
 from numbers import Real
 from pathlib import Path
@@ -37,9 +38,9 @@ def infer_class_map_from_label_carrier_plan(
         remaining = max(limit - len(class_map), 0)
         if remaining <= 0:
             break
-        for value in _observed_label_values(carrier, limit=remaining):
+        for value, label in _observed_class_map_entries(carrier, limit=remaining):
             if value not in class_map:
-                class_map[value] = value
+                class_map[value] = label
     return class_map
 
 
@@ -231,6 +232,24 @@ def _observed_label_values(carrier: dict[str, Any], *, limit: int) -> list[str]:
     return []
 
 
+def _observed_class_map_entries(
+    carrier: dict[str, Any],
+    *,
+    limit: int,
+) -> list[tuple[str, str]]:
+    values = _observed_label_values(carrier, limit=limit)
+    if not values:
+        return []
+    path = Path(str(carrier.get("path") or ""))
+    label_field = str(carrier.get("selected_label_field") or "").strip()
+    level_labels = (
+        _bids_event_level_labels(path, label_field)
+        if _is_bids_events_file(path)
+        else {}
+    )
+    return [(value, level_labels.get(value, value)) for value in values]
+
+
 def _tabular_label_values(path: Path, label_field: str, *, limit: int) -> list[str]:
     delimiter = (
         "\t" if path.suffix.lower() == ".tsv" or _is_bids_events_file(path) else ","
@@ -251,6 +270,96 @@ def _tabular_label_values(path: Path, label_field: str, *, limit: int) -> list[s
     except (OSError, UnicodeDecodeError, csv.Error):
         return []
     return values
+
+
+def _bids_event_level_labels(path: Path, label_field: str) -> dict[str, str]:
+    if not label_field:
+        return {}
+    for sidecar in _bids_events_json_candidates(path):
+        payload = _json_object(sidecar)
+        levels = _levels_for_field(payload, label_field)
+        if levels:
+            return levels
+    return {}
+
+
+def _bids_events_json_candidates(path: Path) -> list[Path]:
+    names = _bids_event_sidecar_names(path)
+    candidates: list[Path] = []
+    for directory in [path.parent, *path.parents[1:8]]:
+        for name in names:
+            candidate = directory / name
+            if candidate not in candidates:
+                candidates.append(candidate)
+    return candidates
+
+
+def _bids_event_sidecar_names(path: Path) -> list[str]:
+    names: list[str] = []
+    if path.name.endswith(".tsv"):
+        stem = path.name[: -len(".tsv")]
+        names.append(f"{stem}.json")
+    prefix = path.name.removesuffix(".tsv").removesuffix("_events")
+    parts = [part for part in prefix.split("_") if part]
+    semantic_parts = [
+        part for part in parts if not part.startswith(("sub-", "ses-", "run-"))
+    ]
+    if semantic_parts:
+        names.append("_".join([*semantic_parts, "events"]) + ".json")
+    names.append("events.json")
+    result: list[str] = []
+    for name in names:
+        if name not in result:
+            result.append(name)
+    return result
+
+
+def _json_object(path: Path) -> dict[str, Any]:
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _levels_for_field(payload: dict[str, Any], label_field: str) -> dict[str, str]:
+    field_payload = _case_insensitive_mapping_value(payload, label_field)
+    if not isinstance(field_payload, dict):
+        return {}
+    levels = _case_insensitive_mapping_value(field_payload, "Levels")
+    if not isinstance(levels, dict):
+        return {}
+    result: dict[str, str] = {}
+    for key, value in levels.items():
+        code = _clean_label_value(key)
+        label = _clean_level_label(value)
+        if code and label:
+            result[code] = label
+    return result
+
+
+def _case_insensitive_mapping_value(
+    payload: dict[str, Any],
+    key: str,
+) -> Any | None:
+    if key in payload:
+        return payload[key]
+    normalized = key.lower()
+    for item_key, value in payload.items():
+        if str(item_key).lower() == normalized:
+            return value
+    return None
+
+
+def _clean_level_label(value: Any) -> str:
+    if isinstance(value, dict):
+        for key in ("LongName", "Description", "description", "name"):
+            text = _clean_label_value(value.get(key))
+            if text:
+                return text
+        return ""
+    return _clean_label_value(value)
 
 
 def _clean_label_value(value: Any) -> str:

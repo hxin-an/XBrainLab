@@ -314,6 +314,14 @@ Data Interpretation MAT class-map preview gate:
 such as `1` / `2`. It skips NaN / struct / cell-like MAT payloads and does not prove complex
 MAT/GDF anchor reconciliation, nonnumeric label semantics, or human desktop acceptance.
 
+Data Interpretation BIDS Levels class-map preview gate:
+`poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_candidate.py::test_build_interpretation_candidate_previews_bids_level_labels tests/unit/backend/application/test_data_interpretation_label_carriers.py::test_infer_class_map_uses_bids_events_json_levels tests/unit/backend/application/test_data_interpretation_label_carriers.py::test_infer_class_map_uses_inherited_bids_events_json_levels -q`
+-> `3 passed` after the red gate first failed with identity `left` / `right` labels；
+`poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_timestamp_label_carrier tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_timestamp_label_carriers_by_stem -q`
+-> `19 passed`。This supports same-directory and simplified inherited BIDS `events.json`
+`trial_type.Levels` mapping in class-map preview. It does not certify every BIDS inheritance rule,
+sidecar collision case, or real-data manual acceptance.
+
 Data Interpretation recipe-trace wording gate:
 `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_humanizes_recipe_trace -q`
 -> `1 passed`。This supports the visible `Review Summary` wording boundary: raw backend trace
