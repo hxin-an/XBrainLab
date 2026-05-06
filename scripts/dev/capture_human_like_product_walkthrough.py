@@ -18,6 +18,7 @@ import sys
 import tempfile
 import threading
 import time
+from html import escape
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +30,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QLabel,
     QLineEdit,
-    QPlainTextEdit,
+    QTextBrowser,
     QWidget,
 )
 
@@ -989,16 +990,16 @@ def append_phase_alias(
 
 
 def capture_eval_dashboard(output_dir: Path) -> Path:
-    """Render the eval dashboard Markdown into a screenshot artifact."""
+    """Render the eval dashboard into a product-style screenshot artifact."""
     dashboard_path = ROOT / "artifacts" / "agent_evals" / "dashboard.md"
     text = (
         dashboard_path.read_text(encoding="utf-8")
         if dashboard_path.exists()
         else "# XBrainLab Tool-Call Eval Dashboard\n\nDashboard artifact missing.\n"
     )
-    widget = QPlainTextEdit()
+    widget = QTextBrowser()
     widget.setWindowTitle("XBrainLab Tool-Call Eval Dashboard")
-    widget.setPlainText(text[:6000])
+    widget.setHtml(render_eval_dashboard_html(text[:12000]))
     widget.resize(1000, 760)
     widget.show()
     QApplication.processEvents()
@@ -1006,6 +1007,173 @@ def capture_eval_dashboard(output_dir: Path) -> Path:
     capture_widget(widget, screenshot_path)
     widget.close()
     return screenshot_path
+
+
+def render_eval_dashboard_html(markdown_text: str) -> str:
+    """Convert the saved eval dashboard Markdown into compact review HTML."""
+    lines = markdown_text.splitlines()
+    body: list[str] = []
+    index = 0
+    in_list = False
+    while index < len(lines):
+        raw_line = lines[index]
+        line = raw_line.strip()
+        if not line:
+            if in_list:
+                body.append("</ul>")
+                in_list = False
+            index += 1
+            continue
+        if (
+            line.startswith("|")
+            and index + 1 < len(lines)
+            and _is_markdown_table_separator(lines[index + 1])
+        ):
+            if in_list:
+                body.append("</ul>")
+                in_list = False
+            table_html, index = _render_markdown_table(lines, index)
+            body.append(table_html)
+            continue
+        if line.startswith("#"):
+            if in_list:
+                body.append("</ul>")
+                in_list = False
+            level = min(max(len(line) - len(line.lstrip("#")), 1), 3)
+            heading = line[level:].strip()
+            body.append(f"<h{level}>{_format_inline_markdown(heading)}</h{level}>")
+            index += 1
+            continue
+        if line.startswith("- "):
+            if not in_list:
+                body.append("<ul>")
+                in_list = True
+            body.append(f"<li>{_format_inline_markdown(line[2:].strip())}</li>")
+            index += 1
+            continue
+        if in_list:
+            body.append("</ul>")
+            in_list = False
+        body.append(f"<p>{_format_inline_markdown(line)}</p>")
+        index += 1
+    if in_list:
+        body.append("</ul>")
+    return f"""
+    <html>
+    <head>
+      <style>
+        body {{
+          background: #181818;
+          color: #d8dee9;
+          font-family: "Segoe UI", "Inter", sans-serif;
+          font-size: 13px;
+          margin: 18px;
+        }}
+        h1 {{
+          color: #f2f6fb;
+          font-size: 22px;
+          margin: 0 0 14px;
+        }}
+        h2 {{
+          color: #f2f6fb;
+          font-size: 16px;
+          margin: 22px 0 8px;
+          border-top: 1px solid #31363d;
+          padding-top: 14px;
+        }}
+        h3 {{
+          color: #d8dee9;
+          font-size: 14px;
+          margin: 16px 0 8px;
+        }}
+        p, li {{
+          color: #c7d0da;
+          line-height: 1.35;
+        }}
+        table {{
+          border-collapse: collapse;
+          width: 100%;
+          margin: 8px 0 14px;
+          background: #202020;
+          border: 1px solid #353b43;
+        }}
+        th {{
+          background: #2c3036;
+          color: #b9c5d2;
+          font-weight: 600;
+          text-align: left;
+          padding: 7px 8px;
+          border-bottom: 1px solid #3d444e;
+        }}
+        td {{
+          color: #e1e7ef;
+          padding: 6px 8px;
+          border-top: 1px solid #2a2f35;
+        }}
+        tr:nth-child(even) td {{
+          background: #232323;
+        }}
+        code {{
+          color: #d7e8ff;
+          background: #26313a;
+          padding: 1px 4px;
+          border-radius: 3px;
+        }}
+      </style>
+    </head>
+    <body>
+      {"".join(body)}
+    </body>
+    </html>
+    """
+
+
+def _render_markdown_table(lines: list[str], start_index: int) -> tuple[str, int]:
+    headers = _split_markdown_table_row(lines[start_index])
+    index = start_index + 2
+    rows: list[list[str]] = []
+    while index < len(lines) and lines[index].strip().startswith("|"):
+        rows.append(_split_markdown_table_row(lines[index]))
+        index += 1
+    header_html = "".join(
+        f"<th>{_format_inline_markdown(cell)}</th>" for cell in headers
+    )
+    row_html = "".join(
+        "<tr>"
+        + "".join(f"<td>{_format_inline_markdown(cell)}</td>" for cell in row)
+        + "</tr>"
+        for row in rows
+    )
+    return (
+        f"<table><thead><tr>{header_html}</tr></thead>"
+        f"<tbody>{row_html}</tbody></table>",
+        index,
+    )
+
+
+def _split_markdown_table_row(line: str) -> list[str]:
+    return [cell.strip() for cell in line.strip().strip("|").split("|")]
+
+
+def _is_markdown_table_separator(line: str) -> bool:
+    cells = _split_markdown_table_row(line)
+    return bool(cells) and all(
+        set(cell.replace(" ", "")) <= {"-", ":"} for cell in cells
+    )
+
+
+def _format_inline_markdown(text: str) -> str:
+    escaped = escape(text)
+    parts = escaped.split("`")
+    if len(parts) == 1:
+        return escaped
+    formatted: list[str] = []
+    for index, part in enumerate(parts):
+        if index % 2 == 1:
+            formatted.append(f"<code>{part}</code>")
+        else:
+            formatted.append(part)
+    return "".join(formatted)
 
 
 def capture_named(window: QWidget, output_dir: Path, key: str) -> str:

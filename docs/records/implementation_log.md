@@ -42,6 +42,36 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Human-Like Walkthrough Eval Dashboard Presentation
+
+### 狀態
+
+The consolidated human-like walkthrough now renders the tool-call eval dashboard as a dark,
+table-based product report instead of showing raw Markdown / pipe-table text. This keeps the
+UI-observable evidence itself aligned with product UI standards.
+
+### 已可宣稱
+
+- `20-eval-dashboard.png` is no longer a raw debug-style Markdown text dump.
+- The refreshed human-like walkthrough remains passed with `26 / 26` phases and `20` screenshots.
+
+### Evidence 入口
+
+- Code: `scripts/dev/capture_human_like_product_walkthrough.py`
+- Artifact: `artifacts/ui/human-like-walkthrough/20-eval-dashboard.png`
+- Report: `artifacts/ui/human-like-walkthrough/human-like-walkthrough.md`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not refresh deterministic / local LLM benchmark scores.
+- This does not change thesis readiness, release readiness, or human Windows desktop acceptance.
+
+### 下一手重點
+
+Keep routine verifier / prompt / UI polish on fast dev gates. Reserve primary/fallback full-suite
+x3 local eval for formal release / thesis evidence closure with VRAM preflight.
+
 ## 2026-05-06 Dataset Inline Metadata Fallback Warning Boundary
 
 ### 狀態

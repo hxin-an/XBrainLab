@@ -37,6 +37,50 @@
 
 ## 2026-05-06
 
+### 10:41 Human-like walkthrough eval dashboard presentation
+
+- scope：
+  - Fix the UI-observable eval dashboard artifact after screenshot review showed
+    `20-eval-dashboard.png` as a raw white Markdown / pipe-table text area.
+  - Keep this as a presentation / artifact-quality slice, not a benchmark score update.
+- red / focused tests：
+  - Added `test_render_eval_dashboard_html_converts_markdown_tables`.
+  - Red gate failed first because `render_eval_dashboard_html` did not exist.
+- 做了什麼：
+  - `capture_eval_dashboard()` now uses `QTextBrowser` and renders
+    `artifacts/agent_evals/dashboard.md` through a compact product-style HTML renderer.
+  - Markdown tables become styled dark tables; inline code is escaped and rendered as small code
+    chips.
+  - Refreshed `artifacts/ui/human-like-walkthrough/20-eval-dashboard.png` plus the walkthrough JSON /
+    Markdown.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py::test_render_eval_dashboard_html_converts_markdown_tables -q`
+    -> failed with missing import.
+  - Focused pass:
+    same command -> `1 passed`.
+  - Script unit regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py -q`
+    -> `17 passed`.
+  - Focused lint/type:
+    `poetry run ruff check scripts/dev/capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> pass.
+    `poetry run basedpyright scripts/dev/capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - UI-observable replay:
+    `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> exit `0`; refreshed walkthrough status `passed`, `26 / 26` phases, `20` screenshots,
+    resource smoke passed with RSS growth `231828 KB` / `600000 KB`.
+  - Screenshot review:
+    `artifacts/ui/human-like-walkthrough/20-eval-dashboard.png` now shows dark themed model
+    comparison and metric tables instead of raw Markdown.
+- local eval：
+  - Not run. This is a UI artifact presentation slice under the fast dev gate. It does not justify
+    full primary/fallback x3 local eval, especially under 16GB VRAM pressure.
+- 不能宣稱：
+  - No deterministic or local model benchmark score changed.
+  - This does not complete human desktop acceptance, import wizard maturity, or product completion.
+
 ### 09:51 Dataset inline metadata fallback warning boundary
 
 - scope：

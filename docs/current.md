@@ -531,7 +531,7 @@ right-boundary gap 和 clipped visible row 狀態，目前 `15` 個 table/tree w
 `0` geometry findings、`0` clipped-row findings。最新 resource smoke gate 也會讓
 walkthrough 在 close 後 Python threads 未回落、Qt thread pool 仍 active 或 RSS high-water delta
 超過 threshold 時 fail；目前 artifact 顯示 resource smoke `passed=True`、RSS growth
-`232892 KB` / limit `600000 KB`、Qt active thread `0`。最新 2026-05-06 artifact
+`231828 KB` / limit `600000 KB`、Qt active thread `0`。最新 2026-05-06 artifact
 也已刷新 Data Interpretation decision copy 和 ChatPanel composer placeholder，可見
 `Review and confirm these choices before applying.` 以及 `Ask about EEG workflow`。這是 coarse cleanup smoke，不是
 memory-leak proof 或長時間 soak。後續 UI polish 已依截圖修正
@@ -562,6 +562,10 @@ JSON 已保存 Dataset table headers、rows、resize modes 和 column widths，a
 同一 `partial_visible_rows` evidence 也已進入 consolidated human-like walkthrough 的 top-level
 UI quality gate；未來任一被 capture 的 table/tree widget 出現半截 visible row，artifact 會 failed，
 不會只靠人工目視偶然發現。
+最新 eval dashboard walkthrough screenshot 也已從 raw Markdown / pipe-table preview 改成
+dark product-style report：model comparison、metric pass rates 等 section 以 styled tables 呈現，
+避免 UI-observable evidence 自己看起來像 debug text dump。這只是 artifact presentation polish；
+本切片沒有刷新 deterministic 或 local model score，也不改變 release / thesis claim。
 這支撐 automated PyQt replay
 條件下主要 UI path 可操作；仍不能替代 Windows Desktop 真人 click-through、雙螢幕 / DPI 或長時間
 true local model desktop session。

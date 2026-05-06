@@ -19593,33 +19593,33 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 1074550,
+      "pid": 1120585,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 836452
+      "max_rss_kb": 837360
     },
     {
       "label": "before_close",
-      "pid": 1074550,
+      "pid": 1120585,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1069344
+      "max_rss_kb": 1069188
     },
     {
       "label": "after_close",
-      "pid": 1074550,
+      "pid": 1120585,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1069344
+      "max_rss_kb": 1069188
     }
   ],
   "ui_quality_review": {
@@ -20450,10 +20450,10 @@
       "after_close_python_threads": 1,
       "python_thread_tolerance": 1,
       "after_close_qt_active_threads": 0,
-      "rss_growth_kb": 232892,
+      "rss_growth_kb": 231828,
       "rss_limit_kb": 600000,
       "boundary": "Coarse process smoke only: RSS uses ru_maxrss high-water mark and this does not prove the absence of leaks."
     }
   },
-  "elapsed_seconds": 4.141
+  "elapsed_seconds": 4.065
 }

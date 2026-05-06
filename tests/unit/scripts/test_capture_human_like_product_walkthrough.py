@@ -14,6 +14,7 @@ from scripts.dev.capture_human_like_product_walkthrough import (
     build_ui_quality_review,
     forbidden_visible_text,
     merge_ui_quality_into_pass_fail_summary,
+    render_eval_dashboard_html,
     render_markdown,
     validate_walkthrough_payload,
 )
@@ -359,6 +360,31 @@ def test_render_markdown_keeps_claim_boundary_and_transcripts() -> None:
     assert "UI Quality Review" in rendered
     assert "The dataset is ready." in rendered
     assert "Remaining Human Verification" in rendered
+
+
+def test_render_eval_dashboard_html_converts_markdown_tables() -> None:
+    markdown = """# XBrainLab Tool-Call Eval Dashboard
+
+## Model Comparison
+
+| Runner | Model | Cases | Pass Rate |
+| --- | --- | --- | --- |
+| deterministic | deterministic | 121 | 100.00% |
+
+## Metric Pass Rates
+
+| Metric | deterministic |
+| --- | --- |
+| intent | 100.00% |
+"""
+
+    html = render_eval_dashboard_html(markdown)
+
+    assert "<table>" in html
+    assert "<th>Runner</th>" in html
+    assert "<td>deterministic</td>" in html
+    assert "| Runner |" not in html
+    assert "background: #181818" in html
 
 
 def test_apply_review_choices_updates_event_role_selector(qtbot) -> None:
