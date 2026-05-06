@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+c278218 test: guard walkthrough recipe trace text
+20af230 docs: refresh handoff after replay text guard
 670b6c3 test: guard interpretation replay visible text
 fdc4081 ui: humanize interpretation recipe trace
 87960f2 docs: refresh handoff after legacy helper guard
@@ -221,6 +223,16 @@ bb57beb ui: use backend truth for split replacement
     unit gate (`30 passed`), replay artifact refresh, full ruff, full basedpyright, architecture
     compliance, `git diff --check`, and `mkdocs build --strict`.
   - No local LLM eval was run; this was a UI-observable evidence guard slice under the fast dev
+    gate.
+- Consolidated human-like walkthrough recipe trace visible-text guard:
+  - `capture_human_like_product_walkthrough.py` now treats recipe trace tokens as forbidden visible
+    UI text, alongside raw tool syntax, schema, traceback, and selected command names.
+  - The refreshed human-like walkthrough artifact remains `passed` with forbidden visible text
+    findings `0`, and the visible-text boundary now explicitly includes recipe trace tokens.
+  - Validation covered the red/focused visible-text test, walkthrough unit/integration gate
+    (`22 passed`), refreshed walkthrough JSON/Markdown/screenshots, full ruff, full basedpyright,
+    architecture compliance, `git diff --check`, and `mkdocs build --strict`.
+  - No local LLM eval was run; this was an automated UI visible-text guard slice under the fast dev
     gate.
 - Legacy mutation helper call guard:
   - `tests/architecture_compliance.py` now identifies legacy / fallback helpers that directly
@@ -2940,6 +2952,20 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 670b6c3; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/scripts/test_capture_human_like_product_walkthrough.py \
+  tests/integration/ui/test_product_walkthrough.py \
+  -q
+# 22 passed for c278218
+QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py
+# refreshed human-like walkthrough artifact; forbidden visible text findings remain 0
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for c278218; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard and changed-case eval
