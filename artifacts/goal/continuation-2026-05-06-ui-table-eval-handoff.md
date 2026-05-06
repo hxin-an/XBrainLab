@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+ca469ff ui: render eval dashboard artifact
 83b0015 test: guard stale render fallbacks
 e79d3b6 ui: guard dataset render fallback
 41930e0 ui: show montage fallback warning
@@ -157,6 +158,14 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Human-like walkthrough eval dashboard presentation:
+  - `scripts/dev/capture_human_like_product_walkthrough.py` now renders
+    `artifacts/agent_evals/dashboard.md` as product-style HTML in a `QTextBrowser` instead of
+    capturing raw Markdown / pipe-table text.
+  - `artifacts/ui/human-like-walkthrough/20-eval-dashboard.png` now shows dark model-comparison
+    and metric tables, matching the main product visual language better.
+  - This was a UI-observable artifact polish slice only; no deterministic or local LLM benchmark
+    score changed.
 - Stale render fallback architecture guard:
   - `tests/architecture_compliance.py` now flags direct controller render reads inside
     `result is None` branches unless they go through `run_legacy_controller_fallback()`.
@@ -591,6 +600,47 @@ bb57beb ui: use backend truth for split replacement
 ## Validation Already Run
 
 ```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/scripts/test_capture_human_like_product_walkthrough.py -q
+# 17 passed
+
+poetry run ruff format --check \
+  scripts/dev/capture_human_like_product_walkthrough.py \
+  tests/unit/scripts/test_capture_human_like_product_walkthrough.py
+# 2 files already formatted
+
+poetry run ruff check \
+  scripts/dev/capture_human_like_product_walkthrough.py \
+  tests/unit/scripts/test_capture_human_like_product_walkthrough.py
+# All checks passed
+
+poetry run basedpyright \
+  scripts/dev/capture_human_like_product_walkthrough.py \
+  tests/unit/scripts/test_capture_human_like_product_walkthrough.py
+# 0 errors, 0 warnings, 0 notes
+
+QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py
+# exit 0; status passed, 26/26 phases, 20 screenshots
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for ca469ff; mkdocs still prints the existing Material advisory
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py -q
+# 20 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/integration/ui/test_product_walkthrough.py -q
+# 3 passed
+
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/scripts/test_capture_data_interpretation_replay.py \
   tests/unit/scripts/test_capture_human_like_product_walkthrough.py \
