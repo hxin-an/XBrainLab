@@ -643,8 +643,8 @@
     precondition reason，不會被 job-boundary error 遮掉；只有 backend-ready / enabled 的
     long-running `train` 才回 structured `long_running_job_required`。artifact 會標出
     `train result boundary` 和是否真的到達 job boundary。
-  - 這支撐 external stdio client path，不代表 Windows release registration、HTTP job progress /
-    cancel / recovery 或 long-running training execution through MCP 已完成。
+  - 這支撐 external stdio client path，不代表 Windows release registration 或 HTTP job model；
+    HTTP train job status / cancel 已由後續 HTTP baseline 覆蓋。
 - MCP Inspector-style release config baseline 已新增：
   - `artifacts/mcp/xbrainlab-mcp.json` 是標準 `mcpServers` / `stdio` config，含
     `default-server` 和 `xbrainlab-windows-wsl` entries。
@@ -655,8 +655,8 @@
   - integration test 會用 committed config command 重跑 stdio walkthrough。
   - Windows-side official Inspector CLI 已用 `xbrainlab-windows-wsl` entry 跑過
     `tools/list`，artifact 在 `artifacts/mcp/inspector-cli-tools-list.json` / `.md`。
-  - 這支撐 Inspector CLI / external client release config baseline；仍不是 HTTP job progress /
-    cancel / recovery 或 long-running training execution through MCP。
+  - 這支撐 Inspector CLI / external client release config baseline；HTTP train job status / cancel
+    已由後續 HTTP baseline 覆蓋，evaluation / visualization jobs 和 recovery 仍未完成。
 - MCP Inspector GUI click-through baseline 已新增：
   - script：`scripts/dev/capture_mcp_inspector_gui_walkthrough.py`。
   - artifact：`artifacts/mcp/inspector-gui-walkthrough.json` / `.md` 和
@@ -664,12 +664,12 @@
   - evidence 顯示 official Inspector GUI 透過 `xbrainlab-windows-wsl` entry 連上 `xbrainlab`
     server，`Connect` / `Connected` / `Disconnect` / `Tools` / `List Tools` 可見，並能看到
     `Scan Source`、`Preview Interpretation`、`Validate Interpretation`、`Apply Interpretation`。
-  - 這支撐 automated Inspector GUI click-through，不是 human GUI session、full MCP client
-    certification、HTTP job progress / cancel / recovery 或 long-running training execution
-    through MCP。
+  - 這支撐 automated Inspector GUI click-through，不是 human GUI session 或 full MCP client
+    certification；HTTP train job status / cancel 已由後續 HTTP baseline 覆蓋，evaluation /
+    visualization jobs 和 recovery 仍未完成。
 - MCP local HTTP transport baseline 已新增：
   - `XBrainLab.mcp.http_server` 和 `scripts/dev/run_mcp_http_server.py` 提供 local-only
-    `POST /mcp` JSON-RPC / `GET /health`。
+    `POST /mcp` JSON-RPC / `GET /health` / `GET /jobs/{id}` / `POST /jobs/{id}/cancel`。
   - HTTP adapter 仍使用同一個 `MCPServer` / automation schema / `ApplicationService.execute()`；
     structured result 標示 `mode=headless_mcp_http`、`transport=http`、stable `session_id` 和
     `ui_refresh.supported=False`。
@@ -678,9 +678,9 @@
     constant-time compare，並加上 JSON-RPC body size limit。
   - `scripts/dev/capture_mcp_http_walkthrough.py` 以 Python standard-library HTTP client 產生
     `artifacts/mcp/http-walkthrough.json` / `.md`，覆蓋 health / initialize / tools/list /
-    scan_source / preview_interpretation / backend-ready train long-running boundary。
-  - 這支撐 local HTTP MCP transport baseline；仍不是 long-running job progress / cancel /
-    recovery 或 full MCP client certification。
+    scan_source / preview_interpretation / backend-ready train job creation / status / cancel。
+  - 這支撐 local HTTP MCP train job status-cancel baseline；仍不是 evaluation / visualization jobs、
+    job persistence / recovery、remote authorization certification 或 full MCP client certification。
 - Windows launcher automated command walkthrough 已新增：
   - `scripts/dev/capture_windows_launcher_walkthrough.py` 會從 Windows `cmd.exe` 執行 Desktop
     `XBrainLab.cmd` smoke，確認它指向 active repo。
@@ -915,9 +915,9 @@
     但最小 PyVistaQt plotter 仍以 X `BadWindow` blocked；interactive 3D render 仍不可宣稱完成。
 - 剩餘非 Goal 1 closure blockers：label import 已能寫入 recipe trace，但尚未成為成熟 import
   wizard 內嵌 label import editor；任意 raw trigger selection / complex MAT-GDF anchor
-  reconciliation、full real-data manual compatibility certification、MCP HTTP long-running job
-  progress / cancel / recovery、interactive 3D render、Windows launcher 真人驗收尚未完成，UI
-  replay coverage 還不是完整真人 walkthrough。
+  reconciliation、full real-data manual compatibility certification、MCP HTTP evaluation /
+  visualization jobs、job persistence / recovery、interactive 3D render、Windows launcher 真人驗收
+  尚未完成，UI replay coverage 還不是完整真人 walkthrough。
 
 ## 下一個 Goal
 
@@ -926,7 +926,7 @@
 ```text
 True local LLM ChatPanel long-running tool-command workflow
   + label/recipe wizard hardening
-  + MCP HTTP job progress / cancel / recovery hardening
+  + MCP HTTP evaluation / visualization jobs and recovery hardening
   + Windows launcher click-through
 ```
 
@@ -1152,8 +1152,8 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
 - 不能讓 API / Gemini / remote LLM 回到 product execution path。
 - 不能使用中國公司或中國來源模型。
 - 不能讓 MCP 直接操作 controller 或繞過 ApplicationService / autonomy policy。
-- 不能把 MCP HTTP transport baseline 說成 long-running training job progress / cancel / recovery
-  已完成。
+- 不能把 MCP HTTP train job status-cancel baseline 說成 evaluation / visualization jobs、
+  persistence / recovery 或 full client certification 已完成。
 
 ## 下一步
 

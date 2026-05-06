@@ -234,15 +234,18 @@ bb57beb ui: use backend truth for split replacement
     optional Bearer token support, and no client-side XBrainLab dependency requirement.
   - Follow-up hardening added constant-time Bearer token comparison and a bounded JSON-RPC request
     body limit with `payload_too_large` response.
+  - Follow-up train job slice added in-memory `mcp-http-job-*` records, `GET /jobs/{id}` status, and
+    `POST /jobs/{id}/cancel` routed through `StopTrainingCommand` / `ApplicationService`.
   - `MCPServer` now carries transport-scoped adapter metadata:
     `mode=headless_mcp_http`, `transport=http`, stable `session_id`, and
     `ui_refresh.supported=False` for HTTP.
   - Added `scripts/dev/run_mcp_http_server.py` and
     `scripts/dev/capture_mcp_http_walkthrough.py`.
   - Refreshed `artifacts/mcp/http-walkthrough.json` / `.md`; walkthrough covers health,
-    initialize, tools/list, scan, preview, and backend-ready train boundary.
-  - HTTP `train` does not run synchronously; backend-ready long-running training returns
-    `long_running_job_required` until a future job API provides progress / cancel / recovery.
+    initialize, tools/list, scan, preview, train job creation, status, and cancel.
+  - HTTP train job progress/cancel is now a baseline; evaluation / visualization jobs, job
+    persistence / recovery, resource locks, remote authorization certification, and full MCP client
+    certification remain open.
 - Data Interpretation table geometry verification:
   - User-reported preview table overflow / Review Summary contrast and loaded Dataset table
     underfill / green Events concerns were checked against current code and refreshed replay
@@ -3275,8 +3278,8 @@ repeat `1`, while full-suite deterministic dashboard refreshes require `--eval-g
     are not verified.
 - Agent / MCP release depth remains open:
   - long autonomous ChatPanel workflow, UI-routing render, full recovery behavior, MCP HTTP
-    long-running job progress/cancel/recovery, remote authorization certification, and full MCP
-    client certification remain.
+    evaluation / visualization jobs, job persistence / recovery, remote authorization
+    certification, and full MCP client certification remain.
 - Tool-call benchmark evidence must not be used as UI / launcher / import wizard product evidence.
 
 ## Suggested Next Slices
@@ -3289,9 +3292,9 @@ repeat `1`, while full-suite deterministic dashboard refreshes require `--eval-g
 2. Continue Data Interpretation wizard maturity.
    - Add a small recipe diff/review UX slice or a safer label-carrier edit slice with screenshot
      artifact.
-3. Design MCP HTTP job execution before allowing long-running actions through HTTP.
+3. Continue MCP HTTP job execution after the train-only baseline.
    - Keep HTTP transport thin over ApplicationService / automation truth.
-   - Add job ids, progress, cancel, recovery, and resource-lock behavior before `train` / `evaluate`
-     can run asynchronously over MCP HTTP.
+   - Add resource locks, persistence / recovery, evaluation / visualization jobs, and stronger
+     client certification before treating MCP HTTP as product-complete automation.
 4. Only after product/UI/backend path stabilizes, refresh affected tool-call eval cases using the
    fast/candidate gate. Reserve full primary/fallback x3 for release/thesis evidence.

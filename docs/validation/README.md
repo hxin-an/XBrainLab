@@ -1693,7 +1693,7 @@ artifact 補上。
 Windows WSL runtime wrapper。它仍不是 human GUI session、full MCP client certification、
 long-running training through MCP、Windows Desktop 真人啟動或 product completion。
 
-2026-05-06 MCP local HTTP transport baseline：
+2026-05-06 MCP local HTTP transport / train job baseline：
 
 - 新增 `XBrainLab.mcp.http_server`：
   - 使用 Python stdlib `ThreadingHTTPServer`，不把 PyQt / EEG / PyTorch dependencies 推給
@@ -1705,6 +1705,9 @@ long-running training through MCP、Windows Desktop 真人啟動或 product comp
     remote multi-user service。
   - Token comparison uses constant-time comparison, and JSON-RPC request bodies are bounded before
     parsing.
+  - Backend-ready HTTP `train` now creates an in-memory job. Clients can read
+    `GET /jobs/{id}` for status/progress snapshot and call `POST /jobs/{id}/cancel`; cancel is
+    routed through `StopTrainingCommand` / `ApplicationService.execute()`.
 - 新增 `scripts/dev/run_mcp_http_server.py` 作為 local HTTP entrypoint。
 - 新增 `scripts/dev/capture_mcp_http_walkthrough.py`：
   - client calls 只用 Python standard library `http.client` / `json`。
@@ -1718,10 +1721,14 @@ long-running training through MCP、Windows Desktop 真人啟動或 product comp
   - `tools_listed`：`True`
   - `scan_ok`：`True`
   - `preview_ok`：`True`
-  - `train_boundary_error_type`：`long_running_job_required`
+  - `train_job_created`：`True`
+  - `job_status_running`：`True`
+  - `cancel_ok`：`True`
 - focused validation：
   - `poetry run pytest --capture=sys tests/unit/mcp/test_http_server.py::test_http_mcp_rejects_oversized_requests_before_parsing -q`
   - red first on missing `max_body_bytes`, then `1 passed`
+  - `poetry run pytest --capture=sys tests/unit/mcp/test_http_server.py::test_http_mcp_train_uses_job_api_with_status_and_cancel -q`
+  - red first on old unsupported boundary, then `1 passed`
   - `poetry run pytest --capture=sys tests/unit/mcp/test_http_server.py tests/integration/mcp/test_http_walkthrough_artifact.py -q`
   - `5 passed`
   - `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q`
@@ -1731,10 +1738,10 @@ long-running training through MCP、Windows Desktop 真人啟動或 product comp
   - `poetry run basedpyright XBrainLab/mcp scripts/dev/run_mcp_http_server.py scripts/dev/capture_mcp_http_walkthrough.py tests/unit/mcp tests/integration/mcp`
   - `0 errors, 0 warnings, 0 notes`
 
-這批 evidence 支撐「local HTTP MCP transport baseline exists and stays on the same
-ApplicationService / automation command truth」。它仍不支撐 long-running job progress / cancel /
-recovery、remote authorization certification、Windows human launcher acceptance、full MCP client
-certification 或 product completion。
+這批 evidence 支撐「local HTTP MCP transport and train job status/cancel baseline exists and stays
+on the same ApplicationService / automation command truth」。它仍不支撐 evaluation / visualization
+jobs、job persistence / recovery、remote authorization certification、Windows human launcher
+acceptance、full MCP client certification 或 product completion。
 
 2026-05-04 Local LLM tool-call runner and schema gate：
 

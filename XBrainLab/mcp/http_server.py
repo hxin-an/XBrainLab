@@ -9,12 +9,21 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+import uuid
+from dataclasses import dataclass, field
 from hmac import compare_digest
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from time import time
 from typing import Any
+from urllib.parse import urlparse
 
-from XBrainLab.backend.application import ApplicationService
+from XBrainLab.backend.application import (
+    ApplicationService,
+    CommandName,
+    execute_automation_payload,
+)
 from XBrainLab.mcp.server import MCPServer
 
 DEFAULT_MAX_BODY_BYTES = 1_048_576
@@ -32,11 +41,13 @@ class MCPHTTPServer(ThreadingHTTPServer):
         handler_class: type[BaseHTTPRequestHandler],
         *,
         mcp_server: MCPServer,
+        job_registry: MCPHTTPJobRegistry,
         auth_token: str | None = None,
         max_body_bytes: int = DEFAULT_MAX_BODY_BYTES,
     ) -> None:
         super().__init__(server_address, handler_class)
         self.mcp_server = mcp_server
+        self.job_registry = job_registry
         self.auth_token = auth_token
         self.max_body_bytes = max_body_bytes
 
@@ -49,7 +60,11 @@ class MCPHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if not self._authorized():
             return
-        if self.path != "/health":
+        path = urlparse(self.path).path
+        if path.startswith("/jobs/"):
+            self._handle_job_get(path)
+            return
+        if path != "/health":
             self._write_json(
                 {"error": "not_found", "message": "Unknown endpoint."},
                 status=HTTPStatus.NOT_FOUND,
@@ -61,13 +76,23 @@ class MCPHTTPRequestHandler(BaseHTTPRequestHandler):
                 "transport": self.server.mcp_server.transport,
                 "session_id": self.server.mcp_server.session_id,
                 "ui_refresh_supported": False,
+                "job_api": {
+                    "supported": True,
+                    "supports_progress": True,
+                    "supports_cancel": True,
+                    "job_count": self.server.job_registry.job_count(),
+                },
             }
         )
 
     def do_POST(self) -> None:
         if not self._authorized():
             return
-        if self.path != "/mcp":
+        path = urlparse(self.path).path
+        if path.startswith("/jobs/") and path.endswith("/cancel"):
+            self._handle_job_cancel(path)
+            return
+        if path != "/mcp":
             self._write_json(
                 {"error": "not_found", "message": "Unknown endpoint."},
                 status=HTTPStatus.NOT_FOUND,
@@ -147,9 +172,180 @@ class MCPHTTPRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(encoded)
 
+    def _handle_job_get(self, path: str) -> None:
+        job_id = _job_id_from_path(path)
+        if job_id is None:
+            self._write_json(
+                {"error": "not_found", "message": "Unknown job endpoint."},
+                status=HTTPStatus.NOT_FOUND,
+            )
+            return
+        job = self.server.job_registry.get_job(job_id)
+        if job is None:
+            self._write_json(
+                {"error": "job_not_found", "message": "Unknown MCP HTTP job."},
+                status=HTTPStatus.NOT_FOUND,
+            )
+            return
+        self._write_json({"job": job})
+
+    def _handle_job_cancel(self, path: str) -> None:
+        job_id = _job_id_from_path(path, suffix="/cancel")
+        if job_id is None:
+            self._write_json(
+                {"error": "not_found", "message": "Unknown job endpoint."},
+                status=HTTPStatus.NOT_FOUND,
+            )
+            return
+        response = self.server.job_registry.cancel_job(job_id)
+        if response is None:
+            self._write_json(
+                {"error": "job_not_found", "message": "Unknown MCP HTTP job."},
+                status=HTTPStatus.NOT_FOUND,
+            )
+            return
+        self._write_json(response)
+
     def log_message(self, fmt: str, *args: Any) -> None:
         """Route HTTP request logs to logging instead of stdout."""
         logging.getLogger("XBrainLab.mcp.http").debug(fmt, *args)
+
+
+@dataclass
+class MCPHTTPJobRecord:
+    """In-memory HTTP job state for one long-running command."""
+
+    job_id: str
+    command_name: str
+    payload: dict[str, Any]
+    created_at: float
+    command_execution: dict[str, Any]
+    cancel_requested: bool = False
+    cancel_execution: dict[str, Any] | None = None
+    updated_at: float = field(default_factory=time)
+
+
+class MCPHTTPJobRegistry:
+    """Track local HTTP long-running jobs for one MCP session."""
+
+    def __init__(self, mcp_server: MCPServer) -> None:
+        self._mcp_server = mcp_server
+        self._lock = threading.Lock()
+        self._jobs: dict[str, MCPHTTPJobRecord] = {}
+
+    def job_count(self) -> int:
+        with self._lock:
+            return len(self._jobs)
+
+    def start_job(
+        self,
+        command_name: str,
+        payload: dict[str, Any],
+        capability: Any,
+        adapter: dict[str, Any],
+    ) -> dict[str, Any]:
+        command_execution = execute_automation_payload(
+            self._mcp_server.service,
+            payload,
+        ).to_dict()
+        command_execution["adapter"] = adapter
+        result = command_execution.get("result")
+        if not command_execution.get("accepted", False) or (
+            isinstance(result, dict) and result.get("status") == "failed"
+        ):
+            return command_execution
+
+        now = time()
+        record = MCPHTTPJobRecord(
+            job_id=f"mcp-http-job-{uuid.uuid4().hex[:12]}",
+            command_name=command_name,
+            payload=payload,
+            created_at=now,
+            updated_at=now,
+            command_execution=command_execution,
+        )
+        with self._lock:
+            self._jobs[record.job_id] = record
+
+        job = self._job_snapshot(record)
+        message = f"{_product_command_name(command_name)} job started."
+        return {
+            "accepted": True,
+            "command_name": command_name,
+            "verification": {
+                "schema_valid": True,
+                "capability_enabled": capability.enabled,
+                "confirmation_required": True,
+                "long_running_job_created": True,
+                "reasons": list(capability.reasons),
+            },
+            "autonomy": _autonomy_metadata(capability),
+            "capability": capability.to_dict(),
+            "result": {
+                "status": job["status"],
+                "command_name": command_name,
+                "message": message,
+                "job": job,
+                "diagnostics": {
+                    "job_boundary": {
+                        "supported": True,
+                        "transport": "http",
+                        "supports_progress": True,
+                        "supports_cancel": True,
+                    },
+                    "command_result": command_execution.get("result"),
+                },
+            },
+            "state": self._mcp_server.service.get_state().to_dict(),
+            "adapter": adapter,
+        }
+
+    def get_job(self, job_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            record = self._jobs.get(job_id)
+        if record is None:
+            return None
+        return self._job_snapshot(record)
+
+    def cancel_job(self, job_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            record = self._jobs.get(job_id)
+        if record is None:
+            return None
+        cancel_execution = execute_automation_payload(
+            self._mcp_server.service,
+            {"command": CommandName.STOP_TRAINING.value, "arguments": {}},
+        ).to_dict()
+        cancel_execution["adapter"] = self._mcp_server.adapter_metadata()
+        with self._lock:
+            record.cancel_requested = True
+            record.cancel_execution = cancel_execution
+            record.updated_at = time()
+        return {
+            "job": self._job_snapshot(record),
+            "cancel_result": cancel_execution,
+        }
+
+    def _job_snapshot(self, record: MCPHTTPJobRecord) -> dict[str, Any]:
+        state = self._mcp_server.service.get_state()
+        running = bool(state.active_training.is_running)
+        status = _job_status(record, running)
+        return {
+            "job_id": record.job_id,
+            "command_name": record.command_name,
+            "status": status,
+            "created_at": record.created_at,
+            "updated_at": record.updated_at,
+            "supports_cancel": record.command_name == CommandName.TRAIN.value,
+            "cancel_requested": record.cancel_requested,
+            "progress": {
+                "running": running,
+                "message": _training_progress_message(self._mcp_server.service),
+                "finished_run_count": state.training.finished_run_count,
+                "run_count": state.training.run_count,
+            },
+            "command_result": record.command_execution.get("result"),
+        }
 
 
 def build_http_server(
@@ -165,10 +361,13 @@ def build_http_server(
     server = mcp_server or MCPServer(service, transport="http")
     if server.transport != "http":
         raise ValueError("MCP HTTP server requires an MCPServer transport='http'.")
+    job_registry = MCPHTTPJobRegistry(server)
+    server.set_long_running_handler(job_registry.start_job)
     return MCPHTTPServer(
         (host, port),
         MCPHTTPRequestHandler,
         mcp_server=server,
+        job_registry=job_registry,
         auth_token=auth_token or None,
         max_body_bytes=max_body_bytes,
     )
@@ -197,3 +396,61 @@ def run_http_server(
     finally:
         httpd.server_close()
     return 0
+
+
+def _job_id_from_path(path: str, *, suffix: str = "") -> str | None:
+    if suffix and path.endswith(suffix):
+        path = path[: -len(suffix)]
+    parts = [part for part in path.split("/") if part]
+    if len(parts) != 2 or parts[0] != "jobs" or not parts[1]:
+        return None
+    return parts[1]
+
+
+def _job_status(record: MCPHTTPJobRecord, running: bool) -> str:
+    result = record.command_execution.get("result")
+    if isinstance(result, dict) and result.get("status") == "failed":
+        return "failed"
+    if record.cancel_requested:
+        return "cancel_requested" if running else "cancelled"
+    return "running" if running else "completed"
+
+
+def _training_progress_message(service: ApplicationService) -> str:
+    trainer = getattr(service.study, "trainer", None)
+    if trainer is not None and hasattr(trainer, "get_progress_text"):
+        try:
+            message = trainer.get_progress_text()
+        except Exception:
+            logging.getLogger("XBrainLab.mcp.http").debug(
+                "Training progress text lookup failed",
+                exc_info=True,
+            )
+        else:
+            if isinstance(message, str) and message:
+                return message
+    state = service.get_state()
+    if state.active_training.is_running:
+        return "Training is running."
+    return "Training is not running."
+
+
+def _product_command_name(command_name: str) -> str:
+    if command_name == CommandName.TRAIN.value:
+        return "Training"
+    return command_name.replace("_", " ").title()
+
+
+def _autonomy_metadata(capability: Any) -> dict[str, Any]:
+    return {
+        "can_auto_execute": capability.can_auto_execute,
+        "requires_confirmation": capability.requires_confirmation,
+        "confirmation_required": capability.confirmation_required,
+        "decision_boundary": capability.decision_boundary,
+        "continue_allowed_after_success": capability.continue_allowed_after_success,
+        "retry_limit": capability.retry_limit,
+        "stop_after_success": capability.stop_after_success,
+        "blocks_downstream_until_confirmed": (
+            capability.blocks_downstream_until_confirmed
+        ),
+    }

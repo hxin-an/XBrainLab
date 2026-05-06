@@ -4,17 +4,21 @@
   "endpoint": "127.0.0.1:<ephemeral>/mcp",
   "client_dependency_boundary": "The HTTP client uses Python standard-library HTTP and JSON only. XBrainLab EEG, PyQt, PyTorch, and local LLM dependencies remain in the server process.",
   "session_boundary": "This is a headless ApplicationService MCP session. It does not control or refresh the desktop UI.",
-  "long_running_boundary": "HTTP transport baseline is available, but train/eval long-running job progress and cancel are not enabled in this slice.",
+  "long_running_boundary": "HTTP train job status and cancel are available for the headless session. Evaluation/visualization jobs, persistence, and recovery are not enabled in this slice.",
   "summary": {
     "health_ok": true,
-    "session_id": "mcp-http-dec6e5b4e9b7",
+    "session_id": "mcp-http-4b82929da97e",
     "tool_count": 28,
     "tools_listed": true,
     "scan_ok": true,
     "preview_ok": true,
     "headless_http_adapter": true,
-    "train_boundary_error_type": "long_running_job_required",
-    "long_running_boundary_recorded": true
+    "train_job_id": "mcp-http-job-3bf9433f4175",
+    "train_job_created": true,
+    "train_job_status": "running",
+    "job_status_running": true,
+    "cancelled_job_status": "cancelled",
+    "cancel_ok": true
   },
   "responses": {
     "health": {
@@ -22,8 +26,14 @@
       "body": {
         "status": "ok",
         "transport": "http",
-        "session_id": "mcp-http-dec6e5b4e9b7",
-        "ui_refresh_supported": false
+        "session_id": "mcp-http-4b82929da97e",
+        "ui_refresh_supported": false,
+        "job_api": {
+          "supported": true,
+          "supports_progress": true,
+          "supports_cancel": true,
+          "job_count": 0
+        }
       }
     },
     "initialize": {
@@ -3214,7 +3224,7 @@
             "adapter": {
               "mode": "headless_mcp_http",
               "transport": "http",
-              "session_id": "mcp-http-dec6e5b4e9b7",
+              "session_id": "mcp-http-4b82929da97e",
               "ui_refresh": {
                 "supported": false,
                 "reason": "This MCP server owns a headless ApplicationService session and does not refresh a desktop UI."
@@ -3860,7 +3870,7 @@
             "adapter": {
               "mode": "headless_mcp_http",
               "transport": "http",
-              "session_id": "mcp-http-dec6e5b4e9b7",
+              "session_id": "mcp-http-4b82929da97e",
               "ui_refresh": {
                 "supported": false,
                 "reason": "This MCP server owns a headless ApplicationService session and does not refresh a desktop UI."
@@ -3871,7 +3881,7 @@
         }
       }
     },
-    "train_boundary": {
+    "train_job": {
       "status": 200,
       "body": {
         "jsonrpc": "2.0",
@@ -3880,20 +3890,18 @@
           "content": [
             {
               "type": "text",
-              "text": "MCP HTTP job execution is not enabled yet. Use the desktop UI or a future HTTP job API with progress and cancel support."
+              "text": "Training job started."
             }
           ],
           "structuredContent": {
-            "accepted": false,
+            "accepted": true,
             "command_name": "train",
             "verification": {
               "schema_valid": true,
               "capability_enabled": true,
               "confirmation_required": true,
-              "long_running_job_required": true,
-              "reasons": [
-                "MCP HTTP job execution is not enabled yet. Use the desktop UI or a future HTTP job API with progress and cancel support."
-              ]
+              "long_running_job_created": true,
+              "reasons": []
             },
             "autonomy": {
               "can_auto_execute": false,
@@ -3921,22 +3929,1203 @@
               "blocks_downstream_until_confirmed": false
             },
             "result": {
-              "status": "failed",
+              "status": "running",
               "command_name": "train",
-              "message": "MCP HTTP job execution is not enabled yet. Use the desktop UI or a future HTTP job API with progress and cancel support.",
-              "error_type": "long_running_job_required",
-              "recoverable": true,
-              "error_message": "MCP HTTP job execution is not enabled yet. Use the desktop UI or a future HTTP job API with progress and cancel support.",
+              "message": "Training job started.",
+              "job": {
+                "job_id": "mcp-http-job-3bf9433f4175",
+                "command_name": "train",
+                "status": "running",
+                "created_at": 1778061235.4606838,
+                "updated_at": 1778061235.4606838,
+                "supports_cancel": true,
+                "cancel_requested": false,
+                "progress": {
+                  "running": true,
+                  "message": "Training is running.",
+                  "finished_run_count": 0,
+                  "run_count": 0
+                },
+                "command_result": {
+                  "status": "ok",
+                  "command_name": "train",
+                  "message": "Training started.",
+                  "state": {
+                    "pipeline_stage": "dataset_ready",
+                    "raw": {
+                      "loaded": true,
+                      "count": 1,
+                      "files": [
+                        "sub-01_task-mi_run-1.gdf"
+                      ],
+                      "formats": [
+                        ".gdf"
+                      ],
+                      "channels": [],
+                      "metadata": [
+                        {
+                          "index": "0",
+                          "file": "sub-01_task-mi_run-1.gdf",
+                          "subject": "S01",
+                          "session": "session-01"
+                        }
+                      ],
+                      "event_total": 0,
+                      "unique_events": [],
+                      "locked": false,
+                      "diagnostics": {
+                        "runtime_signals": [],
+                        "gdf_duplicate_channel_files": [],
+                        "gdf_duplicate_channel_details": []
+                      }
+                    },
+                    "preprocessed": {
+                      "available": false,
+                      "count": 0,
+                      "files": [],
+                      "is_epoched": false,
+                      "channel_names": [],
+                      "operations": [],
+                      "diagnostics": {
+                        "runtime_signals": [],
+                        "gdf_duplicate_channel_files": [],
+                        "gdf_duplicate_channel_details": []
+                      }
+                    },
+                    "epoch": {
+                      "available": false,
+                      "exists": false,
+                      "epoch_count": null,
+                      "n_channels": null,
+                      "n_times": null,
+                      "event_names": [],
+                      "event_ids": null,
+                      "channel_names": []
+                    },
+                    "dataset": {
+                      "available": true,
+                      "count": 1,
+                      "names": [
+                        "Dataset 1"
+                      ],
+                      "locked": false,
+                      "generator_exists": false,
+                      "split_summary": {
+                        "count": 1
+                      }
+                    },
+                    "training": {
+                      "has_model": true,
+                      "model_name": null,
+                      "has_training_option": true,
+                      "training_option": {
+                        "epoch": null,
+                        "batch_size": null,
+                        "learning_rate": null,
+                        "repeat": null,
+                        "device": null,
+                        "optimizer": null,
+                        "checkpoint_epoch": null,
+                        "output_dir": null
+                      },
+                      "has_trainer": false,
+                      "is_running": true,
+                      "plan_count": 0,
+                      "run_count": 0,
+                      "finished_run_count": 0,
+                      "missing_requirements": []
+                    },
+                    "evaluation": {
+                      "available": false,
+                      "total_plans": 0,
+                      "total_runs": 0,
+                      "finished_runs": 0,
+                      "metrics_available": false
+                    },
+                    "visualization": {
+                      "saliency_configured": false,
+                      "saliency_available": false,
+                      "montage_available": false,
+                      "channel_positions_available": false,
+                      "channel_count": 0
+                    },
+                    "interpretation": {
+                      "has_scan_result": true,
+                      "has_candidate": true,
+                      "has_preview": true,
+                      "has_validation_decision": false,
+                      "has_applied_interpretation": false,
+                      "has_recipe": false,
+                      "latest_scan_id": "scan-1",
+                      "latest_candidate_id": "candidate-2",
+                      "latest_preview_id": "preview-3",
+                      "latest_interpretation_id": null,
+                      "latest_recipe_id": null,
+                      "source_path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                      "source_kind": "file",
+                      "validation_decision": null,
+                      "pending_confirmation": false,
+                      "blocked_reasons": [],
+                      "warnings": [],
+                      "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+                      "metadata_preview": [
+                        {
+                          "file": "sub-01_task-mi_run-1.gdf",
+                          "subject": {
+                            "field": "subject",
+                            "value": "01",
+                            "source": "bids_entity",
+                            "decision": "safe",
+                            "reason": "subject resolved from BIDS entity.",
+                            "override": null,
+                            "recipe_trace": [
+                              "bids:sub"
+                            ]
+                          },
+                          "session": {
+                            "field": "session",
+                            "value": null,
+                            "source": "missing",
+                            "decision": "needs_confirmation",
+                            "reason": "session BIDS entity is not present for this file.",
+                            "override": null,
+                            "recipe_trace": []
+                          },
+                          "task": {
+                            "field": "task",
+                            "value": "mi",
+                            "source": "bids_entity",
+                            "decision": "safe",
+                            "reason": "task resolved from BIDS entity.",
+                            "override": null,
+                            "recipe_trace": [
+                              "bids:task"
+                            ]
+                          },
+                          "run": {
+                            "field": "run",
+                            "value": "1",
+                            "source": "bids_entity",
+                            "decision": "safe",
+                            "reason": "run resolved from BIDS entity.",
+                            "override": null,
+                            "recipe_trace": [
+                              "bids:run"
+                            ]
+                          }
+                        }
+                      ],
+                      "label_carriers": [],
+                      "label_carrier_plan": [],
+                      "format_capabilities": [
+                        {
+                          "path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                          "name": "sub-01_task-mi_run-1.gdf",
+                          "format": "GDF",
+                          "role": "eeg",
+                          "status": "needs_review",
+                          "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                        }
+                      ],
+                      "event_roles": {
+                        "internal_events": "event role candidates"
+                      },
+                      "class_map": {},
+                      "label_import_count": 0,
+                      "label_imports": [],
+                      "recipe_path": null
+                    },
+                    "active_dataset": {
+                      "has_raw_data": true,
+                      "has_preprocessed_data": false,
+                      "has_epoch_data": false,
+                      "has_datasets": true,
+                      "is_locked": false
+                    },
+                    "active_training": {
+                      "has_model": true,
+                      "has_training_option": true,
+                      "has_trainer": false,
+                      "is_running": true
+                    },
+                    "last_error": null
+                  },
+                  "changed_state": {
+                    "raw_changed": false,
+                    "preprocessed_changed": false,
+                    "epoch_changed": false,
+                    "datasets_changed": false,
+                    "training_changed": true,
+                    "evaluation_changed": false,
+                    "visualization_changed": false,
+                    "interpretation_changed": false,
+                    "error_changed": false
+                  },
+                  "error_type": "none",
+                  "recoverable": true,
+                  "error_message": null,
+                  "diagnostics": {}
+                }
+              },
               "diagnostics": {
                 "job_boundary": {
-                  "supported": false,
-                  "required_transport": "http_job_api",
-                  "supports_progress": false,
-                  "supports_cancel": false
+                  "supported": true,
+                  "transport": "http",
+                  "supports_progress": true,
+                  "supports_cancel": true
                 },
-                "capability_reasons": []
+                "command_result": {
+                  "status": "ok",
+                  "command_name": "train",
+                  "message": "Training started.",
+                  "state": {
+                    "pipeline_stage": "dataset_ready",
+                    "raw": {
+                      "loaded": true,
+                      "count": 1,
+                      "files": [
+                        "sub-01_task-mi_run-1.gdf"
+                      ],
+                      "formats": [
+                        ".gdf"
+                      ],
+                      "channels": [],
+                      "metadata": [
+                        {
+                          "index": "0",
+                          "file": "sub-01_task-mi_run-1.gdf",
+                          "subject": "S01",
+                          "session": "session-01"
+                        }
+                      ],
+                      "event_total": 0,
+                      "unique_events": [],
+                      "locked": false,
+                      "diagnostics": {
+                        "runtime_signals": [],
+                        "gdf_duplicate_channel_files": [],
+                        "gdf_duplicate_channel_details": []
+                      }
+                    },
+                    "preprocessed": {
+                      "available": false,
+                      "count": 0,
+                      "files": [],
+                      "is_epoched": false,
+                      "channel_names": [],
+                      "operations": [],
+                      "diagnostics": {
+                        "runtime_signals": [],
+                        "gdf_duplicate_channel_files": [],
+                        "gdf_duplicate_channel_details": []
+                      }
+                    },
+                    "epoch": {
+                      "available": false,
+                      "exists": false,
+                      "epoch_count": null,
+                      "n_channels": null,
+                      "n_times": null,
+                      "event_names": [],
+                      "event_ids": null,
+                      "channel_names": []
+                    },
+                    "dataset": {
+                      "available": true,
+                      "count": 1,
+                      "names": [
+                        "Dataset 1"
+                      ],
+                      "locked": false,
+                      "generator_exists": false,
+                      "split_summary": {
+                        "count": 1
+                      }
+                    },
+                    "training": {
+                      "has_model": true,
+                      "model_name": null,
+                      "has_training_option": true,
+                      "training_option": {
+                        "epoch": null,
+                        "batch_size": null,
+                        "learning_rate": null,
+                        "repeat": null,
+                        "device": null,
+                        "optimizer": null,
+                        "checkpoint_epoch": null,
+                        "output_dir": null
+                      },
+                      "has_trainer": false,
+                      "is_running": true,
+                      "plan_count": 0,
+                      "run_count": 0,
+                      "finished_run_count": 0,
+                      "missing_requirements": []
+                    },
+                    "evaluation": {
+                      "available": false,
+                      "total_plans": 0,
+                      "total_runs": 0,
+                      "finished_runs": 0,
+                      "metrics_available": false
+                    },
+                    "visualization": {
+                      "saliency_configured": false,
+                      "saliency_available": false,
+                      "montage_available": false,
+                      "channel_positions_available": false,
+                      "channel_count": 0
+                    },
+                    "interpretation": {
+                      "has_scan_result": true,
+                      "has_candidate": true,
+                      "has_preview": true,
+                      "has_validation_decision": false,
+                      "has_applied_interpretation": false,
+                      "has_recipe": false,
+                      "latest_scan_id": "scan-1",
+                      "latest_candidate_id": "candidate-2",
+                      "latest_preview_id": "preview-3",
+                      "latest_interpretation_id": null,
+                      "latest_recipe_id": null,
+                      "source_path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                      "source_kind": "file",
+                      "validation_decision": null,
+                      "pending_confirmation": false,
+                      "blocked_reasons": [],
+                      "warnings": [],
+                      "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+                      "metadata_preview": [
+                        {
+                          "file": "sub-01_task-mi_run-1.gdf",
+                          "subject": {
+                            "field": "subject",
+                            "value": "01",
+                            "source": "bids_entity",
+                            "decision": "safe",
+                            "reason": "subject resolved from BIDS entity.",
+                            "override": null,
+                            "recipe_trace": [
+                              "bids:sub"
+                            ]
+                          },
+                          "session": {
+                            "field": "session",
+                            "value": null,
+                            "source": "missing",
+                            "decision": "needs_confirmation",
+                            "reason": "session BIDS entity is not present for this file.",
+                            "override": null,
+                            "recipe_trace": []
+                          },
+                          "task": {
+                            "field": "task",
+                            "value": "mi",
+                            "source": "bids_entity",
+                            "decision": "safe",
+                            "reason": "task resolved from BIDS entity.",
+                            "override": null,
+                            "recipe_trace": [
+                              "bids:task"
+                            ]
+                          },
+                          "run": {
+                            "field": "run",
+                            "value": "1",
+                            "source": "bids_entity",
+                            "decision": "safe",
+                            "reason": "run resolved from BIDS entity.",
+                            "override": null,
+                            "recipe_trace": [
+                              "bids:run"
+                            ]
+                          }
+                        }
+                      ],
+                      "label_carriers": [],
+                      "label_carrier_plan": [],
+                      "format_capabilities": [
+                        {
+                          "path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                          "name": "sub-01_task-mi_run-1.gdf",
+                          "format": "GDF",
+                          "role": "eeg",
+                          "status": "needs_review",
+                          "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                        }
+                      ],
+                      "event_roles": {
+                        "internal_events": "event role candidates"
+                      },
+                      "class_map": {},
+                      "label_import_count": 0,
+                      "label_imports": [],
+                      "recipe_path": null
+                    },
+                    "active_dataset": {
+                      "has_raw_data": true,
+                      "has_preprocessed_data": false,
+                      "has_epoch_data": false,
+                      "has_datasets": true,
+                      "is_locked": false
+                    },
+                    "active_training": {
+                      "has_model": true,
+                      "has_training_option": true,
+                      "has_trainer": false,
+                      "is_running": true
+                    },
+                    "last_error": null
+                  },
+                  "changed_state": {
+                    "raw_changed": false,
+                    "preprocessed_changed": false,
+                    "epoch_changed": false,
+                    "datasets_changed": false,
+                    "training_changed": true,
+                    "evaluation_changed": false,
+                    "visualization_changed": false,
+                    "interpretation_changed": false,
+                    "error_changed": false
+                  },
+                  "error_type": "none",
+                  "recoverable": true,
+                  "error_message": null,
+                  "diagnostics": {}
+                }
               }
             },
+            "state": {
+              "pipeline_stage": "dataset_ready",
+              "raw": {
+                "loaded": true,
+                "count": 1,
+                "files": [
+                  "sub-01_task-mi_run-1.gdf"
+                ],
+                "formats": [
+                  ".gdf"
+                ],
+                "channels": [],
+                "metadata": [
+                  {
+                    "index": "0",
+                    "file": "sub-01_task-mi_run-1.gdf",
+                    "subject": "S01",
+                    "session": "session-01"
+                  }
+                ],
+                "event_total": 0,
+                "unique_events": [],
+                "locked": false,
+                "diagnostics": {
+                  "runtime_signals": [],
+                  "gdf_duplicate_channel_files": [],
+                  "gdf_duplicate_channel_details": []
+                }
+              },
+              "preprocessed": {
+                "available": false,
+                "count": 0,
+                "files": [],
+                "is_epoched": false,
+                "channel_names": [],
+                "operations": [],
+                "diagnostics": {
+                  "runtime_signals": [],
+                  "gdf_duplicate_channel_files": [],
+                  "gdf_duplicate_channel_details": []
+                }
+              },
+              "epoch": {
+                "available": false,
+                "exists": false,
+                "epoch_count": null,
+                "n_channels": null,
+                "n_times": null,
+                "event_names": [],
+                "event_ids": null,
+                "channel_names": []
+              },
+              "dataset": {
+                "available": true,
+                "count": 1,
+                "names": [
+                  "Dataset 1"
+                ],
+                "locked": false,
+                "generator_exists": false,
+                "split_summary": {
+                  "count": 1
+                }
+              },
+              "training": {
+                "has_model": true,
+                "model_name": null,
+                "has_training_option": true,
+                "training_option": {
+                  "epoch": null,
+                  "batch_size": null,
+                  "learning_rate": null,
+                  "repeat": null,
+                  "device": null,
+                  "optimizer": null,
+                  "checkpoint_epoch": null,
+                  "output_dir": null
+                },
+                "has_trainer": false,
+                "is_running": true,
+                "plan_count": 0,
+                "run_count": 0,
+                "finished_run_count": 0,
+                "missing_requirements": []
+              },
+              "evaluation": {
+                "available": false,
+                "total_plans": 0,
+                "total_runs": 0,
+                "finished_runs": 0,
+                "metrics_available": false
+              },
+              "visualization": {
+                "saliency_configured": false,
+                "saliency_available": false,
+                "montage_available": false,
+                "channel_positions_available": false,
+                "channel_count": 0
+              },
+              "interpretation": {
+                "has_scan_result": true,
+                "has_candidate": true,
+                "has_preview": true,
+                "has_validation_decision": false,
+                "has_applied_interpretation": false,
+                "has_recipe": false,
+                "latest_scan_id": "scan-1",
+                "latest_candidate_id": "candidate-2",
+                "latest_preview_id": "preview-3",
+                "latest_interpretation_id": null,
+                "latest_recipe_id": null,
+                "source_path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                "source_kind": "file",
+                "validation_decision": null,
+                "pending_confirmation": false,
+                "blocked_reasons": [],
+                "warnings": [],
+                "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+                "metadata_preview": [
+                  {
+                    "file": "sub-01_task-mi_run-1.gdf",
+                    "subject": {
+                      "field": "subject",
+                      "value": "01",
+                      "source": "bids_entity",
+                      "decision": "safe",
+                      "reason": "subject resolved from BIDS entity.",
+                      "override": null,
+                      "recipe_trace": [
+                        "bids:sub"
+                      ]
+                    },
+                    "session": {
+                      "field": "session",
+                      "value": null,
+                      "source": "missing",
+                      "decision": "needs_confirmation",
+                      "reason": "session BIDS entity is not present for this file.",
+                      "override": null,
+                      "recipe_trace": []
+                    },
+                    "task": {
+                      "field": "task",
+                      "value": "mi",
+                      "source": "bids_entity",
+                      "decision": "safe",
+                      "reason": "task resolved from BIDS entity.",
+                      "override": null,
+                      "recipe_trace": [
+                        "bids:task"
+                      ]
+                    },
+                    "run": {
+                      "field": "run",
+                      "value": "1",
+                      "source": "bids_entity",
+                      "decision": "safe",
+                      "reason": "run resolved from BIDS entity.",
+                      "override": null,
+                      "recipe_trace": [
+                        "bids:run"
+                      ]
+                    }
+                  }
+                ],
+                "label_carriers": [],
+                "label_carrier_plan": [],
+                "format_capabilities": [
+                  {
+                    "path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                    "name": "sub-01_task-mi_run-1.gdf",
+                    "format": "GDF",
+                    "role": "eeg",
+                    "status": "needs_review",
+                    "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                  }
+                ],
+                "event_roles": {
+                  "internal_events": "event role candidates"
+                },
+                "class_map": {},
+                "label_import_count": 0,
+                "label_imports": [],
+                "recipe_path": null
+              },
+              "active_dataset": {
+                "has_raw_data": true,
+                "has_preprocessed_data": false,
+                "has_epoch_data": false,
+                "has_datasets": true,
+                "is_locked": false
+              },
+              "active_training": {
+                "has_model": true,
+                "has_training_option": true,
+                "has_trainer": false,
+                "is_running": true
+              },
+              "last_error": null
+            },
+            "adapter": {
+              "mode": "headless_mcp_http",
+              "transport": "http",
+              "session_id": "mcp-http-4b82929da97e",
+              "ui_refresh": {
+                "supported": false,
+                "reason": "This MCP server owns a headless ApplicationService session and does not refresh a desktop UI."
+              }
+            }
+          },
+          "isError": false
+        }
+      }
+    },
+    "job_status": {
+      "status": 200,
+      "body": {
+        "job": {
+          "job_id": "mcp-http-job-3bf9433f4175",
+          "command_name": "train",
+          "status": "running",
+          "created_at": 1778061235.4606838,
+          "updated_at": 1778061235.4606838,
+          "supports_cancel": true,
+          "cancel_requested": false,
+          "progress": {
+            "running": true,
+            "message": "Training is running.",
+            "finished_run_count": 0,
+            "run_count": 0
+          },
+          "command_result": {
+            "status": "ok",
+            "command_name": "train",
+            "message": "Training started.",
+            "state": {
+              "pipeline_stage": "dataset_ready",
+              "raw": {
+                "loaded": true,
+                "count": 1,
+                "files": [
+                  "sub-01_task-mi_run-1.gdf"
+                ],
+                "formats": [
+                  ".gdf"
+                ],
+                "channels": [],
+                "metadata": [
+                  {
+                    "index": "0",
+                    "file": "sub-01_task-mi_run-1.gdf",
+                    "subject": "S01",
+                    "session": "session-01"
+                  }
+                ],
+                "event_total": 0,
+                "unique_events": [],
+                "locked": false,
+                "diagnostics": {
+                  "runtime_signals": [],
+                  "gdf_duplicate_channel_files": [],
+                  "gdf_duplicate_channel_details": []
+                }
+              },
+              "preprocessed": {
+                "available": false,
+                "count": 0,
+                "files": [],
+                "is_epoched": false,
+                "channel_names": [],
+                "operations": [],
+                "diagnostics": {
+                  "runtime_signals": [],
+                  "gdf_duplicate_channel_files": [],
+                  "gdf_duplicate_channel_details": []
+                }
+              },
+              "epoch": {
+                "available": false,
+                "exists": false,
+                "epoch_count": null,
+                "n_channels": null,
+                "n_times": null,
+                "event_names": [],
+                "event_ids": null,
+                "channel_names": []
+              },
+              "dataset": {
+                "available": true,
+                "count": 1,
+                "names": [
+                  "Dataset 1"
+                ],
+                "locked": false,
+                "generator_exists": false,
+                "split_summary": {
+                  "count": 1
+                }
+              },
+              "training": {
+                "has_model": true,
+                "model_name": null,
+                "has_training_option": true,
+                "training_option": {
+                  "epoch": null,
+                  "batch_size": null,
+                  "learning_rate": null,
+                  "repeat": null,
+                  "device": null,
+                  "optimizer": null,
+                  "checkpoint_epoch": null,
+                  "output_dir": null
+                },
+                "has_trainer": false,
+                "is_running": true,
+                "plan_count": 0,
+                "run_count": 0,
+                "finished_run_count": 0,
+                "missing_requirements": []
+              },
+              "evaluation": {
+                "available": false,
+                "total_plans": 0,
+                "total_runs": 0,
+                "finished_runs": 0,
+                "metrics_available": false
+              },
+              "visualization": {
+                "saliency_configured": false,
+                "saliency_available": false,
+                "montage_available": false,
+                "channel_positions_available": false,
+                "channel_count": 0
+              },
+              "interpretation": {
+                "has_scan_result": true,
+                "has_candidate": true,
+                "has_preview": true,
+                "has_validation_decision": false,
+                "has_applied_interpretation": false,
+                "has_recipe": false,
+                "latest_scan_id": "scan-1",
+                "latest_candidate_id": "candidate-2",
+                "latest_preview_id": "preview-3",
+                "latest_interpretation_id": null,
+                "latest_recipe_id": null,
+                "source_path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                "source_kind": "file",
+                "validation_decision": null,
+                "pending_confirmation": false,
+                "blocked_reasons": [],
+                "warnings": [],
+                "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+                "metadata_preview": [
+                  {
+                    "file": "sub-01_task-mi_run-1.gdf",
+                    "subject": {
+                      "field": "subject",
+                      "value": "01",
+                      "source": "bids_entity",
+                      "decision": "safe",
+                      "reason": "subject resolved from BIDS entity.",
+                      "override": null,
+                      "recipe_trace": [
+                        "bids:sub"
+                      ]
+                    },
+                    "session": {
+                      "field": "session",
+                      "value": null,
+                      "source": "missing",
+                      "decision": "needs_confirmation",
+                      "reason": "session BIDS entity is not present for this file.",
+                      "override": null,
+                      "recipe_trace": []
+                    },
+                    "task": {
+                      "field": "task",
+                      "value": "mi",
+                      "source": "bids_entity",
+                      "decision": "safe",
+                      "reason": "task resolved from BIDS entity.",
+                      "override": null,
+                      "recipe_trace": [
+                        "bids:task"
+                      ]
+                    },
+                    "run": {
+                      "field": "run",
+                      "value": "1",
+                      "source": "bids_entity",
+                      "decision": "safe",
+                      "reason": "run resolved from BIDS entity.",
+                      "override": null,
+                      "recipe_trace": [
+                        "bids:run"
+                      ]
+                    }
+                  }
+                ],
+                "label_carriers": [],
+                "label_carrier_plan": [],
+                "format_capabilities": [
+                  {
+                    "path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                    "name": "sub-01_task-mi_run-1.gdf",
+                    "format": "GDF",
+                    "role": "eeg",
+                    "status": "needs_review",
+                    "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                  }
+                ],
+                "event_roles": {
+                  "internal_events": "event role candidates"
+                },
+                "class_map": {},
+                "label_import_count": 0,
+                "label_imports": [],
+                "recipe_path": null
+              },
+              "active_dataset": {
+                "has_raw_data": true,
+                "has_preprocessed_data": false,
+                "has_epoch_data": false,
+                "has_datasets": true,
+                "is_locked": false
+              },
+              "active_training": {
+                "has_model": true,
+                "has_training_option": true,
+                "has_trainer": false,
+                "is_running": true
+              },
+              "last_error": null
+            },
+            "changed_state": {
+              "raw_changed": false,
+              "preprocessed_changed": false,
+              "epoch_changed": false,
+              "datasets_changed": false,
+              "training_changed": true,
+              "evaluation_changed": false,
+              "visualization_changed": false,
+              "interpretation_changed": false,
+              "error_changed": false
+            },
+            "error_type": "none",
+            "recoverable": true,
+            "error_message": null,
+            "diagnostics": {}
+          }
+        }
+      }
+    },
+    "cancel_job": {
+      "status": 200,
+      "body": {
+        "job": {
+          "job_id": "mcp-http-job-3bf9433f4175",
+          "command_name": "train",
+          "status": "cancelled",
+          "created_at": 1778061235.4606838,
+          "updated_at": 1778061235.4635687,
+          "supports_cancel": true,
+          "cancel_requested": true,
+          "progress": {
+            "running": false,
+            "message": "Training is not running.",
+            "finished_run_count": 0,
+            "run_count": 0
+          },
+          "command_result": {
+            "status": "ok",
+            "command_name": "train",
+            "message": "Training started.",
+            "state": {
+              "pipeline_stage": "dataset_ready",
+              "raw": {
+                "loaded": true,
+                "count": 1,
+                "files": [
+                  "sub-01_task-mi_run-1.gdf"
+                ],
+                "formats": [
+                  ".gdf"
+                ],
+                "channels": [],
+                "metadata": [
+                  {
+                    "index": "0",
+                    "file": "sub-01_task-mi_run-1.gdf",
+                    "subject": "S01",
+                    "session": "session-01"
+                  }
+                ],
+                "event_total": 0,
+                "unique_events": [],
+                "locked": false,
+                "diagnostics": {
+                  "runtime_signals": [],
+                  "gdf_duplicate_channel_files": [],
+                  "gdf_duplicate_channel_details": []
+                }
+              },
+              "preprocessed": {
+                "available": false,
+                "count": 0,
+                "files": [],
+                "is_epoched": false,
+                "channel_names": [],
+                "operations": [],
+                "diagnostics": {
+                  "runtime_signals": [],
+                  "gdf_duplicate_channel_files": [],
+                  "gdf_duplicate_channel_details": []
+                }
+              },
+              "epoch": {
+                "available": false,
+                "exists": false,
+                "epoch_count": null,
+                "n_channels": null,
+                "n_times": null,
+                "event_names": [],
+                "event_ids": null,
+                "channel_names": []
+              },
+              "dataset": {
+                "available": true,
+                "count": 1,
+                "names": [
+                  "Dataset 1"
+                ],
+                "locked": false,
+                "generator_exists": false,
+                "split_summary": {
+                  "count": 1
+                }
+              },
+              "training": {
+                "has_model": true,
+                "model_name": null,
+                "has_training_option": true,
+                "training_option": {
+                  "epoch": null,
+                  "batch_size": null,
+                  "learning_rate": null,
+                  "repeat": null,
+                  "device": null,
+                  "optimizer": null,
+                  "checkpoint_epoch": null,
+                  "output_dir": null
+                },
+                "has_trainer": false,
+                "is_running": true,
+                "plan_count": 0,
+                "run_count": 0,
+                "finished_run_count": 0,
+                "missing_requirements": []
+              },
+              "evaluation": {
+                "available": false,
+                "total_plans": 0,
+                "total_runs": 0,
+                "finished_runs": 0,
+                "metrics_available": false
+              },
+              "visualization": {
+                "saliency_configured": false,
+                "saliency_available": false,
+                "montage_available": false,
+                "channel_positions_available": false,
+                "channel_count": 0
+              },
+              "interpretation": {
+                "has_scan_result": true,
+                "has_candidate": true,
+                "has_preview": true,
+                "has_validation_decision": false,
+                "has_applied_interpretation": false,
+                "has_recipe": false,
+                "latest_scan_id": "scan-1",
+                "latest_candidate_id": "candidate-2",
+                "latest_preview_id": "preview-3",
+                "latest_interpretation_id": null,
+                "latest_recipe_id": null,
+                "source_path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                "source_kind": "file",
+                "validation_decision": null,
+                "pending_confirmation": false,
+                "blocked_reasons": [],
+                "warnings": [],
+                "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+                "metadata_preview": [
+                  {
+                    "file": "sub-01_task-mi_run-1.gdf",
+                    "subject": {
+                      "field": "subject",
+                      "value": "01",
+                      "source": "bids_entity",
+                      "decision": "safe",
+                      "reason": "subject resolved from BIDS entity.",
+                      "override": null,
+                      "recipe_trace": [
+                        "bids:sub"
+                      ]
+                    },
+                    "session": {
+                      "field": "session",
+                      "value": null,
+                      "source": "missing",
+                      "decision": "needs_confirmation",
+                      "reason": "session BIDS entity is not present for this file.",
+                      "override": null,
+                      "recipe_trace": []
+                    },
+                    "task": {
+                      "field": "task",
+                      "value": "mi",
+                      "source": "bids_entity",
+                      "decision": "safe",
+                      "reason": "task resolved from BIDS entity.",
+                      "override": null,
+                      "recipe_trace": [
+                        "bids:task"
+                      ]
+                    },
+                    "run": {
+                      "field": "run",
+                      "value": "1",
+                      "source": "bids_entity",
+                      "decision": "safe",
+                      "reason": "run resolved from BIDS entity.",
+                      "override": null,
+                      "recipe_trace": [
+                        "bids:run"
+                      ]
+                    }
+                  }
+                ],
+                "label_carriers": [],
+                "label_carrier_plan": [],
+                "format_capabilities": [
+                  {
+                    "path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                    "name": "sub-01_task-mi_run-1.gdf",
+                    "format": "GDF",
+                    "role": "eeg",
+                    "status": "needs_review",
+                    "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                  }
+                ],
+                "event_roles": {
+                  "internal_events": "event role candidates"
+                },
+                "class_map": {},
+                "label_import_count": 0,
+                "label_imports": [],
+                "recipe_path": null
+              },
+              "active_dataset": {
+                "has_raw_data": true,
+                "has_preprocessed_data": false,
+                "has_epoch_data": false,
+                "has_datasets": true,
+                "is_locked": false
+              },
+              "active_training": {
+                "has_model": true,
+                "has_training_option": true,
+                "has_trainer": false,
+                "is_running": true
+              },
+              "last_error": null
+            },
+            "changed_state": {
+              "raw_changed": false,
+              "preprocessed_changed": false,
+              "epoch_changed": false,
+              "datasets_changed": false,
+              "training_changed": true,
+              "evaluation_changed": false,
+              "visualization_changed": false,
+              "interpretation_changed": false,
+              "error_changed": false
+            },
+            "error_type": "none",
+            "recoverable": true,
+            "error_message": null,
+            "diagnostics": {}
+          }
+        },
+        "cancel_result": {
+          "accepted": true,
+          "command_name": "stop_training",
+          "verification": {
+            "schema_valid": true,
+            "capability_enabled": true,
+            "confirmation_required": false,
+            "reasons": []
+          },
+          "autonomy": {
+            "can_auto_execute": true,
+            "requires_confirmation": false,
+            "confirmation_required": false,
+            "decision_boundary": null,
+            "continue_allowed_after_success": true,
+            "retry_limit": 2,
+            "stop_after_success": false,
+            "blocks_downstream_until_confirmed": false
+          },
+          "capability": {
+            "command_name": "stop_training",
+            "enabled": true,
+            "reasons": [],
+            "long_running": false,
+            "destructive": false,
+            "confirmation_required": false,
+            "can_auto_execute": true,
+            "requires_confirmation": false,
+            "decision_boundary": null,
+            "continue_allowed_after_success": true,
+            "retry_limit": 2,
+            "stop_after_success": false,
+            "blocks_downstream_until_confirmed": false
+          },
+          "result": {
+            "status": "ok",
+            "command_name": "stop_training",
+            "message": "Training stop requested.",
             "state": {
               "pipeline_stage": "dataset_ready",
               "raw": {
@@ -4137,17 +5326,471 @@
               },
               "last_error": null
             },
-            "adapter": {
-              "mode": "headless_mcp_http",
-              "transport": "http",
-              "session_id": "mcp-http-dec6e5b4e9b7",
-              "ui_refresh": {
-                "supported": false,
-                "reason": "This MCP server owns a headless ApplicationService session and does not refresh a desktop UI."
-              }
-            }
+            "changed_state": {
+              "raw_changed": false,
+              "preprocessed_changed": false,
+              "epoch_changed": false,
+              "datasets_changed": false,
+              "training_changed": true,
+              "evaluation_changed": false,
+              "visualization_changed": false,
+              "interpretation_changed": false,
+              "error_changed": false
+            },
+            "error_type": "none",
+            "recoverable": true,
+            "error_message": null,
+            "diagnostics": {}
           },
-          "isError": true
+          "state": {
+            "pipeline_stage": "dataset_ready",
+            "raw": {
+              "loaded": true,
+              "count": 1,
+              "files": [
+                "sub-01_task-mi_run-1.gdf"
+              ],
+              "formats": [
+                ".gdf"
+              ],
+              "channels": [],
+              "metadata": [
+                {
+                  "index": "0",
+                  "file": "sub-01_task-mi_run-1.gdf",
+                  "subject": "S01",
+                  "session": "session-01"
+                }
+              ],
+              "event_total": 0,
+              "unique_events": [],
+              "locked": false,
+              "diagnostics": {
+                "runtime_signals": [],
+                "gdf_duplicate_channel_files": [],
+                "gdf_duplicate_channel_details": []
+              }
+            },
+            "preprocessed": {
+              "available": false,
+              "count": 0,
+              "files": [],
+              "is_epoched": false,
+              "channel_names": [],
+              "operations": [],
+              "diagnostics": {
+                "runtime_signals": [],
+                "gdf_duplicate_channel_files": [],
+                "gdf_duplicate_channel_details": []
+              }
+            },
+            "epoch": {
+              "available": false,
+              "exists": false,
+              "epoch_count": null,
+              "n_channels": null,
+              "n_times": null,
+              "event_names": [],
+              "event_ids": null,
+              "channel_names": []
+            },
+            "dataset": {
+              "available": true,
+              "count": 1,
+              "names": [
+                "Dataset 1"
+              ],
+              "locked": false,
+              "generator_exists": false,
+              "split_summary": {
+                "count": 1
+              }
+            },
+            "training": {
+              "has_model": true,
+              "model_name": null,
+              "has_training_option": true,
+              "training_option": {
+                "epoch": null,
+                "batch_size": null,
+                "learning_rate": null,
+                "repeat": null,
+                "device": null,
+                "optimizer": null,
+                "checkpoint_epoch": null,
+                "output_dir": null
+              },
+              "has_trainer": false,
+              "is_running": false,
+              "plan_count": 0,
+              "run_count": 0,
+              "finished_run_count": 0,
+              "missing_requirements": []
+            },
+            "evaluation": {
+              "available": false,
+              "total_plans": 0,
+              "total_runs": 0,
+              "finished_runs": 0,
+              "metrics_available": false
+            },
+            "visualization": {
+              "saliency_configured": false,
+              "saliency_available": false,
+              "montage_available": false,
+              "channel_positions_available": false,
+              "channel_count": 0
+            },
+            "interpretation": {
+              "has_scan_result": true,
+              "has_candidate": true,
+              "has_preview": true,
+              "has_validation_decision": false,
+              "has_applied_interpretation": false,
+              "has_recipe": false,
+              "latest_scan_id": "scan-1",
+              "latest_candidate_id": "candidate-2",
+              "latest_preview_id": "preview-3",
+              "latest_interpretation_id": null,
+              "latest_recipe_id": null,
+              "source_path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+              "source_kind": "file",
+              "validation_decision": null,
+              "pending_confirmation": false,
+              "blocked_reasons": [],
+              "warnings": [],
+              "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+              "metadata_preview": [
+                {
+                  "file": "sub-01_task-mi_run-1.gdf",
+                  "subject": {
+                    "field": "subject",
+                    "value": "01",
+                    "source": "bids_entity",
+                    "decision": "safe",
+                    "reason": "subject resolved from BIDS entity.",
+                    "override": null,
+                    "recipe_trace": [
+                      "bids:sub"
+                    ]
+                  },
+                  "session": {
+                    "field": "session",
+                    "value": null,
+                    "source": "missing",
+                    "decision": "needs_confirmation",
+                    "reason": "session BIDS entity is not present for this file.",
+                    "override": null,
+                    "recipe_trace": []
+                  },
+                  "task": {
+                    "field": "task",
+                    "value": "mi",
+                    "source": "bids_entity",
+                    "decision": "safe",
+                    "reason": "task resolved from BIDS entity.",
+                    "override": null,
+                    "recipe_trace": [
+                      "bids:task"
+                    ]
+                  },
+                  "run": {
+                    "field": "run",
+                    "value": "1",
+                    "source": "bids_entity",
+                    "decision": "safe",
+                    "reason": "run resolved from BIDS entity.",
+                    "override": null,
+                    "recipe_trace": [
+                      "bids:run"
+                    ]
+                  }
+                }
+              ],
+              "label_carriers": [],
+              "label_carrier_plan": [],
+              "format_capabilities": [
+                {
+                  "path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                  "name": "sub-01_task-mi_run-1.gdf",
+                  "format": "GDF",
+                  "role": "eeg",
+                  "status": "needs_review",
+                  "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                }
+              ],
+              "event_roles": {
+                "internal_events": "event role candidates"
+              },
+              "class_map": {},
+              "label_import_count": 0,
+              "label_imports": [],
+              "recipe_path": null
+            },
+            "active_dataset": {
+              "has_raw_data": true,
+              "has_preprocessed_data": false,
+              "has_epoch_data": false,
+              "has_datasets": true,
+              "is_locked": false
+            },
+            "active_training": {
+              "has_model": true,
+              "has_training_option": true,
+              "has_trainer": false,
+              "is_running": false
+            },
+            "last_error": null
+          },
+          "adapter": {
+            "mode": "headless_mcp_http",
+            "transport": "http",
+            "session_id": "mcp-http-4b82929da97e",
+            "ui_refresh": {
+              "supported": false,
+              "reason": "This MCP server owns a headless ApplicationService session and does not refresh a desktop UI."
+            }
+          }
+        }
+      }
+    },
+    "job_after_cancel": {
+      "status": 200,
+      "body": {
+        "job": {
+          "job_id": "mcp-http-job-3bf9433f4175",
+          "command_name": "train",
+          "status": "cancelled",
+          "created_at": 1778061235.4606838,
+          "updated_at": 1778061235.4635687,
+          "supports_cancel": true,
+          "cancel_requested": true,
+          "progress": {
+            "running": false,
+            "message": "Training is not running.",
+            "finished_run_count": 0,
+            "run_count": 0
+          },
+          "command_result": {
+            "status": "ok",
+            "command_name": "train",
+            "message": "Training started.",
+            "state": {
+              "pipeline_stage": "dataset_ready",
+              "raw": {
+                "loaded": true,
+                "count": 1,
+                "files": [
+                  "sub-01_task-mi_run-1.gdf"
+                ],
+                "formats": [
+                  ".gdf"
+                ],
+                "channels": [],
+                "metadata": [
+                  {
+                    "index": "0",
+                    "file": "sub-01_task-mi_run-1.gdf",
+                    "subject": "S01",
+                    "session": "session-01"
+                  }
+                ],
+                "event_total": 0,
+                "unique_events": [],
+                "locked": false,
+                "diagnostics": {
+                  "runtime_signals": [],
+                  "gdf_duplicate_channel_files": [],
+                  "gdf_duplicate_channel_details": []
+                }
+              },
+              "preprocessed": {
+                "available": false,
+                "count": 0,
+                "files": [],
+                "is_epoched": false,
+                "channel_names": [],
+                "operations": [],
+                "diagnostics": {
+                  "runtime_signals": [],
+                  "gdf_duplicate_channel_files": [],
+                  "gdf_duplicate_channel_details": []
+                }
+              },
+              "epoch": {
+                "available": false,
+                "exists": false,
+                "epoch_count": null,
+                "n_channels": null,
+                "n_times": null,
+                "event_names": [],
+                "event_ids": null,
+                "channel_names": []
+              },
+              "dataset": {
+                "available": true,
+                "count": 1,
+                "names": [
+                  "Dataset 1"
+                ],
+                "locked": false,
+                "generator_exists": false,
+                "split_summary": {
+                  "count": 1
+                }
+              },
+              "training": {
+                "has_model": true,
+                "model_name": null,
+                "has_training_option": true,
+                "training_option": {
+                  "epoch": null,
+                  "batch_size": null,
+                  "learning_rate": null,
+                  "repeat": null,
+                  "device": null,
+                  "optimizer": null,
+                  "checkpoint_epoch": null,
+                  "output_dir": null
+                },
+                "has_trainer": false,
+                "is_running": true,
+                "plan_count": 0,
+                "run_count": 0,
+                "finished_run_count": 0,
+                "missing_requirements": []
+              },
+              "evaluation": {
+                "available": false,
+                "total_plans": 0,
+                "total_runs": 0,
+                "finished_runs": 0,
+                "metrics_available": false
+              },
+              "visualization": {
+                "saliency_configured": false,
+                "saliency_available": false,
+                "montage_available": false,
+                "channel_positions_available": false,
+                "channel_count": 0
+              },
+              "interpretation": {
+                "has_scan_result": true,
+                "has_candidate": true,
+                "has_preview": true,
+                "has_validation_decision": false,
+                "has_applied_interpretation": false,
+                "has_recipe": false,
+                "latest_scan_id": "scan-1",
+                "latest_candidate_id": "candidate-2",
+                "latest_preview_id": "preview-3",
+                "latest_interpretation_id": null,
+                "latest_recipe_id": null,
+                "source_path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                "source_kind": "file",
+                "validation_decision": null,
+                "pending_confirmation": false,
+                "blocked_reasons": [],
+                "warnings": [],
+                "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+                "metadata_preview": [
+                  {
+                    "file": "sub-01_task-mi_run-1.gdf",
+                    "subject": {
+                      "field": "subject",
+                      "value": "01",
+                      "source": "bids_entity",
+                      "decision": "safe",
+                      "reason": "subject resolved from BIDS entity.",
+                      "override": null,
+                      "recipe_trace": [
+                        "bids:sub"
+                      ]
+                    },
+                    "session": {
+                      "field": "session",
+                      "value": null,
+                      "source": "missing",
+                      "decision": "needs_confirmation",
+                      "reason": "session BIDS entity is not present for this file.",
+                      "override": null,
+                      "recipe_trace": []
+                    },
+                    "task": {
+                      "field": "task",
+                      "value": "mi",
+                      "source": "bids_entity",
+                      "decision": "safe",
+                      "reason": "task resolved from BIDS entity.",
+                      "override": null,
+                      "recipe_trace": [
+                        "bids:task"
+                      ]
+                    },
+                    "run": {
+                      "field": "run",
+                      "value": "1",
+                      "source": "bids_entity",
+                      "decision": "safe",
+                      "reason": "run resolved from BIDS entity.",
+                      "override": null,
+                      "recipe_trace": [
+                        "bids:run"
+                      ]
+                    }
+                  }
+                ],
+                "label_carriers": [],
+                "label_carrier_plan": [],
+                "format_capabilities": [
+                  {
+                    "path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                    "name": "sub-01_task-mi_run-1.gdf",
+                    "format": "GDF",
+                    "role": "eeg",
+                    "status": "needs_review",
+                    "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                  }
+                ],
+                "event_roles": {
+                  "internal_events": "event role candidates"
+                },
+                "class_map": {},
+                "label_import_count": 0,
+                "label_imports": [],
+                "recipe_path": null
+              },
+              "active_dataset": {
+                "has_raw_data": true,
+                "has_preprocessed_data": false,
+                "has_epoch_data": false,
+                "has_datasets": true,
+                "is_locked": false
+              },
+              "active_training": {
+                "has_model": true,
+                "has_training_option": true,
+                "has_trainer": false,
+                "is_running": true
+              },
+              "last_error": null
+            },
+            "changed_state": {
+              "raw_changed": false,
+              "preprocessed_changed": false,
+              "epoch_changed": false,
+              "datasets_changed": false,
+              "training_changed": true,
+              "evaluation_changed": false,
+              "visualization_changed": false,
+              "interpretation_changed": false,
+              "error_changed": false
+            },
+            "error_type": "none",
+            "recoverable": true,
+            "error_message": null,
+            "diagnostics": {}
+          }
         }
       }
     }

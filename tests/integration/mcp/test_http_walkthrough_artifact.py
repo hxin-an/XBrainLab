@@ -29,9 +29,9 @@ def test_capture_mcp_http_walkthrough_writes_client_artifact(tmp_path: Path):
     assert payload["summary"]["scan_ok"] is True
     assert payload["summary"]["preview_ok"] is True
     assert payload["summary"]["headless_http_adapter"] is True
-    assert payload["summary"]["long_running_boundary_recorded"] is True
-    assert (
-        payload["summary"]["train_boundary_error_type"] == "long_running_job_required"
-    )
+    assert payload["summary"]["train_job_created"] is True
+    assert payload["summary"]["job_status_running"] is True
+    assert payload["summary"]["cancel_ok"] is True
+    assert payload["summary"]["train_job_id"].startswith("mcp-http-job-")
     assert "MCP HTTP Walkthrough" in markdown
-    assert "long-running job progress and cancel are not enabled" in markdown
+    assert "job status after cancel: `cancelled`" in markdown

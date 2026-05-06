@@ -92,6 +92,34 @@ def _start_server(
     return httpd, port, thread
 
 
+def _training_ready_service() -> tuple[ApplicationService, dict[str, Any]]:
+    service = ApplicationService(Study())
+    raw = MagicMock()
+    raw.get_filename.return_value = "sample.fif"
+    raw.get_filepath.return_value = "/tmp/sample.fif"
+    service.study.loaded_data_list = [raw]
+    cast(Any, service.study).datasets = [object()]
+    cast(Any, service.study).model_holder = object()
+    cast(Any, service.study).training_option = object()
+    calls: dict[str, Any] = {"started": 0, "stopped": 0, "running": False}
+
+    def start_training() -> None:
+        calls["started"] += 1
+        calls["running"] = True
+
+    def stop_training() -> None:
+        calls["stopped"] += 1
+        calls["running"] = False
+
+    def is_training() -> bool:
+        return bool(calls["running"])
+
+    service.training.start_training = start_training
+    service.training.stop_training = stop_training
+    service.training.is_training = is_training
+    return service, calls
+
+
 def test_http_mcp_rejects_oversized_requests_before_parsing():
     port = _free_port()
     httpd = build_http_server(host="127.0.0.1", port=port, max_body_bytes=16)
@@ -215,15 +243,8 @@ def test_http_mcp_server_requires_bearer_token_when_configured():
         thread.join(timeout=10)
 
 
-def test_http_mcp_marks_enabled_long_running_commands_as_job_api_boundary():
-    service = ApplicationService(Study())
-    raw = MagicMock()
-    raw.get_filename.return_value = "sample.fif"
-    raw.get_filepath.return_value = "/tmp/sample.fif"
-    service.study.loaded_data_list = [raw]
-    cast(Any, service.study).datasets = [object()]
-    cast(Any, service.study).model_holder = object()
-    cast(Any, service.study).training_option = object()
+def test_http_mcp_train_uses_job_api_with_status_and_cancel():
+    service, calls = _training_ready_service()
     httpd, port, thread = _start_server(service=service)
     try:
         _post_json(
@@ -250,18 +271,35 @@ def test_http_mcp_marks_enabled_long_running_commands_as_job_api_boundary():
 
         assert status == 200
         result = response["result"]
-        assert result["isError"] is True
-        assert "HTTP job execution is not enabled yet" in result["content"][0]["text"]
+        assert result["isError"] is False
+        assert "Training job started" in result["content"][0]["text"]
         structured = result["structuredContent"]
-        assert structured["result"]["error_type"] == "long_running_job_required"
-        assert structured["result"]["diagnostics"]["job_boundary"] == {
-            "supported": False,
-            "required_transport": "http_job_api",
-            "supports_progress": False,
-            "supports_cancel": False,
-        }
+        assert structured["accepted"] is True
+        assert structured["result"]["status"] == "running"
+        job = structured["result"]["job"]
+        assert job["job_id"].startswith("mcp-http-job-")
+        assert job["command_name"] == "train"
+        assert job["status"] == "running"
+        assert job["supports_cancel"] is True
+        assert calls["started"] == 1
         assert structured["adapter"]["mode"] == "headless_mcp_http"
         assert structured["adapter"]["transport"] == "http"
+
+        status, job_status = _get_json(port, f"/jobs/{job['job_id']}")
+        assert status == 200
+        assert job_status["job"]["status"] == "running"
+        assert job_status["job"]["progress"]["message"] == "Training is running."
+
+        status, cancelled = _post_json(port, f"/jobs/{job['job_id']}/cancel", {})
+        assert status == 200
+        assert cancelled["job"]["job_id"] == job["job_id"]
+        assert cancelled["job"]["status"] == "cancelled"
+        assert cancelled["cancel_result"]["command_name"] == "stop_training"
+        assert calls["stopped"] == 1
+
+        status, after_cancel = _get_json(port, f"/jobs/{job['job_id']}")
+        assert status == 200
+        assert after_cancel["job"]["status"] == "cancelled"
     finally:
         httpd.shutdown()
         httpd.server_close()

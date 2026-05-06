@@ -92,7 +92,7 @@ def capture_http_walkthrough(output_dir: Path) -> dict[str, Any]:
                 "params": {"name": "preview_interpretation", "arguments": {}},
             },
         )
-        blocked_train = _request(
+        train_job = _request(
             "POST",
             port,
             "/mcp",
@@ -103,6 +103,10 @@ def capture_http_walkthrough(output_dir: Path) -> dict[str, Any]:
                 "params": {"name": "train", "arguments": {"confirmed": True}},
             },
         )
+        job_id = _summary_job_id(train_job)
+        job_status = _request("GET", port, f"/jobs/{job_id}")
+        cancelled_job = _request("POST", port, f"/jobs/{job_id}/cancel", {})
+        job_after_cancel = _request("GET", port, f"/jobs/{job_id}")
     finally:
         httpd.shutdown()
         httpd.server_close()
@@ -114,7 +118,10 @@ def capture_http_walkthrough(output_dir: Path) -> dict[str, Any]:
         "tools_list": listed,
         "scan_source": scanned,
         "preview_interpretation": previewed,
-        "train_boundary": blocked_train,
+        "train_job": train_job,
+        "job_status": job_status,
+        "cancel_job": cancelled_job,
+        "job_after_cancel": job_after_cancel,
     }
     summary = _summary(responses)
     payload = {
@@ -131,8 +138,9 @@ def capture_http_walkthrough(output_dir: Path) -> dict[str, Any]:
             "control or refresh the desktop UI."
         ),
         "long_running_boundary": (
-            "HTTP transport baseline is available, but train/eval long-running "
-            "job progress and cancel are not enabled in this slice."
+            "HTTP train job status and cancel are available for the headless "
+            "session. Evaluation/visualization jobs, persistence, and recovery "
+            "are not enabled in this slice."
         ),
         "summary": summary,
         "responses": _sanitized(responses, source_dir),
@@ -156,7 +164,9 @@ def validate_http_walkthrough_payload(payload: dict[str, Any]) -> None:
         "scan_ok": True,
         "preview_ok": True,
         "headless_http_adapter": True,
-        "long_running_boundary_recorded": True,
+        "train_job_created": True,
+        "job_status_running": True,
+        "cancel_ok": True,
     }
     failures = [
         key for key, expected in required.items() if summary.get(key) != expected
@@ -178,7 +188,9 @@ def render_markdown(payload: dict[str, Any]) -> str:
             f"- tools listed: `{summary['tool_count']}`",
             f"- scan ok: `{summary['scan_ok']}`",
             f"- preview ok: `{summary['preview_ok']}`",
-            f"- long-running boundary: `{summary['train_boundary_error_type']}`",
+            f"- train job: `{summary['train_job_id']}`",
+            f"- job status before cancel: `{summary['train_job_status']}`",
+            f"- job status after cancel: `{summary['cancelled_job_status']}`",
             "",
             "## Boundaries",
             "",
@@ -195,7 +207,9 @@ def _summary(responses: dict[str, Any]) -> dict[str, Any]:
     tools = responses["tools_list"]["body"]["result"]["tools"]
     scan = responses["scan_source"]["body"]["result"]["structuredContent"]
     preview = responses["preview_interpretation"]["body"]["result"]["structuredContent"]
-    train = responses["train_boundary"]["body"]["result"]["structuredContent"]
+    train = responses["train_job"]["body"]["result"]["structuredContent"]
+    job_status = responses["job_status"]["body"]["job"]
+    cancelled = responses["cancel_job"]["body"]["job"]
     adapter = scan["adapter"]
     return {
         "health_ok": responses["health"]["status"] == 200
@@ -208,10 +222,25 @@ def _summary(responses: dict[str, Any]) -> dict[str, Any]:
         "headless_http_adapter": adapter.get("mode") == "headless_mcp_http"
         and adapter.get("transport") == "http"
         and adapter.get("ui_refresh", {}).get("supported") is False,
-        "train_boundary_error_type": train.get("result", {}).get("error_type"),
-        "long_running_boundary_recorded": train.get("result", {}).get("error_type")
-        == "long_running_job_required",
+        "train_job_id": train.get("result", {}).get("job", {}).get("job_id"),
+        "train_job_created": train.get("result", {}).get("status") == "running",
+        "train_job_status": job_status.get("status"),
+        "job_status_running": job_status.get("status") == "running",
+        "cancelled_job_status": cancelled.get("status"),
+        "cancel_ok": cancelled.get("status") == "cancelled",
     }
+
+
+def _summary_job_id(response: dict[str, Any]) -> str:
+    try:
+        job_id = response["body"]["result"]["structuredContent"]["result"]["job"][
+            "job_id"
+        ]
+    except KeyError as exc:
+        raise RuntimeError("HTTP MCP train did not return a job id.") from exc
+    if not isinstance(job_id, str) or not job_id:
+        raise RuntimeError("HTTP MCP train returned an invalid job id.")
+    return job_id
 
 
 def _request(
@@ -258,6 +287,20 @@ def _training_ready_service(source: Path) -> ApplicationService:
     cast(Any, service.study).datasets = [object()]
     cast(Any, service.study).model_holder = object()
     cast(Any, service.study).training_option = object()
+    running = {"value": False}
+
+    def start_training() -> None:
+        running["value"] = True
+
+    def stop_training() -> None:
+        running["value"] = False
+
+    def is_training() -> bool:
+        return running["value"]
+
+    service.training.start_training = start_training
+    service.training.stop_training = stop_training
+    service.training.is_training = is_training
     return service
 
 

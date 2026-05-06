@@ -122,17 +122,19 @@ stdio walkthrough Markdown 也會顯示這個 headless session boundary。最新
 MCP 對 `train` 先尊重 backend capability / precondition：資料、dataset、model 或 training
 option 尚未 ready 時會回「Generate datasets before training」這類 readiness reason，不會被
 `long_running_job_required` 遮掉；只有 capability 已 enabled 的 long-running `train` 才回
-`long_running_job_required`，明確表示 stdio 不同步執行長任務，必須等未來 HTTP job API 才能有
-progress / cancel / recovery。最新 HTTP transport baseline 已新增：
+`long_running_job_required`，明確表示 stdio 不同步執行長任務；HTTP train job status / cancel
+則由後續 HTTP adapter baseline 承接。最新 HTTP transport baseline 已新增：
 `XBrainLab.mcp.http_server` / `scripts/dev/run_mcp_http_server.py` 提供 local-only
 `POST /mcp` JSON-RPC 和 `GET /health`，`MCPServer(transport="http")` structured result 會標示
 `mode=headless_mcp_http`、`transport=http`、stable `session_id` 和 `ui_refresh.supported=False`。
 `scripts/dev/capture_mcp_http_walkthrough.py` 會用 Python standard-library HTTP client 跑
-health / initialize / tools/list / scan_source / preview_interpretation，並保存
-`artifacts/mcp/http-walkthrough.json` / `.md`；同 artifact 也確認 backend-ready long-running
-`train` over HTTP 仍回 `long_running_job_required`，不會同步卡住 request。這仍不是
-long-running job progress / cancel / recovery、remote authorization certification、Windows
-human launcher acceptance 或 full MCP client certification。後續 hardening slice 又讓 HTTP adapter
+health / initialize / tools/list / scan_source / preview_interpretation / train job / job status /
+cancel，並保存 `artifacts/mcp/http-walkthrough.json` / `.md`；同 artifact 也確認
+backend-ready long-running `train` over HTTP 會建立 `mcp-http-job-*`、可用 `GET /jobs/{id}`
+查狀態，並可用 `POST /jobs/{id}/cancel` 透過 `StopTrainingCommand` 取消。這是 in-memory
+headless HTTP train job baseline；仍不是 evaluation / visualization job API、job persistence /
+recovery、remote authorization certification、Windows human launcher acceptance 或 full MCP client
+certification。後續 hardening slice 又讓 HTTP adapter
 用 constant-time Bearer token compare，並用 bounded request body size 拒絕過大 JSON-RPC body；
 這是 local adapter abuse guard，不是 remote security certification。另已新增 non-mocked backend
 workflow evidence：synthetic FIF source 會走 scan -> preview -> validate ->
@@ -1271,8 +1273,8 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `attach_labels` / `import_labels` 標成 legacy compatibility 並指向 Data Interpretation preferred
   commands；MCP stdio external-client artifact 和 committed Inspector-style `mcp.json` release config baseline 已完成；MCP Inspector GUI click-through
   artifact 也已完成；local HTTP MCP transport baseline 已完成並有
-  `artifacts/mcp/http-walkthrough.*`。Long-running job progress / cancel / recovery through MCP
-  尚未完成。
+  `artifacts/mcp/http-walkthrough.*`，同 artifact 現在覆蓋 HTTP train job status / cancel。
+  Evaluation / visualization jobs、job persistence / recovery 和 full client certification 尚未完成。
 - Data Interpretation 目前是強化中的 baseline wizard，不是 final import system。仍缺 mature
   embedded label editor、raw trigger selector、complex GDF / MAT anchor reconciliation、XDF /
   LSL full parser、full real-data manual certification 和更成熟的 recipe diff / review UX。這是

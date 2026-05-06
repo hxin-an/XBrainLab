@@ -37,6 +37,62 @@
 
 ## 2026-05-06
 
+### 17:54 MCP HTTP train job baseline
+
+- scope：
+  - Replace the HTTP-only `long_running_job_required` placeholder for backend-ready `train` with a
+    minimal observable job model.
+  - Keep stdio behavior unchanged and keep all execution/cancel paths on ApplicationService /
+    automation.
+- red / focused tests：
+  - Reworked the HTTP train test to expect job creation, `GET /jobs/{id}` status, and
+    `POST /jobs/{id}/cancel`.
+  - Red gate first failed because HTTP still returned `isError=True` with the old unsupported job
+    boundary.
+- 做了什麼：
+  - Added optional long-running handler support to `MCPServer`, plus public `service` /
+    `adapter_metadata()` accessors.
+  - Added `MCPHTTPJobRegistry` and in-memory job records to `XBrainLab.mcp.http_server`.
+  - HTTP `tools/call(train)` now creates an `mcp-http-job-*` when backend capability enables
+    training; the job snapshot exposes status, progress message, finished/run counts, and original
+    command result.
+  - Added `GET /jobs/{id}` and `POST /jobs/{id}/cancel`; cancellation executes
+    `StopTrainingCommand` through `execute_automation_payload()`.
+  - Refreshed `scripts/dev/capture_mcp_http_walkthrough.py` and
+    `artifacts/mcp/http-walkthrough.json` / `.md`; artifact now shows train job running before
+    cancel and cancelled after cancel.
+- validation：
+  - Red gate:
+    `poetry run pytest --capture=sys tests/unit/mcp/test_http_server.py::test_http_mcp_train_uses_job_api_with_status_and_cancel -q`
+    -> failed on old `isError=True` unsupported boundary.
+  - Focused pass:
+    same command -> `1 passed`.
+  - Focused regression:
+    `poetry run pytest --capture=sys tests/unit/mcp/test_http_server.py tests/integration/mcp/test_http_walkthrough_artifact.py -q`
+    -> `5 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/mcp/http_server.py XBrainLab/mcp/server.py scripts/dev/capture_mcp_http_walkthrough.py tests/unit/mcp/test_http_server.py tests/integration/mcp/test_http_walkthrough_artifact.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/mcp/http_server.py XBrainLab/mcp/server.py scripts/dev/capture_mcp_http_walkthrough.py tests/unit/mcp/test_http_server.py tests/integration/mcp/test_http_walkthrough_artifact.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Artifact:
+    `poetry run python scripts/dev/capture_mcp_http_walkthrough.py --output-dir artifacts/mcp`
+    -> `train_job_created=True`, `job_status_running=True`, `cancel_ok=True`.
+  - Regression / final gates:
+    `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q`
+    -> `15 passed`.
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is MCP HTTP job adapter work, not a tool-call benchmark claim update.
+- 不能宣稱：
+  - This is train-only and in-memory. It does not complete evaluation / visualization jobs, job
+    persistence / recovery, remote authorization certification, full MCP client certification, or
+    human Windows launcher acceptance.
+
 ### 17:43 MCP HTTP request hardening
 
 - scope：
