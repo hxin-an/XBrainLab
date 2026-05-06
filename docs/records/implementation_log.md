@@ -251,14 +251,15 @@ LLM runner. The command-line default is a fast gate, not a full-suite dashboard 
 MainWindow product runtime now creates `InfoPanelService` with direct controller observation
 disabled. Aggregate info refresh for the desktop app is owned by the shared-status path in
 `refresh_coordinator`, which calls `MainWindow.update_info_panel()` and then
-`InfoPanelService.notify_all()`. Standalone / legacy service usage can still opt into direct
+`InfoPanelService.notify_all()`. Mock / legacy non-`Study` service usage can still opt into direct
 controller observer bridges.
 
 ### 已可宣稱
 
 - Product MainWindow no longer double-subscribes aggregate info updates through both panel observer
   refresh and InfoPanelService `data_changed` / `preprocess_changed` bridges.
-- The standalone InfoPanelService compatibility behavior remains available by default.
+- Mock / legacy InfoPanelService compatibility behavior remains available when explicit legacy
+  controllers are provided.
 
 ### Evidence 入口
 
@@ -5627,7 +5628,7 @@ Workflow panel constructors and AgentManager no longer use direct real-`Study`
   Evaluation, and Visualization panels.
 - AgentManager no longer fetches the preprocess controller from real `Study` during initialization.
 - Direct `study.get_controller(...)` UI fallback is now guarded by architecture compliance, with
-  exceptions only for central wiring, InfoPanelService compatibility, or explicit legacy helpers.
+  exceptions only for central wiring or explicit legacy helpers.
 
 ### Evidence 入口
 
@@ -5641,3 +5642,32 @@ Workflow panel constructors and AgentManager no longer use direct real-`Study`
 
 - This removes one direct controller lookup fallback class. It does not remove injected controllers,
   observer bridges, remaining legacy compatibility helpers, or human desktop acceptance blockers.
+
+## 2026-05-06 InfoPanelService Controller Lookup Guard
+
+### 狀態
+
+`InfoPanelService` no longer uses direct real-`Study` `get_controller(...)` lookup for aggregate
+info observer bridges or data-list fallback.
+
+### 已可宣稱
+
+- Real `Study` aggregate info refresh remains query-backed through
+  `QueryStateCommand(query="data_lists", include_objects=True)` and coordinator-driven
+  `notify_all()`.
+- Dataset / preprocess controller observer bridge setup is now mock / legacy-only through
+  `get_legacy_controller_from_study()`.
+- Architecture compliance no longer treats `info_panel_service.py` as a direct Study controller
+  lookup exception.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/components/info_panel_service.py`, `tests/architecture_compliance.py`
+- Tests：`tests/unit/ui/components/test_info_panel_service.py`,
+  `tests/unit/test_architecture_compliance.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This closes one aggregate-info lookup fallback. It does not remove injected controllers, observer
+  bridges elsewhere, command/manual refresh mixing, or human desktop acceptance blockers.

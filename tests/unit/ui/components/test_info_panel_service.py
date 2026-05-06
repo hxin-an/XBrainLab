@@ -40,6 +40,19 @@ def test_service_can_delegate_observer_refresh_to_main_window_coordinator(study_
     assert not hasattr(service, "preprocess_bridge")
 
 
+def test_real_study_info_service_does_not_subscribe_direct_controller_bridges():
+    study = Study()
+    study.get_controller = MagicMock(
+        side_effect=AssertionError("real Study controller bridge is not allowed"),
+    )
+
+    service = InfoPanelService(study)
+
+    study.get_controller.assert_not_called()
+    assert not hasattr(service, "dataset_bridge")
+    assert not hasattr(service, "preprocess_bridge")
+
+
 def test_register_and_notify(service, study_mock):
     """Test registering a panel and notifying it."""
     panel_mock = MagicMock()

@@ -107,10 +107,7 @@ UI_DIRECT_STUDY_STATE_ATTRIBUTES = (
     "training_option",
     "trainer",
 )
-UI_DIRECT_STUDY_CONTROLLER_LOOKUP_ALLOWED_FILES = (
-    "main_window.py",
-    "info_panel_service.py",
-)
+UI_DIRECT_STUDY_CONTROLLER_LOOKUP_ALLOWED_FILES = ("main_window.py",)
 UI_OBSERVER_REFRESH_EVENTS = (
     "data_changed",
     "preprocess_changed",

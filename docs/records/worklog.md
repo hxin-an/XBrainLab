@@ -14039,3 +14039,51 @@
 - 不能宣稱：
   - This does not remove all injected controller usage, all observer bridges, InfoPanelService
     compatibility lookups, remaining legacy helpers, or human desktop acceptance.
+
+### 2026-05-06 InfoPanelService direct Study controller lookup guard
+
+- scope：
+  - Close the remaining direct `Study.get_controller(...)` lookup exception in
+    `InfoPanelService`.
+  - Keep real `Study` aggregate-info truth on ApplicationService state query / coordinator refresh,
+    while preserving mock / legacy observer compatibility through an explicit helper.
+- red / focused tests：
+  - Added `test_real_study_info_service_does_not_subscribe_direct_controller_bridges`.
+  - Red gate failed first because `InfoPanelService._setup_bridges()` called
+    `Study.get_controller("dataset")` for a real `Study`.
+  - `poetry run python tests/architecture_compliance.py` also failed while
+    `info_panel_service.py` remained a direct Study controller lookup exception.
+- 做了什麼：
+  - `InfoPanelService._setup_bridges()` now obtains dataset / preprocess controllers through
+    `get_legacy_controller_from_study()`, which refuses real `Study`.
+  - `_query_data_lists()` keeps real `Study` on `QueryStateCommand(query="data_lists",
+    include_objects=True)` and only uses controller list reads for mock / legacy contexts.
+  - Removed `info_panel_service.py` from the architecture compliance allowlist for direct Study
+    controller lookup.
+- validation：
+  - Focused gates:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/components/test_info_panel_service.py::test_real_study_info_service_does_not_subscribe_direct_controller_bridges tests/unit/ui/components/test_info_panel_service.py::test_successful_legacy_import_updates_info_once tests/unit/ui/components/test_info_panel_service.py::test_real_study_query_failure_does_not_fallback_to_controller_lists -q`
+    -> `3 passed`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - Regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/components/test_info_panel_service.py tests/unit/ui/components/test_info_panel.py tests/unit/ui/test_main_window_sync.py tests/unit/ui/test_refresh_coordinator.py -q`
+    -> `47 passed`.
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `52 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/components/info_panel_service.py tests/unit/ui/components/test_info_panel_service.py tests/architecture_compliance.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/components/info_panel_service.py tests/unit/ui/components/test_info_panel_service.py tests/architecture_compliance.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Quality / docs:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is a UI aggregate-info architecture slice under the fast dev gate; it does not
+    change tool-call benchmark claims and does not justify primary / fallback x3.
+- 不能宣稱：
+  - This does not remove injected controller usage, all observer bridges, command/manual refresh
+    mixing, controller fallback audit debt, or human desktop acceptance.

@@ -910,7 +910,11 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `InfoPanelService(observe_controller_events=False)`，所以 aggregate info refresh 由
   `refresh_coordinator` shared-status path 呼叫 `MainWindow.update_info_panel()` -> `notify_all()`，
   不再同時由 InfoPanelService 自己的 `data_changed` / `preprocess_changed` observer bridge
-  二次更新。standalone / legacy InfoPanelService 仍可保留直接 observer 行為。最新 architecture
+  二次更新。最新 InfoPanelService lookup cleanup 又把 direct
+  `Study.get_controller(...)` bridge / list fallback 收進 `get_legacy_controller_from_study()`；
+  real `Study` aggregate summary 只走 `QueryStateCommand(query="data_lists", include_objects=True)`
+  或 command-coordinator `notify_all()`，mock / legacy context 才可建立 controller observer bridge。
+  最新 architecture
   guard follow-up 也會阻止新的 `import_finished` simple refresh bridge：
   若需要處理 import warnings 或特殊 event 語意，必須用 named callback handler。最新 helper cleanup 又把 Dataset / Preprocess / Training / Evaluation /
   Visualization 的 simple observer bridge call sites 改成 `BasePanel._create_refresh_bridge()`，
@@ -1180,6 +1184,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `study.get_controller("preprocess")` 收進 mock / legacy-only helper；product runtime 的 controller
   wiring 現在應由 MainWindow injection 負責，static architecture compliance 也會擋住新的 direct
   Study controller lookup。
+  最新 InfoPanelService lookup cleanup 也移除了 direct `Study.get_controller(...)` 例外：
+  real `Study` 的 aggregate info bridge / list fallback 不再回讀 dataset / preprocess controller，
+  mock / legacy compatibility 才能經 explicit helper 使用 controller bridge。
   最新 no-refresh command guard 也讓 UI 中的 `execute_application_command(..., refresh=False)`
   只可用於 read/query commands；mutating command 必須保留 command-driven refresh。最新
   legacy-mutation helper guard 也要求會直接 mutate controller 的 legacy / fallback helper 只能在

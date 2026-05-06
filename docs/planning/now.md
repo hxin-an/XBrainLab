@@ -436,8 +436,10 @@
   guard 也會阻擋新的 `controller.study.get_controller(...)` product fallback；產品 observer
   wiring 應由 MainWindow injection 或 explicit legacy helper 負責。最新 direct Study controller
   lookup guard 也會阻擋新的 `study.get_controller(...)` / `parent.study.get_controller(...)`
-  product fallback；例外只保留給 MainWindow central wiring、InfoPanelService legacy/query bridge、
-  或明確 legacy / fallback helper。
+  product fallback；例外只保留給 MainWindow central wiring 或明確 legacy / fallback helper。
+  最新 InfoPanelService follow-up 也把 aggregate-info controller bridge / list fallback 收進
+  `get_legacy_controller_from_study()`，real `Study` 不再用 direct controller lookup 建立
+  dataset / preprocess bridge。
 - 後續 Training sidebar bypass cleanup 修掉重新 split 前清 datasets 和 Clear History 的 direct
   controller mutation；destructive cleanup 會走 `ClearDatasetsCommand` /
   `ClearTrainingHistoryCommand`，且 Clear History 現在有 user confirmation。

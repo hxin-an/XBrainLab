@@ -244,8 +244,11 @@ replay artifact now also has a visible-text guard for raw command / recipe trace
      不重複刷新。
    - MainWindow product runtime 的 aggregate info refresh 現在也不再由 InfoPanelService 直接
      訂閱 controller observer；MainWindow 建立 service 時關閉 direct observer bridges，shared
-     status refresh 由 coordinator 呼叫 `MainWindow.update_info_panel()`。standalone / legacy
-     InfoPanelService 仍可直接觀察 controller events。
+     status refresh 由 coordinator 呼叫 `MainWindow.update_info_panel()`。mock / legacy
+     InfoPanelService context 仍可直接觀察 controller events。
+   - InfoPanelService 的 direct `Study.get_controller(...)` bridge / list fallback 也已收進
+     `get_legacy_controller_from_study()`；real `Study` aggregate info refresh 只走 state query /
+     coordinator `notify_all()`，mock / legacy context 才可使用 controller bridge compatibility。
    - training lifecycle observer events 也交由 TrainingPanel owner callbacks 觸發 centralized
      Training / Evaluation / Visualization refresh scope；Evaluation / Visualization 同事件 subscriber
      不重複刷新。

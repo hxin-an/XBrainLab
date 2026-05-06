@@ -9,6 +9,7 @@ from XBrainLab.backend.application import QueryStateCommand
 from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.ui.application_capabilities import get_legacy_controller_from_study
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 
 
@@ -50,19 +51,31 @@ class InfoPanelService(QObject):
 
     def _setup_bridges(self):
         """Connect observer bridges to dataset and preprocess controllers."""
-        self.dataset_bridge = QtObserverBridge(
-            self.study.get_controller("dataset"),
-            "data_changed",
+        dataset_controller = get_legacy_controller_from_study(
             self,
+            self.study,
+            "dataset",
         )
-        self.dataset_bridge.connect_to(self.notify_all)
+        if dataset_controller is not None:
+            self.dataset_bridge = QtObserverBridge(
+                dataset_controller,
+                "data_changed",
+                self,
+            )
+            self.dataset_bridge.connect_to(self.notify_all)
 
-        self.preprocess_bridge = QtObserverBridge(
-            self.study.get_controller("preprocess"),
-            "preprocess_changed",
+        preprocess_controller = get_legacy_controller_from_study(
             self,
+            self.study,
+            "preprocess",
         )
-        self.preprocess_bridge.connect_to(self.notify_all)
+        if preprocess_controller is not None:
+            self.preprocess_bridge = QtObserverBridge(
+                preprocess_controller,
+                "preprocess_changed",
+                self,
+            )
+            self.preprocess_bridge.connect_to(self.notify_all)
 
     def register(self, panel):
         """Register an info panel to receive automatic updates.
@@ -148,13 +161,21 @@ class InfoPanelService(QObject):
             return [], []
 
         loaded = []
-        if self.study.get_controller("dataset"):
-            loaded = self.study.get_controller("dataset").get_loaded_data_list()
+        dataset_controller = get_legacy_controller_from_study(
+            self,
+            self.study,
+            "dataset",
+        )
+        if dataset_controller is not None:
+            loaded = dataset_controller.get_loaded_data_list()
 
         preprocessed = []
-        if self.study.get_controller("preprocess"):
-            preprocessed = self.study.get_controller(
-                "preprocess",
-            ).get_preprocessed_data_list()
+        preprocess_controller = get_legacy_controller_from_study(
+            self,
+            self.study,
+            "preprocess",
+        )
+        if preprocess_controller is not None:
+            preprocessed = preprocess_controller.get_preprocessed_data_list()
 
         return loaded, preprocessed
