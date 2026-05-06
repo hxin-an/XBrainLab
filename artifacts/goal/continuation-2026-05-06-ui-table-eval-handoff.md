@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+fc14dd3 ui: show preprocess fallback warnings
+f03f8d4 docs: refresh handoff after direct load warning
 3d1321a ui: show direct load fallback warning
 28e4e27 docs: refresh handoff after smart parse filename warning
 724447b ui: show smart parse filename fallback warning
@@ -150,6 +152,13 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Preprocess operation fallback warning:
+  - real `Study` filtering, resampling, re-reference, normalization, and epoching fallback refusal
+    now shows operation-specific Blocked warnings.
+  - the UI no longer tries controller mutation or wraps these refusals in generic failed text when
+    preprocess commands return `None`.
+  - the architecture guard now explicitly allows the named preprocess legacy wrapper while still
+    flagging naked controller mutations in missing-result branches.
 - Direct Load compatibility fallback warning:
   - real `Study` direct-load compatibility fallback refusal now shows `Interpretation Blocked`.
   - the UI no longer tries `DatasetController.import_files()` or wraps the refusal in generic import
@@ -1955,6 +1964,43 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/integration/agent/test_tool_call_eval.py \
   -q
 # passed for 3d1321a; backend integration 7 passed; agent/tool gate 20 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_filtering_refuses_real_study_controller_fallback \
+  -q
+# red first because no blocked warning was shown, then 1 passed for fc14dd3
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar \
+  -q
+# 26 passed for fc14dd3
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess -q
+# 48 passed for fc14dd3
+
+poetry run pytest --capture=sys \
+  tests/unit/test_architecture_compliance.py::test_controller_fallback_guard_allows_named_legacy_wrapper \
+  tests/unit/test_architecture_compliance.py::test_controller_fallback_guard_flags_direct_mutation_in_missing_result \
+  tests/unit/test_architecture_compliance.py::test_direct_controller_mutation_guard_allows_named_legacy_wrapper_call \
+  -q
+# 3 passed for fc14dd3
+
+poetry run ruff check XBrainLab/ui/panels/preprocess/sidebar.py tests/unit/ui/test_sidebars_and_components.py
+poetry run basedpyright XBrainLab/ui/panels/preprocess/sidebar.py tests/unit/ui/test_sidebars_and_components.py
+# passed for fc14dd3; basedpyright reported 0 errors, 0 warnings, 0 notes
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q
+poetry run mkdocs build --strict
+poetry run pytest --capture=sys tests/integration/backend -q
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# passed for fc14dd3; architecture unit 32 passed; backend integration 7 passed; agent/tool 20 passed
 
 git diff --check
 poetry run ruff check .
