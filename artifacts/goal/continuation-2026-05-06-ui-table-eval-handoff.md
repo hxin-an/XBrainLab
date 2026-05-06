@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+8862d14 test: guard walkthrough internal command text
+70adaf1 docs: refresh handoff after training observer route
 5c390da ui: route live training updates
 4d58ff5 docs: refresh handoff after chat evidence
 cd1a94b test: capture chat bubble visible text
@@ -166,6 +168,14 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Walkthrough internal command leakage guard:
+  - `forbidden_visible_text()` now flags selected internal command names beyond the original Data
+    Interpretation set, including `configure_training`, `generate_dataset`, `create_epoch`,
+    `query_state`, and legacy `load_data` / `attach_labels` / `import_labels`.
+  - The consolidated human-like walkthrough was refreshed and still passes with `0` forbidden
+    visible-text findings.
+  - This is an automated UI-observable guard only; it does not replace human copy review or long
+    local-model ChatPanel acceptance.
 - Training updated observer handler routing:
   - `TrainingPanel` no longer wires `training_updated` to a lambda that only calls `update_loop()`.
   - A named `_on_training_updated()` keeps the live progress update and then calls
@@ -659,6 +669,34 @@ bb57beb ui: use backend truth for split replacement
 ## Validation Already Run
 
 ```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/scripts/test_capture_human_like_product_walkthrough.py -q
+# 19 passed for 8862d14
+
+QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py
+# exit 0 for 8862d14; status passed, forbidden visible text findings 0
+# resource smoke passed; RSS growth 231556 KB / 600000 KB
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run mkdocs build --strict
+poetry run python tests/architecture_compliance.py
+# all passed for 8862d14; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/scripts/test_capture_human_like_product_walkthrough.py \
+  tests/integration/ui/test_product_walkthrough.py -q
+# 22 passed
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py -q
+# 20 passed
+
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/training/test_training_panel.py::test_training_updated_observer_enters_refresh_coordinator \
   tests/unit/ui/training/test_training_panel.py::test_training_panel_refreshes_progress_and_plot_on_training_updated \
