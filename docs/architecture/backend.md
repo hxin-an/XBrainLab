@@ -288,6 +288,14 @@ adapter 會先保留 backend capability / precondition truth：unready training 
 reason；只有 capability 已 enabled 的 long-running training 才回
 `long_running_job_required`，不做同步阻塞執行。HTTP job API、progress、cancel、recovery 和
 resource lock 仍是後續 architecture work。
+`XBrainLab.mcp.http_server` 是目前的 local HTTP transport baseline；它用 stdlib
+`ThreadingHTTPServer` 暴露 `POST /mcp` JSON-RPC 和 `GET /health`，同樣委派到
+`MCPServer(transport="http")` / automation adapter / `ApplicationService.execute()`。
+HTTP structured result 標示 `adapter.mode=headless_mcp_http`、`transport=http`、stable session
+id 和 `ui_refresh.supported=False`。HTTP server 預設 bind `127.0.0.1`，並支援 optional Bearer
+token；這是 local external-agent adapter，不是遠端多使用者服務。Backend-ready long-running
+`train` over HTTP 仍回 structured `long_running_job_required`，直到 future HTTP job API 提供
+progress / cancel / recovery。
 
 `ApplicationService` 會拿同一組 cached controllers：
 

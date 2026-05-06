@@ -1,4 +1,4 @@
-# XBrainLab Product Completion Continuation - 2026-05-06 UI Table / Eval Gate
+# XBrainLab Product Completion Continuation - 2026-05-06 UI Table / Eval Gate / MCP HTTP
 
 Use this as the next-run handoff for the active product-completion goal. Do not
 mark Goal 1 product-complete while the blockers below remain.
@@ -30,9 +30,11 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+6f9ab5d docs: refresh handoff after table verification
 144f4b1 docs: record table geometry verification
 93f3e67 docs: refresh handoff after label prompt wording
 d84a02a ui: rename label compatibility prompts
+50beaf3 docs: refresh handoff after chat empty state wording
 da565f8 ui: align chat empty state with scan source
 eb96111 docs: refresh handoff after assistant footer wording
 28db597 ui: keep assistant footer on scan source
@@ -227,6 +229,18 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- MCP local HTTP transport baseline:
+  - Added `XBrainLab.mcp.http_server` with stdlib `ThreadingHTTPServer`, `GET /health`, `POST /mcp`,
+    optional Bearer token support, and no client-side XBrainLab dependency requirement.
+  - `MCPServer` now carries transport-scoped adapter metadata:
+    `mode=headless_mcp_http`, `transport=http`, stable `session_id`, and
+    `ui_refresh.supported=False` for HTTP.
+  - Added `scripts/dev/run_mcp_http_server.py` and
+    `scripts/dev/capture_mcp_http_walkthrough.py`.
+  - Refreshed `artifacts/mcp/http-walkthrough.json` / `.md`; walkthrough covers health,
+    initialize, tools/list, scan, preview, and backend-ready train boundary.
+  - HTTP `train` does not run synchronously; backend-ready long-running training returns
+    `long_running_job_required` until a future job API provides progress / cancel / recovery.
 - Data Interpretation table geometry verification:
   - User-reported preview table overflow / Review Summary contrast and loaded Dataset table
     underfill / green Events concerns were checked against current code and refreshed replay
@@ -3258,8 +3272,9 @@ repeat `1`, while full-suite deterministic dashboard refreshes require `--eval-g
   - Windows launcher click-through, dual monitor / DPI, and long real local-model desktop session
     are not verified.
 - Agent / MCP release depth remains open:
-  - long autonomous ChatPanel workflow, UI-routing render, full recovery behavior, HTTP MCP
-    transport, and long-running MCP job progress/cancel/recovery remain.
+  - long autonomous ChatPanel workflow, UI-routing render, full recovery behavior, MCP HTTP
+    long-running job progress/cancel/recovery, remote authorization certification, and full MCP
+    client certification remain.
 - Tool-call benchmark evidence must not be used as UI / launcher / import wizard product evidence.
 
 ## Suggested Next Slices
@@ -3272,5 +3287,9 @@ repeat `1`, while full-suite deterministic dashboard refreshes require `--eval-g
 2. Continue Data Interpretation wizard maturity.
    - Add a small recipe diff/review UX slice or a safer label-carrier edit slice with screenshot
      artifact.
-3. Only after product/UI/backend path stabilizes, refresh affected tool-call eval cases using the
+3. Design MCP HTTP job execution before allowing long-running actions through HTTP.
+   - Keep HTTP transport thin over ApplicationService / automation truth.
+   - Add job ids, progress, cancel, recovery, and resource-lock behavior before `train` / `evaluate`
+     can run asynchronously over MCP HTTP.
+4. Only after product/UI/backend path stabilizes, refresh affected tool-call eval cases using the
    fast/candidate gate. Reserve full primary/fallback x3 for release/thesis evidence.

@@ -1,0 +1,228 @@
+from __future__ import annotations
+
+import json
+import socket
+from http.client import HTTPConnection
+from pathlib import Path
+from threading import Thread
+from typing import Any, cast
+from unittest.mock import MagicMock
+
+from XBrainLab.backend.application import ApplicationService
+from XBrainLab.backend.study import Study
+from XBrainLab.mcp.http_server import build_http_server
+from XBrainLab.mcp.server import PROTOCOL_VERSION
+
+
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def _post_json(
+    port: int,
+    path: str,
+    payload: dict[str, Any],
+    *,
+    token: str | None = None,
+) -> tuple[int, dict[str, Any]]:
+    conn = HTTPConnection("127.0.0.1", port, timeout=10)
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    try:
+        conn.request("POST", path, json.dumps(payload), headers)
+        response = conn.getresponse()
+        body = response.read().decode("utf-8")
+        return response.status, json.loads(body)
+    finally:
+        conn.close()
+
+
+def _get_json(
+    port: int,
+    path: str,
+    *,
+    token: str | None = None,
+) -> tuple[int, dict[str, Any]]:
+    conn = HTTPConnection("127.0.0.1", port, timeout=10)
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    try:
+        conn.request("GET", path, headers=headers)
+        response = conn.getresponse()
+        body = response.read().decode("utf-8")
+        return response.status, json.loads(body)
+    finally:
+        conn.close()
+
+
+def _start_server(
+    *, token: str | None = None, service: ApplicationService | None = None
+):
+    port = _free_port()
+    httpd = build_http_server(
+        host="127.0.0.1",
+        port=port,
+        auth_token=token,
+        service=service,
+    )
+    thread = Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    return httpd, port, thread
+
+
+def test_http_mcp_server_lists_and_calls_application_tools(tmp_path: Path):
+    source = tmp_path / "sub-01_task-mi_run-1.gdf"
+    source.write_bytes(b"placeholder")
+    httpd, port, thread = _start_server()
+    try:
+        status, health = _get_json(port, "/health")
+        assert status == 200
+        assert health["status"] == "ok"
+        assert health["transport"] == "http"
+        assert health["session_id"].startswith("mcp-http-")
+
+        status, initialized = _post_json(
+            port,
+            "/mcp",
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"protocolVersion": PROTOCOL_VERSION},
+            },
+        )
+        assert status == 200
+        assert initialized["result"]["capabilities"]["tools"]["listChanged"] is False
+
+        status, listed = _post_json(
+            port,
+            "/mcp",
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+        )
+        assert status == 200
+        assert any(tool["name"] == "scan_source" for tool in listed["result"]["tools"])
+
+        status, scanned = _post_json(
+            port,
+            "/mcp",
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {
+                    "name": "scan_source",
+                    "arguments": {"source_path": str(source)},
+                },
+            },
+        )
+        status, previewed = _post_json(
+            port,
+            "/mcp",
+            {
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "tools/call",
+                "params": {"name": "preview_interpretation", "arguments": {}},
+            },
+        )
+
+        assert status == 200
+        assert scanned["result"]["isError"] is False
+        assert previewed["result"]["isError"] is False
+        adapter = scanned["result"]["structuredContent"]["adapter"]
+        preview_adapter = previewed["result"]["structuredContent"]["adapter"]
+        assert adapter["mode"] == "headless_mcp_http"
+        assert adapter["transport"] == "http"
+        assert adapter["session_id"] == health["session_id"]
+        assert adapter["session_id"] == preview_adapter["session_id"]
+        assert adapter["ui_refresh"]["supported"] is False
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=10)
+
+
+def test_http_mcp_server_requires_bearer_token_when_configured():
+    token = "unit-test-token"  # noqa: S105 - non-secret local test token
+    httpd, port, thread = _start_server(token=token)
+    try:
+        status, unauthorized = _get_json(port, "/health")
+        assert status == 401
+        assert unauthorized["error"] == "unauthorized"
+
+        status, health = _get_json(port, "/health", token=token)
+        assert status == 200
+        assert health["transport"] == "http"
+
+        status, initialized = _post_json(
+            port,
+            "/mcp",
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"protocolVersion": PROTOCOL_VERSION},
+            },
+            token=token,
+        )
+        assert status == 200
+        assert initialized["result"]["serverInfo"]["name"] == "xbrainlab"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=10)
+
+
+def test_http_mcp_marks_enabled_long_running_commands_as_job_api_boundary():
+    service = ApplicationService(Study())
+    raw = MagicMock()
+    raw.get_filename.return_value = "sample.fif"
+    raw.get_filepath.return_value = "/tmp/sample.fif"
+    service.study.loaded_data_list = [raw]
+    cast(Any, service.study).datasets = [object()]
+    cast(Any, service.study).model_holder = object()
+    cast(Any, service.study).training_option = object()
+    httpd, port, thread = _start_server(service=service)
+    try:
+        _post_json(
+            port,
+            "/mcp",
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"protocolVersion": PROTOCOL_VERSION},
+            },
+        )
+
+        status, response = _post_json(
+            port,
+            "/mcp",
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {"name": "train", "arguments": {"confirmed": True}},
+            },
+        )
+
+        assert status == 200
+        result = response["result"]
+        assert result["isError"] is True
+        assert "HTTP job execution is not enabled yet" in result["content"][0]["text"]
+        structured = result["structuredContent"]
+        assert structured["result"]["error_type"] == "long_running_job_required"
+        assert structured["result"]["diagnostics"]["job_boundary"] == {
+            "supported": False,
+            "required_transport": "http_job_api",
+            "supports_progress": False,
+            "supports_cancel": False,
+        }
+        assert structured["adapter"]["mode"] == "headless_mcp_http"
+        assert structured["adapter"]["transport"] == "http"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=10)

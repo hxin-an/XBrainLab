@@ -47,10 +47,29 @@ class JsonRpcError(Exception):
 class MCPServer:
     """Stateful MCP tool server for one XBrainLab ApplicationService session."""
 
-    def __init__(self, service: ApplicationService | None = None) -> None:
+    def __init__(
+        self,
+        service: ApplicationService | None = None,
+        *,
+        transport: str = "stdio",
+    ) -> None:
+        transport = transport.strip().lower()
+        if transport not in {"stdio", "http"}:
+            raise ValueError(f"Unsupported MCP transport: {transport}")
         self._service = service or ApplicationService(Study())
-        self._session_id = f"mcp-stdio-{uuid.uuid4().hex[:12]}"
+        self._transport = transport
+        self._session_id = f"mcp-{transport}-{uuid.uuid4().hex[:12]}"
         self._initialized = False
+
+    @property
+    def session_id(self) -> str:
+        """Return the stable adapter session id."""
+        return self._session_id
+
+    @property
+    def transport(self) -> str:
+        """Return the adapter transport."""
+        return self._transport
 
     def handle_line(self, line: str) -> dict[str, Any] | None:
         """Parse and handle one newline-delimited JSON-RPC message."""
@@ -192,11 +211,17 @@ class MCPServer:
         name: str,
         capability: Any,
     ) -> dict[str, Any]:
-        message = (
-            "MCP stdio does not execute long-running commands synchronously. "
-            "Use the desktop UI or a future HTTP job API with progress and "
-            "cancel support."
-        )
+        if self._transport == "http":
+            message = (
+                "MCP HTTP job execution is not enabled yet. Use the desktop UI "
+                "or a future HTTP job API with progress and cancel support."
+            )
+        else:
+            message = (
+                "MCP stdio does not execute long-running commands synchronously. "
+                "Use the desktop UI or a future HTTP job API with progress and "
+                "cancel support."
+            )
         job_boundary = {
             "supported": False,
             "required_transport": "http_job_api",
@@ -233,8 +258,8 @@ class MCPServer:
 
     def _adapter_metadata(self) -> dict[str, Any]:
         return {
-            "mode": "headless_mcp_stdio",
-            "transport": "stdio",
+            "mode": f"headless_mcp_{self._transport}",
+            "transport": self._transport,
             "session_id": self._session_id,
             "ui_refresh": {
                 "supported": False,

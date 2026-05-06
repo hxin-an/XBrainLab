@@ -1,0 +1,4155 @@
+{
+  "workflow": "mcp_http_walkthrough",
+  "transport": "http",
+  "endpoint": "127.0.0.1:<ephemeral>/mcp",
+  "client_dependency_boundary": "The HTTP client uses Python standard-library HTTP and JSON only. XBrainLab EEG, PyQt, PyTorch, and local LLM dependencies remain in the server process.",
+  "session_boundary": "This is a headless ApplicationService MCP session. It does not control or refresh the desktop UI.",
+  "long_running_boundary": "HTTP transport baseline is available, but train/eval long-running job progress and cancel are not enabled in this slice.",
+  "summary": {
+    "health_ok": true,
+    "session_id": "mcp-http-dec6e5b4e9b7",
+    "tool_count": 28,
+    "tools_listed": true,
+    "scan_ok": true,
+    "preview_ok": true,
+    "headless_http_adapter": true,
+    "train_boundary_error_type": "long_running_job_required",
+    "long_running_boundary_recorded": true
+  },
+  "responses": {
+    "health": {
+      "status": 200,
+      "body": {
+        "status": "ok",
+        "transport": "http",
+        "session_id": "mcp-http-dec6e5b4e9b7",
+        "ui_refresh_supported": false
+      }
+    },
+    "initialize": {
+      "status": 200,
+      "body": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+          "protocolVersion": "2025-06-18",
+          "capabilities": {
+            "tools": {
+              "listChanged": false
+            }
+          },
+          "serverInfo": {
+            "name": "xbrainlab",
+            "title": "XBrainLab ApplicationService MCP Server",
+            "version": "0.5.6"
+          },
+          "instructions": "Use tools to operate XBrainLab through ApplicationService only. Data interpretation apply, training, reset, and destructive commands may require human confirmation in the returned autonomy policy."
+        }
+      }
+    },
+    "tools_list": {
+      "status": 200,
+      "body": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+          "tools": [
+            {
+              "name": "scan_source",
+              "title": "Scan Source",
+              "description": "Scan a source path for EEG files, label carriers, and metadata.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "source_path": {
+                    "type": "string"
+                  },
+                  "source_hint": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "source_path"
+                ]
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "data_interpretation",
+                "capability": {
+                  "command_name": "scan_source",
+                  "enabled": true,
+                  "reasons": [],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": "read_only_discovery",
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "preview_interpretation",
+              "title": "Preview Interpretation",
+              "description": "Build and preview a candidate data interpretation.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "scan_id": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "choices": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "recipe_id": {
+                        "type": "string",
+                        "description": "Saved recipe identifier carried through recipe reload."
+                      },
+                      "selected_eeg_files": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "Selected EEG files from the latest scan result."
+                      },
+                      "required_label_carriers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "Saved label/event carriers that must be present or explicitly remapped before apply."
+                      },
+                      "eeg_file_remap": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "description": "Map saved EEG file path/name from a recipe to the current replacement EEG file path/name before re-previewing.",
+                        "examples": [
+                          {
+                            "/recipe/old_raw.fif": "/data/current_raw.fif"
+                          }
+                        ]
+                      },
+                      "label_carrier_remap": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "description": "Map saved label/event carrier path/name from a recipe to the current replacement carrier before re-previewing.",
+                        "examples": [
+                          {
+                            "/recipe/events.tsv": "/data/events.tsv"
+                          }
+                        ]
+                      },
+                      "label_carrier_choices": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "label_field": {
+                              "type": "string",
+                              "description": "Column, variable, or label sequence used as class labels."
+                            },
+                            "anchor": {
+                              "type": "string",
+                              "description": "Column, variable, or event anchor used for timing."
+                            },
+                            "time_model": {
+                              "type": "string",
+                              "enum": [
+                                "seconds",
+                                "sample_index",
+                                "relative_time",
+                                "trial_order",
+                                "lsl_time",
+                                "unknown"
+                              ],
+                              "description": "How carrier timing should be interpreted."
+                            },
+                            "granularity": {
+                              "type": "string",
+                              "enum": [
+                                "trial",
+                                "event",
+                                "recording",
+                                "stream",
+                                "unknown"
+                              ],
+                              "description": "Whether labels describe trials, events, or a recording."
+                            },
+                            "role": {
+                              "type": "string",
+                              "description": "User-facing role for the carrier, such as class cue labels."
+                            },
+                            "target_file": {
+                              "type": "string",
+                              "description": "EEG file path/name this carrier should align with."
+                            }
+                          }
+                        },
+                        "description": "Per-carrier label field, anchor, time model, granularity, role, and target-file choices keyed by carrier path or file name."
+                      },
+                      "event_roles": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "description": "Map event field names to user-confirmed roles."
+                      },
+                      "metadata_overrides": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "subject": {
+                              "type": "string"
+                            },
+                            "session": {
+                              "type": "string"
+                            },
+                            "task": {
+                              "type": "string"
+                            },
+                            "run": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "description": "Per-EEG-file metadata overrides keyed by file path or file name."
+                      },
+                      "label_carrier": {
+                        "type": "string",
+                        "enum": [
+                          "embedded_events",
+                          "external_file",
+                          "bids_events",
+                          "edf_annotations",
+                          "xdf_stream",
+                          "none",
+                          "unknown"
+                        ],
+                        "description": "Where labels/events come from for this import."
+                      },
+                      "event_role": {
+                        "type": "string",
+                        "enum": [
+                          "stimulus",
+                          "response",
+                          "trial",
+                          "annotation",
+                          "unknown"
+                        ],
+                        "description": "Role assigned to event markers."
+                      },
+                      "class_map": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "description": "Map raw event or label values to class names."
+                      },
+                      "anchor": {
+                        "type": "string",
+                        "enum": [
+                          "sample",
+                          "timestamp",
+                          "onset_seconds",
+                          "lsl_time",
+                          "unknown"
+                        ],
+                        "description": "Time anchor for labels/events."
+                      },
+                      "subject": {
+                        "type": "string",
+                        "description": "Subject metadata override."
+                      },
+                      "session": {
+                        "type": "string",
+                        "description": "Session metadata override."
+                      },
+                      "task": {
+                        "type": "string",
+                        "description": "Task metadata override."
+                      },
+                      "run": {
+                        "type": "string",
+                        "description": "Run metadata override."
+                      }
+                    },
+                    "description": "Optional user-confirmed choices for Data Interpretation preview. Recipe reload remaps belong here, not in legacy load/attach tools."
+                  }
+                }
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "data_interpretation",
+                "capability": {
+                  "command_name": "preview_interpretation",
+                  "enabled": false,
+                  "reasons": [
+                    "Scan a data source before previewing interpretation."
+                  ],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": "semantic_preview",
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "validate_interpretation",
+              "title": "Validate Interpretation",
+              "description": "Validate an interpretation candidate.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "candidate_id": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                }
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "data_interpretation",
+                "capability": {
+                  "command_name": "validate_interpretation",
+                  "enabled": false,
+                  "reasons": [
+                    "Preview an interpretation candidate before validation."
+                  ],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": "semantic_validation",
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "apply_interpretation",
+              "title": "Apply Interpretation",
+              "description": "Apply a validated interpretation to the active backend session.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "candidate_id": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "confirmed": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "data_interpretation",
+                "capability": {
+                  "command_name": "apply_interpretation",
+                  "enabled": false,
+                  "reasons": [
+                    "Validate an interpretation before applying it.",
+                    "Reset the session before changing raw files, labels, or metadata after epoching or dataset generation."
+                  ],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": "data_apply",
+                  "continue_allowed_after_success": false,
+                  "retry_limit": 0,
+                  "stop_after_success": true,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "save_interpretation_recipe",
+              "title": "Save Interpretation Recipe",
+              "description": "Save the applied interpretation as a replayable recipe.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "recipe_path": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                }
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "data_interpretation",
+                "capability": {
+                  "command_name": "save_interpretation_recipe",
+                  "enabled": false,
+                  "reasons": [
+                    "Apply an interpretation before saving a recipe."
+                  ],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": "write_recipe",
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "reload_interpretation_recipe",
+              "title": "Reload Interpretation Recipe",
+              "description": "Reload a recipe and re-run scan/preview/validation without applying.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "recipe_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "recipe_path"
+                ]
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "data_interpretation",
+                "capability": {
+                  "command_name": "reload_interpretation_recipe",
+                  "enabled": true,
+                  "reasons": [],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": "recipe_reload_preview",
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "load_data",
+              "title": "Load Data",
+              "description": "Legacy compatibility: directly load raw EEG files. Prefer Data Interpretation scan_source -> preview_interpretation -> validate_interpretation -> apply_interpretation for new imports.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "paths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "allow_append": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "paths"
+                ]
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "legacy_data_compatibility",
+                "capability": {
+                  "command_name": "load_data",
+                  "enabled": false,
+                  "reasons": [
+                    "Reset the session before loading new raw data after epoching, dataset generation, or trainer creation."
+                  ],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": null,
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": true,
+                "primary_workflow": false,
+                "preferred_commands": [
+                  "scan_source",
+                  "preview_interpretation",
+                  "validate_interpretation",
+                  "apply_interpretation",
+                  "save_interpretation_recipe"
+                ]
+              }
+            },
+            {
+              "name": "attach_labels",
+              "title": "Attach Labels",
+              "description": "Legacy compatibility: attach label files to already-loaded raw data. Prefer Data Interpretation label/event carrier preview, validation, apply, and recipe trace for new imports.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "mapping": {
+                    "type": "object"
+                  },
+                  "label_format": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "mapping"
+                ]
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "legacy_data_compatibility",
+                "capability": {
+                  "command_name": "attach_labels",
+                  "enabled": false,
+                  "reasons": [
+                    "Reset the session before changing raw files, labels, or metadata after epoching or dataset generation."
+                  ],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": null,
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": true,
+                "primary_workflow": false,
+                "preferred_commands": [
+                  "scan_source",
+                  "preview_interpretation",
+                  "validate_interpretation",
+                  "apply_interpretation",
+                  "save_interpretation_recipe"
+                ]
+              }
+            },
+            {
+              "name": "import_labels",
+              "title": "Import Labels",
+              "description": "Legacy compatibility: apply an explicit post-load label import plan. Prefer Data Interpretation label/event carrier review and recipe flow for new imports.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "plan": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "target_indices": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer"
+                        }
+                      },
+                      "label_map": {
+                        "type": "object"
+                      },
+                      "mapping": {
+                        "type": "object"
+                      },
+                      "file_mapping": {
+                        "type": "object"
+                      },
+                      "mode": {
+                        "type": "string"
+                      },
+                      "selected_event_names": {
+                        "anyOf": [
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        ]
+                      },
+                      "force_import": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "plan"
+                ]
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "legacy_data_compatibility",
+                "capability": {
+                  "command_name": "import_labels",
+                  "enabled": false,
+                  "reasons": [
+                    "Reset the session before changing raw files, labels, or metadata after epoching or dataset generation."
+                  ],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": null,
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": true,
+                "primary_workflow": false,
+                "preferred_commands": [
+                  "scan_source",
+                  "preview_interpretation",
+                  "validate_interpretation",
+                  "apply_interpretation",
+                  "save_interpretation_recipe"
+                ]
+              }
+            },
+            {
+              "name": "update_metadata",
+              "title": "Update Metadata",
+              "description": "Update subject/session metadata for one or more loaded files.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "index": {
+                    "type": "integer",
+                    "nullable": true
+                  },
+                  "subject": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "session": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "updates": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "index": {
+                          "type": "integer"
+                        },
+                        "subject": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "session": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "index"
+                      ]
+                    }
+                  }
+                }
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "metadata_resolution",
+                "capability": {
+                  "command_name": "update_metadata",
+                  "enabled": false,
+                  "reasons": [
+                    "Reset the session before changing raw files, labels, or metadata after epoching or dataset generation."
+                  ],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": null,
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "apply_smart_parse",
+              "title": "Apply Smart Parse",
+              "description": "Apply filename parser results to loaded-file metadata.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "results": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "results"
+                ]
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "metadata_resolution",
+                "capability": {
+                  "command_name": "apply_smart_parse",
+                  "enabled": false,
+                  "reasons": [
+                    "Reset the session before changing raw files, labels, or metadata after epoching or dataset generation."
+                  ],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": null,
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "remove_files",
+              "title": "Remove Files",
+              "description": "Remove loaded raw files by row/index.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "indices": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "required": [
+                  "indices"
+                ]
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "metadata_resolution",
+                "capability": {
+                  "command_name": "remove_files",
+                  "enabled": false,
+                  "reasons": [
+                    "Reset the session before changing raw files, labels, or metadata after epoching or dataset generation."
+                  ],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": null,
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "preprocess",
+              "title": "Preprocess",
+              "description": "Apply a preprocessing operation to the active study.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "operation": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "bandpass",
+                          "notch",
+                          "resample",
+                          "normalize",
+                          "rereference",
+                          "select_channels",
+                          "channel_selection",
+                          "set_montage",
+                          "standard"
+                        ]
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "low_freq": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "high_freq": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "notch_freq": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "rate": {
+                    "type": "integer",
+                    "nullable": true
+                  },
+                  "method": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "channels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "nullable": true
+                  },
+                  "montage_name": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "operation"
+                ]
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "data_transform",
+                "capability": {
+                  "command_name": "preprocess",
+                  "enabled": false,
+                  "reasons": [
+                    "Reset the session before changing preprocessing after epoching or dataset generation."
+                  ],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": null,
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "create_epoch",
+              "title": "Create Epoch",
+              "description": "Create epochs from preprocessed data.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "t_min": {
+                    "type": "number"
+                  },
+                  "t_max": {
+                    "type": "number"
+                  },
+                  "baseline": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "number",
+                          "nullable": true
+                        }
+                      }
+                    ]
+                  },
+                  "event_ids": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      {
+                        "type": "object"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "t_min",
+                  "t_max"
+                ]
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "data_transform",
+                "capability": {
+                  "command_name": "create_epoch",
+                  "enabled": false,
+                  "reasons": [
+                    "Preprocess data before creating epochs.",
+                    "Reset the session before recreating epochs for the active dataset."
+                  ],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": null,
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "generate_dataset",
+              "title": "Generate Dataset",
+              "description": "Generate train/validation/test datasets from epoch data.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "test_ratio": {
+                    "type": "number"
+                  },
+                  "val_ratio": {
+                    "type": "number"
+                  },
+                  "split_strategy": {
+                    "type": "string"
+                  },
+                  "training_mode": {
+                    "type": "string"
+                  },
+                  "generator": {
+                    "type": "object",
+                    "nullable": true
+                  }
+                }
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "experiment_setup",
+                "capability": {
+                  "command_name": "generate_dataset",
+                  "enabled": false,
+                  "reasons": [
+                    "Create epochs before generating datasets.",
+                    "Reset the session or start a new session before generating a new dataset from an existing active dataset."
+                  ],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": null,
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "clear_datasets",
+              "title": "Clear Datasets",
+              "description": "Clear generated datasets and any training plan tied to them.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "confirmed": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "lifecycle_destructive",
+                "capability": {
+                  "command_name": "clear_datasets",
+                  "enabled": true,
+                  "reasons": [],
+                  "long_running": false,
+                  "destructive": true,
+                  "confirmation_required": true,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": null,
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "configure_training",
+              "title": "Configure Training",
+              "description": "Configure model and training hyperparameters.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "epoch": {
+                    "type": "integer",
+                    "nullable": true
+                  },
+                  "batch_size": {
+                    "type": "integer",
+                    "nullable": true
+                  },
+                  "learning_rate": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "repeat": {
+                    "type": "integer"
+                  },
+                  "device": {
+                    "type": "string"
+                  },
+                  "optimizer": {
+                    "type": "string"
+                  },
+                  "optimizer_params": {
+                    "type": "object"
+                  },
+                  "save_checkpoints_every": {
+                    "type": "integer"
+                  },
+                  "output_dir": {
+                    "type": "string"
+                  },
+                  "evaluation_option": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "model_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "model_params": {
+                    "type": "object"
+                  },
+                  "pretrained_weight_path": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "training_option": {
+                    "type": "object",
+                    "nullable": true
+                  }
+                }
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "experiment_setup",
+                "capability": {
+                  "command_name": "configure_training",
+                  "enabled": true,
+                  "reasons": [],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": null,
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "train",
+              "title": "Train",
+              "description": "Start model training.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "append": {
+                    "type": "boolean"
+                  },
+                  "interactive": {
+                    "type": "boolean"
+                  },
+                  "confirmed": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "execution",
+                "capability": {
+                  "command_name": "train",
+                  "enabled": true,
+                  "reasons": [],
+                  "long_running": true,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": false,
+                  "requires_confirmation": true,
+                  "decision_boundary": "long_running",
+                  "continue_allowed_after_success": false,
+                  "retry_limit": 0,
+                  "stop_after_success": true,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "stop_training",
+              "title": "Stop Training",
+              "description": "Stop an active training run.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {}
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "execution_control",
+                "capability": {
+                  "command_name": "stop_training",
+                  "enabled": false,
+                  "reasons": [
+                    "No training run is active."
+                  ],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": null,
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "clear_training_history",
+              "title": "Clear Training History",
+              "description": "Clear training plan/run history while preserving current configuration.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "confirmed": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "lifecycle_destructive",
+                "capability": {
+                  "command_name": "clear_training_history",
+                  "enabled": false,
+                  "reasons": [
+                    "No training history is available to clear."
+                  ],
+                  "long_running": false,
+                  "destructive": true,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": null,
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "evaluate",
+              "title": "Evaluate",
+              "description": "Read evaluation metrics and run summaries from the active backend.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "target": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                }
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "query",
+                "capability": {
+                  "command_name": "evaluate",
+                  "enabled": false,
+                  "reasons": [
+                    "Create a training plan before evaluating results."
+                  ],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": null,
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "visualize",
+              "title": "Visualize",
+              "description": "Read visualization readiness and available view summaries.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "view": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                }
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "query",
+                "capability": {
+                  "command_name": "visualize",
+                  "enabled": false,
+                  "reasons": [
+                    "Create epochs, complete training, or configure saliency before opening visualization views."
+                  ],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": null,
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "saliency",
+              "title": "Saliency",
+              "description": "Configure or query saliency readiness.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "method": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "params": {
+                    "type": "object",
+                    "nullable": true
+                  }
+                }
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "query",
+                "capability": {
+                  "command_name": "saliency",
+                  "enabled": true,
+                  "reasons": [],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": null,
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "apply_montage",
+              "title": "Apply Montage",
+              "description": "Apply confirmed channel montage positions to epoch data.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "channels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "positions": {
+                    "type": "array",
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "montage_name": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "channels",
+                  "positions"
+                ]
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "data_transform",
+                "capability": {
+                  "command_name": "apply_montage",
+                  "enabled": false,
+                  "reasons": [
+                    "Create epochs before applying a montage."
+                  ],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": null,
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "query_state",
+              "title": "Query State",
+              "description": "Read-only typed query through the application service.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "query": {
+                    "type": "string"
+                  },
+                  "params": {
+                    "type": "object"
+                  },
+                  "include_objects": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "query",
+                "capability": {
+                  "command_name": "query_state",
+                  "enabled": true,
+                  "reasons": [],
+                  "long_running": false,
+                  "destructive": false,
+                  "confirmation_required": false,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": null,
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "reset_preprocess",
+              "title": "Reset Preprocess",
+              "description": "Reset preprocessing to loaded raw data and remove downstream artifacts.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "confirmed": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "lifecycle_destructive",
+                "capability": {
+                  "command_name": "reset_preprocess",
+                  "enabled": true,
+                  "reasons": [],
+                  "long_running": false,
+                  "destructive": true,
+                  "confirmation_required": true,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": null,
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "reset_session",
+              "title": "Reset Session",
+              "description": "Clear loaded data and downstream state.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "confirmed": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "lifecycle_destructive",
+                "capability": {
+                  "command_name": "reset_session",
+                  "enabled": true,
+                  "reasons": [],
+                  "long_running": false,
+                  "destructive": true,
+                  "confirmation_required": true,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": null,
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            },
+            {
+              "name": "new_session",
+              "title": "New Session",
+              "description": "Start a new single-backend session by clearing current state.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "confirmed": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "command_name": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "verification": {
+                    "type": "object"
+                  },
+                  "autonomy": {
+                    "type": "object"
+                  },
+                  "capability": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "result": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "state": {
+                    "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "command_name",
+                  "verification",
+                  "autonomy",
+                  "capability",
+                  "result",
+                  "state"
+                ]
+              },
+              "x_xbrainlab": {
+                "taxonomy": "lifecycle_destructive",
+                "capability": {
+                  "command_name": "new_session",
+                  "enabled": true,
+                  "reasons": [],
+                  "long_running": false,
+                  "destructive": true,
+                  "confirmation_required": true,
+                  "can_auto_execute": true,
+                  "requires_confirmation": false,
+                  "decision_boundary": null,
+                  "continue_allowed_after_success": true,
+                  "retry_limit": 2,
+                  "stop_after_success": false,
+                  "blocks_downstream_until_confirmed": false
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
+              }
+            }
+          ]
+        }
+      }
+    },
+    "scan_source": {
+      "status": 200,
+      "body": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "Scanned source and found 1 EEG file(s)."
+            }
+          ],
+          "structuredContent": {
+            "accepted": true,
+            "command_name": "scan_source",
+            "verification": {
+              "schema_valid": true,
+              "capability_enabled": true,
+              "confirmation_required": false,
+              "reasons": []
+            },
+            "autonomy": {
+              "can_auto_execute": true,
+              "requires_confirmation": false,
+              "confirmation_required": false,
+              "decision_boundary": "read_only_discovery",
+              "continue_allowed_after_success": true,
+              "retry_limit": 2,
+              "stop_after_success": false,
+              "blocks_downstream_until_confirmed": false
+            },
+            "capability": {
+              "command_name": "scan_source",
+              "enabled": true,
+              "reasons": [],
+              "long_running": false,
+              "destructive": false,
+              "confirmation_required": false,
+              "can_auto_execute": true,
+              "requires_confirmation": false,
+              "decision_boundary": "read_only_discovery",
+              "continue_allowed_after_success": true,
+              "retry_limit": 2,
+              "stop_after_success": false,
+              "blocks_downstream_until_confirmed": false
+            },
+            "result": {
+              "status": "ok",
+              "command_name": "scan_source",
+              "message": "Scanned source and found 1 EEG file(s).",
+              "state": {
+                "pipeline_stage": "dataset_ready",
+                "raw": {
+                  "loaded": true,
+                  "count": 1,
+                  "files": [
+                    "sub-01_task-mi_run-1.gdf"
+                  ],
+                  "formats": [
+                    ".gdf"
+                  ],
+                  "channels": [],
+                  "metadata": [
+                    {
+                      "index": "0",
+                      "file": "sub-01_task-mi_run-1.gdf",
+                      "subject": "S01",
+                      "session": "session-01"
+                    }
+                  ],
+                  "event_total": 0,
+                  "unique_events": [],
+                  "locked": false,
+                  "diagnostics": {
+                    "runtime_signals": [],
+                    "gdf_duplicate_channel_files": [],
+                    "gdf_duplicate_channel_details": []
+                  }
+                },
+                "preprocessed": {
+                  "available": false,
+                  "count": 0,
+                  "files": [],
+                  "is_epoched": false,
+                  "channel_names": [],
+                  "operations": [],
+                  "diagnostics": {
+                    "runtime_signals": [],
+                    "gdf_duplicate_channel_files": [],
+                    "gdf_duplicate_channel_details": []
+                  }
+                },
+                "epoch": {
+                  "available": false,
+                  "exists": false,
+                  "epoch_count": null,
+                  "n_channels": null,
+                  "n_times": null,
+                  "event_names": [],
+                  "event_ids": null,
+                  "channel_names": []
+                },
+                "dataset": {
+                  "available": true,
+                  "count": 1,
+                  "names": [
+                    "Dataset 1"
+                  ],
+                  "locked": false,
+                  "generator_exists": false,
+                  "split_summary": {
+                    "count": 1
+                  }
+                },
+                "training": {
+                  "has_model": true,
+                  "model_name": null,
+                  "has_training_option": true,
+                  "training_option": {
+                    "epoch": null,
+                    "batch_size": null,
+                    "learning_rate": null,
+                    "repeat": null,
+                    "device": null,
+                    "optimizer": null,
+                    "checkpoint_epoch": null,
+                    "output_dir": null
+                  },
+                  "has_trainer": false,
+                  "is_running": false,
+                  "plan_count": 0,
+                  "run_count": 0,
+                  "finished_run_count": 0,
+                  "missing_requirements": []
+                },
+                "evaluation": {
+                  "available": false,
+                  "total_plans": 0,
+                  "total_runs": 0,
+                  "finished_runs": 0,
+                  "metrics_available": false
+                },
+                "visualization": {
+                  "saliency_configured": false,
+                  "saliency_available": false,
+                  "montage_available": false,
+                  "channel_positions_available": false,
+                  "channel_count": 0
+                },
+                "interpretation": {
+                  "has_scan_result": true,
+                  "has_candidate": false,
+                  "has_preview": false,
+                  "has_validation_decision": false,
+                  "has_applied_interpretation": false,
+                  "has_recipe": false,
+                  "latest_scan_id": "scan-1",
+                  "latest_candidate_id": null,
+                  "latest_preview_id": null,
+                  "latest_interpretation_id": null,
+                  "latest_recipe_id": null,
+                  "source_path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                  "source_kind": "file",
+                  "validation_decision": null,
+                  "pending_confirmation": false,
+                  "blocked_reasons": [],
+                  "warnings": [],
+                  "summary": null,
+                  "metadata_preview": [],
+                  "label_carriers": [],
+                  "label_carrier_plan": [],
+                  "format_capabilities": [
+                    {
+                      "path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                      "name": "sub-01_task-mi_run-1.gdf",
+                      "format": "GDF",
+                      "role": "eeg",
+                      "status": "needs_review",
+                      "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                    }
+                  ],
+                  "event_roles": {},
+                  "class_map": {},
+                  "label_import_count": 0,
+                  "label_imports": [],
+                  "recipe_path": null
+                },
+                "active_dataset": {
+                  "has_raw_data": true,
+                  "has_preprocessed_data": false,
+                  "has_epoch_data": false,
+                  "has_datasets": true,
+                  "is_locked": false
+                },
+                "active_training": {
+                  "has_model": true,
+                  "has_training_option": true,
+                  "has_trainer": false,
+                  "is_running": false
+                },
+                "last_error": null
+              },
+              "changed_state": {
+                "raw_changed": false,
+                "preprocessed_changed": false,
+                "epoch_changed": false,
+                "datasets_changed": false,
+                "training_changed": false,
+                "evaluation_changed": false,
+                "visualization_changed": false,
+                "interpretation_changed": true,
+                "error_changed": false
+              },
+              "error_type": "none",
+              "recoverable": true,
+              "error_message": null,
+              "diagnostics": {
+                "payload_type": "scan_result",
+                "scan_result": {
+                  "scan_id": "scan-1",
+                  "source_path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                  "source_hint": "auto",
+                  "source_kind": "file",
+                  "eeg_files": [
+                    "<mcp_http_source>/sub-01_task-mi_run-1.gdf"
+                  ],
+                  "label_carriers": [],
+                  "metadata": [
+                    {
+                      "file": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                      "subject": {
+                        "field": "subject",
+                        "value": "01",
+                        "source": "bids_entity",
+                        "decision": "safe",
+                        "reason": "subject resolved from BIDS entity.",
+                        "override": null,
+                        "recipe_trace": [
+                          "bids:sub"
+                        ]
+                      },
+                      "session": {
+                        "field": "session",
+                        "value": null,
+                        "source": "missing",
+                        "decision": "needs_confirmation",
+                        "reason": "session BIDS entity is not present for this file.",
+                        "override": null,
+                        "recipe_trace": []
+                      },
+                      "task": {
+                        "field": "task",
+                        "value": "mi",
+                        "source": "bids_entity",
+                        "decision": "safe",
+                        "reason": "task resolved from BIDS entity.",
+                        "override": null,
+                        "recipe_trace": [
+                          "bids:task"
+                        ]
+                      },
+                      "run": {
+                        "field": "run",
+                        "value": "1",
+                        "source": "bids_entity",
+                        "decision": "safe",
+                        "reason": "run resolved from BIDS entity.",
+                        "override": null,
+                        "recipe_trace": [
+                          "bids:run"
+                        ]
+                      }
+                    }
+                  ],
+                  "bids": {
+                    "is_bids": false,
+                    "subjects": [
+                      "01"
+                    ],
+                    "sessions": [],
+                    "tasks": [
+                      "mi"
+                    ],
+                    "runs": [
+                      "1"
+                    ],
+                    "events_files": [],
+                    "dataset_description": null
+                  },
+                  "format_capabilities": [
+                    {
+                      "path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                      "name": "sub-01_task-mi_run-1.gdf",
+                      "format": "GDF",
+                      "role": "eeg",
+                      "status": "needs_review",
+                      "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                    }
+                  ],
+                  "warnings": [],
+                  "blocked_reasons": []
+                }
+              }
+            },
+            "state": {
+              "pipeline_stage": "dataset_ready",
+              "raw": {
+                "loaded": true,
+                "count": 1,
+                "files": [
+                  "sub-01_task-mi_run-1.gdf"
+                ],
+                "formats": [
+                  ".gdf"
+                ],
+                "channels": [],
+                "metadata": [
+                  {
+                    "index": "0",
+                    "file": "sub-01_task-mi_run-1.gdf",
+                    "subject": "S01",
+                    "session": "session-01"
+                  }
+                ],
+                "event_total": 0,
+                "unique_events": [],
+                "locked": false,
+                "diagnostics": {
+                  "runtime_signals": [],
+                  "gdf_duplicate_channel_files": [],
+                  "gdf_duplicate_channel_details": []
+                }
+              },
+              "preprocessed": {
+                "available": false,
+                "count": 0,
+                "files": [],
+                "is_epoched": false,
+                "channel_names": [],
+                "operations": [],
+                "diagnostics": {
+                  "runtime_signals": [],
+                  "gdf_duplicate_channel_files": [],
+                  "gdf_duplicate_channel_details": []
+                }
+              },
+              "epoch": {
+                "available": false,
+                "exists": false,
+                "epoch_count": null,
+                "n_channels": null,
+                "n_times": null,
+                "event_names": [],
+                "event_ids": null,
+                "channel_names": []
+              },
+              "dataset": {
+                "available": true,
+                "count": 1,
+                "names": [
+                  "Dataset 1"
+                ],
+                "locked": false,
+                "generator_exists": false,
+                "split_summary": {
+                  "count": 1
+                }
+              },
+              "training": {
+                "has_model": true,
+                "model_name": null,
+                "has_training_option": true,
+                "training_option": {
+                  "epoch": null,
+                  "batch_size": null,
+                  "learning_rate": null,
+                  "repeat": null,
+                  "device": null,
+                  "optimizer": null,
+                  "checkpoint_epoch": null,
+                  "output_dir": null
+                },
+                "has_trainer": false,
+                "is_running": false,
+                "plan_count": 0,
+                "run_count": 0,
+                "finished_run_count": 0,
+                "missing_requirements": []
+              },
+              "evaluation": {
+                "available": false,
+                "total_plans": 0,
+                "total_runs": 0,
+                "finished_runs": 0,
+                "metrics_available": false
+              },
+              "visualization": {
+                "saliency_configured": false,
+                "saliency_available": false,
+                "montage_available": false,
+                "channel_positions_available": false,
+                "channel_count": 0
+              },
+              "interpretation": {
+                "has_scan_result": true,
+                "has_candidate": false,
+                "has_preview": false,
+                "has_validation_decision": false,
+                "has_applied_interpretation": false,
+                "has_recipe": false,
+                "latest_scan_id": "scan-1",
+                "latest_candidate_id": null,
+                "latest_preview_id": null,
+                "latest_interpretation_id": null,
+                "latest_recipe_id": null,
+                "source_path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                "source_kind": "file",
+                "validation_decision": null,
+                "pending_confirmation": false,
+                "blocked_reasons": [],
+                "warnings": [],
+                "summary": null,
+                "metadata_preview": [],
+                "label_carriers": [],
+                "label_carrier_plan": [],
+                "format_capabilities": [
+                  {
+                    "path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                    "name": "sub-01_task-mi_run-1.gdf",
+                    "format": "GDF",
+                    "role": "eeg",
+                    "status": "needs_review",
+                    "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                  }
+                ],
+                "event_roles": {},
+                "class_map": {},
+                "label_import_count": 0,
+                "label_imports": [],
+                "recipe_path": null
+              },
+              "active_dataset": {
+                "has_raw_data": true,
+                "has_preprocessed_data": false,
+                "has_epoch_data": false,
+                "has_datasets": true,
+                "is_locked": false
+              },
+              "active_training": {
+                "has_model": true,
+                "has_training_option": true,
+                "has_trainer": false,
+                "is_running": false
+              },
+              "last_error": null
+            },
+            "adapter": {
+              "mode": "headless_mcp_http",
+              "transport": "http",
+              "session_id": "mcp-http-dec6e5b4e9b7",
+              "ui_refresh": {
+                "supported": false,
+                "reason": "This MCP server owns a headless ApplicationService session and does not refresh a desktop UI."
+              }
+            }
+          },
+          "isError": false
+        }
+      }
+    },
+    "preview_interpretation": {
+      "status": 200,
+      "body": {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "Interpretation preview ready."
+            }
+          ],
+          "structuredContent": {
+            "accepted": true,
+            "command_name": "preview_interpretation",
+            "verification": {
+              "schema_valid": true,
+              "capability_enabled": true,
+              "confirmation_required": false,
+              "reasons": []
+            },
+            "autonomy": {
+              "can_auto_execute": true,
+              "requires_confirmation": false,
+              "confirmation_required": false,
+              "decision_boundary": "semantic_preview",
+              "continue_allowed_after_success": true,
+              "retry_limit": 2,
+              "stop_after_success": false,
+              "blocks_downstream_until_confirmed": false
+            },
+            "capability": {
+              "command_name": "preview_interpretation",
+              "enabled": true,
+              "reasons": [],
+              "long_running": false,
+              "destructive": false,
+              "confirmation_required": false,
+              "can_auto_execute": true,
+              "requires_confirmation": false,
+              "decision_boundary": "semantic_preview",
+              "continue_allowed_after_success": true,
+              "retry_limit": 2,
+              "stop_after_success": false,
+              "blocks_downstream_until_confirmed": false
+            },
+            "result": {
+              "status": "ok",
+              "command_name": "preview_interpretation",
+              "message": "Interpretation preview ready.",
+              "state": {
+                "pipeline_stage": "dataset_ready",
+                "raw": {
+                  "loaded": true,
+                  "count": 1,
+                  "files": [
+                    "sub-01_task-mi_run-1.gdf"
+                  ],
+                  "formats": [
+                    ".gdf"
+                  ],
+                  "channels": [],
+                  "metadata": [
+                    {
+                      "index": "0",
+                      "file": "sub-01_task-mi_run-1.gdf",
+                      "subject": "S01",
+                      "session": "session-01"
+                    }
+                  ],
+                  "event_total": 0,
+                  "unique_events": [],
+                  "locked": false,
+                  "diagnostics": {
+                    "runtime_signals": [],
+                    "gdf_duplicate_channel_files": [],
+                    "gdf_duplicate_channel_details": []
+                  }
+                },
+                "preprocessed": {
+                  "available": false,
+                  "count": 0,
+                  "files": [],
+                  "is_epoched": false,
+                  "channel_names": [],
+                  "operations": [],
+                  "diagnostics": {
+                    "runtime_signals": [],
+                    "gdf_duplicate_channel_files": [],
+                    "gdf_duplicate_channel_details": []
+                  }
+                },
+                "epoch": {
+                  "available": false,
+                  "exists": false,
+                  "epoch_count": null,
+                  "n_channels": null,
+                  "n_times": null,
+                  "event_names": [],
+                  "event_ids": null,
+                  "channel_names": []
+                },
+                "dataset": {
+                  "available": true,
+                  "count": 1,
+                  "names": [
+                    "Dataset 1"
+                  ],
+                  "locked": false,
+                  "generator_exists": false,
+                  "split_summary": {
+                    "count": 1
+                  }
+                },
+                "training": {
+                  "has_model": true,
+                  "model_name": null,
+                  "has_training_option": true,
+                  "training_option": {
+                    "epoch": null,
+                    "batch_size": null,
+                    "learning_rate": null,
+                    "repeat": null,
+                    "device": null,
+                    "optimizer": null,
+                    "checkpoint_epoch": null,
+                    "output_dir": null
+                  },
+                  "has_trainer": false,
+                  "is_running": false,
+                  "plan_count": 0,
+                  "run_count": 0,
+                  "finished_run_count": 0,
+                  "missing_requirements": []
+                },
+                "evaluation": {
+                  "available": false,
+                  "total_plans": 0,
+                  "total_runs": 0,
+                  "finished_runs": 0,
+                  "metrics_available": false
+                },
+                "visualization": {
+                  "saliency_configured": false,
+                  "saliency_available": false,
+                  "montage_available": false,
+                  "channel_positions_available": false,
+                  "channel_count": 0
+                },
+                "interpretation": {
+                  "has_scan_result": true,
+                  "has_candidate": true,
+                  "has_preview": true,
+                  "has_validation_decision": false,
+                  "has_applied_interpretation": false,
+                  "has_recipe": false,
+                  "latest_scan_id": "scan-1",
+                  "latest_candidate_id": "candidate-2",
+                  "latest_preview_id": "preview-3",
+                  "latest_interpretation_id": null,
+                  "latest_recipe_id": null,
+                  "source_path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                  "source_kind": "file",
+                  "validation_decision": null,
+                  "pending_confirmation": false,
+                  "blocked_reasons": [],
+                  "warnings": [],
+                  "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+                  "metadata_preview": [
+                    {
+                      "file": "sub-01_task-mi_run-1.gdf",
+                      "subject": {
+                        "field": "subject",
+                        "value": "01",
+                        "source": "bids_entity",
+                        "decision": "safe",
+                        "reason": "subject resolved from BIDS entity.",
+                        "override": null,
+                        "recipe_trace": [
+                          "bids:sub"
+                        ]
+                      },
+                      "session": {
+                        "field": "session",
+                        "value": null,
+                        "source": "missing",
+                        "decision": "needs_confirmation",
+                        "reason": "session BIDS entity is not present for this file.",
+                        "override": null,
+                        "recipe_trace": []
+                      },
+                      "task": {
+                        "field": "task",
+                        "value": "mi",
+                        "source": "bids_entity",
+                        "decision": "safe",
+                        "reason": "task resolved from BIDS entity.",
+                        "override": null,
+                        "recipe_trace": [
+                          "bids:task"
+                        ]
+                      },
+                      "run": {
+                        "field": "run",
+                        "value": "1",
+                        "source": "bids_entity",
+                        "decision": "safe",
+                        "reason": "run resolved from BIDS entity.",
+                        "override": null,
+                        "recipe_trace": [
+                          "bids:run"
+                        ]
+                      }
+                    }
+                  ],
+                  "label_carriers": [],
+                  "label_carrier_plan": [],
+                  "format_capabilities": [
+                    {
+                      "path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                      "name": "sub-01_task-mi_run-1.gdf",
+                      "format": "GDF",
+                      "role": "eeg",
+                      "status": "needs_review",
+                      "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                    }
+                  ],
+                  "event_roles": {
+                    "internal_events": "event role candidates"
+                  },
+                  "class_map": {},
+                  "label_import_count": 0,
+                  "label_imports": [],
+                  "recipe_path": null
+                },
+                "active_dataset": {
+                  "has_raw_data": true,
+                  "has_preprocessed_data": false,
+                  "has_epoch_data": false,
+                  "has_datasets": true,
+                  "is_locked": false
+                },
+                "active_training": {
+                  "has_model": true,
+                  "has_training_option": true,
+                  "has_trainer": false,
+                  "is_running": false
+                },
+                "last_error": null
+              },
+              "changed_state": {
+                "raw_changed": false,
+                "preprocessed_changed": false,
+                "epoch_changed": false,
+                "datasets_changed": false,
+                "training_changed": false,
+                "evaluation_changed": false,
+                "visualization_changed": false,
+                "interpretation_changed": true,
+                "error_changed": false
+              },
+              "error_type": "none",
+              "recoverable": true,
+              "error_message": null,
+              "diagnostics": {
+                "payload_type": "interpretation_preview",
+                "candidate": {
+                  "candidate_id": "candidate-2",
+                  "scan_id": "scan-1",
+                  "source_path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                  "source_kind": "file",
+                  "selected_eeg_files": [
+                    "<mcp_http_source>/sub-01_task-mi_run-1.gdf"
+                  ],
+                  "label_carriers": [],
+                  "label_carrier_plan": [],
+                  "event_roles": {
+                    "internal_events": "event role candidates"
+                  },
+                  "class_map": {},
+                  "time_model": "sample_index_or_annotation_time",
+                  "granularity": "trial_or_event",
+                  "metadata": [
+                    {
+                      "file": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                      "subject": {
+                        "field": "subject",
+                        "value": "01",
+                        "source": "bids_entity",
+                        "decision": "safe",
+                        "reason": "subject resolved from BIDS entity.",
+                        "override": null,
+                        "recipe_trace": [
+                          "bids:sub"
+                        ]
+                      },
+                      "session": {
+                        "field": "session",
+                        "value": null,
+                        "source": "missing",
+                        "decision": "needs_confirmation",
+                        "reason": "session BIDS entity is not present for this file.",
+                        "override": null,
+                        "recipe_trace": []
+                      },
+                      "task": {
+                        "field": "task",
+                        "value": "mi",
+                        "source": "bids_entity",
+                        "decision": "safe",
+                        "reason": "task resolved from BIDS entity.",
+                        "override": null,
+                        "recipe_trace": [
+                          "bids:task"
+                        ]
+                      },
+                      "run": {
+                        "field": "run",
+                        "value": "1",
+                        "source": "bids_entity",
+                        "decision": "safe",
+                        "reason": "run resolved from BIDS entity.",
+                        "override": null,
+                        "recipe_trace": [
+                          "bids:run"
+                        ]
+                      }
+                    }
+                  ],
+                  "format_capabilities": [
+                    {
+                      "path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                      "name": "sub-01_task-mi_run-1.gdf",
+                      "format": "GDF",
+                      "role": "eeg",
+                      "status": "needs_review",
+                      "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                    }
+                  ],
+                  "warnings": [],
+                  "confirmation_items": [
+                    "Confirm session metadata for sub-01_task-mi_run-1.gdf.",
+                    "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries."
+                  ],
+                  "blocked_reasons": [],
+                  "choices": {},
+                  "recipe_trace": [
+                    "scan:scan-1",
+                    "candidate:candidate-2"
+                  ]
+                },
+                "preview": {
+                  "preview_id": "preview-3",
+                  "candidate_id": "candidate-2",
+                  "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+                  "file_count": 1,
+                  "label_carrier_count": 0,
+                  "label_carrier_preview": [],
+                  "metadata_preview": [
+                    {
+                      "file": "sub-01_task-mi_run-1.gdf",
+                      "subject": {
+                        "field": "subject",
+                        "value": "01",
+                        "source": "bids_entity",
+                        "decision": "safe",
+                        "reason": "subject resolved from BIDS entity.",
+                        "override": null,
+                        "recipe_trace": [
+                          "bids:sub"
+                        ]
+                      },
+                      "session": {
+                        "field": "session",
+                        "value": null,
+                        "source": "missing",
+                        "decision": "needs_confirmation",
+                        "reason": "session BIDS entity is not present for this file.",
+                        "override": null,
+                        "recipe_trace": []
+                      },
+                      "task": {
+                        "field": "task",
+                        "value": "mi",
+                        "source": "bids_entity",
+                        "decision": "safe",
+                        "reason": "task resolved from BIDS entity.",
+                        "override": null,
+                        "recipe_trace": [
+                          "bids:task"
+                        ]
+                      },
+                      "run": {
+                        "field": "run",
+                        "value": "1",
+                        "source": "bids_entity",
+                        "decision": "safe",
+                        "reason": "run resolved from BIDS entity.",
+                        "override": null,
+                        "recipe_trace": [
+                          "bids:run"
+                        ]
+                      }
+                    }
+                  ],
+                  "format_capabilities": [
+                    {
+                      "path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                      "name": "sub-01_task-mi_run-1.gdf",
+                      "format": "GDF",
+                      "role": "eeg",
+                      "status": "needs_review",
+                      "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                    }
+                  ],
+                  "warnings": [],
+                  "confirmation_items": [
+                    "Confirm session metadata for sub-01_task-mi_run-1.gdf.",
+                    "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries."
+                  ],
+                  "blocked_reasons": [],
+                  "downstream_impacts": [
+                    "Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session."
+                  ],
+                  "event_roles": {
+                    "internal_events": "event role candidates"
+                  },
+                  "class_map": {},
+                  "recipe_reload_summary": {}
+                }
+              }
+            },
+            "state": {
+              "pipeline_stage": "dataset_ready",
+              "raw": {
+                "loaded": true,
+                "count": 1,
+                "files": [
+                  "sub-01_task-mi_run-1.gdf"
+                ],
+                "formats": [
+                  ".gdf"
+                ],
+                "channels": [],
+                "metadata": [
+                  {
+                    "index": "0",
+                    "file": "sub-01_task-mi_run-1.gdf",
+                    "subject": "S01",
+                    "session": "session-01"
+                  }
+                ],
+                "event_total": 0,
+                "unique_events": [],
+                "locked": false,
+                "diagnostics": {
+                  "runtime_signals": [],
+                  "gdf_duplicate_channel_files": [],
+                  "gdf_duplicate_channel_details": []
+                }
+              },
+              "preprocessed": {
+                "available": false,
+                "count": 0,
+                "files": [],
+                "is_epoched": false,
+                "channel_names": [],
+                "operations": [],
+                "diagnostics": {
+                  "runtime_signals": [],
+                  "gdf_duplicate_channel_files": [],
+                  "gdf_duplicate_channel_details": []
+                }
+              },
+              "epoch": {
+                "available": false,
+                "exists": false,
+                "epoch_count": null,
+                "n_channels": null,
+                "n_times": null,
+                "event_names": [],
+                "event_ids": null,
+                "channel_names": []
+              },
+              "dataset": {
+                "available": true,
+                "count": 1,
+                "names": [
+                  "Dataset 1"
+                ],
+                "locked": false,
+                "generator_exists": false,
+                "split_summary": {
+                  "count": 1
+                }
+              },
+              "training": {
+                "has_model": true,
+                "model_name": null,
+                "has_training_option": true,
+                "training_option": {
+                  "epoch": null,
+                  "batch_size": null,
+                  "learning_rate": null,
+                  "repeat": null,
+                  "device": null,
+                  "optimizer": null,
+                  "checkpoint_epoch": null,
+                  "output_dir": null
+                },
+                "has_trainer": false,
+                "is_running": false,
+                "plan_count": 0,
+                "run_count": 0,
+                "finished_run_count": 0,
+                "missing_requirements": []
+              },
+              "evaluation": {
+                "available": false,
+                "total_plans": 0,
+                "total_runs": 0,
+                "finished_runs": 0,
+                "metrics_available": false
+              },
+              "visualization": {
+                "saliency_configured": false,
+                "saliency_available": false,
+                "montage_available": false,
+                "channel_positions_available": false,
+                "channel_count": 0
+              },
+              "interpretation": {
+                "has_scan_result": true,
+                "has_candidate": true,
+                "has_preview": true,
+                "has_validation_decision": false,
+                "has_applied_interpretation": false,
+                "has_recipe": false,
+                "latest_scan_id": "scan-1",
+                "latest_candidate_id": "candidate-2",
+                "latest_preview_id": "preview-3",
+                "latest_interpretation_id": null,
+                "latest_recipe_id": null,
+                "source_path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                "source_kind": "file",
+                "validation_decision": null,
+                "pending_confirmation": false,
+                "blocked_reasons": [],
+                "warnings": [],
+                "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+                "metadata_preview": [
+                  {
+                    "file": "sub-01_task-mi_run-1.gdf",
+                    "subject": {
+                      "field": "subject",
+                      "value": "01",
+                      "source": "bids_entity",
+                      "decision": "safe",
+                      "reason": "subject resolved from BIDS entity.",
+                      "override": null,
+                      "recipe_trace": [
+                        "bids:sub"
+                      ]
+                    },
+                    "session": {
+                      "field": "session",
+                      "value": null,
+                      "source": "missing",
+                      "decision": "needs_confirmation",
+                      "reason": "session BIDS entity is not present for this file.",
+                      "override": null,
+                      "recipe_trace": []
+                    },
+                    "task": {
+                      "field": "task",
+                      "value": "mi",
+                      "source": "bids_entity",
+                      "decision": "safe",
+                      "reason": "task resolved from BIDS entity.",
+                      "override": null,
+                      "recipe_trace": [
+                        "bids:task"
+                      ]
+                    },
+                    "run": {
+                      "field": "run",
+                      "value": "1",
+                      "source": "bids_entity",
+                      "decision": "safe",
+                      "reason": "run resolved from BIDS entity.",
+                      "override": null,
+                      "recipe_trace": [
+                        "bids:run"
+                      ]
+                    }
+                  }
+                ],
+                "label_carriers": [],
+                "label_carrier_plan": [],
+                "format_capabilities": [
+                  {
+                    "path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                    "name": "sub-01_task-mi_run-1.gdf",
+                    "format": "GDF",
+                    "role": "eeg",
+                    "status": "needs_review",
+                    "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                  }
+                ],
+                "event_roles": {
+                  "internal_events": "event role candidates"
+                },
+                "class_map": {},
+                "label_import_count": 0,
+                "label_imports": [],
+                "recipe_path": null
+              },
+              "active_dataset": {
+                "has_raw_data": true,
+                "has_preprocessed_data": false,
+                "has_epoch_data": false,
+                "has_datasets": true,
+                "is_locked": false
+              },
+              "active_training": {
+                "has_model": true,
+                "has_training_option": true,
+                "has_trainer": false,
+                "is_running": false
+              },
+              "last_error": null
+            },
+            "adapter": {
+              "mode": "headless_mcp_http",
+              "transport": "http",
+              "session_id": "mcp-http-dec6e5b4e9b7",
+              "ui_refresh": {
+                "supported": false,
+                "reason": "This MCP server owns a headless ApplicationService session and does not refresh a desktop UI."
+              }
+            }
+          },
+          "isError": false
+        }
+      }
+    },
+    "train_boundary": {
+      "status": 200,
+      "body": {
+        "jsonrpc": "2.0",
+        "id": 5,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "MCP HTTP job execution is not enabled yet. Use the desktop UI or a future HTTP job API with progress and cancel support."
+            }
+          ],
+          "structuredContent": {
+            "accepted": false,
+            "command_name": "train",
+            "verification": {
+              "schema_valid": true,
+              "capability_enabled": true,
+              "confirmation_required": true,
+              "long_running_job_required": true,
+              "reasons": [
+                "MCP HTTP job execution is not enabled yet. Use the desktop UI or a future HTTP job API with progress and cancel support."
+              ]
+            },
+            "autonomy": {
+              "can_auto_execute": false,
+              "requires_confirmation": true,
+              "confirmation_required": false,
+              "decision_boundary": "long_running",
+              "continue_allowed_after_success": false,
+              "retry_limit": 0,
+              "stop_after_success": true,
+              "blocks_downstream_until_confirmed": false
+            },
+            "capability": {
+              "command_name": "train",
+              "enabled": true,
+              "reasons": [],
+              "long_running": true,
+              "destructive": false,
+              "confirmation_required": false,
+              "can_auto_execute": false,
+              "requires_confirmation": true,
+              "decision_boundary": "long_running",
+              "continue_allowed_after_success": false,
+              "retry_limit": 0,
+              "stop_after_success": true,
+              "blocks_downstream_until_confirmed": false
+            },
+            "result": {
+              "status": "failed",
+              "command_name": "train",
+              "message": "MCP HTTP job execution is not enabled yet. Use the desktop UI or a future HTTP job API with progress and cancel support.",
+              "error_type": "long_running_job_required",
+              "recoverable": true,
+              "error_message": "MCP HTTP job execution is not enabled yet. Use the desktop UI or a future HTTP job API with progress and cancel support.",
+              "diagnostics": {
+                "job_boundary": {
+                  "supported": false,
+                  "required_transport": "http_job_api",
+                  "supports_progress": false,
+                  "supports_cancel": false
+                },
+                "capability_reasons": []
+              }
+            },
+            "state": {
+              "pipeline_stage": "dataset_ready",
+              "raw": {
+                "loaded": true,
+                "count": 1,
+                "files": [
+                  "sub-01_task-mi_run-1.gdf"
+                ],
+                "formats": [
+                  ".gdf"
+                ],
+                "channels": [],
+                "metadata": [
+                  {
+                    "index": "0",
+                    "file": "sub-01_task-mi_run-1.gdf",
+                    "subject": "S01",
+                    "session": "session-01"
+                  }
+                ],
+                "event_total": 0,
+                "unique_events": [],
+                "locked": false,
+                "diagnostics": {
+                  "runtime_signals": [],
+                  "gdf_duplicate_channel_files": [],
+                  "gdf_duplicate_channel_details": []
+                }
+              },
+              "preprocessed": {
+                "available": false,
+                "count": 0,
+                "files": [],
+                "is_epoched": false,
+                "channel_names": [],
+                "operations": [],
+                "diagnostics": {
+                  "runtime_signals": [],
+                  "gdf_duplicate_channel_files": [],
+                  "gdf_duplicate_channel_details": []
+                }
+              },
+              "epoch": {
+                "available": false,
+                "exists": false,
+                "epoch_count": null,
+                "n_channels": null,
+                "n_times": null,
+                "event_names": [],
+                "event_ids": null,
+                "channel_names": []
+              },
+              "dataset": {
+                "available": true,
+                "count": 1,
+                "names": [
+                  "Dataset 1"
+                ],
+                "locked": false,
+                "generator_exists": false,
+                "split_summary": {
+                  "count": 1
+                }
+              },
+              "training": {
+                "has_model": true,
+                "model_name": null,
+                "has_training_option": true,
+                "training_option": {
+                  "epoch": null,
+                  "batch_size": null,
+                  "learning_rate": null,
+                  "repeat": null,
+                  "device": null,
+                  "optimizer": null,
+                  "checkpoint_epoch": null,
+                  "output_dir": null
+                },
+                "has_trainer": false,
+                "is_running": false,
+                "plan_count": 0,
+                "run_count": 0,
+                "finished_run_count": 0,
+                "missing_requirements": []
+              },
+              "evaluation": {
+                "available": false,
+                "total_plans": 0,
+                "total_runs": 0,
+                "finished_runs": 0,
+                "metrics_available": false
+              },
+              "visualization": {
+                "saliency_configured": false,
+                "saliency_available": false,
+                "montage_available": false,
+                "channel_positions_available": false,
+                "channel_count": 0
+              },
+              "interpretation": {
+                "has_scan_result": true,
+                "has_candidate": true,
+                "has_preview": true,
+                "has_validation_decision": false,
+                "has_applied_interpretation": false,
+                "has_recipe": false,
+                "latest_scan_id": "scan-1",
+                "latest_candidate_id": "candidate-2",
+                "latest_preview_id": "preview-3",
+                "latest_interpretation_id": null,
+                "latest_recipe_id": null,
+                "source_path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                "source_kind": "file",
+                "validation_decision": null,
+                "pending_confirmation": false,
+                "blocked_reasons": [],
+                "warnings": [],
+                "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+                "metadata_preview": [
+                  {
+                    "file": "sub-01_task-mi_run-1.gdf",
+                    "subject": {
+                      "field": "subject",
+                      "value": "01",
+                      "source": "bids_entity",
+                      "decision": "safe",
+                      "reason": "subject resolved from BIDS entity.",
+                      "override": null,
+                      "recipe_trace": [
+                        "bids:sub"
+                      ]
+                    },
+                    "session": {
+                      "field": "session",
+                      "value": null,
+                      "source": "missing",
+                      "decision": "needs_confirmation",
+                      "reason": "session BIDS entity is not present for this file.",
+                      "override": null,
+                      "recipe_trace": []
+                    },
+                    "task": {
+                      "field": "task",
+                      "value": "mi",
+                      "source": "bids_entity",
+                      "decision": "safe",
+                      "reason": "task resolved from BIDS entity.",
+                      "override": null,
+                      "recipe_trace": [
+                        "bids:task"
+                      ]
+                    },
+                    "run": {
+                      "field": "run",
+                      "value": "1",
+                      "source": "bids_entity",
+                      "decision": "safe",
+                      "reason": "run resolved from BIDS entity.",
+                      "override": null,
+                      "recipe_trace": [
+                        "bids:run"
+                      ]
+                    }
+                  }
+                ],
+                "label_carriers": [],
+                "label_carrier_plan": [],
+                "format_capabilities": [
+                  {
+                    "path": "<mcp_http_source>/sub-01_task-mi_run-1.gdf",
+                    "name": "sub-01_task-mi_run-1.gdf",
+                    "format": "GDF",
+                    "role": "eeg",
+                    "status": "needs_review",
+                    "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                  }
+                ],
+                "event_roles": {
+                  "internal_events": "event role candidates"
+                },
+                "class_map": {},
+                "label_import_count": 0,
+                "label_imports": [],
+                "recipe_path": null
+              },
+              "active_dataset": {
+                "has_raw_data": true,
+                "has_preprocessed_data": false,
+                "has_epoch_data": false,
+                "has_datasets": true,
+                "is_locked": false
+              },
+              "active_training": {
+                "has_model": true,
+                "has_training_option": true,
+                "has_trainer": false,
+                "is_running": false
+              },
+              "last_error": null
+            },
+            "adapter": {
+              "mode": "headless_mcp_http",
+              "transport": "http",
+              "session_id": "mcp-http-dec6e5b4e9b7",
+              "ui_refresh": {
+                "supported": false,
+                "reason": "This MCP server owns a headless ApplicationService session and does not refresh a desktop UI."
+              }
+            }
+          },
+          "isError": true
+        }
+      }
+    }
+  }
+}

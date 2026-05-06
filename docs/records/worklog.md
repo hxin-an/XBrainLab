@@ -37,6 +37,57 @@
 
 ## 2026-05-06
 
+### 17:31 MCP local HTTP transport baseline
+
+- scope：
+  - Add a local MCP HTTP transport baseline without creating a second workflow truth.
+  - Keep stdio behavior intact and make long-running training over HTTP return a job-boundary
+    result instead of blocking synchronously.
+- red / focused tests：
+  - Added `tests/unit/mcp/test_http_server.py`.
+  - Initial focused test failed because `XBrainLab.mcp.http_server` did not exist.
+- 做了什麼：
+  - Extended `MCPServer` with a `transport` argument, transport-scoped stable session ids, and
+    adapter metadata for `stdio` / `http`.
+  - Added `XBrainLab.mcp.http_server` with stdlib `ThreadingHTTPServer`, `GET /health`,
+    `POST /mcp`, optional Bearer token check, and no client-side XBrainLab dependency requirement.
+  - Added `scripts/dev/run_mcp_http_server.py` as the local HTTP entrypoint.
+  - Added `scripts/dev/capture_mcp_http_walkthrough.py`; it starts a local HTTP server in-process
+    and uses stdlib HTTP client calls for health, initialize, tools/list, scan, preview, and
+    backend-ready train job-boundary evidence.
+  - Refreshed `artifacts/mcp/http-walkthrough.json` / `.md`.
+- validation：
+  - Red gate:
+    `poetry run pytest --capture=sys tests/unit/mcp/test_http_server.py -q`
+    -> initially failed with `ModuleNotFoundError: No module named 'XBrainLab.mcp.http_server'`.
+  - Focused pass:
+    `poetry run pytest --capture=sys tests/unit/mcp/test_http_server.py tests/integration/mcp/test_http_walkthrough_artifact.py -q`
+    -> `4 passed`.
+  - MCP regression:
+    `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q`
+    -> `14 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/mcp/http_server.py XBrainLab/mcp/server.py XBrainLab/mcp/__init__.py scripts/dev/run_mcp_http_server.py scripts/dev/capture_mcp_http_walkthrough.py tests/unit/mcp/test_http_server.py tests/integration/mcp/test_http_walkthrough_artifact.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/mcp/http_server.py XBrainLab/mcp/server.py scripts/dev/run_mcp_http_server.py scripts/dev/capture_mcp_http_walkthrough.py tests/unit/mcp/test_http_server.py tests/integration/mcp/test_http_walkthrough_artifact.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Artifact:
+    `poetry run python scripts/dev/capture_mcp_http_walkthrough.py --output-dir artifacts/mcp`
+    -> `health_ok=True`, `tools_listed=True`, `scan_ok=True`, `preview_ok=True`,
+    `train_boundary_error_type=long_running_job_required`.
+  - Final gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is an MCP transport / adapter slice, not a tool-call benchmark claim update.
+- 不能宣稱：
+  - This is not MCP HTTP long-running job execution. Progress / cancel / recovery, remote
+    authorization certification, full MCP client certification, and human Windows launcher
+    acceptance remain open.
+
 ### 15:36 Label import smart-filter suggestion query path
 
 - scope：
