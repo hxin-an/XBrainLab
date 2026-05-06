@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+87e18ff ui: guard direct study state reads
 4a19100 ui: query label filter suggestions
 54ee9ae docs: refresh handoff after walkthrough geometry
 76426ca test: settle walkthrough capture geometry
@@ -208,6 +209,22 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Direct Study state read guard:
+  - UI fallback audit now covers direct mutable `Study` state reads, not only controller methods.
+  - AgentManager montage picker channel choices now come from
+    `QueryStateCommand(query="state")` / `state.epoch.channel_names`; direct
+    `study.epoch_data` reads are isolated in a legacy helper behind
+    `run_legacy_controller_fallback()`.
+  - `PreprocessPlotter.plot_sample_data(data_list=...)` now uses the shared data-list query for
+    original-signal overlay instead of reading `controller.study.loaded_data_list`.
+  - `tests/architecture_compliance.py` now rejects product UI functions that read mutable Study
+    state attributes such as `study.epoch_data`, `study.loaded_data_list`, or `study.trainer`
+    outside explicit legacy / fallback helpers.
+  - Validation covered red/focused tests, AgentManager montage regression, Preprocess plotter
+    regression, full architecture-compliance unit tests, `git diff --check`, full ruff, full
+    basedpyright, architecture compliance, and `mkdocs build --strict`.
+  - No local LLM eval was run; this was a UI state-truth / fallback-boundary slice under the fast
+    dev gate.
 - Label import smart-filter suggestion query path:
   - Post-load label import event-filter suggestions now use
     `QueryStateCommand(query="smart_filter_suggestions")` with the loaded target index.
