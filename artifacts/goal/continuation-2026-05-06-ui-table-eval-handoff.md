@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+2a711d4 ui: fit interpretation label selectors
 2f5ccb0 ui: gate dataset clear action
 48af56d ui: deduplicate aggregate info refresh
 6e99b03 ui: surface eval claim boundary
@@ -161,6 +162,17 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Data Interpretation selector-fit polish:
+  - `DataInterpretationPreviewDialog` rebalanced the label carrier table columns so Time /
+    Granularity `Needs review` selectors are no longer visibly clipped in product-width replay.
+  - Matched EEG targets now display compact BIDS labels such as `sub-01 run-2`, keeping the run
+    identifier visible in the table.
+  - Full filenames remain preserved in `Qt.UserRole`, combo data, replay `review_choices`, and
+    apply diagnostics; replay still applies labels to `sub-01_task-mi_run-2_raw.fif`.
+  - `apply_replay_review_choices()` now selects target files by combo data instead of visible text.
+  - Refreshed `artifacts/ui/data-interpretation-preview.png`,
+    `artifacts/ui/data-interpretation-remap.png`, `data-interpretation-replay.json`, and the
+    consolidated human-like walkthrough preview/confirm/reload screenshots.
 - Dataset Clear empty-state boundary:
   - real `Study` `DatasetSidebar.update_sidebar()` now queries
     `QueryStateCommand(query="state")` before enabling `Clear Dataset`.
@@ -622,6 +634,34 @@ bb57beb ui: use backend truth for split replacement
 ## Validation Already Run
 
 ```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
+  tests/unit/scripts/test_capture_data_interpretation_replay.py \
+  tests/unit/scripts/test_capture_human_like_product_walkthrough.py \
+  tests/integration/ui/test_product_walkthrough.py -q
+# 46 passed for 2a711d4
+
+QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py
+# exit 0; preview shows sub-01 run-2, remap shows full Needs review, apply mapping preserves full filename
+
+QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py
+# exit 0; status passed, 26/26 phases, 20 screenshots, resource smoke passed
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 2a711d4; mkdocs still prints the existing Material advisory
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py -q
+# 20 passed
+
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/dataset/test_dataset_sidebar.py \
   tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar \
