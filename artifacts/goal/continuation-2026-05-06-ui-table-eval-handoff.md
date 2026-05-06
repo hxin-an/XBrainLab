@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+826cd96 test: gate interpretation replay geometry
+f9819e4 docs: refresh handoff after clear availability guard
 0e2c125 ui: guard dataset clear availability fallback
 e61f1fd docs: refresh handoff after deterministic gate
 261c732 eval: gate deterministic cli runs
@@ -172,6 +174,16 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Data Interpretation replay geometry gate:
+  - `scripts/dev/capture_data_interpretation_replay.py` now writes
+    `ui_quality_review.geometry` into `artifacts/ui/data-interpretation-replay.json`.
+  - The standalone replay now fails if captured preview/remap wizard tables or the loaded Dataset
+    table show horizontal overflow, viewport underfill, content-boundary gaps, or clipped visible
+    rows.
+  - Latest replay artifact reports `passed=true`, `checked_widgets=9`, and `findings=[]`.
+  - Preview/remap screenshots were spot-reviewed after refresh; tables are nonblank and fill the
+    panel under the synthetic replay geometry.
+  - No local LLM eval was run; this was UI-observable replay evidence under the fast dev gate.
 - Dataset Clear availability fallback boundary:
   - `_clear_dataset_availability()` no longer reads `DatasetController.has_data()` directly when
     `QueryStateCommand(query="state")` unexpectedly returns `None`.
@@ -693,6 +705,47 @@ bb57beb ui: use backend truth for split replacement
 ## Validation Already Run
 
 ```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/scripts/test_capture_data_interpretation_replay.py::test_replay_geometry_review_flags_underfilled_tree -q
+# red first for 826cd96; failed because build_replay_geometry_review did not exist
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/scripts/test_capture_data_interpretation_replay.py -q
+# 7 passed for 826cd96
+
+poetry run ruff check \
+  scripts/dev/capture_data_interpretation_replay.py \
+  tests/unit/scripts/test_capture_data_interpretation_replay.py
+poetry run basedpyright \
+  scripts/dev/capture_data_interpretation_replay.py \
+  tests/unit/scripts/test_capture_data_interpretation_replay.py
+# passed for 826cd96; basedpyright reported 0 errors, 0 warnings, 0 notes
+
+QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py
+# exit 0 for 826cd96; refreshed data-interpretation preview/remap/applied screenshots and replay JSON
+# replay JSON ui_quality_review.geometry: passed true, checked_widgets 9, findings []
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 826cd96; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/scripts/test_capture_data_interpretation_replay.py \
+  tests/unit/scripts/test_capture_human_like_product_walkthrough.py \
+  tests/integration/ui/test_product_walkthrough.py -q
+# 29 passed
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py -q
+# 20 passed
+
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/dataset/test_dataset_sidebar.py::test_update_sidebar_refuses_real_study_clear_availability_fallback -q
 # red first for 0e2c125; failed on stale controller.has_data() read
