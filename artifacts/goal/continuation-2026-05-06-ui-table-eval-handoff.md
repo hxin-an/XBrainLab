@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+670b6c3 test: guard interpretation replay visible text
 fdc4081 ui: humanize interpretation recipe trace
 87960f2 docs: refresh handoff after legacy helper guard
 c10580e test: guard legacy mutation helper calls
@@ -210,6 +211,17 @@ bb57beb ui: use backend truth for split replacement
     refresh, full ruff, full basedpyright, architecture compliance, `git diff --check`, and
     `mkdocs build --strict`.
   - No local LLM eval was run; this was a UI wording / artifact slice under the fast dev gate.
+- Data Interpretation replay visible-text guard:
+  - `capture_data_interpretation_replay.py` now adds `ui_quality_review.visible_text` to
+    `artifacts/ui/data-interpretation-replay.json`.
+  - The guard fails captured UI text that exposes selected raw command names or recipe trace tokens
+    such as `scan:*`, `choices:*`, or `label_import:*`.
+  - Backend command payloads and diagnostics may still retain raw trace values.
+  - Validation covered red/focused visible-text guard tests, full Data Interpretation replay/dialog
+    unit gate (`30 passed`), replay artifact refresh, full ruff, full basedpyright, architecture
+    compliance, `git diff --check`, and `mkdocs build --strict`.
+  - No local LLM eval was run; this was a UI-observable evidence guard slice under the fast dev
+    gate.
 - Legacy mutation helper call guard:
   - `tests/architecture_compliance.py` now identifies legacy / fallback helpers that directly
     mutate controller state and rejects calls to those helpers unless nested under
@@ -2914,6 +2926,20 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for fdc4081; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/scripts/test_capture_data_interpretation_replay.py \
+  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
+  -q
+# 30 passed for 670b6c3
+QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py
+# refreshed data-interpretation replay JSON with ui_quality_review.visible_text.passed=true
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 670b6c3; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard and changed-case eval
