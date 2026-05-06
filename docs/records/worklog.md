@@ -13113,6 +13113,56 @@
   - This does not finish the wider controller fallback audit, command-driven UI refresh
     coordinator, Windows launcher acceptance, or long local-model ChatPanel verification.
 
+### 2026-05-06 Preprocess sidebar no-capability lock/data fallback guard
+
+- scope：
+  - Close a Preprocess sidebar fallback-audit gap where explicit no-capability branches still read
+    `PreprocessController.is_epoched()` / `has_data()` directly from `check_lock()` and
+    `check_data_loaded()`.
+- red / focused tests：
+  - Added real-`Study` tests that make stale epoched/data controller reads raise when
+    `get_command_capability()` unexpectedly returns `None`.
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_check_lock_refuses_real_study_no_capability_fallback tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_check_data_loaded_refuses_real_study_no_capability_fallback -q`
+    -> failed as expected because `check_lock()` directly read `is_epoched()` and
+    `check_data_loaded()` directly read `has_data()`.
+- 做了什麼：
+  - Routed `check_lock()` no-capability epoched checks through `_run_legacy_preprocess_fallback()`.
+  - Routed `check_data_loaded()` no-capability loaded-data checks through the same helper.
+  - Real `Study` now shows user-facing blocked/unavailable warnings instead of treating stale
+    controller state as product truth; mock / legacy contexts keep controller compatibility.
+- validation：
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_check_lock_refuses_real_study_no_capability_fallback tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_check_data_loaded_refuses_real_study_no_capability_fallback -q`
+    -> `2 passed`.
+  - Preprocess sidebar regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar tests/unit/ui/preprocess -q`
+    -> `76 passed`.
+  - Focused lint/type/architecture:
+    `poetry run ruff check XBrainLab/ui/panels/preprocess/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/preprocess/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - Fast gate:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar tests/unit/ui/preprocess -q`
+    -> `76 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a UI fallback audit slice under the fast dev gate; no tool-call benchmark
+    claim changed.
+- 不能宣稱：
+  - This does not finish the wider controller fallback audit, dataset action handler fallback
+    cleanup, command-driven UI refresh coordinator, Windows launcher acceptance, or long local-model
+    ChatPanel verification.
+
 ### 2026-05-06 Dataset sidebar no-capability lock/data fallback guard
 
 - scope：

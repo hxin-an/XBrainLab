@@ -301,7 +301,10 @@
 - 最新 Preprocess sidebar render cleanup 也把 `update_sidebar()` 的 epoched/lock state 收回
   backend capability surface：有 `preprocess` / `create_epoch` capability 時不再讀 stale
   `PreprocessController.get_preprocessed_data_list()`；該 controller read 只留在 no-capability
-  mock / legacy render branch，並已納入 architecture compliance guard。
+  mock / legacy render branch，並已納入 architecture compliance guard。最新 follow-up 又把
+  `check_lock()` / `check_data_loaded()` 的 no-capability fallback reads 包進
+  `run_legacy_controller_fallback()`：real `Study` 不再回讀 stale
+  `PreprocessController.is_epoched()` / `has_data()`。
 - 最新 Dataset smart-parse cleanup 也讓 parser dialog file list 先走
   `QueryStateCommand(query="state")` 的 `state.raw.files`；stale
   `DatasetController.get_filenames()` 只留在 query unavailable 的 mock / legacy fallback helper。

@@ -5143,3 +5143,28 @@ mock / legacy-only fallback helper.
 
 - This is another fallback-audit slice. It does not complete all UI refresh coordination or human
   desktop acceptance.
+
+## 2026-05-06 Preprocess Sidebar No-Capability Gate Guard
+
+### 狀態
+
+`PreprocessSidebar.check_lock()` and `check_data_loaded()` no-capability fallback reads now use the
+explicit mock / legacy-only fallback helper.
+
+### 已可宣稱
+
+- Real `Study` preprocess action gates no longer read stale `PreprocessController.is_epoched()` /
+  `has_data()` when `preprocess` capability lookup is unexpectedly unavailable.
+- Mock / legacy contexts keep the existing controller compatibility behavior.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/preprocess/sidebar.py`
+- Tests：`tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar`,
+  `tests/unit/ui/preprocess`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is a focused fallback-audit slice. It does not complete all UI command refresh coordination,
+  dataset action handler fallback audit, or human desktop acceptance.

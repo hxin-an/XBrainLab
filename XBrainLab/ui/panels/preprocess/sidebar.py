@@ -323,14 +323,21 @@ class PreprocessSidebar(QWidget):
                 ),
             )
             return True
-        if preprocess_capability is None and self.controller.is_epoched():
-            QMessageBox.warning(
-                self,
+        if preprocess_capability is None:
+            fallback_ok, is_epoched = self._run_legacy_preprocess_fallback(
                 "Action Blocked",
-                "Preprocessing is locked because data has been Epoched.\n"
-                "Please 'Reset All Preprocessing' to make changes.",
+                self.controller.is_epoched,
             )
-            return True
+            if not fallback_ok:
+                return True
+            if is_epoched:
+                QMessageBox.warning(
+                    self,
+                    "Action Blocked",
+                    "Preprocessing is locked because data has been Epoched.\n"
+                    "Please 'Reset All Preprocessing' to make changes.",
+                )
+                return True
         return False
 
     def check_data_loaded(self):
@@ -353,15 +360,27 @@ class PreprocessSidebar(QWidget):
                 ),
             )
             return False
-        if preprocess_capability is None and (
-            not self.controller or not self.controller.has_data()
-        ):
-            QMessageBox.warning(
-                self,
+        if preprocess_capability is None:
+            if not self.controller:
+                QMessageBox.warning(
+                    self,
+                    "Warning",
+                    "No data loaded. Please import data first.",
+                )
+                return False
+            fallback_ok, has_data = self._run_legacy_preprocess_fallback(
                 "Warning",
-                "No data loaded. Please import data first.",
+                self.controller.has_data,
             )
-            return False
+            if not fallback_ok:
+                return False
+            if not has_data:
+                QMessageBox.warning(
+                    self,
+                    "Warning",
+                    "No data loaded. Please import data first.",
+                )
+                return False
         return True
 
     def notify_update(self):

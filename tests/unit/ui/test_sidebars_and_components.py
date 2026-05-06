@@ -102,6 +102,33 @@ class TestPreprocessSidebar:
 
         mock_warning.assert_not_called()
 
+    def test_check_lock_refuses_real_study_no_capability_fallback(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.study import Study
+
+        sidebar.panel.main_window.study = Study()
+        sidebar.panel.controller.is_epoched.side_effect = AssertionError(
+            "stale epoched state should not be read",
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.get_command_capability",
+                return_value=None,
+            ),
+            patch.object(QMessageBox, "warning") as mock_warning,
+        ):
+            assert sidebar.check_lock() is True
+
+        sidebar.panel.controller.is_epoched.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Action Blocked"
+        assert "could not safely complete" in mock_warning.call_args.args[2]
+
     def test_check_data_loaded_true(self, sidebar):
         assert sidebar.check_data_loaded() is True
 
@@ -129,6 +156,33 @@ class TestPreprocessSidebar:
             assert sidebar.check_data_loaded() is True
 
         mock_warning.assert_not_called()
+
+    def test_check_data_loaded_refuses_real_study_no_capability_fallback(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.study import Study
+
+        sidebar.panel.main_window.study = Study()
+        sidebar.panel.controller.has_data.side_effect = AssertionError(
+            "stale loaded-data state should not be read",
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.get_command_capability",
+                return_value=None,
+            ),
+            patch.object(QMessageBox, "warning") as mock_warning,
+        ):
+            assert sidebar.check_data_loaded() is False
+
+        sidebar.panel.controller.has_data.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Warning"
+        assert "could not safely complete" in mock_warning.call_args.args[2]
 
     def test_open_filtering_accepted(self, sidebar):
         with (
