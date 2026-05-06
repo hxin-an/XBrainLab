@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+0e2c125 ui: guard dataset clear availability fallback
+e61f1fd docs: refresh handoff after deterministic gate
 261c732 eval: gate deterministic cli runs
 4e8fe12 docs: refresh handoff after visible text guard
 8862d14 test: guard walkthrough internal command text
@@ -170,6 +172,15 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Dataset Clear availability fallback boundary:
+  - `_clear_dataset_availability()` no longer reads `DatasetController.has_data()` directly when
+    `QueryStateCommand(query="state")` unexpectedly returns `None`.
+  - Mock / legacy contexts still use `run_legacy_controller_fallback()`, while real `Study`
+    contexts disable `Clear Dataset` with `Dataset state is unavailable right now.`.
+  - The existing real-Study reset-command fallback test now separates the availability query from
+    the reset command, so it still proves the reset fallback warning path without relying on stale
+    controller state for button availability.
+  - No local LLM eval was run; this was a UI fallback audit slice.
 - Deterministic tool-call eval CLI gate:
   - `scripts/agent/evals/run_tool_call_eval.py` now defaults to `--eval-gate fast --repeat-count 1`.
   - Routine CLI runs must select a changed / affected subset with `--case-id`, `--case-family`, or
@@ -682,6 +693,40 @@ bb57beb ui: use backend truth for split replacement
 ## Validation Already Run
 
 ```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/dataset/test_dataset_sidebar.py::test_update_sidebar_refuses_real_study_clear_availability_fallback -q
+# red first for 0e2c125; failed on stale controller.has_data() read
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/dataset/test_dataset_sidebar.py \
+  tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar -q
+# 22 passed for 0e2c125
+
+poetry run ruff check \
+  XBrainLab/ui/panels/dataset/sidebar.py \
+  tests/unit/ui/dataset/test_dataset_sidebar.py \
+  tests/unit/ui/test_sidebars_and_components.py
+poetry run basedpyright \
+  XBrainLab/ui/panels/dataset/sidebar.py \
+  tests/unit/ui/dataset/test_dataset_sidebar.py \
+  tests/unit/ui/test_sidebars_and_components.py
+# passed for 0e2c125; basedpyright reported 0 errors, 0 warnings, 0 notes
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 0e2c125; mkdocs still prints the existing Material advisory
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py -q
+# 20 passed
+
 poetry run pytest --capture=sys tests/unit/scripts/test_run_tool_call_eval.py -q
 # 5 passed for 261c732
 
