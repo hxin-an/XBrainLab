@@ -97,6 +97,17 @@ UI_CONTROLLER_RENDER_FALLBACK_METHODS = (
     "get_saliency_params",
     "get_trainers",
 )
+UI_OBSERVER_REFRESH_EVENTS = (
+    "data_changed",
+    "preprocess_changed",
+    "training_started",
+    "training_stopped",
+    "training_updated",
+    "config_changed",
+    "history_cleared",
+    "montage_changed",
+    "saliency_changed",
+)
 
 
 def check_architecture(root_dir: str) -> int:
@@ -241,6 +252,15 @@ def check_architecture(root_dir: str) -> int:
     if observer_refresh_violations:
         print("\nUI Observer Direct Refresh Violations Found:")
         for violation in observer_refresh_violations:
+            print(f" - {violation}")
+        return 1
+
+    observer_handler_violations = check_ui_observer_handlers_call_refresh_coordinator(
+        Path(root_dir)
+    )
+    if observer_handler_violations:
+        print("\nUI Observer Handler Refresh Violations Found:")
+        for violation in observer_handler_violations:
             print(f" - {violation}")
         return 1
 
@@ -692,6 +712,83 @@ def check_ui_observer_direct_update_bridges(root_dir: Path) -> list[str]:
                     "refresh_from_observer); use _create_refresh_bridge() instead."
                 )
     return violations
+
+
+def check_ui_observer_handlers_call_refresh_coordinator(root_dir: Path) -> list[str]:
+    """Return event-specific observer handlers that skip the refresh coordinator."""
+    violations: list[str] = []
+    ui_dir = root_dir / "XBrainLab" / "ui"
+    if not ui_dir.exists():
+        return violations
+
+    for py_file in ui_dir.rglob("*.py"):
+        if py_file.name == "__init__.py":
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+
+        functions = {
+            node.name: node
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if _call_name(node.func) != "_create_bridge":
+                continue
+            event_name = _observer_bridge_event_name(node)
+            if event_name not in UI_OBSERVER_REFRESH_EVENTS:
+                continue
+            handler_name = _observer_bridge_handler_method_name(node)
+            if not handler_name:
+                continue
+            handler = functions.get(handler_name)
+            if handler is None:
+                continue
+            if _function_calls_refresh_after_observer(handler):
+                continue
+            violations.append(
+                f"{py_file.relative_to(root_dir)}:{node.lineno} wires "
+                f"{event_name!r} to {handler_name}(), but that handler does "
+                "not call refresh_after_observer(); event-specific observer "
+                "handlers may do local side effects, then must delegate shared "
+                "refresh scope to the coordinator."
+            )
+    return violations
+
+
+def _observer_bridge_event_name(call: ast.Call) -> str | None:
+    if len(call.args) < 2:
+        return None
+    event_arg = call.args[1]
+    if isinstance(event_arg, ast.Constant) and isinstance(event_arg.value, str):
+        return event_arg.value
+    return None
+
+
+def _observer_bridge_handler_method_name(call: ast.Call) -> str | None:
+    if len(call.args) < 3:
+        return None
+    handler_arg = call.args[2]
+    if not isinstance(handler_arg, ast.Attribute):
+        return None
+    if isinstance(handler_arg.value, ast.Name) and handler_arg.value.id == "self":
+        return handler_arg.attr
+    return None
+
+
+def _function_calls_refresh_after_observer(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> bool:
+    return any(
+        isinstance(child, ast.Call)
+        and _call_name(child.func) == "refresh_after_observer"
+        for child in ast.walk(node)
+    )
 
 
 def _observer_bridge_uses_import_finished_simple_refresh(call: ast.Call) -> bool:

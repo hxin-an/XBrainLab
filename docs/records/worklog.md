@@ -13315,3 +13315,49 @@
 - 不能宣稱：
   - This does not finish the wider controller fallback audit, command-driven UI refresh
     coordinator, Windows launcher acceptance, or long local-model ChatPanel verification.
+
+### 2026-05-06 Observer handler refresh architecture guard
+
+- scope：
+  - Close a UI refresh-coordinator guard gap: `_create_bridge()` named callbacks for known refresh
+    events must call `refresh_after_observer()` after their event-specific local side effects.
+  - Keep `import_finished` named callbacks allowed without refresh because successful import refresh
+    is owned by `data_changed`.
+- red / focused tests：
+  - Added an architecture unit test with `_create_bridge(..., "training_updated",
+    self._on_training_updated)` where `_on_training_updated()` only calls `update_loop()`.
+  - Red gate:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_observer_handler_refresh_guard_flags_handler_without_coordinator tests/unit/test_architecture_compliance.py::test_observer_handler_refresh_guard_allows_handler_with_coordinator tests/unit/test_architecture_compliance.py::test_observer_handler_refresh_guard_allows_import_finished_callback -q`
+    -> failed as expected because the new checker initially returned no violations.
+- 做了什麼：
+  - Added `check_ui_observer_handlers_call_refresh_coordinator()` to
+    `tests/architecture_compliance.py`.
+  - The guard checks known refresh events: `data_changed`, `preprocess_changed`, training
+    lifecycle/progress/config/history events, `montage_changed`, and `saliency_changed`.
+  - Named handlers can still do local log / plot / button work, but must delegate shared refresh
+    scope to `refresh_after_observer()`.
+- validation：
+  - Focused pass:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_observer_handler_refresh_guard_flags_handler_without_coordinator tests/unit/test_architecture_compliance.py::test_observer_handler_refresh_guard_allows_handler_with_coordinator tests/unit/test_architecture_compliance.py::test_observer_handler_refresh_guard_allows_import_finished_callback -q`
+    -> `3 passed`.
+  - Architecture compliance:
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - Fast gate:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `39 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_panel_event_bridges.py -q`
+    -> `36 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a UI refresh architecture guard slice under the fast dev gate; no tool-call
+    benchmark claim changed.
+- 不能宣稱：
+  - This guards callback-specific observer drift. It does not complete full command-driven refresh
+    closure, remove all observer callbacks, or finish human desktop acceptance.

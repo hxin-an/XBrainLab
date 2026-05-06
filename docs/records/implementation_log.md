@@ -5224,3 +5224,28 @@ functions.
 
 - This protects one fallback pattern class. It does not prove all controller reads are gone or
   complete the wider UI refresh coordinator.
+
+## 2026-05-06 Observer Handler Refresh Guard
+
+### 狀態
+
+Architecture compliance now checks callback-specific observer handlers for known refresh events.
+Named handlers can still do event-local UI work, but they must delegate shared refresh scope to
+`refresh_after_observer()`.
+
+### 已可宣稱
+
+- Future `data_changed`, `preprocess_changed`, training lifecycle/progress, and visualization
+  observer callbacks cannot quietly refresh only one panel.
+- Existing TrainingPanel event handlers pass the stricter guard.
+
+### Evidence 入口
+
+- Source：`tests/architecture_compliance.py`
+- Tests：`tests/unit/test_architecture_compliance.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This guards one observer-drift class. It does not complete full command-driven UI refresh
+  coordinator closure or remove all callback-specific local side effects.

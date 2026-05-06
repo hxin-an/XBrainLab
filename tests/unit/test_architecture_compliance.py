@@ -5,6 +5,7 @@ from tests.architecture_compliance import (
     check_ui_direct_controller_mutations,
     check_ui_direct_loader_apply,
     check_ui_observer_direct_update_bridges,
+    check_ui_observer_handlers_call_refresh_coordinator,
     check_ui_post_command_controller_echoes,
     check_ui_post_command_local_refreshes,
 )
@@ -521,6 +522,68 @@ def _setup_bridges(self):
     )
 
     assert check_ui_observer_direct_update_bridges(tmp_path) == []
+
+
+def test_observer_handler_refresh_guard_flags_handler_without_coordinator(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def _setup_bridges(self):
+    self._create_bridge(
+        self.controller,
+        "training_updated",
+        self._on_training_updated,
+    )
+
+def _on_training_updated(self):
+    self.update_loop()
+""",
+    )
+
+    violations = check_ui_observer_handlers_call_refresh_coordinator(tmp_path)
+
+    assert len(violations) == 1
+    assert "_on_training_updated" in violations[0]
+    assert "refresh_after_observer" in violations[0]
+
+
+def test_observer_handler_refresh_guard_allows_handler_with_coordinator(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def _setup_bridges(self):
+    self._create_bridge(
+        self.controller,
+        "training_updated",
+        self._on_training_updated,
+    )
+
+def _on_training_updated(self):
+    self.update_loop()
+    refresh_after_observer(self, event_name="training_updated")
+""",
+    )
+
+    assert check_ui_observer_handlers_call_refresh_coordinator(tmp_path) == []
+
+
+def test_observer_handler_refresh_guard_allows_import_finished_callback(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def _setup_bridges(self):
+    self._create_bridge(
+        self.controller,
+        "import_finished",
+        self._on_import_finished,
+    )
+
+def _on_import_finished(self):
+    self.show_import_warnings()
+""",
+    )
+
+    assert check_ui_observer_handlers_call_refresh_coordinator(tmp_path) == []
 
 
 def test_direct_loader_apply_guard_flags_product_ui_mutation(tmp_path):

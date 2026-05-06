@@ -893,6 +893,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   已把 `_create_bridge(..., self.update_panel)` 和 direct
   `_create_bridge(..., self.refresh_from_observer)` 納入 `tests/architecture_compliance.py`；
   simple refresh 必須走 `_create_refresh_bridge()`，callback-specific handler 仍可用 named handler。
+  最新 observer-handler guard 也會檢查這些 named handler：若 `_create_bridge()` 綁定的是
+  `data_changed`、`preprocess_changed`、training lifecycle / progress 或 visualization refresh
+  event，handler 在做完 event-specific local side effect 後必須呼叫
+  `refresh_after_observer()`，避免下一個 callback 又回到只刷新局部 panel 的舊模式。
   最新 downstream coordinator cleanup 又讓
   `training_changed` command result 刷新 Evaluation / Visualization readiness、`epoch_changed`
   刷新 Visualization readiness、`evaluation_changed` 也刷新 Visualization readiness，減少這些
@@ -1207,7 +1211,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
    blocked / critical / false returns 或已顯式標記的 mock / legacy compatibility fallback，不再是
    silent product controller mutation。`tests/architecture_compliance.py` 現在也會檢查 UI 的
    `result is None` branch 不可直接呼叫 controller mutation；mock / legacy-only fallback 必須經過
-   `run_legacy_controller_fallback()`。
+   `run_legacy_controller_fallback()`。最新 observer-handler guard 也把 callback-specific
+   observer path 納入 architecture compliance：known refresh events 的 named handler 必須呼叫
+   `refresh_after_observer()`，不能只做局部 `update_loop()` / local UI 更新。
    Agent primary stage prompt 已先把 legacy `load_data / attach_labels` 降權，後續要繼續檢查
    UI 是否也完全以 Data Interpretation 作為新資料入口語言；MCP/headless schema 已先把
    legacy commands 標成非 primary workflow。

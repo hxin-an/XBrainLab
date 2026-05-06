@@ -313,6 +313,9 @@
 - 最新 Dataset smart-parse cleanup 也讓 parser dialog file list 先走
   `QueryStateCommand(query="state")` 的 `state.raw.files`；stale
   `DatasetController.get_filenames()` 只留在 query unavailable 的 mock / legacy fallback helper。
+- 最新 observer-handler architecture guard 讓 callback-specific observer path 也必須回到
+  refresh coordinator：known refresh events 若透過 named handler 做 local side effect，handler
+  最後仍要呼叫 `refresh_after_observer()`，不能只更新單一 panel。
 - 最新 Evaluation panel query cleanup 已讓 real `Study` `EvaluateCommand` result gate display：
   evaluation blocked / unavailable 時不再讀 stale injected controller plans，而是顯示
   `No Data Available`。最新 object-payload follow-up 也讓 successful
