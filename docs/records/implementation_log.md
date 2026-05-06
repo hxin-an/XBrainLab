@@ -6026,3 +6026,29 @@ against the current product code and refreshed UI-observable replay artifacts.
 
 - This is automated PyQt/offscreen UI-observable evidence. It does not replace Windows human
   desktop acceptance, DPI/dual-monitor launcher review, or the remaining mature wizard UX work.
+
+## 2026-05-06 ChatPanel Narrow Layout Guard
+
+### 狀態
+
+ChatPanel narrow transcript layout has a focused product regression guard.
+
+### 已可宣稱
+
+- Wrapped message bubbles reserve enough height for descenders.
+- When the assistant panel narrows and a scrollbar appears, the latest assistant response remains
+  visible above the composer.
+- The consolidated human-like walkthrough now records ChatPanel geometry and fails if the latest
+  visible bubble overlaps the composer.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/chat/panel.py`, `XBrainLab/ui/chat/message_bubble.py`
+- Artifact：`artifacts/ui/human-like-walkthrough/human-like-walkthrough.json`
+- Screenshot：`artifacts/ui/human-like-walkthrough/17-assistant-narrow.png`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is offscreen automated UI evidence. It does not complete Windows desktop acceptance,
+  high-DPI / dual-monitor review, or long local-model assistant soak.

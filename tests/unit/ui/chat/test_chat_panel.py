@@ -5,7 +5,15 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QLabel, QLineEdit, QScrollArea, QToolButton, QWidget
+from PyQt6.QtCore import QPoint
+from PyQt6.QtWidgets import (
+    QApplication,
+    QLabel,
+    QLineEdit,
+    QScrollArea,
+    QToolButton,
+    QWidget,
+)
 
 from XBrainLab.ui.chat.message_bubble import MessageBubble
 
@@ -91,6 +99,113 @@ class TestChatPanelCallbacks:
         chat_panel.append_message("assistant", "response")
         assert isinstance(chat_panel.current_agent_bubble, QWidget)
         assert chat_panel.empty_state_widget.isHidden()
+
+    def test_resize_keeps_latest_bubble_above_composer(self, chat_panel, qtbot):
+        chat_panel.resize(340, 620)
+        chat_panel.show()
+        qtbot.wait(0)
+        messages = [
+            ("user", "Hello."),
+            (
+                "assistant",
+                "I can help interpret EEG data and prepare a training-ready dataset.",
+            ),
+            ("user", "Load my brainwave data."),
+            (
+                "assistant",
+                "Choose a file, folder, BIDS root, or saved recipe before I can scan it.",
+            ),
+            ("user", "Train it now."),
+            (
+                "assistant",
+                "Training is not ready until data, epochs, a dataset, a model, "
+                "and settings are ready.",
+            ),
+            ("user", "What is ready now?"),
+            (
+                "assistant",
+                "The dataset and training settings are ready; evaluation needs "
+                "a completed run.",
+            ),
+        ]
+        for sender, text in messages:
+            chat_panel.append_message(sender, text)
+        qtbot.wait(0)
+
+        chat_panel.resize(320, 560)
+        qtbot.wait(0)
+
+        scrollbar = chat_panel.scroll_area.verticalScrollBar()
+        assert scrollbar is not None
+        assert scrollbar.value() == scrollbar.maximum()
+        bubbles = chat_panel.chat_content_widget.findChildren(MessageBubble)
+        assert bubbles
+        last_bubble = bubbles[-1]
+        viewport = chat_panel.scroll_area.viewport()
+        assert viewport is not None
+        viewport_bottom_y = last_bubble.mapTo(
+            viewport,
+            QPoint(0, last_bubble.height()),
+        ).y()
+        assert viewport_bottom_y <= viewport.height() - 8
+
+        panel_bottom_y = last_bubble.mapTo(
+            chat_panel,
+            QPoint(0, last_bubble.height()),
+        ).y()
+        composer_top_y = chat_panel.control_panel.mapTo(chat_panel, QPoint(0, 0)).y()
+        assert panel_bottom_y <= composer_top_y - 8
+
+    def test_capture_style_resize_keeps_latest_bubble_above_composer(self, chat_panel):
+        app = QApplication.instance()
+        assert isinstance(app, QApplication)
+        chat_panel.resize(320, 753)
+        chat_panel.show()
+        app.processEvents()
+
+        messages = [
+            ("user", "Hello."),
+            (
+                "assistant",
+                "I can help interpret EEG data and prepare a training-ready dataset.",
+            ),
+            ("user", "Load my brainwave data."),
+            (
+                "assistant",
+                "Choose a file, folder, BIDS root, or saved recipe before I can scan it.",
+            ),
+            ("user", "Train it now."),
+            (
+                "assistant",
+                "Training is not ready until data, epochs, a dataset, a model, "
+                "and settings are ready.",
+            ),
+            ("user", "What is ready now?"),
+            (
+                "assistant",
+                "The dataset and training settings are ready; evaluation needs "
+                "a completed run.",
+            ),
+        ]
+        for sender, text in messages:
+            chat_panel.append_message(sender, text)
+            app.processEvents()
+
+        chat_panel.resize(320, 655)
+        app.processEvents()
+
+        bubbles = chat_panel.chat_content_widget.findChildren(MessageBubble)
+        assert bubbles
+        panel_bottom_y = (
+            bubbles[-1]
+            .mapTo(
+                chat_panel,
+                QPoint(0, bubbles[-1].height()),
+            )
+            .y()
+        )
+        composer_top_y = chat_panel.control_panel.mapTo(chat_panel, QPoint(0, 0)).y()
+        assert panel_bottom_y <= composer_top_y - 8
 
     def test_set_processing_state(self, chat_panel):
         chat_panel.set_processing_state(True)

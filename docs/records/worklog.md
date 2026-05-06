@@ -14852,3 +14852,59 @@
 - 不能宣稱：
   - This does not replace human Windows desktop acceptance, high-DPI / dual-monitor launcher
     review, or the remaining mature Data Interpretation wizard UX work.
+
+### 2026-05-06 ChatPanel narrow bubble clipping fix
+
+- scope：
+  - Fix the walkthrough screenshot issue where the latest assistant bubble was partially hidden by
+    the ChatPanel composer after the assistant dock was narrowed.
+  - Add artifact-level geometry evidence so future human-like walkthroughs fail if the latest
+    visible bubble overlaps the composer.
+- red / focused tests：
+  - `tests/unit/ui/chat/test_message_bubble.py::TestMessageBubble::test_wrapped_message_keeps_descenders_visible`
+    failed first with text height `72` vs required `76`; the bubble was not reserving enough
+    height for wrapped descenders.
+  - `tests/unit/ui/chat/test_chat_panel.py::TestChatPanelCallbacks::test_capture_style_resize_keeps_latest_bubble_above_composer`
+    failed first with latest bubble bottom `644` below composer safe boundary `591 - 8`, matching
+    the clipped narrow screenshot behavior.
+- 做了什麼：
+  - `MessageBubble.adjust_width()` now uses `ceil(documentSize.height()) + 8` for wrapped text
+    height so descenders are not clipped.
+  - `ChatPanel._scroll_to_bottom()` now updates chat content geometry before scrolling, keeps a
+    pending bottom-scroll request while content still fits, and applies it on scrollbar
+    `rangeChanged` when a resize creates a scroll range.
+  - `resizeEvent()` keeps the transcript pinned to the latest message when the panel was already at
+    the bottom before resize.
+  - `capture_human_like_product_walkthrough.py` now stores `chat_geometry` for ChatPanel phases and
+    `build_chat_geometry_review()` fails the artifact if the latest visible bubble is not clear of
+    the composer.
+  - Refreshed `artifacts/ui/human-like-walkthrough/13-assistant-normal.png` through
+    `17-assistant-narrow.png`, `19-error-recovery.png`, `human-like-walkthrough.json`, and
+    `human-like-walkthrough.md`.
+- validation：
+  - Focused red gates above failed first, then passed after the fix.
+  - ChatPanel regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/chat/test_message_bubble.py tests/unit/ui/chat/test_chat_panel.py -q`
+    -> `52 passed`.
+  - Walkthrough artifact tests:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/integration/ui/test_product_walkthrough.py -q`
+    -> `27 passed`.
+  - UI-observable replay:
+    `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py --output-dir artifacts/ui/human-like-walkthrough`
+    -> passed.
+  - Artifact result:
+    `17-assistant-narrow.png` now shows the final assistant message fully visible above the
+    composer. JSON records `latest_message_bottom_y=579`, `composer_top_y=591`,
+    `bottom_clearance_px=12`, and scrollbar `65 / 65`; Markdown shows
+    `chat geometry passed=True`, checked ChatPanel phases `5`, findings `0`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/chat/panel.py XBrainLab/ui/chat/message_bubble.py scripts/dev/capture_human_like_product_walkthrough.py tests/unit/ui/chat/test_message_bubble.py tests/unit/ui/chat/test_chat_panel.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/chat/panel.py XBrainLab/ui/chat/message_bubble.py scripts/dev/capture_human_like_product_walkthrough.py tests/unit/ui/chat/test_message_bubble.py tests/unit/ui/chat/test_chat_panel.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+- local eval：
+  - Not run. This is a UI layout / walkthrough artifact slice under the fast dev gate; it does not
+    update any tool-call benchmark claim.
+- 不能宣稱：
+  - This does not replace human Windows desktop acceptance, high-DPI / dual-monitor launcher
+    review, long local-model chat soak, or the remaining mature import wizard work.

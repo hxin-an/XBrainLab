@@ -19,9 +19,11 @@ from scripts.dev.capture_data_interpretation_replay import (
 from scripts.dev.capture_human_like_product_walkthrough import (
     REQUIRED_PHASES,
     apply_review_choices,
+    build_chat_geometry_review,
     build_observable_evidence_summary,
     build_pass_fail_summary,
     build_ui_quality_review,
+    chat_panel_geometry,
     dataset_page_geometry,
     forbidden_visible_text,
     merge_ui_quality_into_pass_fail_summary,
@@ -31,6 +33,7 @@ from scripts.dev.capture_human_like_product_walkthrough import (
     validate_walkthrough_payload,
     visible_text_snapshot,
 )
+from XBrainLab.ui.chat.message_bubble import MessageBubble
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
@@ -288,6 +291,26 @@ def test_observable_evidence_summary_indexes_ui_geometry() -> None:
     )
 
 
+def test_observable_evidence_summary_indexes_chat_geometry() -> None:
+    phases = _base_payload()["phases"]
+    phases[0]["notes"] = {
+        "chat_geometry": {
+            "latest_message_bottom_y": 540,
+            "composer_top_y": 560,
+            "latest_message_clear_of_composer": True,
+        }
+    }
+
+    evidence = build_observable_evidence_summary(phases)
+
+    assert (
+        evidence["chat_geometry_snapshots"][REQUIRED_PHASES[0]][
+            "latest_message_bottom_y"
+        ]
+        == 540
+    )
+
+
 def test_validate_walkthrough_payload_requires_observable_evidence() -> None:
     payload = _base_payload()
     payload.pop("observable_evidence")
@@ -416,6 +439,58 @@ def test_build_ui_quality_review_flags_clipped_table_rows() -> None:
     assert finding["phase"] == "data_interpretation_preview"
     assert finding["partial_visible_rows"] == [5]
     assert finding["shows_only_complete_rows"] is False
+
+
+def test_build_chat_geometry_review_flags_bubble_composer_overlap() -> None:
+    phases = [
+        {
+            "phase": "assistant_narrow_panel",
+            "notes": {
+                "chat_geometry": {
+                    "visible_bubble_count": 8,
+                    "latest_message_bottom_y": 644,
+                    "composer_top_y": 591,
+                    "bottom_clearance_px": -53,
+                    "scrollbar_value": 0,
+                    "scrollbar_max": 65,
+                    "latest_message_clear_of_composer": False,
+                    "scrollbar_at_bottom": False,
+                }
+            },
+        }
+    ]
+
+    review = build_chat_geometry_review(phases)
+
+    assert review["passed"] is False
+    assert review["findings"][0]["phase"] == "assistant_narrow_panel"
+
+
+def test_chat_panel_geometry_reports_latest_bubble_clearance(qtbot) -> None:
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    layout = QVBoxLayout(widget)
+    bubble = MessageBubble("Assistant response ready.", is_user=False)
+    layout.addWidget(bubble)
+    composer = QWidget()
+    composer.setObjectName("ControlPanel")
+    layout.addWidget(composer)
+    chat_widget = cast(Any, widget)
+    chat_widget.scroll_area = type(
+        "ScrollAreaStub",
+        (),
+        {"verticalScrollBar": lambda self: None},
+    )()
+    chat_widget.control_panel = composer
+    widget.resize(320, 160)
+    widget.show()
+    bubble.adjust_width(300)
+    qtbot.wait(0)
+
+    geometry = chat_panel_geometry(chat_widget)
+
+    assert geometry["visible_bubble_count"] == 1
+    assert geometry["latest_message_clear_of_composer"] is True
 
 
 def test_dataset_page_geometry_includes_aggregate_info_table(qtbot) -> None:

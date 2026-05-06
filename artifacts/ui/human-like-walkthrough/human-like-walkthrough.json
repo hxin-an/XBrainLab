@@ -4279,7 +4279,19 @@
           "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
-      "notes": {}
+      "notes": {
+        "chat_geometry": {
+          "visible_bubble_count": 2,
+          "latest_message_text": "I can help interpret EEG data and prepare a training-ready dataset.",
+          "latest_message_bottom_y": 142,
+          "composer_top_y": 689,
+          "bottom_clearance_px": 547,
+          "scrollbar_value": 0,
+          "scrollbar_max": 0,
+          "latest_message_clear_of_composer": true,
+          "scrollbar_at_bottom": true
+        }
+      }
     },
     {
       "phase": "assistant_missing_input_clarification",
@@ -4365,7 +4377,18 @@
         }
       },
       "notes": {
-        "clarification": "missing source path"
+        "clarification": "missing source path",
+        "chat_geometry": {
+          "visible_bubble_count": 4,
+          "latest_message_text": "Choose a file, folder, BIDS root, or saved recipe before I can scan it.",
+          "latest_message_bottom_y": 298,
+          "composer_top_y": 689,
+          "bottom_clearance_px": 391,
+          "scrollbar_value": 0,
+          "scrollbar_max": 0,
+          "latest_message_clear_of_composer": true,
+          "scrollbar_at_bottom": true
+        }
       }
     },
     {
@@ -4454,7 +4477,18 @@
         }
       },
       "notes": {
-        "blocked_reason": "training readiness boundary"
+        "blocked_reason": "training readiness boundary",
+        "chat_geometry": {
+          "visible_bubble_count": 6,
+          "latest_message_text": "Training is not ready until data, epochs, a dataset, a model, and settings are ready.",
+          "latest_message_bottom_y": 471,
+          "composer_top_y": 689,
+          "bottom_clearance_px": 218,
+          "scrollbar_value": 0,
+          "scrollbar_max": 0,
+          "latest_message_clear_of_composer": true,
+          "scrollbar_at_bottom": true
+        }
       }
     },
     {
@@ -4567,6 +4601,17 @@
             "capabilities",
             "state"
           ]
+        },
+        "chat_geometry": {
+          "visible_bubble_count": 8,
+          "latest_message_text": "The dataset and training settings are ready; evaluation needs a completed run.",
+          "latest_message_bottom_y": 644,
+          "composer_top_y": 689,
+          "bottom_clearance_px": 45,
+          "scrollbar_value": 0,
+          "scrollbar_max": 0,
+          "latest_message_clear_of_composer": true,
+          "scrollbar_at_bottom": true
         }
       }
     },
@@ -4659,7 +4704,18 @@
       },
       "notes": {
         "width": 900,
-        "dock_width": 340
+        "dock_width": 340,
+        "chat_geometry": {
+          "visible_bubble_count": 8,
+          "latest_message_text": "The dataset and training settings are ready; evaluation needs a completed run.",
+          "latest_message_bottom_y": 579,
+          "composer_top_y": 591,
+          "bottom_clearance_px": 12,
+          "scrollbar_value": 65,
+          "scrollbar_max": 65,
+          "latest_message_clear_of_composer": true,
+          "scrollbar_at_bottom": true
+        }
       }
     },
     {
@@ -11072,6 +11128,63 @@
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": true
         }
+      }
+    },
+    "chat_geometry_snapshots": {
+      "assistant_normal_message": {
+        "visible_bubble_count": 2,
+        "latest_message_text": "I can help interpret EEG data and prepare a training-ready dataset.",
+        "latest_message_bottom_y": 142,
+        "composer_top_y": 689,
+        "bottom_clearance_px": 547,
+        "scrollbar_value": 0,
+        "scrollbar_max": 0,
+        "latest_message_clear_of_composer": true,
+        "scrollbar_at_bottom": true
+      },
+      "assistant_missing_input_clarification": {
+        "visible_bubble_count": 4,
+        "latest_message_text": "Choose a file, folder, BIDS root, or saved recipe before I can scan it.",
+        "latest_message_bottom_y": 298,
+        "composer_top_y": 689,
+        "bottom_clearance_px": 391,
+        "scrollbar_value": 0,
+        "scrollbar_max": 0,
+        "latest_message_clear_of_composer": true,
+        "scrollbar_at_bottom": true
+      },
+      "assistant_blocked_command": {
+        "visible_bubble_count": 6,
+        "latest_message_text": "Training is not ready until data, epochs, a dataset, a model, and settings are ready.",
+        "latest_message_bottom_y": 471,
+        "composer_top_y": 689,
+        "bottom_clearance_px": 218,
+        "scrollbar_value": 0,
+        "scrollbar_max": 0,
+        "latest_message_clear_of_composer": true,
+        "scrollbar_at_bottom": true
+      },
+      "assistant_successful_tool_result": {
+        "visible_bubble_count": 8,
+        "latest_message_text": "The dataset and training settings are ready; evaluation needs a completed run.",
+        "latest_message_bottom_y": 644,
+        "composer_top_y": 689,
+        "bottom_clearance_px": 45,
+        "scrollbar_value": 0,
+        "scrollbar_max": 0,
+        "latest_message_clear_of_composer": true,
+        "scrollbar_at_bottom": true
+      },
+      "assistant_narrow_panel": {
+        "visible_bubble_count": 8,
+        "latest_message_text": "The dataset and training settings are ready; evaluation needs a completed run.",
+        "latest_message_bottom_y": 579,
+        "composer_top_y": 591,
+        "bottom_clearance_px": 12,
+        "scrollbar_value": 65,
+        "scrollbar_max": 65,
+        "latest_message_clear_of_composer": true,
+        "scrollbar_at_bottom": true
       }
     }
   },
@@ -20362,33 +20475,33 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 1204374,
+      "pid": 1208366,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 836668
+      "max_rss_kb": 838116
     },
     {
       "label": "before_close",
-      "pid": 1204374,
+      "pid": 1208366,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1066912
+      "max_rss_kb": 1073304
     },
     {
       "label": "after_close",
-      "pid": 1204374,
+      "pid": 1208366,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1066912
+      "max_rss_kb": 1073304
     }
   ],
   "ui_quality_review": {
@@ -21303,6 +21416,12 @@
       ],
       "boundary": "Automated geometry smoke checks header length, viewport width, horizontal scrollbar state, table-to-content-boundary gaps, and whether visible rows are clipped at the viewport edge. Human review still decides visual polish."
     },
+    "chat_geometry_review": {
+      "passed": true,
+      "checked_widgets": 5,
+      "findings": [],
+      "boundary": "Automated ChatPanel geometry checks whether the latest visible bubble is clear of the composer. Human review still checks typography and visual comfort."
+    },
     "visible_text_boundary": "Checks visible widget text for raw tool syntax, schema, traceback, selected snake_case command leakage, and recipe trace tokens.",
     "human_design_review_boundary": "This is automated UI-observable evidence. It does not replace a human desktop review of Windows launcher, dual-monitor/DPI, or long local-model sessions."
   },
@@ -21321,10 +21440,10 @@
       "after_close_python_threads": 1,
       "python_thread_tolerance": 1,
       "after_close_qt_active_threads": 0,
-      "rss_growth_kb": 230244,
+      "rss_growth_kb": 235188,
       "rss_limit_kb": 600000,
       "boundary": "Coarse process smoke only: RSS uses ru_maxrss high-water mark and this does not prove the absence of leaks."
     }
   },
-  "elapsed_seconds": 4.759
+  "elapsed_seconds": 4.667
 }

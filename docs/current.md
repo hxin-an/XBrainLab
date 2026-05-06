@@ -1352,7 +1352,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
    table density、Training plot readability / history header、Evaluation compact controls 和
    ChatPanel reset stale UI。最新 Dataset sidebar polish 也把 `Channel Selection` 從 success-green
    action 改成中性 workflow action；這個按鈕會修改資料，不應用成功狀態顏色誤導使用者。仍要補
-   mature import wizard editing、assistant main-window narrow composition 和整體產品感。
+   mature import wizard editing 和整體產品感。最新 ChatPanel narrow follow-up 已修正縮窄後
+   最後一則 assistant bubble 被 composer 遮住的問題；human-like walkthrough 也新增
+   ChatPanel geometry review，會檢查 latest bubble 是否清楚停在 composer 上方。
 6. 將 `121` case remap-expanded tool-call dashboard 整理成 thesis report evidence；目前
    formal deterministic / primary / fallback 都是 `121 / 121`，但不要把它擴張成 UI /
    launcher / import wizard 產品完成 claim。最新 source suite 已因 `zh-label-action-missing-input`

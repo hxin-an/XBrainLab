@@ -5,7 +5,7 @@ using ``MessageBubble`` widgets. Handles user input, model/feature selection,
 streaming responses, and debug-mode interception.
 """
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QApplication,  # Added for M3.1
@@ -106,6 +106,7 @@ class ChatPanel(QWidget):
         self.is_processing = False
         self._retry_available = False
         self._footer_status_text = "No EEG data open · Scan a data source to begin"
+        self._pending_scroll_to_bottom = False
         self.setObjectName("AssistantPanel")
         self.setStyleSheet(ASSISTANT_PANEL_STYLE)
         self.init_ui()
@@ -145,6 +146,9 @@ class ChatPanel(QWidget):
         self.chat_layout.addStretch()  # Push messages to top
 
         self.scroll_area.setWidget(self.chat_content_widget)
+        scroll_bar = self.scroll_area.verticalScrollBar()
+        if scroll_bar:
+            scroll_bar.rangeChanged.connect(self._on_scroll_range_changed)
         layout.addWidget(self.scroll_area)
 
         # --- Control Panel (Bottom) ---
@@ -833,6 +837,12 @@ class ChatPanel(QWidget):
             event: The ``QResizeEvent``.
 
         """
+        scroll_bar = self.scroll_area.verticalScrollBar()
+        was_at_bottom = (
+            scroll_bar is None
+            or scroll_bar.maximum() <= 0
+            or scroll_bar.value() >= scroll_bar.maximum() - 2
+        )
         super().resizeEvent(event)
         self._update_footer_status_label()
         # M0.4: Dynamic Width Adjustment Fix
@@ -846,6 +856,8 @@ class ChatPanel(QWidget):
                     widget = item.widget()
                     if isinstance(widget, MessageBubble):
                         widget.adjust_width(container_width)
+        if was_at_bottom:
+            self._scroll_to_bottom()
 
     def _render_message(self, text: str, is_user: bool):
         """Create and display a message bubble.
@@ -931,9 +943,29 @@ class ChatPanel(QWidget):
 
     def _scroll_to_bottom(self):
         """Scroll the chat area to the bottom."""
+        self._pending_scroll_to_bottom = True
+
+        def apply_scroll() -> None:
+            self._apply_pending_scroll_to_bottom()
+
+        apply_scroll()
+        QTimer.singleShot(0, apply_scroll)
+
+    def _on_scroll_range_changed(self, _minimum: int, _maximum: int) -> None:
+        """Keep the latest assistant turn visible after layout recalculates."""
+        if self._pending_scroll_to_bottom:
+            self._apply_pending_scroll_to_bottom()
+
+    def _apply_pending_scroll_to_bottom(self) -> None:
+        """Apply a pending bottom scroll once the scroll range is available."""
+        self.chat_content_widget.adjustSize()
+        self.chat_content_widget.updateGeometry()
         scroll_bar = self.scroll_area.verticalScrollBar()
-        if scroll_bar:
-            scroll_bar.setValue(scroll_bar.maximum())
+        if not scroll_bar:
+            return
+        scroll_bar.setValue(scroll_bar.maximum())
+        if scroll_bar.maximum() > 0:
+            self._pending_scroll_to_bottom = False
 
     def append_message(self, sender: str, text: str):
         """Append a message bubble.

@@ -66,6 +66,7 @@ from XBrainLab.backend.application import (
 from XBrainLab.backend.application.results import CommandResult
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.study import Study
+from XBrainLab.ui.chat.message_bubble import MessageBubble
 from XBrainLab.ui.dialogs.dataset import DataInterpretationPreviewDialog
 from XBrainLab.ui.main_window import MainWindow
 
@@ -974,13 +975,17 @@ def chat_phase(
     notes: dict[str, Any],
 ) -> dict[str, Any]:
     """Build a ChatPanel phase payload."""
+    phase_notes = dict(notes)
+    chat_geometry = chat_panel_geometry(panel)
+    if chat_geometry:
+        phase_notes["chat_geometry"] = chat_geometry
     return {
         "phase": phase,
         "screenshot": screenshot,
         "visible_text": visible_text_snapshot(panel),
         "button_state": button_state_snapshot(panel),
         "workflow_state": compact_state(service.get_state()),
-        "notes": notes,
+        "notes": phase_notes,
     }
 
 
@@ -1331,6 +1336,38 @@ def button_state_snapshot(widget: QWidget) -> list[dict[str, Any]]:
     return states[:120]
 
 
+def chat_panel_geometry(widget: QWidget) -> dict[str, Any]:
+    """Return geometry evidence for ChatPanel transcript/composer overlap."""
+    scroll_area = getattr(widget, "scroll_area", None)
+    control_panel = getattr(widget, "control_panel", None)
+    if scroll_area is None or control_panel is None:
+        return {}
+    bubbles = [
+        bubble
+        for bubble in widget.findChildren(MessageBubble)
+        if bubble.isVisible() and bubble.height() > 0
+    ]
+    if not bubbles:
+        return {}
+    latest = bubbles[-1]
+    latest_bottom_y = latest.mapTo(widget, QPoint(0, latest.height())).y()
+    composer_top_y = control_panel.mapTo(widget, QPoint(0, 0)).y()
+    scrollbar = scroll_area.verticalScrollBar()
+    scrollbar_value = scrollbar.value() if scrollbar else 0
+    scrollbar_max = scrollbar.maximum() if scrollbar else 0
+    return {
+        "visible_bubble_count": len(bubbles),
+        "latest_message_text": latest.get_text(),
+        "latest_message_bottom_y": latest_bottom_y,
+        "composer_top_y": composer_top_y,
+        "bottom_clearance_px": composer_top_y - latest_bottom_y,
+        "scrollbar_value": scrollbar_value,
+        "scrollbar_max": scrollbar_max,
+        "latest_message_clear_of_composer": latest_bottom_y <= composer_top_y - 4,
+        "scrollbar_at_bottom": scrollbar_value >= scrollbar_max - 1,
+    }
+
+
 def compact_state(state: ApplicationStateSnapshot) -> dict[str, Any]:
     """Return a compact workflow state snapshot."""
     data = state.to_dict()
@@ -1524,6 +1561,7 @@ def build_observable_evidence_summary(
     backend_snapshots: dict[str, dict[str, Any]] = {}
     phase_screenshots: dict[str, str] = {}
     ui_geometry: dict[str, dict[str, Any]] = {}
+    chat_geometry: dict[str, dict[str, Any]] = {}
     for phase in phases:
         name = str(phase.get("phase", ""))
         if not name:
@@ -1537,6 +1575,8 @@ def build_observable_evidence_summary(
         notes = phase.get("notes", {})
         if isinstance(notes, dict) and isinstance(notes.get("ui_geometry"), dict):
             ui_geometry[name] = dict(notes["ui_geometry"])
+        if isinstance(notes, dict) and isinstance(notes.get("chat_geometry"), dict):
+            chat_geometry[name] = dict(notes["chat_geometry"])
     return {
         "visible_text_snapshots": visible_text,
         "button_states": button_states,
@@ -1544,6 +1584,7 @@ def build_observable_evidence_summary(
         "backend_state_snapshots": backend_snapshots,
         "phase_screenshots": phase_screenshots,
         "ui_geometry_snapshots": ui_geometry,
+        "chat_geometry_snapshots": chat_geometry,
     }
 
 
@@ -1584,15 +1625,18 @@ def build_ui_quality_review(
         for phase in phases
     )
     table_geometry_review = build_table_geometry_review(phases)
+    chat_geometry_review = build_chat_geometry_review(phases)
     return {
         "automated_checks_passed": not forbidden_rows
         and all(row["nonblank"] for row in screenshot_rows)
         and all_phases_have_snapshots
-        and table_geometry_review["passed"],
+        and table_geometry_review["passed"]
+        and chat_geometry_review["passed"],
         "screenshot_review": screenshot_rows,
         "forbidden_visible_text": forbidden_rows,
         "phase_snapshot_coverage": all_phases_have_snapshots,
         "table_geometry_review": table_geometry_review,
+        "chat_geometry_review": chat_geometry_review,
         "visible_text_boundary": (
             "Checks visible widget text for raw tool syntax, schema, traceback, "
             "selected snake_case command leakage, and recipe trace tokens."
@@ -1601,6 +1645,49 @@ def build_ui_quality_review(
             "This is automated UI-observable evidence. It does not replace a "
             "human desktop review of Windows launcher, dual-monitor/DPI, or "
             "long local-model sessions."
+        ),
+    }
+
+
+def build_chat_geometry_review(phases: list[dict[str, Any]]) -> dict[str, Any]:
+    """Check ChatPanel evidence for latest-message clipping near the composer."""
+    rows: list[dict[str, Any]] = []
+    findings: list[dict[str, Any]] = []
+    for phase in phases:
+        phase_name = str(phase.get("phase", ""))
+        notes = phase.get("notes", {})
+        if not isinstance(notes, dict):
+            continue
+        state = notes.get("chat_geometry")
+        if not isinstance(state, dict):
+            continue
+        row = {
+            "phase": phase_name,
+            "visible_bubble_count": geometry_int(state, "visible_bubble_count"),
+            "latest_message_bottom_y": geometry_int(
+                state,
+                "latest_message_bottom_y",
+            ),
+            "composer_top_y": geometry_int(state, "composer_top_y"),
+            "bottom_clearance_px": geometry_int(state, "bottom_clearance_px"),
+            "scrollbar_value": geometry_int(state, "scrollbar_value"),
+            "scrollbar_max": geometry_int(state, "scrollbar_max"),
+            "latest_message_clear_of_composer": bool(
+                state.get("latest_message_clear_of_composer")
+            ),
+            "scrollbar_at_bottom": bool(state.get("scrollbar_at_bottom")),
+        }
+        rows.append(row)
+        if not row["latest_message_clear_of_composer"]:
+            findings.append(row)
+    return {
+        "passed": not findings,
+        "checked_widgets": len(rows),
+        "findings": findings,
+        "boundary": (
+            "Automated ChatPanel geometry checks whether the latest visible bubble "
+            "is clear of the composer. Human review still checks typography and "
+            "visual comfort."
         ),
     }
 
@@ -1923,6 +2010,15 @@ def render_markdown(payload: dict[str, Any]) -> str:
                 f"- clipped row findings: `{len(table_geometry.get('clipped_row_findings', []))}`",
             ]
         )
+    chat_geometry = quality.get("chat_geometry_review", {})
+    if chat_geometry:
+        lines.extend(
+            [
+                f"- chat geometry passed: `{chat_geometry.get('passed')}`",
+                f"- checked ChatPanel phases: `{chat_geometry.get('checked_widgets')}`",
+                f"- chat geometry findings: `{len(chat_geometry.get('findings', []))}`",
+            ]
+        )
     lines.extend(["", "## Observable Evidence", ""])
     evidence = payload.get("observable_evidence", {})
     lines.extend(
@@ -1931,6 +2027,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
             f"- button states: `{len(evidence.get('button_states', {}))}` phases",
             f"- workflow/backend snapshots: `{len(evidence.get('backend_state_snapshots', {}))}` phases",
             f"- UI geometry snapshots: `{len(evidence.get('ui_geometry_snapshots', {}))}` phases",
+            f"- ChatPanel geometry snapshots: `{len(evidence.get('chat_geometry_snapshots', {}))}` phases",
         ]
     )
     lines.extend(["", "## Phases", ""])

@@ -156,9 +156,18 @@ widgets 增為 `18`，其中 Dataset sidebar `aggregate_info` table 也被納入
 JSON 和 screenshots 現在顯示 `Left hand` / `Right hand` class-map rows，top-level visible-text
 guard 仍為 passed。Raw `choices:class_map` 仍可能出現在 recipe reload 的 backend command-result
 diagnostics，但不是 visible UI text。
-ChatPanel composer polish follow-up gate:
-`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/chat/test_chat_panel.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/integration/ui/test_product_walkthrough.py -q`
--> `55 passed`。
+最新 ChatPanel narrow composer follow-up 又補上 message bubble height / scroll-to-latest
+regression gate，並把 ChatPanel transcript geometry 納入 consolidated walkthrough
+`ui_quality_review`。最新版 `17-assistant-narrow.png` 顯示最後一則 assistant message 完整可見，
+`human-like-walkthrough.json` 記錄 `latest_message_bottom_y=579`、`composer_top_y=591`、
+`bottom_clearance_px=12`、`scrollbar_value=65` / `scrollbar_max=65`；
+Markdown summary 顯示 `chat geometry passed=True`、checked ChatPanel phases `5`、findings `0`。
+Focused gates:
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/chat/test_message_bubble.py tests/unit/ui/chat/test_chat_panel.py -q`
+-> `52 passed`；
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/integration/ui/test_product_walkthrough.py -q`
+-> `27 passed`。這支撐 automated offscreen ChatPanel layout evidence，不是 Windows human desktop
+acceptance 或長時間 local-model chat soak。
 
 Local model downloader lifecycle gate:
 `poetry run pytest --capture=sys tests/unit/llm/core/test_downloader.py tests/unit/llm/test_coverage_boost.py::TestDownloadWorkerRun tests/unit/llm/test_misc_coverage.py::TestModelDownloaderCoverage tests/unit/test_llm_backend.py::TestDownloader -q`

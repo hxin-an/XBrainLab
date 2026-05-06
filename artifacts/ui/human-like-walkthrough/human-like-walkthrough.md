@@ -3,7 +3,7 @@
 - status: `passed`
 - failure reason: none
 - claim boundary: Automated UI-observable PyQt replay; not human Windows desktop acceptance. Windows launcher click-through, dual-monitor/DPI behavior, and long real local-model desktop sessions remain human verification.
-- elapsed seconds: `4.759`
+- elapsed seconds: `4.667`
 - source: `<walkthrough_source>`
 - recipe: `artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json`
 
@@ -14,7 +14,7 @@
 - screenshots: `20`
 - human desktop acceptance: `not performed`
 - resource smoke passed: `True`
-- RSS growth: `230244` KB / limit `600000` KB
+- RSS growth: `235188` KB / limit `600000` KB
 
 ## Screenshots
 
@@ -49,6 +49,9 @@
 - checked table/tree widgets: `18`
 - table geometry findings: `0`
 - clipped row findings: `0`
+- chat geometry passed: `True`
+- checked ChatPanel phases: `5`
+- chat geometry findings: `0`
 
 ## Observable Evidence
 
@@ -56,6 +59,7 @@
 - button states: `26` phases
 - workflow/backend snapshots: `26` phases
 - UI geometry snapshots: `6` phases
+- ChatPanel geometry snapshots: `5` phases
 
 ## Phases
 
@@ -128,9 +132,9 @@
 - smoke checked: `True`
 - smoke passed: `True`
 - boundary: Coarse process smoke only: RSS uses ru_maxrss high-water mark and this does not prove the absence of leaks.
-- start: threads `1`, qt active `0`, rss `836668` KB
-- before_close: threads `1`, qt active `0`, rss `1066912` KB
-- after_close: threads `1`, qt active `0`, rss `1066912` KB
+- start: threads `1`, qt active `0`, rss `838116` KB
+- before_close: threads `1`, qt active `0`, rss `1073304` KB
+- after_close: threads `1`, qt active `0`, rss `1073304` KB
 
 ## Remaining Human Verification
 

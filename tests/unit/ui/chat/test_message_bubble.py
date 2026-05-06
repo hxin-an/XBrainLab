@@ -1,3 +1,4 @@
+from math import ceil
 from unittest.mock import patch
 
 from PyQt6.QtCore import Qt, QUrl
@@ -110,3 +111,21 @@ class TestMessageBubble:
         assert bubble_frame is not None
 
         assert 84 <= bubble_frame.width() <= 122
+
+    def test_wrapped_message_keeps_descenders_visible(self, qtbot):
+        bubble = MessageBubble(
+            "The dataset and training settings are ready; evaluation needs "
+            "a completed run.",
+            is_user=False,
+        )
+        qtbot.addWidget(bubble)
+
+        bubble.adjust_width(260)
+
+        text_edit = bubble.text_edit
+        assert text_edit is not None
+        document = text_edit.document()
+        assert document is not None
+        layout = document.documentLayout()
+        assert layout is not None
+        assert text_edit.height() >= ceil(layout.documentSize().height()) + 8
