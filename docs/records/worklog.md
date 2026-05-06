@@ -37,6 +37,46 @@
 
 ## 2026-05-06
 
+### 19:30 Aggregate Information clipping fix
+
+- 做了什麼：
+  - Fixed `AggregateInfoPanel` row sizing so the 13 summary rows fit without a vertical scrollbar
+    or half-visible `Classes` row at Dataset sidebar size.
+  - Added a regression test for the compact panel geometry.
+  - Extended consolidated human-like walkthrough geometry capture to include the Dataset sidebar
+    `aggregate_info` table, then refreshed `artifacts/ui/human-like-walkthrough/`.
+  - Visually checked `06-interpretation-applied.png`: `Classes` is now fully visible and
+    `Channel Selection` remains a neutral action button.
+- red / focused tests：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/components/test_info_panel.py::test_info_panel_rows_fit_without_vertical_clipping -q`
+    -> failed with `verticalScrollBar().maximum() == 1`.
+- validation：
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/components/test_info_panel.py::test_info_panel_rows_fit_without_vertical_clipping tests/unit/scripts/test_capture_human_like_product_walkthrough.py::test_dataset_page_geometry_includes_aggregate_info_table -q`
+    -> `2 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/components/test_info_panel.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/integration/ui/test_product_walkthrough.py -q`
+    -> `31 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py --output-dir artifacts/ui/human-like-walkthrough`
+    -> exit `0`, `status=passed`, geometry checked widgets `18`, findings `0`, clipped row
+    findings `0`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/components/info_panel.py tests/unit/ui/components/test_info_panel.py scripts/dev/capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/components/info_panel.py tests/unit/ui/components/test_info_panel.py scripts/dev/capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Full gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is UI geometry / artifact evidence, not a tool-call benchmark claim update.
+- 不能宣稱：
+  - This fixes the captured Dataset sidebar summary clipping. It does not replace human Windows
+    desktop / DPI / dual-monitor review or complete all narrow layout polish.
+
 ### 19:22 Consolidated walkthrough BIDS Levels refresh
 
 - 做了什麼：

@@ -642,6 +642,9 @@ text，不能取代人眼設計審查。
 同一 `partial_visible_rows` evidence 也已進入 consolidated human-like walkthrough 的 top-level
 UI quality gate；未來任一被 capture 的 table/tree widget 出現半截 visible row，artifact 會 failed，
 不會只靠人工目視偶然發現。
+最新 Dataset sidebar polish 又修掉 `Aggregate Information` summary table 的最後一列裁切：
+row height / panel height 已收斂成 13 列完整顯示，`Classes` 不再半截可見；human-like walkthrough
+的 geometry review 也已把 `aggregate_info` table 納入檢查。
 最新 consolidated walkthrough refresh 也重用 Data Interpretation replay 的 BIDS `events.json`
 Levels fixture；`04-interpretation-preview.png` / `05-interpretation-confirm.png` /
 `07-recipe-reloaded.png` 和 JSON 現在顯示 `Left hand` / `Right hand` class-map rows。Raw

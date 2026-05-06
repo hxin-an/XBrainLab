@@ -148,6 +148,10 @@ quality review：`table_state()` 現在也保存 `vertical_scrollbar_max` / `par
 最新 `artifacts/ui/human-like-walkthrough/human-like-walkthrough.md` 顯示 table geometry checked
 `15` widgets、geometry findings `0`、clipped row findings `0`；這仍是 offscreen PyQt automated
 evidence，不是 Windows human desktop acceptance。
+最新 Aggregate Information clipping fix 後，human-like walkthrough geometry review checked
+widgets 增為 `18`，其中 Dataset sidebar `aggregate_info` table 也被納入；artifact 顯示
+`vertical_scrollbar_max=0`、`partial_visible_rows=[]`，且 `Classes` row 在
+`06-interpretation-applied.png` 完整可見。
 最新 walkthrough refresh 也重用 Data Interpretation replay 的 BIDS `events.json` Levels fixture；
 JSON 和 screenshots 現在顯示 `Left hand` / `Right hand` class-map rows，top-level visible-text
 guard 仍為 passed。Raw `choices:class_map` 仍可能出現在 recipe reload 的 backend command-result

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from typing import Any, cast
+
 from PyQt6.QtCore import QSize, QTimer
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
+    QTableWidget,
     QTextBrowser,
     QVBoxLayout,
     QWidget,
@@ -19,6 +22,7 @@ from scripts.dev.capture_human_like_product_walkthrough import (
     build_observable_evidence_summary,
     build_pass_fail_summary,
     build_ui_quality_review,
+    dataset_page_geometry,
     forbidden_visible_text,
     merge_ui_quality_into_pass_fail_summary,
     render_eval_dashboard_html,
@@ -27,9 +31,28 @@ from scripts.dev.capture_human_like_product_walkthrough import (
     validate_walkthrough_payload,
     visible_text_snapshot,
 )
+from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
 )
+
+
+class _SidebarStub(QWidget):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.info_panel = AggregateInfoPanel(None)
+
+
+class _DatasetPanelStub(QWidget):
+    def __init__(self) -> None:
+        super().__init__()
+        self.table = QTableWidget(1, 1, self)
+        self.sidebar = _SidebarStub(self)
+
+
+class _WindowStub:
+    def __init__(self) -> None:
+        self.dataset_panel = _DatasetPanelStub()
 
 
 def _base_payload() -> dict:
@@ -393,6 +416,19 @@ def test_build_ui_quality_review_flags_clipped_table_rows() -> None:
     assert finding["phase"] == "data_interpretation_preview"
     assert finding["partial_visible_rows"] == [5]
     assert finding["shows_only_complete_rows"] is False
+
+
+def test_dataset_page_geometry_includes_aggregate_info_table(qtbot) -> None:
+    window = _WindowStub()
+    qtbot.addWidget(window.dataset_panel)
+    qtbot.addWidget(window.dataset_panel.sidebar.info_panel)
+
+    geometry = dataset_page_geometry(cast(Any, window))
+
+    assert "dataset_table" in geometry
+    assert "aggregate_info" in geometry
+    assert len(geometry["aggregate_info"]["rows"]) == 13
+    assert geometry["aggregate_info"]["partial_visible_rows"] == []
 
 
 def test_merge_ui_quality_into_pass_fail_summary_blocks_passed_status() -> None:

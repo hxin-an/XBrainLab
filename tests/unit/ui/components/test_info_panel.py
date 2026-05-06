@@ -19,7 +19,6 @@ def mock_main_window():
 @pytest.fixture
 def panel(qtbot, mock_main_window):
     panel = AggregateInfoPanel(None)
-    panel.main_window = mock_main_window
     qtbot.addWidget(panel)
     return panel
 
@@ -27,6 +26,25 @@ def panel(qtbot, mock_main_window):
 def test_init(panel):
     assert panel.title() == "Aggregate Information"
     assert panel.table.rowCount() == 13  # 13 keys
+
+
+def test_info_panel_rows_fit_without_vertical_clipping(qtbot):
+    panel = AggregateInfoPanel(None)
+    qtbot.addWidget(panel)
+
+    panel.resize(240, 340)
+    panel.show()
+    qtbot.wait(0)
+
+    scrollbar = panel.table.verticalScrollBar()
+    assert scrollbar is not None
+    assert scrollbar.maximum() == 0
+    last_row = panel.row_map["Classes"]
+    item = panel.table.item(last_row, 0)
+    assert item is not None
+    viewport = panel.table.viewport()
+    assert viewport is not None
+    assert panel.table.visualItemRect(item).bottom() <= viewport.height()
 
 
 def test_update_info_no_data(panel, mock_main_window):

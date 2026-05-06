@@ -283,13 +283,7 @@ def _run_walkthrough_steps(
         "dataset_page",
         notes={
             "current_panel": "Dataset",
-            "ui_geometry": {
-                "dataset_table": table_state(
-                    window.dataset_panel.table,
-                    panel=window.dataset_panel,
-                    right_boundary=window.dataset_panel.sidebar,
-                ),
-            },
+            "ui_geometry": dataset_page_geometry(window),
         },
     )
     capture_step(
@@ -433,13 +427,7 @@ def _run_walkthrough_steps(
             ],
             "blocked": blocked_probe,
             "unconfirmed_apply": command_summary(apply_without_confirmation),
-            "ui_geometry": {
-                "dataset_table": table_state(
-                    window.dataset_panel.table,
-                    panel=window.dataset_panel,
-                    right_boundary=window.dataset_panel.sidebar,
-                ),
-            },
+            "ui_geometry": dataset_page_geometry(window),
         },
     )
     capture_step(
@@ -448,13 +436,7 @@ def _run_walkthrough_steps(
         notes={
             "applied": command_summary(apply_confirmed),
             "recipe": command_summary(save_recipe),
-            "ui_geometry": {
-                "dataset_table": table_state(
-                    window.dataset_panel.table,
-                    panel=window.dataset_panel,
-                    right_boundary=window.dataset_panel.sidebar,
-                ),
-            },
+            "ui_geometry": dataset_page_geometry(window),
         },
     )
     append_phase_alias(
@@ -899,6 +881,21 @@ def run_chatpanel_walkthrough(
 def apply_review_choices(dialog: DataInterpretationPreviewDialog) -> None:
     """Apply deterministic human-like review choices to the wizard."""
     apply_replay_review_choices(dialog)
+
+
+def dataset_page_geometry(window: MainWindow) -> dict[str, Any]:
+    """Return geometry evidence for the Dataset page main table and sidebar summary."""
+    return {
+        "dataset_table": table_state(
+            window.dataset_panel.table,
+            panel=window.dataset_panel,
+            right_boundary=window.dataset_panel.sidebar,
+        ),
+        "aggregate_info": table_state(
+            window.dataset_panel.sidebar.info_panel.table,
+            panel=window.dataset_panel.sidebar.info_panel,
+        ),
+    }
 
 
 def interpretation_dialog_geometry(
