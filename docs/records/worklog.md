@@ -13906,3 +13906,21 @@
   - This closes one direct mutable-state read class. It does not finish every controller fallback
     audit item, remove observer/manual refresh entirely, certify montage placement quality, or
     replace human desktop acceptance.
+
+### 2026-05-06 Roadmap / eval gate sync
+
+- scope：
+  - Update the high-level roadmap after the direct Study state guard so completed architecture work
+    is visible outside the detailed worklog.
+  - Re-state the latest eval gate policy in roadmap terms: fast dev gate is deterministic
+    changed/failed only, repeat `1`, no fallback; candidate gate is primary affected families only,
+    repeat `1` or `2`, no fallback; full primary / fallback x3 is release / thesis evidence only.
+- validation：
+  - `git diff --check -- docs/planning/roadmap.md` -> passed.
+  - `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is documentation truth sync under the fast dev gate; it does not update
+    tool-call benchmark claims and intentionally avoids full primary / fallback x3.
+- 不能宣稱：
+  - This does not add new runtime behavior, new UI evidence, local LLM evidence, or human desktop
+    acceptance.

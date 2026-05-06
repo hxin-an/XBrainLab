@@ -5556,3 +5556,32 @@ controller defaults.
 
 - This closes one dialog default-read gap. It does not complete the UI Command Refresh Coordinator
   + Controller Fallback Audit.
+
+## 2026-05-06 Direct Study State Read Guard
+
+### 狀態
+
+Product UI code now has a static architecture guard against direct reads of mutable `Study` state.
+
+### 已可宣稱
+
+- AgentManager montage channel choices now come from the ApplicationService state query before the
+  dialog opens.
+- PreprocessPlotter original-signal overlay now uses the shared data-list query when current data is
+  supplied explicitly.
+- Direct mutable `Study` state reads are allowed only inside explicit mock / legacy fallback helpers.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/components/agent_manager.py`,
+  `XBrainLab/ui/panels/preprocess/plotters/preprocess_plotter.py`,
+  `tests/architecture_compliance.py`
+- Tests：`tests/unit/test_architecture_compliance.py`,
+  `tests/unit/ui/test_agent_manager_coverage.py`,
+  `tests/unit/ui/preprocess/test_preprocess_plotter.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This closes one read-side bypass class. It does not finish every controller fallback audit item,
+  replace observer/manual UI refresh, or complete human desktop acceptance.
