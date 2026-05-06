@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+8bafc5a ui: centralize info panel command query
+4cabcce docs: refresh handoff after info panel guard
 5db16a7 ui: guard info panel controller lookup
 613a9f0 docs: refresh handoff after study controller guard
 9be1149 ui: guard direct study controller lookup
@@ -216,6 +218,20 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- UI command-helper boundary guard:
+  - `InfoPanelService._query_data_lists()` no longer calls
+    `BackendFacade(...).service.execute(...)` directly.
+  - Real `Study` aggregate data-list query now goes through
+    `execute_application_command(self, QueryStateCommand(query="data_lists", include_objects=True),
+    refresh=False)`.
+  - `tests/architecture_compliance.py` now rejects UI direct
+    `BackendFacade(...).service.execute()` outside `application_capabilities.py`, preserving a
+    single UI command/query execution helper for Study detection, mock/legacy boundary, and refresh
+    policy.
+  - Validation covered red/focused architecture tests, InfoPanelService / InfoPanel /
+    refresh-coordinator regressions, full architecture compliance, full ruff, full basedpyright,
+    `git diff --check`, and `mkdocs build --strict`.
+  - No local LLM eval was run; this was a UI architecture fast-gate slice.
 - InfoPanelService direct Study controller lookup guard:
   - `InfoPanelService` no longer uses direct real-`Study` `get_controller(...)` lookup for
     aggregate-info observer bridges or data-list fallback.
