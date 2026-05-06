@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+1b950fe ui: guard montage preflight fallback
+635f5b4 docs: refresh handoff after replay geometry gate
 826cd96 test: gate interpretation replay geometry
 f9819e4 docs: refresh handoff after clear availability guard
 0e2c125 ui: guard dataset clear availability fallback
@@ -174,6 +176,15 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Montage preflight fallback boundary:
+  - `ControlSidebar.set_montage()` no longer reads stale
+    `VisualizationController.has_epoch_data()` when `apply_montage` capability lookup unexpectedly
+    returns `None` in a real `Study` runtime.
+  - Mock / legacy contexts still use `run_legacy_controller_fallback()` and retain the existing
+    controller compatibility path.
+  - Validation covered the red stale-controller read, focused montage behavior, Visualization
+    sidebar regression, full fast gates, backend integration, and agent/tool regression.
+  - No local LLM eval was run; this was a UI fallback audit slice.
 - Data Interpretation replay geometry gate:
   - `scripts/dev/capture_data_interpretation_replay.py` now writes
     `ui_quality_review.geometry` into `artifacts/ui/data-interpretation-replay.json`.
@@ -705,6 +716,44 @@ bb57beb ui: use backend truth for split replacement
 ## Validation Already Run
 
 ```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_refuses_real_study_controller_fallback -q
+# red first for 1b950fe; failed on stale controller.has_epoch_data() read
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_refuses_real_study_controller_fallback \
+  tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_legacy_result_uses_controller_fallback \
+  tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage -q
+# 3 passed for 1b950fe
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/visualization/test_control_sidebar.py \
+  tests/unit/ui/test_visualization_panel_redesign.py -q
+# 28 passed
+
+poetry run ruff check \
+  XBrainLab/ui/panels/visualization/control_sidebar.py \
+  tests/unit/ui/visualization/test_control_sidebar.py
+poetry run basedpyright \
+  XBrainLab/ui/panels/visualization/control_sidebar.py \
+  tests/unit/ui/visualization/test_control_sidebar.py
+# passed for 1b950fe; basedpyright reported 0 errors, 0 warnings, 0 notes
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 1b950fe; mkdocs still prints the existing Material advisory
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py -q
+# 20 passed
+
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/scripts/test_capture_data_interpretation_replay.py::test_replay_geometry_review_flags_underfilled_tree -q
 # red first for 826cd96; failed because build_replay_geometry_review did not exist
