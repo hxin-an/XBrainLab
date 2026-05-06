@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+3d1321a ui: show direct load fallback warning
+28e4e27 docs: refresh handoff after smart parse filename warning
 724447b ui: show smart parse filename fallback warning
 ba2c714 docs: refresh handoff after label import warning
 6f06503 ui: show label import fallback warning
@@ -148,6 +150,11 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Direct Load compatibility fallback warning:
+  - real `Study` direct-load compatibility fallback refusal now shows `Interpretation Blocked`.
+  - the UI no longer tries `DatasetController.import_files()` or wraps the refusal in generic import
+    failure when direct `LoadDataCommand` returns `None`.
+  - mock / legacy direct import fallback still calls `DatasetController.import_files()`.
 - Smart Parse filename fallback warning:
   - real `Study` smart-parse filename-query fallback refusal now shows `Smart Parse Blocked`.
   - the UI no longer reads stale `DatasetController.get_filenames()` when
@@ -1922,6 +1929,32 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/integration/agent/test_tool_call_eval.py \
   -q
 # passed for 724447b; backend integration 7 passed; agent/tool gate 20 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_refuses_real_study_direct_load_fallback \
+  -q
+# red first because no blocked warning was shown, then 1 passed for 3d1321a
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler \
+  -q
+# 73 passed for 3d1321a
+
+poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py
+poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py
+# passed for 3d1321a; basedpyright reported 0 errors, 0 warnings, 0 notes
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+poetry run pytest --capture=sys tests/integration/backend -q
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# passed for 3d1321a; backend integration 7 passed; agent/tool gate 20 passed
 
 git diff --check
 poetry run ruff check .
