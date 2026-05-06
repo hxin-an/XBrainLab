@@ -6095,3 +6095,23 @@ current blockers.
 ### 不能宣稱完成
 
 - These are not implementation commitments, Goal 1 blockers, or product-complete criteria.
+
+## 2026-05-06 Planning Docs Reset Slice
+
+### 狀態
+
+`roadmap.md` and `now.md` were rewritten as human-readable planning entry points.
+
+### 已可宣稱
+
+- `roadmap.md` is now a concise product-track and future-work overview instead of a detailed
+  implementation history.
+- `now.md` is now a short next-focus document instead of a long closure log.
+- Future work now explicitly includes expert workflow mode, constrained workflow recipe DSL,
+  training model registry, training model node visualization, and training model compatibility
+  checks.
+
+### 不能宣稱完成
+
+- This is only the first documentation reset slice. `current.md`, `validation/README.md`, and the
+  records still need follow-up trimming and better information hierarchy.

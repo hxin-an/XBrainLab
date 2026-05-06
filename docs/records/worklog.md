@@ -14940,3 +14940,23 @@
 - 不能宣稱：
   - This does not complete the broader UI command-refresh coordinator audit, controller fallback
     cleanup, or product-complete backend architecture closure.
+
+### 2026-05-06 Planning docs reset and future-work capture
+
+- scope：
+  - Make planning docs easier for a human to scan.
+  - Capture future product ideas without turning them into current blockers.
+- 做了什麼：
+  - Rewrote `docs/planning/roadmap.md` from a long progress/history page into a concise product
+    track overview with completion criteria.
+  - Rewrote `docs/planning/now.md` from a long closure log into a short next-focus page.
+  - Added future work entries for Expert Workflow Mode, Workflow Recipe DSL, Training Model
+    Registry, Training Model Node Visualization, and Training Model Compatibility Check.
+  - Clarified that training model ideas refer to EEG training models such as EEGNet, not local LLM
+    model selection.
+- validation：
+  - `git diff --check` -> passed.
+  - `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+- 不能宣稱：
+  - This is the first documentation reset slice only. `current.md`, `validation/README.md`, and
+    records still need follow-up trimming.
