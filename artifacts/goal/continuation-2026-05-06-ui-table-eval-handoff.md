@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+48af56d ui: deduplicate aggregate info refresh
 6e99b03 ui: surface eval claim boundary
 ca469ff ui: render eval dashboard artifact
 83b0015 test: guard stale render fallbacks
@@ -159,6 +160,11 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- MainWindow aggregate-info observer deduplication:
+  - MainWindow now constructs `InfoPanelService(study, observe_controller_events=False)`.
+  - Product runtime aggregate info refresh is owned by `refresh_coordinator` shared-status refresh
+    calling `MainWindow.update_info_panel()` / `InfoPanelService.notify_all()`.
+  - Standalone / legacy InfoPanelService usage keeps the default direct controller observer bridges.
 - Human-like walkthrough eval dashboard presentation:
   - `scripts/dev/capture_human_like_product_walkthrough.py` now renders
     `artifacts/agent_evals/dashboard.md` as product-style HTML in a `QTextBrowser` instead of
@@ -604,6 +610,32 @@ bb57beb ui: use backend truth for split replacement
 ## Validation Already Run
 
 ```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/components/test_info_panel_service.py \
+  tests/unit/ui/test_main_window_sync.py \
+  tests/unit/ui/test_refresh_coordinator.py \
+  tests/unit/ui/test_panel_event_bridges.py \
+  tests/integration/ui/test_e2e_qtbot.py::TestInfoService -q
+# 56 passed for 48af56d
+
+poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q
+# 34 passed
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 48af56d; mkdocs still prints the existing Material advisory
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py -q
+# 20 passed
+
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/scripts/test_capture_human_like_product_walkthrough.py \
   tests/integration/ui/test_product_walkthrough.py -q
