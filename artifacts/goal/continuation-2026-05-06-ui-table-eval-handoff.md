@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+accf290 test: require observer handlers to coordinate refresh
+f3a04b2 docs: refresh handoff after capability guard
 bfa241a test: guard no-capability controller reads
 71a04a7 docs: refresh handoff after dataset action guard
 9e3a8cb ui: guard dataset action fallback gates
@@ -185,6 +187,19 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Observer handler refresh architecture guard:
+  - `tests/architecture_compliance.py` now checks callback-specific observer handlers for known
+    refresh events. Named handlers can still do local log / plot / button work, but must call
+    `refresh_after_observer()` so shared refresh scope remains centralized.
+  - The guard covers `data_changed`, `preprocess_changed`, training lifecycle / progress / config /
+    history events, `montage_changed`, and `saliency_changed`.
+  - `import_finished` named callbacks remain allowed without refresh because successful import
+    refresh is owned by `data_changed`.
+  - Validation covered red architecture guard tests, all architecture-compliance unit tests, the
+    stricter architecture compliance run, refresh coordinator / event bridge regressions, backend
+    integration, and agent/tool deterministic regression.
+  - No local LLM eval was run; this was a UI refresh architecture guard slice under the fast dev
+    gate.
 - Capability-none controller readiness architecture guard:
   - `tests/architecture_compliance.py` now flags direct controller readiness calls inside
     `capability is None` branches unless the reads are isolated behind explicit legacy helper
@@ -786,6 +801,39 @@ bb57beb ui: use backend truth for split replacement
 ## Validation Already Run
 
 ```bash
+poetry run pytest --capture=sys \
+  tests/unit/test_architecture_compliance.py::test_observer_handler_refresh_guard_flags_handler_without_coordinator \
+  tests/unit/test_architecture_compliance.py::test_observer_handler_refresh_guard_allows_handler_with_coordinator \
+  tests/unit/test_architecture_compliance.py::test_observer_handler_refresh_guard_allows_import_finished_callback -q
+# red first for accf290; failed because the new checker initially returned no violations
+
+poetry run pytest --capture=sys \
+  tests/unit/test_architecture_compliance.py::test_observer_handler_refresh_guard_flags_handler_without_coordinator \
+  tests/unit/test_architecture_compliance.py::test_observer_handler_refresh_guard_allows_handler_with_coordinator \
+  tests/unit/test_architecture_compliance.py::test_observer_handler_refresh_guard_allows_import_finished_callback -q
+# 3 passed for accf290
+
+poetry run python tests/architecture_compliance.py
+# Architecture compliant! for accf290
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_refresh_coordinator.py \
+  tests/unit/ui/test_panel_event_bridges.py -q
+poetry run pytest --capture=sys tests/integration/backend -q
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py -q
+# fast gate passed for accf290:
+# ruff all checks passed; basedpyright 0 errors/warnings/notes; mkdocs passed with existing
+# Material advisory; architecture unit 39 passed; refresh/event bridge 36 passed; backend 7 passed;
+# agent/tool deterministic regression 20 passed.
+
 poetry run pytest --capture=sys \
   tests/unit/test_architecture_compliance.py::test_capability_readiness_guard_flags_explicit_legacy_none_branch \
   tests/unit/test_architecture_compliance.py::test_capability_readiness_guard_allows_explicit_legacy_helper -q
