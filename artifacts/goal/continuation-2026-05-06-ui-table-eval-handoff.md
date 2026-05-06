@@ -2860,6 +2860,23 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for dd6e4b3; mkdocs still prints the existing Material advisory
+
+poetry run pytest --capture=sys \
+  tests/unit/test_architecture_compliance.py::test_legacy_mutation_helper_guard_flags_unwrapped_call \
+  tests/unit/test_architecture_compliance.py::test_legacy_mutation_helper_guard_allows_wrapped_call \
+  -q
+# red first at missing checker import, then 2 passed for c10580e
+poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q
+# 45 passed for c10580e
+poetry run ruff check tests/architecture_compliance.py tests/unit/test_architecture_compliance.py
+poetry run basedpyright tests/architecture_compliance.py tests/unit/test_architecture_compliance.py
+# passed for c10580e; basedpyright reported 0 errors, 0 warnings, 0 notes
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for c10580e; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard and changed-case eval
