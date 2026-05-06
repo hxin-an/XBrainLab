@@ -4,6 +4,7 @@ from tests.architecture_compliance import (
     check_ui_controller_render_fallbacks,
     check_ui_direct_controller_mutations,
     check_ui_direct_loader_apply,
+    check_ui_direct_study_state_reads,
     check_ui_legacy_mutation_helper_calls,
     check_ui_observer_direct_update_bridges,
     check_ui_observer_handlers_call_refresh_coordinator,
@@ -798,3 +799,33 @@ def clear_ui_table(self):
     )
 
     assert check_ui_direct_controller_mutations(tmp_path) == []
+
+
+def test_direct_study_state_guard_flags_product_ui_read(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def open_montage(self):
+    epoch_data = self.study.epoch_data
+    return epoch_data.get_mne().ch_names
+""",
+    )
+
+    violations = check_ui_direct_study_state_reads(tmp_path)
+
+    assert len(violations) == 1
+    assert "study.epoch_data" in violations[0]
+    assert "ApplicationService" in violations[0]
+
+
+def test_direct_study_state_guard_allows_legacy_helper(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def _legacy_montage_channels(self):
+    epoch_data = self.study.epoch_data
+    return epoch_data.get_mne().ch_names
+""",
+    )
+
+    assert check_ui_direct_study_state_reads(tmp_path) == []

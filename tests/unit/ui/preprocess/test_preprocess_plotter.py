@@ -207,6 +207,36 @@ def test_plot_sample_data_refuses_real_study_query_none_controller_fallback(
     mock_widget.plot_time.plot.assert_not_called()
 
 
+def test_plot_sample_data_with_supplied_data_uses_query_for_original_overlay(
+    mock_widget,
+    mock_controller,
+):
+    """Supplied current data should still get original overlay from query truth."""
+    from XBrainLab.backend.study import Study
+
+    current = mock_controller.get_preprocessed_data_list()[0]
+    stale_original = MagicMock()
+    stale_original.get_sfreq.side_effect = AssertionError(
+        "stale Study loaded_data_list should not be read",
+    )
+    mock_controller.study = Study()
+    mock_controller.study.loaded_data_list = [stale_original]
+    plotter = PreprocessPlotter(mock_widget, mock_controller)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.query_preprocess_render_lists",
+            return_value=([current], [current]),
+        ) as query,
+        patch("XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.Worker"),
+    ):
+        plotter.plot_sample_data(data_list=[current])
+
+    query.assert_called_once_with(plotter)
+    stale_original.get_sfreq.assert_not_called()
+    mock_widget.plot_time.plot.assert_called()
+
+
 class TestGetChanData:
     """Tests for _get_chan_data covering raw and epoch paths."""
 

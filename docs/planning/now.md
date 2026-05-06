@@ -361,7 +361,9 @@
 - 最新 Visualization montage setup cleanup 也讓 channel-name dialog defaults 先走
   `QueryStateCommand(query="state")` 的 `state.epoch.channel_names`；stale
   `VisualizationController.get_channel_names()` 只留在 query unavailable 的 mock / legacy
-  fallback helper。
+  fallback helper。最新 follow-up 把 AgentManager montage picker 也改成同一 state query truth；
+  assistant-driven montage dialog 不再直接讀 `study.epoch_data` 取 channel names，direct Study
+  state reads 也新增 architecture guard。
 - 最新 Preprocess panel render cleanup 也讓 history / preview / plotter refresh 先走
   `QueryStateCommand(query="data_lists", include_objects=True)`；real `Study`
   `PreprocessPanel.update_panel()` 不再直接讀 stale
@@ -369,7 +371,8 @@
 - 最新 Preprocess render follow-up 已把同一 service-backed data-list query 抽成
   `query_preprocess_render_lists()`，並接到 `PreprocessPlotter.plot_sample_data()` 的
   no-explicit-data path；real `Study` plot refresh 不再因 caller 漏傳 data list 就回到 stale
-  controller list。
+  controller list。最新 follow-up 也讓 supplied current-data path 的 original overlay 從同一 query
+  取得，不再直接讀 `controller.study.loaded_data_list`。
 - 最新 Preprocess plotter async cleanup 讓 PSD worker result 帶 plot generation guard；快速重繪時
   stale PSD result 不會覆寫新的 frequency plot。這是 UI responsiveness / stale-result guard，
   不是 long-running preprocessing performance soak。

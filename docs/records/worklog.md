@@ -13843,3 +13843,66 @@
 - 不能宣稱：
   - This guards one dialog default-read path. It does not complete all UI controller fallback
     cleanup or human desktop acceptance.
+
+### 2026-05-06 Direct Study state read guard
+
+- scope：
+  - Close a read-side UI bypass class that was outside the controller fallback audit:
+    product UI code could still read mutable `Study` state directly.
+  - Targeted examples:
+    AgentManager montage picker read `study.epoch_data` to collect channel names before opening
+    the dialog; `PreprocessPlotter.plot_sample_data(data_list=...)` read
+    `controller.study.loaded_data_list` for original-signal overlay when the caller supplied only
+    current data.
+- red / focused tests：
+  - Added `test_direct_study_state_guard_flags_product_ui_read`; it failed first because
+    `check_ui_direct_study_state_reads()` did not exist.
+  - Added
+    `TestMontagePicker.test_real_study_montage_uses_state_query_for_channel_names`; it failed first
+    because `open_montage_picker_dialog()` called `epoch_data.get_mne()` before any state query.
+  - Added
+    `test_plot_sample_data_with_supplied_data_uses_query_for_original_overlay`; it failed first
+    because the plotter did not call `query_preprocess_render_lists()` and used stale
+    `Study.loaded_data_list`.
+- 做了什麼：
+  - `AgentManager.open_montage_picker_dialog()` now queries
+    `QueryStateCommand(query="state")` and reads `state.epoch.channel_names` before constructing
+    `PickMontageDialog`.
+  - Direct `study.epoch_data` reads are isolated in `_legacy_montage_channel_names()` and only run
+    through `run_legacy_controller_fallback()`.
+  - `PreprocessPlotter` now has `_original_data_list_for_render()`; supplied-current-data calls
+    use the same ApplicationService data-list query for original overlay instead of directly
+    reading `controller.study.loaded_data_list`.
+  - `tests/architecture_compliance.py` now rejects direct product UI reads of mutable Study state
+    attributes such as `study.loaded_data_list`, `study.epoch_data`, `study.trainer`, and related
+    state outside explicit legacy / fallback helpers.
+- validation：
+  - Focused red/fix gates:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_direct_study_state_guard_flags_product_ui_read tests/unit/test_architecture_compliance.py::test_direct_study_state_guard_allows_legacy_helper -q`
+    -> `2 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker::test_real_study_montage_uses_state_query_for_channel_names -q`
+    -> `1 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess/test_preprocess_plotter.py::test_plot_sample_data_with_supplied_data_uses_query_for_original_overlay -q`
+    -> `1 passed`.
+  - Regression:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `47 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker tests/unit/ui/test_ui_misc.py::TestAgentManagerDeep::test_open_montage_no_epoch tests/unit/ui/test_ui_misc.py::TestAgentManagerDeep::test_open_montage_accepted -q`
+    -> `11 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/components/test_agent_manager.py -q`
+    -> `56 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess/test_preprocess_plotter.py tests/unit/ui/preprocess/test_data_query.py tests/unit/ui/preprocess/test_preprocess_panel.py -q`
+    -> `45 passed`.
+  - Quality / docs:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is a UI fallback / state-truth architecture slice under the fast dev gate; it
+    does not change tool-call benchmark claims and does not justify full primary / fallback x3.
+- 不能宣稱：
+  - This closes one direct mutable-state read class. It does not finish every controller fallback
+    audit item, remove observer/manual refresh entirely, certify montage placement quality, or
+    replace human desktop acceptance.

@@ -1,5 +1,6 @@
 """Coverage tests for AgentManager ??UI component interactions."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 
@@ -16,6 +17,10 @@ def _make_manager():
     m.agent_controller = MagicMock()
     m.agent_initialized = True
     m.vram_checker = MagicMock()
+    epoch_data = MagicMock()
+    epoch_data.get_channel_names.return_value = ["Cz", "Fz"]
+    epoch_data.get_mne.return_value.info = {"ch_names": ["Cz", "Fz"]}
+    m.study.epoch_data = epoch_data
     return m
 
 
@@ -274,6 +279,7 @@ class TestMontagePicker:
         m.preprocess_controller = MagicMock()
         m.chat_panel.debug_mode = True
         epoch_data = MagicMock()
+        epoch_data.get_channel_names.return_value = ["C3", "C4"]
         epoch_data.get_mne.return_value.info = {"ch_names": ["C3", "C4"]}
         m.study.epoch_data = epoch_data
         mock_dialog = MagicMock()
@@ -296,6 +302,74 @@ class TestMontagePicker:
         m.preprocess_controller.apply_montage.assert_not_called()
         m.chat_controller.add_user_message.assert_called_with("Montage Confirmed.")
 
+    def test_real_study_montage_uses_state_query_for_channel_names(self):
+        """Agent montage picker should not read Study epoch objects for UI choices."""
+        from XBrainLab.backend.application import (
+            ApplyMontageCommand,
+            ChangedState,
+            CommandResult,
+            QueryStateCommand,
+        )
+        from XBrainLab.backend.study import Study
+
+        m = _make_manager()
+        m.study = Study()
+        m.preprocess_controller = MagicMock()
+        m.chat_panel.debug_mode = True
+        epoch_data = MagicMock()
+        epoch_data.get_mne.side_effect = AssertionError("stale epoch object read")
+        m.study.epoch_data = epoch_data
+        mock_dialog = MagicMock()
+        mock_dialog.exec.return_value = True
+        mock_dialog.get_result.return_value = (
+            ["C3", "C4"],
+            [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
+        )
+
+        def execute_side_effect(_context, command, **_kwargs):
+            if isinstance(command, QueryStateCommand):
+                return CommandResult.success_result(
+                    "query_state",
+                    "Application state snapshot ready.",
+                    state={},
+                    changed_state=ChangedState(),
+                    diagnostics={
+                        "state": {"epoch": {"channel_names": ["C3", "C4"]}},
+                    },
+                )
+            if isinstance(command, ApplyMontageCommand):
+                return CommandResult.success_result(
+                    "apply_montage",
+                    "Applied montage.",
+                    state={},
+                    changed_state=ChangedState(visualization_changed=True),
+                )
+            raise AssertionError(f"Unexpected command: {command!r}")
+
+        with (
+            patch(
+                "XBrainLab.ui.components.agent_manager.get_command_capability",
+                return_value=SimpleNamespace(enabled=True, reasons=[]),
+            ),
+            patch(
+                "XBrainLab.ui.components.agent_manager.execute_application_command",
+                side_effect=execute_side_effect,
+            ) as execute,
+            patch(
+                "XBrainLab.ui.components.agent_manager.PickMontageDialog",
+                return_value=mock_dialog,
+            ) as dialog_cls,
+        ):
+            m.open_montage_picker_dialog({"montage_name": "standard_1020"})
+
+        assert isinstance(execute.call_args_list[0].args[1], QueryStateCommand)
+        dialog_cls.assert_called_once()
+        assert dialog_cls.call_args.args[1] == ["C3", "C4"]
+        assert dialog_cls.call_args.kwargs["default_montage"] == "standard_1020"
+        epoch_data.get_mne.assert_not_called()
+        m.preprocess_controller.apply_montage.assert_not_called()
+        m.chat_controller.add_user_message.assert_called_with("Montage Confirmed.")
+
     def test_real_study_montage_normalizes_dialog_position_lists(self):
         """Agent montage path should share the sidebar's command argument shape."""
         from XBrainLab.backend.study import Study
@@ -305,6 +379,7 @@ class TestMontagePicker:
         m.preprocess_controller = MagicMock()
         m.chat_panel.debug_mode = True
         epoch_data = MagicMock()
+        epoch_data.get_channel_names.return_value = ["C3", "C4"]
         epoch_data.get_mne.return_value.info = {"ch_names": ["C3", "C4"]}
         m.study.epoch_data = epoch_data
         mock_dialog = MagicMock()
@@ -328,6 +403,12 @@ class TestMontagePicker:
 
     def test_real_study_montage_rejects_malformed_position_vectors(self):
         """Malformed dialog output should not reach ApplicationService."""
+        from XBrainLab.backend.application import (
+            ApplyMontageCommand,
+            ChangedState,
+            CommandResult,
+            QueryStateCommand,
+        )
         from XBrainLab.backend.study import Study
 
         m = _make_manager()
@@ -335,11 +416,25 @@ class TestMontagePicker:
         status_bar = MagicMock()
         m.main_window.statusBar.return_value = status_bar
         epoch_data = MagicMock()
+        epoch_data.get_channel_names.return_value = ["C3"]
         epoch_data.get_mne.return_value.info = {"ch_names": ["C3"]}
         m.study.epoch_data = epoch_data
         mock_dialog = MagicMock()
         mock_dialog.exec.return_value = True
         mock_dialog.get_result.return_value = (["C3"], [[0.0, 0.0]])
+
+        def execute_side_effect(_context, command, **_kwargs):
+            if isinstance(command, QueryStateCommand):
+                return CommandResult.success_result(
+                    "query_state",
+                    "Application state snapshot ready.",
+                    state={},
+                    changed_state=ChangedState(),
+                    diagnostics={"state": {"epoch": {"channel_names": ["C3"]}}},
+                )
+            if isinstance(command, ApplyMontageCommand):
+                raise AssertionError("Malformed positions must not apply montage")
+            raise AssertionError(f"Unexpected command: {command!r}")
 
         with (
             patch(
@@ -348,11 +443,13 @@ class TestMontagePicker:
             ),
             patch(
                 "XBrainLab.ui.components.agent_manager.execute_application_command",
+                side_effect=execute_side_effect,
             ) as mock_execute,
         ):
             m.open_montage_picker_dialog({"montage_name": "standard_1020"})
 
-        mock_execute.assert_not_called()
+        assert len(mock_execute.call_args_list) == 1
+        assert isinstance(mock_execute.call_args_list[0].args[1], QueryStateCommand)
         epoch_data.set_channels.assert_not_called()
         status_bar.showMessage.assert_called_once_with(
             "Montage setup failed: Each montage position must contain x, y, z values."
@@ -368,6 +465,7 @@ class TestMontagePicker:
         status_bar = MagicMock()
         m.main_window.statusBar.return_value = status_bar
         epoch_data = MagicMock()
+        epoch_data.get_channel_names.return_value = ["C3", "C4"]
         epoch_data.get_mne.return_value.info = {"ch_names": ["C3", "C4"]}
         m.study.epoch_data = epoch_data
         mock_dialog = MagicMock()
@@ -377,6 +475,28 @@ class TestMontagePicker:
             [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
         )
 
+        from XBrainLab.backend.application import (
+            ApplyMontageCommand,
+            ChangedState,
+            CommandResult,
+            QueryStateCommand,
+        )
+
+        def execute_side_effect(_context, command, **_kwargs):
+            if isinstance(command, QueryStateCommand):
+                return CommandResult.success_result(
+                    "query_state",
+                    "Application state snapshot ready.",
+                    state={},
+                    changed_state=ChangedState(),
+                    diagnostics={
+                        "state": {"epoch": {"channel_names": ["C3", "C4"]}},
+                    },
+                )
+            if isinstance(command, ApplyMontageCommand):
+                return None
+            raise AssertionError(f"Unexpected command: {command!r}")
+
         with (
             patch(
                 "XBrainLab.ui.components.agent_manager.PickMontageDialog",
@@ -384,7 +504,7 @@ class TestMontagePicker:
             ),
             patch(
                 "XBrainLab.ui.components.agent_manager.execute_application_command",
-                return_value=None,
+                side_effect=execute_side_effect,
             ),
             patch.object(m, "handle_user_input") as mock_hui,
         ):

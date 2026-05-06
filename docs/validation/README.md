@@ -219,12 +219,20 @@ worker cancellation, long-running preprocessing performance, or memory leak beha
 
 Preprocess plotter render query-source gate:
 `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess/test_data_query.py tests/unit/ui/preprocess/test_preprocess_plotter.py -q`
--> `25 passed`；
+-> `27 passed`；
 `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar -q`
 -> `70 passed`。This supports service-backed `QueryStateCommand(query="data_lists",
-include_objects=True)` as the shared render source for Preprocess panel and plotter refresh. The
-controller data-list read remains only for query-unavailable mock / legacy fallback. It does not
-prove plot visual quality, large-data plotting performance, or full preprocessing workflow UX.
+include_objects=True)` as the shared render source for Preprocess panel and plotter refresh,
+including original-data overlay when current data is supplied explicitly. The controller / direct
+Study data-list read remains only for query-unavailable mock / legacy fallback. It does not prove
+plot visual quality, large-data plotting performance, or full preprocessing workflow UX.
+
+AgentManager montage state-query gate:
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker tests/unit/ui/test_ui_misc.py::TestAgentManagerDeep::test_open_montage_no_epoch tests/unit/ui/test_ui_misc.py::TestAgentManagerDeep::test_open_montage_accepted -q`
+-> `11 passed`。This supports assistant-driven montage picker channel choices coming from
+`QueryStateCommand(query="state")` before the dialog opens, with direct `study.epoch_data` reads
+limited to mock / legacy fallback. It does not certify montage placement quality or full
+Visualization UX.
 
 Visualization failed-query trainer fallback gate:
 `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization_panel_redesign.py::test_visualization_get_trainers_does_not_fallback_after_failed_query -q`

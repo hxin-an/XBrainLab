@@ -17,7 +17,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from XBrainLab.backend.application import ApplyMontageCommand, CommandName
+from XBrainLab.backend.application import (
+    ApplyMontageCommand,
+    CommandName,
+    QueryStateCommand,
+)
 from XBrainLab.backend.controller.chat_controller import ChatController
 from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.utils.logger import logger
@@ -1153,14 +1157,17 @@ class AgentManager(QObject):
                 )
             return
 
-        epoch_data = self.study.epoch_data
-        if not epoch_data:
+        chs = self._montage_channel_names_for_dialog()
+        if chs is None:
+            return
+        if not chs:
             sb = self.main_window.statusBar()
             if sb:
-                sb.showMessage("Error: No epoch data available for montage.")
+                sb.showMessage(
+                    "No epoch channel names are available for montage setup."
+                )
             return
 
-        chs = epoch_data.get_mne().info["ch_names"]
         dialog = PickMontageDialog(self.main_window, chs, default_montage=montage_name)
 
         if dialog.exec():
@@ -1229,3 +1236,68 @@ class AgentManager(QObject):
         else:
             self.chat_controller.add_agent_message("Operation Cancelled.")
             self.handle_user_input("Montage Selection Cancelled by User.")
+
+    def _montage_channel_names_for_dialog(self) -> list[str] | None:
+        """Return montage channel names through the command spine when available."""
+        result = execute_application_command(
+            self,
+            QueryStateCommand(query="state"),
+            refresh=False,
+        )
+        if result is None:
+            try:
+                return run_legacy_controller_fallback(
+                    self,
+                    self._legacy_montage_channel_names,
+                )
+            except LegacyControllerFallbackUnavailableError as exc:
+                sb = self.main_window.statusBar()
+                if sb:
+                    sb.showMessage(f"Montage setup blocked: {exc}")
+                self.handle_user_input("Montage Selection Failed.")
+                return None
+        if result.failed:
+            sb = self.main_window.statusBar()
+            if sb:
+                sb.showMessage(f"Montage setup blocked: {result.message}")
+            self.handle_user_input("Montage Selection Failed.")
+            return None
+
+        diagnostics = getattr(result, "diagnostics", {}) or {}
+        state = diagnostics.get("state")
+        epoch = state.get("epoch") if isinstance(state, dict) else {}
+        channel_names = epoch.get("channel_names") if isinstance(epoch, dict) else None
+        if not isinstance(channel_names, list):
+            return []
+        return [str(name) for name in channel_names]
+
+    def _legacy_montage_channel_names(self) -> list[str]:
+        """Read montage channel names only for mock / legacy UI contexts."""
+        epoch_data = self.study.epoch_data
+        if not epoch_data:
+            return []
+
+        getter = getattr(epoch_data, "get_channel_names", None)
+        if callable(getter):
+            try:
+                names = getter()
+                if isinstance(names, list | tuple):
+                    return [str(name) for name in names]
+            except Exception:
+                logger.debug("Legacy montage channel-name getter failed", exc_info=True)
+
+        try:
+            mne_obj = epoch_data.get_mne()
+        except Exception:
+            return []
+
+        names = getattr(mne_obj, "ch_names", None)
+        if isinstance(names, list | tuple):
+            return [str(name) for name in names]
+
+        info = getattr(mne_obj, "info", None)
+        if isinstance(info, dict):
+            info_names = info.get("ch_names")
+            if isinstance(info_names, list | tuple):
+                return [str(name) for name in info_names]
+        return []

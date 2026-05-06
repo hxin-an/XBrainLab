@@ -42,6 +42,41 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Direct Study State Read Guard
+
+### 狀態
+
+UI fallback audit now also covers direct mutable `Study` state reads, not only controller methods.
+
+### 已可宣稱
+
+- Assistant-driven montage picker channel choices come from
+  `QueryStateCommand(query="state")` / `state.epoch.channel_names`.
+- Preprocess plot original-data overlay uses the shared data-list query when current data is
+  supplied explicitly.
+- Architecture compliance rejects product UI functions that read mutable Study state such as
+  `study.epoch_data` or `study.loaded_data_list` outside explicit legacy / fallback helpers.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/components/agent_manager.py`,
+  `XBrainLab/ui/panels/preprocess/plotters/preprocess_plotter.py`,
+  `tests/architecture_compliance.py`
+- Tests：`tests/unit/ui/test_agent_manager_coverage.py`,
+  `tests/unit/ui/preprocess/test_preprocess_plotter.py`,
+  `tests/unit/test_architecture_compliance.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This closes one read-side bypass class. It does not remove all legacy fallback branches, complete
+  command-driven UI refresh closure, or replace human desktop acceptance.
+
+### 下一手重點
+
+- Continue auditing UI request paths where read-only dialog defaults or preview data can drift from
+  ApplicationService state snapshots.
+
 ## 2026-05-06 Label Import Smart-Filter Query Path
 
 ### 狀態

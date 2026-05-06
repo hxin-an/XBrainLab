@@ -1137,8 +1137,11 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   summary diagnostics；`VisualizationController.get_saliency_params()` 只保留在 query unavailable
   的 mock / legacy fallback helper，避免 real `Study` UI 用 stale controller params 填 dialog。
   最新 montage setup cleanup 也把 channel-name dialog defaults 改成先讀
-  `QueryStateCommand(query="state")` 裡的 `state.epoch.channel_names`；controller
-  `get_channel_names()` 只保留在 query unavailable 的 mock / legacy fallback helper。最新
+  `QueryStateCommand(query="state")` 裡的 `state.epoch.channel_names`；Visualization sidebar
+  和 AgentManager montage picker 都用這個 shared state query 取 channel names，不再由產品
+  UI 直接讀 `study.epoch_data` / controller channel list 來決定 dialog choices。controller
+  `get_channel_names()` 和 direct Study epoch reads 只保留在 query unavailable 的 mock / legacy
+  fallback helper。最新
   Visualization fallback language slice 又讓 Montage / Saliency Settings / Export Saliency 的
   real `Study` query-none 或 apply-none fallback refusal 顯示 shared product warning，不再把
   `LegacyControllerFallbackUnavailableError` 外拋到 UI slot。
@@ -1146,8 +1149,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `QueryStateCommand(query="data_lists", include_objects=True)`；real `Study` refresh 不再從
   `PreprocessPanel.update_panel()` 直接讀 stale `PreprocessController.get_preprocessed_data_list()`。
   最新 follow-up 把同一 query helper 下沉給 `PreprocessPlotter.plot_sample_data()`：若 caller
-  沒有顯式傳入 data list，plotter 會先查 ApplicationService data-list truth，只有 query
-  unavailable 的 mock / legacy path 才讀 controller list。最新 render fallback boundary 也讓
+  沒有顯式傳入 data list，plotter 會先查 ApplicationService data-list truth；若 caller 只顯式
+  傳入 current data 但沒有傳 original overlay，plotter 也會用同一 query 取得 original list，而不是
+  直接讀 `controller.study.loaded_data_list`。只有 query unavailable 的 mock / legacy path 才讀
+  controller list。最新 render fallback boundary 也讓
   real `Study` 的 panel refresh / direct plotter call 若意外拿到 query `None`，會降級為 no-data
   render，而不是回讀 stale `PreprocessController` list。
   最新 Preprocess plotter cleanup 又替 async PSD worker result 加上 generation guard；快速重繪時
@@ -1159,7 +1164,8 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `tests/architecture_compliance.py` 也會阻擋
   UI `result is None` branch 直接 controller mutation。最新 guard follow-up 又會阻擋 UI
   product path 直接呼叫 `controller.update_metadata()` / `controller.start_training()` 這類
-  mutating controller method；合法 controller mutation 必須在 `run_legacy_controller_fallback()`
+  mutating controller method；最新 direct Study state guard 也會阻擋產品 UI 直接讀
+  `study.loaded_data_list`、`study.epoch_data`、`study.trainer` 這類 mutable state；合法 controller mutation 必須在 `run_legacy_controller_fallback()`
   或明確 legacy / fallback helper 裡。最新 named-controller receiver guard 又把
   `self.preprocess_controller` 這類具名 controller attribute 納入同一條規則，避免 direct
   mutation 因為不是剛好叫 `self.controller` 而逃過 static audit。後續 runtime alignment slice 也讓

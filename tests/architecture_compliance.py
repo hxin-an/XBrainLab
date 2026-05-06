@@ -97,6 +97,16 @@ UI_CONTROLLER_RENDER_FALLBACK_METHODS = (
     "get_saliency_params",
     "get_trainers",
 )
+UI_DIRECT_STUDY_STATE_ATTRIBUTES = (
+    "loaded_data_list",
+    "preprocessed_data_list",
+    "epoch_data",
+    "datasets",
+    "dataset_generator",
+    "model_holder",
+    "training_option",
+    "trainer",
+)
 UI_OBSERVER_REFRESH_EVENTS = (
     "data_changed",
     "preprocess_changed",
@@ -234,6 +244,13 @@ def check_architecture(root_dir: str) -> int:
     if loader_apply_violations:
         print("\nUI Direct Loader Apply Violations Found:")
         for violation in loader_apply_violations:
+            print(f" - {violation}")
+        return 1
+
+    study_state_violations = check_ui_direct_study_state_reads(Path(root_dir))
+    if study_state_violations:
+        print("\nUI Direct Study State Read Violations Found:")
+        for violation in study_state_violations:
             print(f" - {violation}")
         return 1
 
@@ -620,6 +637,52 @@ def _is_direct_loader_apply(node: ast.Call) -> bool:
         for keyword in node.keywords
         if keyword.value is not None
     )
+
+
+def check_ui_direct_study_state_reads(root_dir: Path) -> list[str]:
+    """Return UI code that reads mutable Study state outside legacy helpers."""
+    violations: list[str] = []
+    ui_dir = root_dir / "XBrainLab" / "ui"
+    if not ui_dir.exists():
+        return violations
+
+    for py_file in ui_dir.rglob("*.py"):
+        if py_file.name == "__init__.py":
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if _is_legacy_controller_mutation_helper(node.name):
+                continue
+            visitor = _DirectStudyStateReadVisitor()
+            visitor.visit(node)
+            violations.extend(
+                f"{py_file.relative_to(root_dir)}:{attr.lineno} reads "
+                f"study.{attr.attr}; product UI render/action state must come "
+                "from ApplicationService query/capability results, with direct "
+                "Study state reads limited to explicit legacy/fallback helpers."
+                for attr in visitor.violations
+            )
+    return violations
+
+
+class _DirectStudyStateReadVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.violations: list[ast.Attribute] = []
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        if node.attr not in UI_DIRECT_STUDY_STATE_ATTRIBUTES:
+            self.generic_visit(node)
+            return
+        if _expression_mentions_study(node.value):
+            self.violations.append(node)
+            return
+        self.generic_visit(node)
 
 
 def _expression_mentions_study(node: ast.AST) -> bool:

@@ -168,6 +168,16 @@ class PreprocessPlotter:
         except LegacyControllerFallbackUnavailableError:
             return None
 
+    def _original_data_list_for_render(self) -> list[Any]:
+        queried_lists = query_preprocess_render_lists(self)
+        if queried_lists is not None:
+            return queried_lists[1]
+
+        legacy_lists = self._legacy_data_lists_for_render()
+        if legacy_lists is None:
+            return []
+        return legacy_lists[1]
+
     def plot_sample_data(
         self,
         *,
@@ -201,8 +211,8 @@ class PreprocessPlotter:
                 if legacy_lists is None:
                     return
                 data_list, orig_list = legacy_lists
-        elif original_data_list is None and hasattr(self.controller, "study"):
-            orig_list = self.controller.study.loaded_data_list
+        elif original_data_list is None:
+            orig_list = self._original_data_list_for_render()
 
         if not data_list:
             return
