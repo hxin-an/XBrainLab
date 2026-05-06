@@ -1171,6 +1171,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   mutation 因為不是剛好叫 `self.controller` 而逃過 static audit。後續 runtime alignment slice 也讓
   `find_study()` 能從 `self.<name>_controller.study` 找到 real `Study`，因此具名 controller
   context 會走 ApplicationService capability / fallback refusal，而不是被誤判為 legacy context。
+  最新 observer wiring fallback guard 又把 Evaluation / Visualization panel 的
+  `controller.study.get_controller("training")` 退路收進 explicit legacy helper；real `Study`
+  panel 若缺 MainWindow 注入的 `TrainingController`，不再自己回頭找 controller tree 來建立
+  observer bridge。
   最新 no-refresh command guard 也讓 UI 中的 `execute_application_command(..., refresh=False)`
   只可用於 read/query commands；mutating command 必須保留 command-driven refresh。最新
   legacy-mutation helper guard 也要求會直接 mutate controller 的 legacy / fallback helper 只能在

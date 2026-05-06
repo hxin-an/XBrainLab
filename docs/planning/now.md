@@ -406,6 +406,9 @@
   sidebar `Set Montage` 和 assistant montage confirmation fallback 改成同一個 mock / legacy-only
   helper。剩餘 `result is None` path 主要是
   Data Interpretation service-unavailable critical / false return 或已顯式 helper fallback。
+- 最新 Evaluation / Visualization observer wiring fallback cleanup 也把
+  `controller.study.get_controller("training")` 退路收進 explicit legacy helper；real `Study`
+  panel 缺 MainWindow 注入 controller 時不再自行回頭找 training controller 建 observer bridge。
 - 最新 Visualization fallback language slice 又把 Montage / Saliency Settings / Export Saliency 的
   real `Study` query-none / apply-none fallback refusal 改成 user-facing warning，避免 Qt slot
   外拋 `LegacyControllerFallbackUnavailableError`。
@@ -425,7 +428,9 @@
   mutating command 使用 `execute_application_command(..., refresh=False)`，只允許 read/query
   command 抑制 coordinator refresh。最新 legacy-mutation helper guard 也要求直接 mutate
   controller 的 legacy / fallback helper 呼叫必須包在 `run_legacy_controller_fallback()` 內，
-  避免 compatibility helper 被誤用成 real product runtime path。
+  避免 compatibility helper 被誤用成 real product runtime path。最新 observer wiring fallback
+  guard 也會阻擋新的 `controller.study.get_controller(...)` product fallback；產品 observer
+  wiring 應由 MainWindow injection 或 explicit legacy helper 負責。
 - 後續 Training sidebar bypass cleanup 修掉重新 split 前清 datasets 和 Clear History 的 direct
   controller mutation；destructive cleanup 會走 `ClearDatasetsCommand` /
   `ClearTrainingHistoryCommand`，且 Clear History 現在有 user confirmation。

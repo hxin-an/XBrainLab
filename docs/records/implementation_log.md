@@ -5585,3 +5585,31 @@ Product UI code now has a static architecture guard against direct reads of muta
 
 - This closes one read-side bypass class. It does not finish every controller fallback audit item,
   replace observer/manual UI refresh, or complete human desktop acceptance.
+
+## 2026-05-06 Observer Wiring Fallback Guard
+
+### 狀態
+
+Evaluation and Visualization observer wiring no longer retrieves the training controller through
+`controller.study.get_controller("training")` in real `Study` contexts.
+
+### 已可宣稱
+
+- Product MainWindow wiring still injects `TrainingController` into Evaluation and Visualization
+  panels.
+- If a real `Study` panel is missing that injection, it does not silently walk back through
+  `controller.study` to build observer bridges.
+- Architecture compliance now guards this controller-tree fallback pattern.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/evaluation/panel.py`,
+  `XBrainLab/ui/panels/visualization/panel.py`, `tests/architecture_compliance.py`
+- Tests：`tests/unit/ui/test_panel_event_bridges.py`,
+  `tests/unit/test_architecture_compliance.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This closes one observer-wiring fallback class. It does not remove all observer refresh paths,
+  replace controller-based panel construction, or complete the UI refresh coordinator milestone.

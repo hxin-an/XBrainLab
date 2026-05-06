@@ -93,10 +93,9 @@ class EvaluationPanel(BasePanel):
 
     def _setup_bridges(self):
         """Listen to TrainingController to update when training finishes."""
-        # Use injected controller if available, fallback to legacy
-        training_ctrl = self.training_controller
-        if not training_ctrl and self.controller and hasattr(self.controller, "study"):
-            training_ctrl = self.controller.study.get_controller("training")
+        training_ctrl = (
+            self.training_controller or self._legacy_training_controller_for_bridges()
+        )
 
         if training_ctrl:
             self._create_refresh_bridge(training_ctrl, "training_stopped")
@@ -107,6 +106,18 @@ class EvaluationPanel(BasePanel):
                 self.preprocess_controller,
                 "preprocess_changed",
             )
+
+    def _legacy_training_controller_for_bridges(self):
+        study = getattr(self.controller, "study", None)
+        if study is None:
+            return None
+        try:
+            return run_legacy_controller_fallback(
+                self,
+                lambda: study.get_controller("training"),
+            )
+        except LegacyControllerFallbackUnavailableError:
+            return None
 
     def update_panel(self):
         """Update panel content when switched to."""

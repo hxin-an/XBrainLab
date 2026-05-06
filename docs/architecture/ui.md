@@ -122,6 +122,9 @@ metadata edit / batch metadata、smart parse、remove files、direct file import
 channel selection 和 post-load label compatibility fallback。Visualization saliency settings 和
 Visualization sidebar / AgentManager montage confirmation fallback 也已用同一 helper 覆蓋。剩餘 `result is None` branches
 主要是 service-unavailable UI error / blocked return，而不是 controller mutation fallback。
+Evaluation / Visualization 的 training observer bridge 也不再用
+`controller.study.get_controller("training")` 補齊 real `Study` wiring；產品路徑依
+MainWindow 注入的 `TrainingController`，legacy lookup 只留在 explicit fallback helper。
 Dataset file import keeps `LoadDataCommand` / `DatasetController.import_files()` only as a
 mock / legacy fallback when no ApplicationService command surface is visible. If the real
 `scan_source` capability exists, a Data Interpretation command-sequence unavailable result is shown
@@ -206,7 +209,8 @@ Data Interpretation workflow。`find_study()` 現在也會透過 `controller.stu
 Architecture compliance 另新增 direct loader apply guard；非 legacy adapter 的 UI code 不可再
 直接呼叫 `loader.apply(...study...)`。後續 fallback audit guards 也會阻擋 UI product path
 直接 controller mutation、具名 controller receiver mutation、direct mutable Study state reads、
-mutating command `refresh=False`，以及會 mutate controller 的 legacy / fallback helper 在
+`controller.study.get_controller(...)` observer wiring fallback、mutating command `refresh=False`，
+以及會 mutate controller 的 legacy / fallback helper 在
 `run_legacy_controller_fallback()` gate 外被呼叫。這些 guards 是 product runtime fallback
 boundary，不代表 controller 已完全退場。
 

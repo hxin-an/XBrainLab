@@ -13924,3 +13924,54 @@
 - 不能宣稱：
   - This does not add new runtime behavior, new UI evidence, local LLM evidence, or human desktop
     acceptance.
+
+### 2026-05-06 Observer wiring controller-tree fallback guard
+
+- scope：
+  - Close a remaining observer-wiring fallback where EvaluationPanel / VisualizationPanel could
+    read `controller.study.get_controller("training")` when `training_controller` was not injected.
+  - Product MainWindow already injects the training controller; fallback lookup through the
+    controller tree should remain mock / legacy only.
+- red / focused tests：
+  - Added
+    `test_controller_study_get_controller_guard_flags_product_fallback`; it failed first because
+    `check_ui_controller_study_get_controller_fallbacks()` did not exist.
+  - Added
+    `test_evaluation_panel_does_not_fetch_training_controller_from_real_study` and
+    `test_visualization_panel_does_not_fetch_training_controller_from_real_study`; both failed
+    first because panel `_setup_bridges()` called real `Study.get_controller("training")`.
+- 做了什麼：
+  - Added `check_ui_controller_study_get_controller_fallbacks()` to
+    `tests/architecture_compliance.py`.
+  - Moved Evaluation / Visualization training-controller fallback lookup behind
+    `_legacy_training_controller_for_bridges()` and `run_legacy_controller_fallback()`.
+  - Real `Study` contexts without injected `training_controller` now skip that observer bridge
+    instead of walking through `controller.study`.
+- validation：
+  - Focused gates:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_controller_study_get_controller_guard_flags_product_fallback tests/unit/test_architecture_compliance.py::test_controller_study_get_controller_guard_allows_legacy_helper -q`
+    -> `2 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_panel_event_bridges.py::test_evaluation_panel_does_not_fetch_training_controller_from_real_study tests/unit/ui/test_panel_event_bridges.py::test_visualization_panel_does_not_fetch_training_controller_from_real_study -q`
+    -> `2 passed`.
+  - Regression:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `49 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_panel_event_bridges.py tests/unit/ui/test_evaluation_panel_redesign.py tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/test_visualization_panel_coverage.py -q`
+    -> `58 passed`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/evaluation/panel.py XBrainLab/ui/panels/visualization/panel.py tests/architecture_compliance.py tests/unit/test_architecture_compliance.py tests/unit/ui/test_panel_event_bridges.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/evaluation/panel.py XBrainLab/ui/panels/visualization/panel.py tests/architecture_compliance.py tests/unit/test_architecture_compliance.py tests/unit/ui/test_panel_event_bridges.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Quality / docs:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is a UI observer/fallback architecture slice under the fast dev gate; it does not
+    change tool-call benchmark claims and does not justify primary / fallback x3.
+- 不能宣稱：
+  - This does not remove all observer paths, all controller construction, all legacy fallbacks, or
+    human desktop acceptance.

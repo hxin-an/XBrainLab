@@ -2,6 +2,7 @@ from tests.architecture_compliance import (
     check_ui_capability_gated_controller_readiness,
     check_ui_controller_fallbacks,
     check_ui_controller_render_fallbacks,
+    check_ui_controller_study_get_controller_fallbacks,
     check_ui_direct_controller_mutations,
     check_ui_direct_loader_apply,
     check_ui_direct_study_state_reads,
@@ -829,3 +830,38 @@ def _legacy_montage_channels(self):
     )
 
     assert check_ui_direct_study_state_reads(tmp_path) == []
+
+
+def test_controller_study_get_controller_guard_flags_product_fallback(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def _setup_bridges(self):
+    training_ctrl = self.training_controller
+    if not training_ctrl and self.controller and hasattr(self.controller, "study"):
+        training_ctrl = self.controller.study.get_controller("training")
+    if training_ctrl:
+        self._create_refresh_bridge(training_ctrl, "training_stopped")
+""",
+    )
+
+    violations = check_ui_controller_study_get_controller_fallbacks(tmp_path)
+
+    assert len(violations) == 1
+    assert "controller.study.get_controller" in violations[0]
+    assert "explicit legacy/fallback helper" in violations[0]
+
+
+def test_controller_study_get_controller_guard_allows_legacy_helper(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def _legacy_training_controller_for_bridges(self):
+    return run_legacy_controller_fallback(
+        self,
+        lambda: self.controller.study.get_controller("training"),
+    )
+""",
+    )
+
+    assert check_ui_controller_study_get_controller_fallbacks(tmp_path) == []

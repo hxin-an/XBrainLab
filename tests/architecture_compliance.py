@@ -254,6 +254,15 @@ def check_architecture(root_dir: str) -> int:
             print(f" - {violation}")
         return 1
 
+    controller_study_violations = check_ui_controller_study_get_controller_fallbacks(
+        Path(root_dir)
+    )
+    if controller_study_violations:
+        print("\nUI Controller Study Fallback Violations Found:")
+        for violation in controller_study_violations:
+            print(f" - {violation}")
+        return 1
+
     controller_echo_violations = check_ui_post_command_controller_echoes(Path(root_dir))
     if controller_echo_violations:
         print("\nUI Post-command Controller Echo Violations Found:")
@@ -671,6 +680,38 @@ def check_ui_direct_study_state_reads(root_dir: Path) -> list[str]:
     return violations
 
 
+def check_ui_controller_study_get_controller_fallbacks(root_dir: Path) -> list[str]:
+    """Return UI code that retrieves controllers through controller.study."""
+    violations: list[str] = []
+    ui_dir = root_dir / "XBrainLab" / "ui"
+    if not ui_dir.exists():
+        return violations
+
+    for py_file in ui_dir.rglob("*.py"):
+        if py_file.name == "__init__.py":
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if _is_legacy_controller_mutation_helper(node.name):
+                continue
+            visitor = _ControllerStudyGetControllerVisitor()
+            visitor.visit(node)
+            violations.extend(
+                f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
+                "controller.study.get_controller(); product UI controller wiring "
+                "must be injected or command/query-backed, with controller.study "
+                "lookup limited to an explicit legacy/fallback helper."
+                for call in visitor.violations
+            )
+    return violations
+
+
 class _DirectStudyStateReadVisitor(ast.NodeVisitor):
     def __init__(self) -> None:
         self.violations: list[ast.Attribute] = []
@@ -685,6 +726,17 @@ class _DirectStudyStateReadVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
+class _ControllerStudyGetControllerVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.violations: list[ast.Call] = []
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if _is_controller_study_get_controller_call(node):
+            self.violations.append(node)
+            return
+        self.generic_visit(node)
+
+
 def _expression_mentions_study(node: ast.AST) -> bool:
     if isinstance(node, ast.Attribute) and node.attr == "study":
         return True
@@ -692,6 +744,30 @@ def _expression_mentions_study(node: ast.AST) -> bool:
         isinstance(child, ast.Attribute) and child.attr == "study"
         for child in ast.walk(node)
     )
+
+
+def _is_controller_study_get_controller_call(node: ast.Call) -> bool:
+    if _call_name(node.func) != "get_controller":
+        return False
+    if not isinstance(node.func, ast.Attribute):
+        return False
+    return _expression_mentions_controller_study(node.func.value)
+
+
+def _expression_mentions_controller_study(node: ast.AST) -> bool:
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Attribute) or child.attr != "study":
+            continue
+        owner = child.value
+        if isinstance(owner, ast.Name) and (
+            owner.id == "controller" or owner.id.endswith("_controller")
+        ):
+            return True
+        if isinstance(owner, ast.Attribute) and (
+            owner.attr == "controller" or owner.attr.endswith("_controller")
+        ):
+            return True
+    return False
 
 
 def _call_name(func: ast.expr) -> str:
