@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+8437e3f ui: guard plain context study lookup
+8819185 docs: refresh handoff after named controller lookup
 2a940de ui: find study from named controllers
 64ec5e3 docs: refresh handoff after named controller guard
 37c8e5c test: guard named controller mutations
@@ -198,9 +200,11 @@ bb57beb ui: use backend truth for split replacement
     instances from attributes ending in `_controller`, not only `.controller`.
   - Named-controller contexts such as widgets/helpers with `self.preprocess_controller` now use
     ApplicationService capability lookup and refuse legacy fallback in real `Study` runtime.
+  - Follow-up safety fix keeps plain non-Study contexts without `__dict__` on the mock / legacy
+    fallback path instead of raising during lookup.
   - Validation covered red focused capability/fallback tests, UI capability + AgentManager montage
-    regression, full ruff, full basedpyright, architecture compliance, `git diff --check`, and
-    `mkdocs build --strict`.
+    regression, plain non-Study context guard, full ruff, full basedpyright, architecture
+    compliance, `git diff --check`, and `mkdocs build --strict`.
   - No local LLM eval was run; this was a UI runtime fallback-boundary slice under the fast dev
     gate.
 - Named controller mutation architecture guard:
@@ -2822,6 +2826,17 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 2a940de; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_application_capabilities.py::test_legacy_controller_fallback_allows_plain_non_study_context tests/unit/ui/test_application_capabilities.py::test_named_controller_context_uses_application_service tests/unit/ui/test_application_capabilities.py::test_legacy_controller_fallback_refuses_named_real_controller -q
+# red first for plain context, then 3 passed for 8437e3f
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_application_capabilities.py tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker -q
+# 17 passed for 8437e3f
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 8437e3f; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard and changed-case eval
