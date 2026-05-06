@@ -4833,3 +4833,33 @@ reads.
 
 - This guard prevents one stale-render fallback pattern. It does not complete the full UI refresh
   coordinator, human desktop acceptance, or every possible controller read audit.
+
+## 2026-05-06 Dataset Clear Empty-State Boundary
+
+### 狀態
+
+Dataset sidebar now treats `Clear Dataset` as an availability-gated destructive action. Real
+`Study` runtime queries backend state before enabling the button; empty startup and reset/new
+session boundaries keep it disabled with a user-facing reason, while applied data re-enables it.
+
+### 已可宣稱
+
+- Empty Dataset page no longer exposes an enabled destructive clear action.
+- Direct empty `clear_dataset()` invocation shows a short notice instead of opening the reset
+  confirmation path.
+- Disabled action buttons use neutral styling rather than tinted danger / success / warning colors.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/sidebar.py`, `XBrainLab/ui/styles/theme.py`
+- Tests：`tests/unit/ui/dataset/test_dataset_sidebar.py`,
+  `tests/unit/ui/test_sidebars_and_components.py`, `tests/unit/ui/styles/test_theme.py`
+- Artifacts：`artifacts/ui/human-like-walkthrough/02-dataset-page.png`,
+  `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is one Dataset sidebar safety / polish slice. It does not complete human Windows desktop
+  acceptance, the mature Data Interpretation wizard, or all remaining command-driven UI refresh
+  cleanup.

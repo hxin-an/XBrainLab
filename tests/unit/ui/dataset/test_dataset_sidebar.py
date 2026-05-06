@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 
 import pytest
-from PyQt6.QtWidgets import QPushButton
+from PyQt6.QtWidgets import QPushButton, QWidget
 
 from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
 from XBrainLab.ui.styles.stylesheets import Stylesheets
@@ -70,6 +70,24 @@ def test_update_sidebar_without_data_guides_to_interpret_source(sidebar):
 
     assert sidebar.import_label_btn.isEnabled() is False
     assert "Interpret a data source" in sidebar.import_label_btn.toolTip()
+
+
+def test_update_sidebar_disables_clear_dataset_for_empty_backend_state(qtbot):
+    from XBrainLab.backend.study import Study
+
+    panel_mock = MagicMock()
+    panel_mock.action_handler = MagicMock()
+    panel_mock.controller = MagicMock()
+    panel_mock.main_window = QWidget()
+    panel_mock.main_window.study = Study()
+
+    widget = DatasetSidebar(panel_mock, parent=None)
+    qtbot.addWidget(widget)
+
+    widget.update_sidebar()
+
+    assert widget.clear_btn.isEnabled() is False
+    assert "No dataset to clear" in widget.clear_btn.toolTip()
 
 
 def test_button_connections(sidebar):

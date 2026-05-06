@@ -12580,3 +12580,65 @@
 - 不能宣稱：
   - This does not prove all controller reads are gone, full UI refresh is command-driven, or product
     desktop acceptance is complete.
+
+### 2026-05-06 Dataset Clear empty-state boundary
+
+- scope：
+  - Treat `Clear Dataset` as a destructive action whose availability must come from backend state,
+    not from a visually enabled default button.
+  - Close the user-visible issue where the empty Dataset page exposed a clear/reset action even
+    though there was no dataset to clear.
+- red / focused tests：
+  - Added `test_update_sidebar_disables_clear_dataset_for_empty_backend_state`.
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_dataset_sidebar.py::test_update_sidebar_disables_clear_dataset_for_empty_backend_state -q`
+    -> failed as expected because `Clear Dataset` stayed enabled on an empty real `Study`.
+- 做了什麼：
+  - `DatasetSidebar.update_sidebar()` now queries `QueryStateCommand(query="state")` before enabling
+    `Clear Dataset`.
+  - Clearable state includes raw, preprocessed, epoch, dataset, training, evaluation, or applied
+    interpretation state; startup / reset empty state disables the button with
+    `No dataset to clear.`.
+  - Direct `clear_dataset()` on empty state now shows a short information dialog and returns before
+    reset confirmation.
+  - Disabled success / danger / warning action color tokens now use neutral disabled colors, so a
+    disabled destructive action no longer looks active.
+  - Refreshed the consolidated human-like walkthrough; JSON records startup and reset
+    `Clear Dataset` disabled, Data Interpretation apply enabled, and the screenshot shows the
+    neutral disabled style.
+- validation：
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_dataset_sidebar.py::test_update_sidebar_disables_clear_dataset_for_empty_backend_state -q`
+    -> `1 passed`.
+  - Dataset sidebar / theme regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar tests/unit/ui/styles/test_theme.py -q`
+    -> `36 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/dataset/sidebar.py XBrainLab/ui/styles/theme.py tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/test_sidebars_and_components.py tests/unit/ui/styles/test_theme.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/dataset/sidebar.py XBrainLab/ui/styles/theme.py tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/test_sidebars_and_components.py tests/unit/ui/styles/test_theme.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - UI-observable replay:
+    `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> exit `0`; artifact status `passed`, `26 / 26` phases, `20` screenshots, resource smoke
+    `passed=True`, RSS growth `231372 KB` / limit `600000 KB`.
+    JSON spot-check: `main_window_initial_state` and `reset_new_session_boundary` show
+    `Clear Dataset enabled=False` with `No dataset to clear.`; `data_interpretation_apply` shows
+    `enabled=True`.
+  - Fast gate:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar tests/unit/ui/styles/test_theme.py tests/integration/ui/test_product_walkthrough.py -q`
+    -> `39 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a UI safety / polish slice under the fast dev gate; no formal benchmark claim
+    changed and fallback x3 is reserved for release / thesis gates with resource preflight.
+- 不能宣稱：
+  - This does not complete the mature Data Interpretation wizard, Windows human desktop acceptance,
+    full command-driven UI refresh, or product completion.

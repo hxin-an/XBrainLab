@@ -130,6 +130,10 @@
   observer bridges 關掉：MainWindow 以 `observe_controller_events=False` 建立 service，aggregate
   info 改由 `refresh_coordinator` shared-status path 觸發；standalone / legacy service 仍保留直接
   observer 選項。
+- 最新 Dataset destructive-action polish 讓 real `Study` `Clear Dataset` button 讀 backend
+  `QueryStateCommand(query="state")` 決定 availability；startup empty dataset 和 reset/new session
+  後 disabled + `No dataset to clear.` tooltip，Data Interpretation apply 後才 enabled。disabled
+  action color tokens 也改成中性灰色，避免 disabled destructive action 看起來仍可按。
 - 最新 import-finished observer guard 已寫進 `tests/architecture_compliance.py`：新的
   `_create_refresh_bridge(..., "import_finished")` 或 direct `QtObserverBridge(...,
   "import_finished", ...)` 會 fail；`import_finished` 只能透過 named callback handler 處理

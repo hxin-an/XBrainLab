@@ -2108,18 +2108,26 @@ class TestDatasetSidebar:
         from XBrainLab.backend.study import Study
         from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
 
+        study = Study()
+        raw = MagicMock()
+        raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
+        study.data_manager.loaded_data_list = [raw]
         panel = _make_panel_mock()
-        panel.main_window.study = Study()
+        panel.main_window.study = study
         sb = DatasetSidebar(panel)
         qtbot.addWidget(sb)
 
         with (
-            patch.object(QMessageBox, "question") as mock_question,
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ) as mock_question,
             patch.object(QMessageBox, "information") as mock_info,
         ):
             sb.clear_dataset()
 
-        mock_question.assert_not_called()
+        mock_question.assert_called_once()
         mock_info.assert_called_once_with(sb, "Success", "Dataset cleared.")
         panel.controller.clean_dataset.assert_not_called()
         panel.update_panel.assert_not_called()

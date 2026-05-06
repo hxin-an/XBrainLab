@@ -310,7 +310,58 @@ class DatasetSidebar(QWidget):
                     "Add labels to loaded data and update the current recipe trace.",
                 )
 
+            clear_enabled, clear_tooltip = self._clear_dataset_availability()
+            self.clear_btn.setEnabled(clear_enabled)
+            self.clear_btn.setToolTip(clear_tooltip)
+
     # --- Actions moved from Panel ---
+
+    def _clear_dataset_availability(self) -> tuple[bool, str]:
+        result = execute_application_command(
+            self,
+            QueryStateCommand(query="state"),
+            refresh=False,
+        )
+        if result is None:
+            has_data = bool(self.controller.has_data()) if self.controller else False
+            return (
+                has_data,
+                "Remove all loaded data" if has_data else "No dataset to clear.",
+            )
+        if result.failed:
+            return False, "Dataset state is unavailable right now."
+        state = result.diagnostics.get("state")
+        if isinstance(state, dict) and self._state_has_clearable_data(state):
+            return True, "Remove all loaded data"
+        return False, "No dataset to clear."
+
+    @staticmethod
+    def _state_has_clearable_data(state: dict[str, Any]) -> bool:
+        raw = DatasetSidebar._state_section(state, "raw")
+        preprocessed = DatasetSidebar._state_section(state, "preprocessed")
+        epoch = DatasetSidebar._state_section(state, "epoch")
+        dataset = DatasetSidebar._state_section(state, "dataset")
+        training = DatasetSidebar._state_section(state, "training")
+        evaluation = DatasetSidebar._state_section(state, "evaluation")
+        interpretation = DatasetSidebar._state_section(state, "interpretation")
+        return any(
+            (
+                bool(raw.get("loaded")),
+                bool(preprocessed.get("available")),
+                bool(epoch.get("exists")),
+                bool(dataset.get("available")),
+                bool(training.get("has_trainer")),
+                int(training.get("finished_run_count") or 0) > 0,
+                bool(evaluation.get("available")),
+                int(evaluation.get("total_runs") or 0) > 0,
+                bool(interpretation.get("has_applied_interpretation")),
+            ),
+        )
+
+    @staticmethod
+    def _state_section(state: dict[str, Any], key: str) -> dict[str, Any]:
+        value = state.get(key)
+        return value if isinstance(value, dict) else {}
 
     def open_channel_selection(self):
         """Open the channel selection dialog.
@@ -438,6 +489,11 @@ class DatasetSidebar(QWidget):
 
     def clear_dataset(self):
         """Prompt the user and clear the entire loaded dataset."""
+        clear_enabled, clear_tooltip = self._clear_dataset_availability()
+        if not clear_enabled:
+            QMessageBox.information(self, "Clear Dataset", clear_tooltip)
+            return
+
         reset_capability = get_command_capability(self, CommandName.RESET_SESSION)
         if reset_capability is not None and not reset_capability.enabled:
             QMessageBox.warning(

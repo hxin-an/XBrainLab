@@ -83,7 +83,7 @@ automated PyQt replay 的主要 UI 操作路徑，但仍不能
 同一 walkthrough 現在也把 process/thread resource notes 納入 pass/fail smoke：artifact
 `pass_fail_summary.resource_smoke` 會檢查 replay close 後 Python thread count 是否回落、
 Qt thread pool 是否仍 active，以及 `ru_maxrss` high-water delta 是否超過 smoke threshold。
-最新 offscreen artifact 顯示 resource smoke `passed=True`、RSS growth `232516 KB` /
+最新 offscreen artifact 顯示 resource smoke `passed=True`、RSS growth `231372 KB` /
 limit `600000 KB`、Qt active thread `0`，且 visible text 已刷新到
 `Review and confirm these choices before applying.` / `Ask about EEG workflow`。這只能抓明顯 cleanup regression，不是
 leak-proof soak test，也不能替代長時間 local model / training desktop session。
@@ -93,7 +93,11 @@ UI-observable evidence 顯示 raw pipe table / debug text dump；同時把 Thesi
 提升到 screenshot 第一屏，明確標示 benchmark slice 不能代表 UI usability、Windows launcher
 coverage 或 product completion。這是 artifact presentation gate，不是新的 tool-call benchmark run。
 最新 Dataset sidebar polish 後也已刷新同一 walkthrough artifact；`Channel Selection` 改為中性
-sidebar action，不再用 success-green 表示一個尚未執行且會修改資料的操作。
+sidebar action，不再用 success-green 表示一個尚未執行且會修改資料的操作。`Clear Dataset`
+也改由 backend state query 決定 availability：empty startup / reset boundary 截圖和 JSON
+button state 都顯示 disabled + `No dataset to clear.` tooltip，Data Interpretation apply 後才
+enabled；disabled danger / success / warning button tokens 也改成中性灰色，避免 disabled action
+仍像可按。
 同輪 artifact 也驗證 assistant empty-state / status visible text 只顯示 Data Interpretation
 主線 `Scan data source`，不再把 legacy `load_data` / `attach_labels` 轉成新使用者主流程提示。
 最新 Dataset table geometry guard 又把 `right_gap_to_boundary` 納入 replay / walkthrough
