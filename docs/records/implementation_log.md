@@ -5326,3 +5326,29 @@ such as `self.preprocess_controller`, not only from `.controller`.
 
 - This aligns runtime study lookup with the static named-controller mutation guard. It does not
   remove all explicit legacy fallbacks or complete all UI command refresh coordinator work.
+
+## 2026-05-06 No-Refresh Command Guard
+
+### 狀態
+
+Architecture compliance now rejects `execute_application_command(..., refresh=False)` for mutating
+commands.
+
+### 已可宣稱
+
+- `refresh=False` is limited to `QueryStateCommand`, `EvaluateCommand`, `VisualizeCommand`, and
+  query-only `SaliencyCommand()`.
+- Mutating commands such as `ApplySmartParseCommand(..., refresh=False)` or
+  `SaliencyCommand(params=..., refresh=False)` are caught by the static guard.
+- The current `XBrainLab/ui` source passes this stricter rule.
+
+### Evidence 入口
+
+- Source：`tests/architecture_compliance.py`
+- Tests：`tests/unit/test_architecture_compliance.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This protects one coordinator-bypass class. It does not complete all command-driven UI refresh
+  coordinator work or remove explicit legacy fallback branches.

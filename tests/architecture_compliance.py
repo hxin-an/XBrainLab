@@ -108,6 +108,11 @@ UI_OBSERVER_REFRESH_EVENTS = (
     "montage_changed",
     "saliency_changed",
 )
+UI_REFRESH_FALSE_READ_ONLY_COMMANDS = (
+    "EvaluateCommand",
+    "QueryStateCommand",
+    "VisualizeCommand",
+)
 
 
 def check_architecture(root_dir: str) -> int:
@@ -243,6 +248,13 @@ def check_architecture(root_dir: str) -> int:
     if refresh_violations:
         print("\nUI Post-command Local Refresh Violations Found:")
         for violation in refresh_violations:
+            print(f" - {violation}")
+        return 1
+
+    refresh_false_violations = check_ui_refresh_false_commands(Path(root_dir))
+    if refresh_false_violations:
+        print("\nUI No-refresh Command Violations Found:")
+        for violation in refresh_false_violations:
             print(f" - {violation}")
         return 1
 
@@ -634,6 +646,40 @@ def check_ui_post_command_controller_echoes(root_dir: Path) -> list[str]:
     return violations
 
 
+def check_ui_refresh_false_commands(root_dir: Path) -> list[str]:
+    """Return mutating UI commands that suppress command-driven refresh."""
+    violations: list[str] = []
+    ui_dir = root_dir / "XBrainLab" / "ui"
+    if not ui_dir.exists():
+        return violations
+
+    for py_file in ui_dir.rglob("*.py"):
+        if py_file.name == "__init__.py":
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if _call_name(node.func) != "execute_application_command":
+                continue
+            if not _call_has_refresh_false(node):
+                continue
+            command_expr = _execute_command_argument(node)
+            command_name = _refresh_false_command_name(command_expr)
+            if _is_read_only_refresh_false_command(command_expr):
+                continue
+            violations.append(
+                f"{py_file.relative_to(root_dir)}:{node.lineno} calls "
+                f"{command_name or 'unknown command'} with refresh=False; only "
+                "read/query commands may suppress command-driven UI refresh."
+            )
+    return violations
+
+
 def check_ui_capability_gated_controller_readiness(root_dir: Path) -> list[str]:
     """Return UI command gates that consult controller state despite capabilities."""
     violations: list[str] = []
@@ -893,6 +939,32 @@ def _contains_service_backed_command(node: ast.AST) -> bool:
             continue
         return True
     return False
+
+
+def _execute_command_argument(node: ast.Call) -> ast.AST | None:
+    if len(node.args) >= 2:
+        return node.args[1]
+    for keyword in node.keywords:
+        if keyword.arg == "command":
+            return keyword.value
+    return None
+
+
+def _refresh_false_command_name(node: ast.AST | None) -> str | None:
+    if isinstance(node, ast.Call):
+        return _call_name(node.func)
+    if isinstance(node, ast.Name):
+        return node.id
+    return None
+
+
+def _is_read_only_refresh_false_command(node: ast.AST | None) -> bool:
+    if not isinstance(node, ast.Call):
+        return False
+    call_name = _call_name(node.func)
+    if call_name in UI_REFRESH_FALSE_READ_ONLY_COMMANDS:
+        return True
+    return call_name == "SaliencyCommand" and not node.args and not node.keywords
 
 
 def _contains_get_command_capability(node: ast.AST) -> bool:

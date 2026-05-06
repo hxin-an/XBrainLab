@@ -13502,3 +13502,50 @@
 - 不能宣稱：
   - This does not remove all legacy fallback branches, complete command-driven UI refresh
     coordinator closure, or prove human desktop acceptance.
+
+### 2026-05-06 No-refresh mutating command architecture guard
+
+- scope：
+  - Close a command-driven refresh guard gap: UI code can intentionally pass `refresh=False` to
+    `execute_application_command()` for read/query calls, but mutating commands must not suppress
+    coordinator refresh.
+  - Existing UI usage is query-only (`QueryStateCommand`, `EvaluateCommand`, `VisualizeCommand`,
+    and query-only `SaliencyCommand()`).
+- red / focused tests：
+  - Added `test_refresh_false_guard_flags_mutating_command` with
+    `ApplySmartParseCommand(results={}), refresh=False`.
+  - Added `test_refresh_false_guard_flags_saliency_configuration` with
+    `SaliencyCommand(params=params), refresh=False`.
+  - Added `test_refresh_false_guard_allows_query_commands`.
+  - Red gate:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_refresh_false_guard_flags_mutating_command tests/unit/test_architecture_compliance.py::test_refresh_false_guard_allows_query_commands tests/unit/test_architecture_compliance.py::test_refresh_false_guard_flags_saliency_configuration -q`
+    -> failed at import as expected because `check_ui_refresh_false_commands` did not exist yet.
+- 做了什麼：
+  - Added `check_ui_refresh_false_commands()` to `tests/architecture_compliance.py`.
+  - The checker allows no-refresh for `QueryStateCommand`, `EvaluateCommand`, `VisualizeCommand`,
+    and empty `SaliencyCommand()` only.
+  - Added the checker to the standalone architecture compliance gate.
+- validation：
+  - Focused pass:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_refresh_false_guard_flags_mutating_command tests/unit/test_architecture_compliance.py::test_refresh_false_guard_allows_query_commands tests/unit/test_architecture_compliance.py::test_refresh_false_guard_flags_saliency_configuration -q`
+    -> `3 passed`.
+  - Architecture unit / compliance:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` -> `43 passed`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - Focused lint / type:
+    `poetry run ruff check tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Fast gate:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is a UI architecture guard slice under the fast dev gate; no tool-call benchmark
+    claim changed.
+- 不能宣稱：
+  - This does not prove every refresh coordinator gap is closed, remove all explicit legacy
+    fallback paths, or complete human desktop acceptance.

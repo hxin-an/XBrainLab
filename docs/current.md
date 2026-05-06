@@ -1143,7 +1143,8 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   mutation 因為不是剛好叫 `self.controller` 而逃過 static audit。後續 runtime alignment slice 也讓
   `find_study()` 能從 `self.<name>_controller.study` 找到 real `Study`，因此具名 controller
   context 會走 ApplicationService capability / fallback refusal，而不是被誤判為 legacy context。
-  這是 product runtime fallback boundary，
+  最新 no-refresh command guard 也讓 UI 中的 `execute_application_command(..., refresh=False)`
+  只可用於 read/query commands；mutating command 必須保留 command-driven refresh。這是 product runtime fallback boundary，
   不是 controller 已完全退場；下一個 architecture cleanup milestone 仍是確認 product runtime
   mutating path 不 silent fallback 到 controller mutation，controller fallback 只可保留給 explicit
   mock / unit-test compatibility 或 isolated legacy adapter。
@@ -1230,7 +1231,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
    `refresh_after_observer()`，不能只做局部 `update_loop()` / local UI 更新。最新 named-controller
    receiver guard 也讓 `self.preprocess_controller` / `preprocess_controller` 這類 controller
    receiver 受到 direct mutation static audit 約束；`find_study()` 也已同步支援具名 controller
-   context，避免 runtime helper 和 static guard 對 controller receiver 的判斷不一致。
+   context，避免 runtime helper 和 static guard 對 controller receiver 的判斷不一致。最新
+   no-refresh command guard 也把 `refresh=False` 限制在 `QueryStateCommand` / `EvaluateCommand`
+   / `VisualizeCommand` / query-only `SaliencyCommand()`，避免 mutating command 成功後跳過
+   coordinator refresh。
    Agent primary stage prompt 已先把 legacy `load_data / attach_labels` 降權，後續要繼續檢查
    UI 是否也完全以 Data Interpretation 作為新資料入口語言；MCP/headless schema 已先把
    legacy commands 標成非 primary workflow。

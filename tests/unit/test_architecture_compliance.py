@@ -8,6 +8,7 @@ from tests.architecture_compliance import (
     check_ui_observer_handlers_call_refresh_coordinator,
     check_ui_post_command_controller_echoes,
     check_ui_post_command_local_refreshes,
+    check_ui_refresh_false_commands,
 )
 
 
@@ -98,6 +99,52 @@ def run(self):
     )
 
     assert check_ui_post_command_local_refreshes(tmp_path) == []
+
+
+def test_refresh_false_guard_flags_mutating_command(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def run(self):
+    execute_application_command(self, ApplySmartParseCommand(results={}), refresh=False)
+""",
+    )
+
+    violations = check_ui_refresh_false_commands(tmp_path)
+
+    assert len(violations) == 1
+    assert "ApplySmartParseCommand" in violations[0]
+    assert "refresh=False" in violations[0]
+
+
+def test_refresh_false_guard_allows_query_commands(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def run(self):
+    execute_application_command(self, QueryStateCommand(query="state"), refresh=False)
+    execute_application_command(self, EvaluateCommand(include_objects=True), refresh=False)
+    execute_application_command(self, VisualizeCommand(view="summary"), refresh=False)
+    execute_application_command(self, SaliencyCommand(), refresh=False)
+""",
+    )
+
+    assert check_ui_refresh_false_commands(tmp_path) == []
+
+
+def test_refresh_false_guard_flags_saliency_configuration(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def run(self, params):
+    execute_application_command(self, SaliencyCommand(params=params), refresh=False)
+""",
+    )
+
+    violations = check_ui_refresh_false_commands(tmp_path)
+
+    assert len(violations) == 1
+    assert "SaliencyCommand" in violations[0]
 
 
 def test_post_command_controller_echo_guard_flags_service_success_echo(tmp_path):
