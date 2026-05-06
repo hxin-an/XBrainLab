@@ -37,6 +37,55 @@
 
 ## 2026-05-06
 
+### 15:36 Label import smart-filter suggestion query path
+
+- scope：
+  - Continue controller fallback audit in the post-load label import compatibility path.
+  - Event-filter suggestions are optional UI defaults, but product runtime should not read
+    `DatasetController.get_smart_filter_suggestions()` directly when a service query exists.
+- red / focused tests：
+  - Added `test_filter_events_uses_service_suggestions_before_stale_controller`.
+  - Red gate failed because `_filter_events_for_import()` called stale
+    `controller.get_smart_filter_suggestions()` directly.
+- 做了什麼：
+  - Added `_smart_filter_suggestions_for_import()` and `_target_index_for_filter_suggestion()` to
+    `DatasetActionHandler`.
+  - Label import event-filter suggestions now use
+    `QueryStateCommand(query="smart_filter_suggestions")` with the loaded target index.
+  - If the service query is unavailable, mock / legacy contexts can still use the explicit
+    `run_legacy_controller_fallback()` path; real `Study` skips optional suggestions instead of
+    reading stale controller state.
+  - The focused type baseline also dropped the previous optional-member-access entry for
+    `DatasetActionHandler`.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_filter_events_uses_service_suggestions_before_stale_controller -q`
+    -> failed on stale controller suggestion read.
+  - Focused pass:
+    same command -> `1 passed`.
+  - Regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_filter_events_with_suggestions tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_filter_events_uses_service_suggestions_before_stale_controller tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_filter_events_aggregates_suggestions_from_multiple_files tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_with_event_filter tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_refuses_real_study_controller_fallback -q`
+    -> `5 passed`.
+  - DatasetActionHandler regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `77 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> `0 errors, 0 warnings, 0 notes`; baseline went down by one existing error.
+  - Fast gate:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is a UI fallback / query-truth slice under the fast dev gate.
+- 不能宣稱：
+  - This does not make post-load label import the primary Data Interpretation workflow or complete
+    the embedded label import wizard.
+
 ### 15:25 Human-like walkthrough 1280px Dataset table evidence
 
 - scope：

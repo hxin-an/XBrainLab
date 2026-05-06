@@ -42,6 +42,35 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Label Import Smart-Filter Query Path
+
+### 狀態
+
+Post-load label import event-filter suggestions now use the ApplicationService query path before
+legacy controller fallback.
+
+### 已可宣稱
+
+- Real `Study` label import no longer reads stale
+  `DatasetController.get_smart_filter_suggestions()` for optional event-filter defaults.
+- Service-backed suggestions use `QueryStateCommand(query="smart_filter_suggestions")`; legacy
+  controller suggestions remain available only through explicit mock / legacy fallback.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/actions.py`
+- Tests：`tests/unit/ui/test_ui_misc.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is a compatibility label-import cleanup. It does not make post-load label import the primary
+  Data Interpretation workflow or finish the embedded wizard.
+
+### 下一手重點
+
+- Continue reducing product-runtime controller reads in remaining UI compatibility paths.
+
 ## 2026-05-06 Human-Like Walkthrough 1280px Dataset Evidence
 
 ### 狀態

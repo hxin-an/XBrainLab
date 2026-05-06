@@ -1178,9 +1178,10 @@ class DatasetActionHandler:
         if target_count and raw_files:
             suggested_names: set[str] = set()
             for raw_file in raw_files:
-                s_ids = self.controller.get_smart_filter_suggestions(
+                s_ids = self._smart_filter_suggestions_for_import(
                     raw_file,
                     target_count,
+                    target_files,
                 )
                 _, ev_ids = raw_file.get_raw_event_list()
                 id_map = {v: k for k, v in ev_ids.items()}
@@ -1194,6 +1195,74 @@ class DatasetActionHandler:
         if dlg.exec():
             return set(dlg.get_selected_ids())
         return False
+
+    def _smart_filter_suggestions_for_import(
+        self,
+        raw_file,
+        target_count: int,
+        target_files,
+    ) -> list[int]:
+        """Return event-filter suggestions through service query when possible."""
+        target_index = self._target_index_for_filter_suggestion(
+            raw_file,
+            target_files,
+        )
+        if target_index is not None:
+            result = execute_application_command(
+                self.panel,
+                QueryStateCommand(
+                    query="smart_filter_suggestions",
+                    params={
+                        "target_index": target_index,
+                        "target_count": target_count,
+                    },
+                ),
+                refresh=False,
+            )
+            if result is not None:
+                if result.failed:
+                    logger.warning(
+                        "Smart filter suggestion query failed: %s",
+                        result.message,
+                    )
+                    return []
+                suggestions = result.diagnostics.get("suggestions", [])
+                if isinstance(suggestions, list):
+                    return [int(item) for item in suggestions]
+                return []
+
+        controller = self.controller
+        if controller is None:
+            return []
+        try:
+            return [
+                int(item)
+                for item in run_legacy_controller_fallback(
+                    self.panel,
+                    lambda: controller.get_smart_filter_suggestions(
+                        raw_file,
+                        target_count,
+                    ),
+                )
+            ]
+        except LegacyControllerFallbackUnavailableError:
+            logger.warning(
+                "Skipped legacy smart-filter suggestions in real Study context.",
+            )
+            return []
+
+    def _target_index_for_filter_suggestion(self, raw_file, target_files) -> int | None:
+        try:
+            target_position = target_files.index(raw_file)
+        except ValueError:
+            return None
+        target_indices = getattr(self, "_last_target_file_indices", None)
+        if isinstance(target_indices, list) and target_position < len(target_indices):
+            try:
+                return int(target_indices[target_position])
+            except (TypeError, ValueError):
+                return None
+        return target_position
 
     def show_context_menu(self, pos):
         menu = QMenu(self.panel)

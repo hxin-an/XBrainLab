@@ -274,6 +274,10 @@
 - 最新 Label Import fallback warning slice 也讓 real `Study` label-import apply command
   無法 dispatch 時顯示 `Label Import Blocked`，不再把 legacy fallback refusal 包成 generic
   `Failed: ...` error。
+- 最新 Label Import event-filter suggestion cleanup 也讓 smart event suggestions 先走
+  `QueryStateCommand(query="smart_filter_suggestions")`，real `Study` path 不再直接讀
+  stale `DatasetController.get_smart_filter_suggestions()`；service 不可用時只略過 suggestion，
+  legacy controller suggestion 僅限 mock / legacy fallback。
 - 最新 Smart Parse filename fallback warning slice 也讓 real `Study` state query 無法提供
   filenames 時顯示 `Smart Parse Blocked`，不再回讀 stale controller filename list。
 - 最新 Direct Load compatibility fallback warning slice 也讓 real `Study` direct `LoadDataCommand`

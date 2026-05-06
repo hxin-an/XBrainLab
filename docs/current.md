@@ -324,7 +324,10 @@ Dataset table row 的 `UserRole` data，不再為了開 dialog 回讀 stale
 loaded list。後續 guard slice 已讓 `Add Labels to Loaded Data` 在沒有 loaded data 時 disabled，
 tooltip 引導使用者先 interpret data source，且 action 會尊重 backend
 `ImportLabelsCommand` capability block。UI replay JSON 也保存 empty-state disabled button 和
-applied-state enabled recipe-trace tooltip。最新 UI capability slice 又讓 real Study 的 Dataset
+applied-state enabled recipe-trace tooltip。最新 event-filter suggestion cleanup 也讓 label import
+的 smart event filter 先走 `QueryStateCommand(query="smart_filter_suggestions")`，不再在 real
+`Study` path 直接回讀 `DatasetController.get_smart_filter_suggestions()`；service unavailable 時
+只略過建議選取，legacy controller suggestion 只留給 explicit mock / legacy fallback。最新 UI capability slice 又讓 real Study 的 Dataset
 sidebar 直接讀 backend `import_labels` 和 `preprocess` capability：button disabled state /
 tooltip 和 Channel Selection preflight 不再只靠 controller-local `has_data` / lock 判斷。latest
 follow-up 也把 Channel Selection 的 controller-local `has_data` / `is_locked` checks 限縮到

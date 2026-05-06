@@ -1940,6 +1940,42 @@ class TestDatasetActionHandler:
         assert result == {"left", "right"}
 
     @patch("XBrainLab.ui.panels.dataset.actions.EventFilterDialog")
+    def test_filter_events_uses_service_suggestions_before_stale_controller(
+        self,
+        mock_efd,
+        handler,
+    ):
+        from XBrainLab.backend.application import QueryStateCommand
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.get_smart_filter_suggestions.side_effect = (
+            AssertionError("stale smart-filter suggestions should not be read")
+        )
+        handler._last_target_file_indices = [2]
+        data = MagicMock()
+        data.is_raw.return_value = True
+        data.has_event.return_value = True
+        data.get_raw_event_list.return_value = ([], {"left": 1, "right": 2})
+        mock_efd.return_value.exec.return_value = True
+        mock_efd.return_value.get_selected_ids.return_value = ["left"]
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            return_value=_command_result(suggestions=[1]),
+        ) as mock_execute:
+            result = handler._filter_events_for_import([data], 2)
+
+        assert result == {"left"}
+        handler.panel.controller.get_smart_filter_suggestions.assert_not_called()
+        command = mock_execute.call_args.args[1]
+        assert isinstance(command, QueryStateCommand)
+        assert command.query == "smart_filter_suggestions"
+        assert command.params == {"target_index": 2, "target_count": 2}
+        mock_efd.return_value.set_selection.assert_called_once_with(["left"])
+
+    @patch("XBrainLab.ui.panels.dataset.actions.EventFilterDialog")
     def test_filter_events_aggregates_suggestions_from_multiple_files(
         self, mock_efd, handler
     ):

@@ -2967,6 +2967,37 @@ This supports real `Study` Label Import fallback refusal showing a product warni
 generic critical failure. It does not prove Dataset page desktop acceptance or complete all
 DatasetActionHandler fallback cleanup.
 
+2026-05-06 Label Import smart-filter suggestion query path：
+
+- Focused red/fixed gate:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_filter_events_uses_service_suggestions_before_stale_controller -q`
+  -> `1 passed` after failing because `_filter_events_for_import()` read
+  `DatasetController.get_smart_filter_suggestions()` directly.
+- Regression:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_filter_events_with_suggestions tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_filter_events_uses_service_suggestions_before_stale_controller tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_filter_events_aggregates_suggestions_from_multiple_files tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_with_event_filter tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_refuses_real_study_controller_fallback -q`
+  -> `5 passed`.
+- DatasetActionHandler regression:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+  -> `77 passed`.
+- Focused lint/type:
+  `poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+  -> pass;
+  `poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+  -> `0 errors`.
+- Full fast gate:
+  `git diff --check` -> pass;
+  `poetry run ruff check .` -> pass;
+  `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`;
+  `poetry run python tests/architecture_compliance.py` -> pass;
+  `poetry run mkdocs build --strict` -> pass with existing MkDocs Material advisory.
+- Local eval:
+  not run. This was a UI fallback / query-truth slice under the fast dev gate.
+
+This supports real `Study` label import using ApplicationService
+`QueryStateCommand(query="smart_filter_suggestions")` for optional event-filter defaults instead of
+reading stale controller suggestions. It does not make post-load label import the primary Data
+Interpretation workflow or complete the embedded label import wizard.
+
 2026-05-06 Smart Parse apply fallback warning boundary：
 
 - Focused red/fixed gate:
