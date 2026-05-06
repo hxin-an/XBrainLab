@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+41a61d2 ui: guard dataset sidebar fallback state
+73e1e6e docs: refresh handoff after training fallback guard
 a697457 ui: guard training preflight fallback
 1b950fe ui: guard montage preflight fallback
 635f5b4 docs: refresh handoff after replay geometry gate
@@ -177,6 +179,19 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Dataset sidebar no-capability lock/data fallback boundary:
+  - `DatasetSidebar.update_sidebar()` now routes no-capability lock/data reads through
+    `run_legacy_controller_fallback()` instead of directly reading stale
+    `DatasetController.is_locked()` / `has_data()`.
+  - Source / folder-BIDS / recipe / channel / smart-parse / label buttons show unavailable state
+    in real `Study` contexts when command capability lookup is unexpectedly unavailable; mock /
+    legacy contexts keep controller compatibility behavior.
+  - `open_channel_selection()` now shows `Channel Selection Blocked` instead of reading stale
+    loaded-data / lock state in real `Study` no-capability fallback.
+  - Validation covered red stale-controller tests, Dataset sidebar regression, full fast gate
+    (`git diff --check`, ruff, basedpyright, architecture compliance, mkdocs strict, backend
+    integration, and agent/tool deterministic regression).
+  - No local LLM eval was run; this was a UI fallback audit slice under the fast dev gate.
 - Training sidebar no-capability preflight fallback boundary:
   - `TrainingSidebar` now routes no-capability fallback reads through
     `run_legacy_controller_fallback()` instead of directly reading stale
