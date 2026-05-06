@@ -330,6 +330,33 @@ class TestDatasetActionHandler:
         mock_interpret.assert_called_once_with(["/tmp/sub-01_task-mi_raw.fif"])
         mock_mb.warning.assert_not_called()
 
+    def test_import_data_refuses_real_study_no_capability_lock_fallback(
+        self,
+        handler,
+    ):
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.side_effect = AssertionError(
+            "stale lock state should not be read",
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.get_command_capability",
+                return_value=None,
+            ),
+            patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            mock_fd.getOpenFileNames.return_value = ([], "")
+            handler.import_data()
+
+        handler.panel.controller.is_locked.assert_not_called()
+        mock_fd.getOpenFileNames.assert_called_once()
+        mock_mb.warning.assert_not_called()
+
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
@@ -421,6 +448,34 @@ class TestDatasetActionHandler:
         mock_fd.getExistingDirectory.assert_called_once()
         mock_interpret.assert_called_once_with(["/tmp/bids-root"])
         mock_mb.warning.assert_not_called()
+
+    def test_import_folder_refuses_real_study_no_capability_lock_fallback(
+        self,
+        handler,
+    ):
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.side_effect = AssertionError(
+            "stale lock state should not be read",
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.get_command_capability",
+                return_value=None,
+            ),
+            patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            handler.import_folder_source()
+
+        handler.panel.controller.is_locked.assert_not_called()
+        mock_fd.getExistingDirectory.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert mock_mb.warning.call_args.args[1] == "Interpretation Blocked"
+        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
@@ -1336,6 +1391,40 @@ class TestDatasetActionHandler:
             handler.open_smart_parser()
 
         handler.panel.controller.apply_smart_parse.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert mock_mb.warning.call_args.args[1] == "Smart Parse Blocked"
+        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
+
+    def test_open_smart_parser_refuses_real_study_no_capability_preflight_fallback(
+        self,
+        handler,
+    ):
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.side_effect = AssertionError(
+            "stale lock state should not be read",
+        )
+        handler.panel.controller.has_data.side_effect = AssertionError(
+            "stale loaded-data state should not be read",
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.get_command_capability",
+                return_value=None,
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.SmartParserDialog",
+            ) as mock_dialog,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            handler.open_smart_parser()
+
+        handler.panel.controller.is_locked.assert_not_called()
+        handler.panel.controller.has_data.assert_not_called()
+        mock_dialog.assert_not_called()
         mock_mb.warning.assert_called_once()
         assert mock_mb.warning.call_args.args[1] == "Smart Parse Blocked"
         assert "could not safely complete" in mock_mb.warning.call_args.args[2]

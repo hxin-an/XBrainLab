@@ -5168,3 +5168,31 @@ explicit mock / legacy-only fallback helper.
 
 - This is a focused fallback-audit slice. It does not complete all UI command refresh coordination,
   dataset action handler fallback audit, or human desktop acceptance.
+
+## 2026-05-06 Dataset Action Handler No-Capability Preflight Guard
+
+### 狀態
+
+`DatasetActionHandler` no-capability file import, folder/BIDS source flow, and Smart Parse preflight
+reads now use explicit legacy fallback boundaries instead of direct controller reads.
+
+### 已可宣稱
+
+- Real `Study` action handlers no longer read stale `DatasetController.is_locked()` / `has_data()`
+  when command capability lookup is unexpectedly unavailable.
+- Direct-load compatibility still uses the service command path and does not fallback to
+  controller mutation.
+- The current static scan for `capability is None and controller...` in `XBrainLab/ui` has no
+  matches.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/actions.py`
+- Tests：`tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler`,
+  `tests/unit/ui/dataset`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This removes one visible fallback pattern class. It does not complete the broader command-driven
+  UI refresh coordinator, all controller read audits, or human desktop acceptance.

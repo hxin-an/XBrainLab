@@ -1037,6 +1037,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `run_legacy_controller_fallback()`；real `Study` 若 capability lookup unexpectedly unavailable，
   source / recipe / channel / smart-parse / label buttons 會 disabled 或顯示 unavailable/blocked
   文案，不再回讀 stale `DatasetController.is_locked()` / `has_data()`。
+  最新 Dataset action handler follow-up 也把 file import、folder/BIDS source flow 和 Smart Parse
+  的 no-capability `is_locked()` / `has_data()` preflight reads 包進 explicit legacy helper；real
+  `Study` 不再用 stale `DatasetController` state 擋住 Data Interpretation / Smart Parse action
+  gating，direct-load compatibility 仍只走 service command，不能 fallback controller mutation。
   最新 Preprocess sidebar render cleanup 也把 `update_sidebar()` 的 epoched/lock render state
   收回 backend capability surface：real `Study` 有 `preprocess` / `create_epoch` capability 時不再讀
   stale `PreprocessController.get_preprocessed_data_list()`；該 controller read 只保留給

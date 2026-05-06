@@ -13163,6 +13163,62 @@
     cleanup, command-driven UI refresh coordinator, Windows launcher acceptance, or long local-model
     ChatPanel verification.
 
+### 2026-05-06 Dataset action handler no-capability preflight fallback guard
+
+- scope：
+  - Close the remaining static `capability is None and controller...` fallback patterns in
+    `DatasetActionHandler`.
+  - Covered file import, folder/BIDS source flow, and Smart Parse lock/data preflight.
+- red / focused tests：
+  - Added real-`Study` tests that make stale lock/data controller reads raise when
+    `get_command_capability()` unexpectedly returns `None`.
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_refuses_real_study_no_capability_lock_fallback tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_folder_refuses_real_study_no_capability_lock_fallback tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_open_smart_parser_refuses_real_study_no_capability_preflight_fallback -q`
+    -> failed as expected because `import_data()`, `_can_start_interpretation()`, and
+    `open_smart_parser()` directly read controller lock/data state.
+- 做了什麼：
+  - Added Dataset action handler `_legacy_controller_value()` /
+    `_legacy_locked_preflight_blocked()` helpers.
+  - File import now avoids stale lock reads while preserving the existing service-backed
+    `LoadDataCommand` compatibility path when Data Interpretation import is unavailable.
+  - Folder/BIDS and Smart Parse no-capability preflight use explicit legacy fallback boundaries and
+    show user-facing blocked warnings in real `Study` contexts.
+  - Adjusted the legacy Dataset clear unit setup to declare clearable data before expecting the
+    legacy clear path.
+- validation：
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_refuses_real_study_no_capability_lock_fallback tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_folder_refuses_real_study_no_capability_lock_fallback tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_open_smart_parser_refuses_real_study_no_capability_preflight_fallback tests/unit/ui/dataset/test_panel.py::test_dataset_panel_clear_dataset -q`
+    -> `4 passed`.
+  - Dataset action regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/dataset -q`
+    -> `137 passed`.
+  - Static scan:
+    `rg -n "capability is None and self\\.controller\\.|capability is None and not self\\.controller\\.|capability is None and controller\\." XBrainLab/ui -g '*.py'`
+    -> no matches.
+  - Focused lint/type/architecture:
+    `poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py tests/unit/ui/dataset/test_panel.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py tests/unit/ui/dataset/test_panel.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - Fast gate:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/dataset -q`
+    -> `137 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a UI fallback audit slice under the fast dev gate; no tool-call benchmark
+    claim changed.
+- 不能宣稱：
+  - This does not finish every controller read audit, command-driven UI refresh coordinator,
+    Windows launcher acceptance, or long local-model ChatPanel verification.
+
 ### 2026-05-06 Dataset sidebar no-capability lock/data fallback guard
 
 - scope：

@@ -4,6 +4,7 @@ Provides logic for importing EEG data files, applying labels,
 running smart parse, and managing event filtering.
 """
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -85,6 +86,41 @@ class DatasetActionHandler:
         if result is None:
             self.panel.update_panel()
 
+    def _legacy_controller_value(
+        self,
+        blocked_title: str,
+        fallback: Callable[[], Any],
+        *,
+        warn_when_unavailable: bool = True,
+    ) -> tuple[bool, Any]:
+        """Read legacy controller state only for mock / legacy UI contexts."""
+        try:
+            return True, run_legacy_controller_fallback(self.panel, fallback)
+        except LegacyControllerFallbackUnavailableError as exc:
+            if warn_when_unavailable:
+                QMessageBox.warning(self.panel, blocked_title, str(exc))
+            return False, None
+
+    def _legacy_locked_preflight_blocked(
+        self,
+        controller: Any,
+        *,
+        blocked_title: str,
+        locked_message: str,
+        block_when_unavailable: bool = True,
+    ) -> bool:
+        available, is_locked = self._legacy_controller_value(
+            blocked_title,
+            lambda: bool(controller.is_locked()),
+            warn_when_unavailable=block_when_unavailable,
+        )
+        if not available:
+            return block_when_unavailable
+        if is_locked:
+            QMessageBox.warning(self.panel, blocked_title, locked_message)
+            return True
+        return False
+
     def import_data(self):
         """Scan, preview, validate, and apply an EEG data interpretation."""
         scan_capability = get_command_capability(self.panel, CommandName.SCAN_SOURCE)
@@ -106,12 +142,12 @@ class DatasetActionHandler:
             )
             return
 
-        if scan_capability is None and controller.is_locked():
-            QMessageBox.warning(
-                self.panel,
-                "Interpretation Blocked",
-                "Dataset is locked. Please clear or reset before importing.",
-            )
+        if scan_capability is None and self._legacy_locked_preflight_blocked(
+            controller,
+            blocked_title="Interpretation Blocked",
+            locked_message="Dataset is locked. Please clear or reset before importing.",
+            block_when_unavailable=False,
+        ):
             return
 
         filter_str = (
@@ -390,13 +426,14 @@ class DatasetActionHandler:
             )
             return False
 
-        if capability is None and controller.is_locked():
-            QMessageBox.warning(
-                self.panel,
-                "Interpretation Blocked",
-                "Dataset is locked. Please clear or reset before importing.",
+        if capability is None:
+            return not self._legacy_locked_preflight_blocked(
+                controller,
+                blocked_title=blocked_title,
+                locked_message=(
+                    "Dataset is locked. Please clear or reset before importing."
+                ),
             )
-            return False
         return True
 
     def _run_data_interpretation_import(self, filepaths: list[str]) -> bool:
@@ -697,13 +734,26 @@ class DatasetActionHandler:
             )
             return
 
-        if smart_parse_capability is None and controller.is_locked():
-            QMessageBox.warning(self.panel, "Blocked", "Dataset is locked.")
-            return
+        if smart_parse_capability is None:
+            available, is_locked = self._legacy_controller_value(
+                "Smart Parse Blocked",
+                lambda: bool(controller.is_locked()),
+            )
+            if not available:
+                return
+            if is_locked:
+                QMessageBox.warning(self.panel, "Blocked", "Dataset is locked.")
+                return
 
-        if smart_parse_capability is None and not controller.has_data():
-            QMessageBox.warning(self.panel, "Warning", "No data loaded.")
-            return
+            available, has_data = self._legacy_controller_value(
+                "Smart Parse Blocked",
+                lambda: bool(controller.has_data()),
+            )
+            if not available:
+                return
+            if not has_data:
+                QMessageBox.warning(self.panel, "Warning", "No data loaded.")
+                return
 
         filepaths = self._smart_parse_filenames()
         if filepaths is None:

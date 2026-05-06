@@ -298,6 +298,9 @@
   no-capability branch 也走 `run_legacy_controller_fallback()`：real `Study` 若 capability lookup
   unexpectedly unavailable，button state 顯示 unavailable / blocked，不再回讀 stale
   `DatasetController.is_locked()` / `has_data()`。
+- 最新 Dataset action handler fallback cleanup 也把 file import、folder/BIDS source flow 和
+  Smart Parse 的 no-capability `is_locked()` / `has_data()` preflight reads 收進 explicit legacy
+  helper；static scan 目前不再有 `capability is None and controller...` matches。
 - 最新 Preprocess sidebar render cleanup 也把 `update_sidebar()` 的 epoched/lock state 收回
   backend capability surface：有 `preprocess` / `create_epoch` capability 時不再讀 stale
   `PreprocessController.get_preprocessed_data_list()`；該 controller read 只留在 no-capability

@@ -169,6 +169,7 @@ def test_dataset_panel_clear_dataset(mock_main_window, mock_controller, qtbot):
 
     panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
     qtbot.addWidget(panel)
+    mock_controller.has_data.return_value = True
 
     with (
         patch(
