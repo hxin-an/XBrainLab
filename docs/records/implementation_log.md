@@ -4742,3 +4742,28 @@ real `Study` service-backed data-list query unexpectedly returns no result.
 
 - This is one render-truth cleanup. It does not complete all Dataset page UX, all controller read
   audits, or the broader command-driven UI refresh target.
+
+## 2026-05-06 Stale Render Fallback Architecture Guard
+
+### 狀態
+
+`tests/architecture_compliance.py` now checks query-missing UI branches for stale controller render
+reads.
+
+### 已可宣稱
+
+- New UI code that reads controller render state directly inside a `result is None` branch is
+  flagged unless it goes through `run_legacy_controller_fallback()`.
+- The current repo passes the guard, so existing render fallbacks are explicit legacy/mock branches
+  rather than silent real-`Study` truth bypasses.
+
+### Evidence 入口
+
+- Source：`tests/architecture_compliance.py`
+- Tests：`tests/unit/test_architecture_compliance.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This guard prevents one stale-render fallback pattern. It does not complete the full UI refresh
+  coordinator, human desktop acceptance, or every possible controller read audit.

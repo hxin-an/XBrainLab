@@ -1,6 +1,7 @@
 from tests.architecture_compliance import (
     check_ui_capability_gated_controller_readiness,
     check_ui_controller_fallbacks,
+    check_ui_controller_render_fallbacks,
     check_ui_direct_controller_mutations,
     check_ui_direct_loader_apply,
     check_ui_observer_direct_update_bridges,
@@ -174,6 +175,45 @@ def run(self):
 
     assert len(violations) == 1
     assert "apply_filter" in violations[0]
+
+
+def test_controller_render_fallback_guard_flags_stale_read_in_missing_result(
+    tmp_path,
+):
+    _write_ui_file(
+        tmp_path,
+        """
+def update_panel(self):
+    result = execute_application_command(self, QueryStateCommand(), refresh=False)
+    if result is None:
+        rows = self.controller.get_loaded_data_list()
+    return rows
+""",
+    )
+
+    violations = check_ui_controller_render_fallbacks(tmp_path)
+
+    assert len(violations) == 1
+    assert "get_loaded_data_list" in violations[0]
+    assert "run_legacy_controller_fallback" in violations[0]
+
+
+def test_controller_render_fallback_guard_allows_explicit_legacy_wrapper(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def update_panel(self):
+    result = execute_application_command(self, QueryStateCommand(), refresh=False)
+    if result is None:
+        rows = run_legacy_controller_fallback(
+            self,
+            self.controller.get_loaded_data_list,
+        )
+    return rows
+""",
+    )
+
+    assert check_ui_controller_render_fallbacks(tmp_path) == []
 
 
 def test_capability_readiness_guard_flags_controller_gate_after_capability(tmp_path):

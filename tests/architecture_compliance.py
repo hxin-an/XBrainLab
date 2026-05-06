@@ -81,6 +81,19 @@ UI_CAPABILITY_GATED_CONTROLLER_READINESS_METHODS = (
     "is_locked",
     "validate_ready",
 )
+UI_CONTROLLER_RENDER_FALLBACK_METHODS = (
+    "get_averaged_record",
+    "get_channel_names",
+    "get_filenames",
+    "get_formatted_history",
+    "get_loaded_data_list",
+    "get_model_summary_str",
+    "get_plans",
+    "get_pooled_eval_result",
+    "get_preprocessed_data_list",
+    "get_saliency_params",
+    "get_trainers",
+)
 
 
 def check_architecture(root_dir: str) -> int:
@@ -170,6 +183,13 @@ def check_architecture(root_dir: str) -> int:
     if fallback_violations:
         print("\nUI Controller Fallback Violations Found:")
         for violation in fallback_violations:
+            print(f" - {violation}")
+        return 1
+
+    render_fallback_violations = check_ui_controller_render_fallbacks(Path(root_dir))
+    if render_fallback_violations:
+        print("\nUI Controller Render Fallback Violations Found:")
+        for violation in render_fallback_violations:
             print(f" - {violation}")
         return 1
 
@@ -295,6 +315,49 @@ def _forbidden_fallback_calls(nodes: list[ast.stmt]) -> list[ast.Call]:
     return calls
 
 
+def check_ui_controller_render_fallbacks(root_dir: Path) -> list[str]:
+    """Return UI query-missing branches that read stale controller render state."""
+    violations: list[str] = []
+    ui_dir = root_dir / "XBrainLab" / "ui"
+    if not ui_dir.exists():
+        return violations
+
+    for py_file in ui_dir.rglob("*.py"):
+        if py_file.name == "__init__.py":
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.If):
+                continue
+            test_source = ast.get_source_segment(source, node.test) or ""
+            if "result" not in test_source or "None" not in test_source:
+                continue
+            violations.extend(
+                (
+                    f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
+                    f"controller.{_call_name(call.func)}() directly in "
+                    f"{test_source!r}; render fallback reads must go through "
+                    "run_legacy_controller_fallback() so real Study paths do "
+                    "not display stale controller state."
+                )
+                for call in _forbidden_render_fallback_calls(node.body)
+            )
+    return violations
+
+
+def _forbidden_render_fallback_calls(nodes: list[ast.stmt]) -> list[ast.Call]:
+    calls: list[ast.Call] = []
+    for node in nodes:
+        visitor = _ControllerRenderFallbackVisitor()
+        visitor.visit(node)
+        calls.extend(visitor.violations)
+    return calls
+
+
 class _ControllerFallbackVisitor(ast.NodeVisitor):
     def __init__(self) -> None:
         self.violations: list[ast.Call] = []
@@ -304,6 +367,23 @@ class _ControllerFallbackVisitor(ast.NodeVisitor):
         if call_name in UI_CONTROLLER_FALLBACK_WRAPPERS:
             return
         if call_name in UI_CONTROLLER_FALLBACK_METHODS:
+            self.violations.append(node)
+            return
+        self.generic_visit(node)
+
+
+class _ControllerRenderFallbackVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.violations: list[ast.Call] = []
+
+    def visit_Call(self, node: ast.Call) -> None:
+        call_name = _call_name(node.func)
+        if call_name in UI_CONTROLLER_FALLBACK_WRAPPERS:
+            return
+        if (
+            call_name in UI_CONTROLLER_RENDER_FALLBACK_METHODS
+            and _call_receiver_is_controller(node.func)
+        ):
             self.violations.append(node)
             return
         self.generic_visit(node)

@@ -993,6 +993,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   最新 DatasetPanel query-none render fallback boundary 也讓 real `Study` table refresh 在
   `QueryStateCommand(query="data_lists")` 意外無法 dispatch 時清成空表並記 log，不再回讀
   stale `DatasetController.get_loaded_data_list()`。
+  最新 architecture guard follow-up 又把這類 stale render fallback pattern 納入
+  `tests/architecture_compliance.py`：`result is None` branch 若要回讀 controller render state
+  必須走 `run_legacy_controller_fallback()`，不能裸讀 stale controller data。
   最新 Dataset sidebar render cleanup 又把 `is_locked()` / `has_data()` 納入 guard：real
   `Study` button state 和 tooltip 有 backend capability 時不再先讀 stale controller lock/data
   state；controller lock/data reads 只保留在 explicit no-capability legacy branch。

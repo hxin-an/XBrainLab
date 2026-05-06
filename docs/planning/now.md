@@ -277,6 +277,10 @@
 - 最新 DatasetPanel query-none render fallback boundary 也讓 real `Study` Dataset table refresh
   在 data-list query 意外無法 dispatch 時清成空表，不再回讀 stale
   `DatasetController.get_loaded_data_list()`。
+- 最新 stale render fallback architecture guard 已寫進 `tests/architecture_compliance.py`：
+  `result is None` branch 若要回讀 controller render state，必須經過 explicit
+  `run_legacy_controller_fallback()`，避免 real `Study` query-none path 顯示 stale controller
+  truth。
 - 最新 Dataset sidebar render cleanup 也把 `is_locked()` / `has_data()` 納入同一 guard：
   有 backend capability 時，button state / tooltip 不再先讀 stale controller lock/data state；
   legacy lock/data reads 只留在 explicit no-capability branch。

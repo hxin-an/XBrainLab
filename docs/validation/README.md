@@ -3545,6 +3545,36 @@ This supports real `Study` Dataset table refresh refusing stale controller list 
 service query path unexpectedly returns no result. It does not prove all Dataset render fallbacks,
 UI refresh debt, or human desktop acceptance are complete.
 
+2026-05-06 Stale render fallback architecture guard：
+
+- New static guard:
+  - `check_ui_controller_render_fallbacks()` flags direct controller render reads inside
+    `result is None` branches unless the read is inside `run_legacy_controller_fallback()`.
+  - Covered methods include data lists, preprocess lists, training history, evaluation plans,
+    visualization trainers, montage channel defaults, saliency params, and related render payloads.
+- Focused red/fixed gate:
+  `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_controller_render_fallback_guard_flags_stale_read_in_missing_result tests/unit/test_architecture_compliance.py::test_controller_render_fallback_guard_allows_explicit_legacy_wrapper -q`
+  -> failed before the guard existed, then `2 passed`.
+- Architecture regression:
+  `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` -> `34 passed`;
+  `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+- Focused lint/type:
+  `poetry run ruff check tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+  -> pass;
+  `poetry run basedpyright tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+  -> `0 errors`.
+- Static / docs / backend / agent gate:
+  `git diff --check`, `poetry run ruff check .`, `poetry run basedpyright`,
+  `poetry run mkdocs build --strict`, `poetry run pytest --capture=sys tests/integration/backend -q`,
+  and
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+  all passed; backend integration `7 passed`, agent/tool gate `20 passed`.
+- Local eval:
+  not run. This was a static architecture guard under the fast dev gate.
+
+This prevents one class of stale UI render fallback regression. It does not prove the UI refresh
+coordinator is fully command-driven or that every controller read has been eliminated.
+
 2026-05-06 Dataset label target fallback boundary：
 
 - Focused gate:

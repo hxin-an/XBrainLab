@@ -12445,3 +12445,49 @@
 - 不能宣稱：
   - This does not complete all Dataset render fallback audit, all UI refresh coordinator work, or
     human desktop acceptance.
+
+### 2026-05-06 Stale render fallback architecture guard
+
+- scope：
+  - Prevent the DatasetPanel query-none stale-render pattern from returning through future UI code.
+  - Guard `result is None` branches that directly call controller render read methods such as
+    `get_loaded_data_list()`, `get_preprocessed_data_list()`, `get_plans()`,
+    `get_formatted_history()`, `get_trainers()`, or `get_saliency_params()`.
+- red / focused tests：
+  - Added `test_controller_render_fallback_guard_flags_stale_read_in_missing_result`.
+  - Red gate:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_controller_render_fallback_guard_flags_stale_read_in_missing_result tests/unit/test_architecture_compliance.py::test_controller_render_fallback_guard_allows_explicit_legacy_wrapper -q`
+    -> failed as expected before implementation because `check_ui_controller_render_fallbacks`
+    did not exist.
+- 做了什麼：
+  - Added `check_ui_controller_render_fallbacks()` to `tests/architecture_compliance.py`.
+  - The guard flags controller render reads inside `result is None` branches unless the read is
+    inside `run_legacy_controller_fallback()` or another approved legacy wrapper.
+  - Wired the guard into the main architecture compliance script.
+- validation：
+  - Focused pass:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_controller_render_fallback_guard_flags_stale_read_in_missing_result tests/unit/test_architecture_compliance.py::test_controller_render_fallback_guard_allows_explicit_legacy_wrapper -q`
+    -> `2 passed`.
+  - Architecture unit regression:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `34 passed`.
+  - Real repo guard:
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - Focused lint/type:
+    `poetry run ruff check tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Static / docs / backend / agent gate:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a static architecture guard under the fast dev gate.
+- 不能宣稱：
+  - This does not prove all controller reads are gone, full UI refresh is command-driven, or product
+    desktop acceptance is complete.
