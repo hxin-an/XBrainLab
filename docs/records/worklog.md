@@ -37,6 +37,20 @@
 
 ## 2026-05-06
 
+### 18:56 Roadmap benchmark claim boundary cleanup
+
+- 做了什麼：
+  - Updated `docs/planning/roadmap.md` so the progress snapshot and product tracks distinguish the
+    formal `121 / 121` release/thesis benchmark artifacts from the newer `122` case source suite.
+  - Clarified that the Chinese `幫我貼標籤` missing-input case has only fast deterministic
+    changed-case evidence so far; formal `122` case primary / fallback x3 evidence is not claimed.
+- validation：
+  - Docs-only claim-boundary cleanup. No local LLM eval was run.
+  - `poetry run mkdocs build --strict` will be rerun before commit.
+- 不能宣稱：
+  - This does not change any benchmark score or product capability. It only removes a roadmap
+    ambiguity that could otherwise overstate the formal local benchmark claim.
+
 ### 18:47 Data Interpretation class-map preview defaults
 
 - 做了什麼：
