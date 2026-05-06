@@ -232,6 +232,8 @@ bb57beb ui: use backend truth for split replacement
 - MCP local HTTP transport baseline:
   - Added `XBrainLab.mcp.http_server` with stdlib `ThreadingHTTPServer`, `GET /health`, `POST /mcp`,
     optional Bearer token support, and no client-side XBrainLab dependency requirement.
+  - Follow-up hardening added constant-time Bearer token comparison and a bounded JSON-RPC request
+    body limit with `payload_too_large` response.
   - `MCPServer` now carries transport-scoped adapter metadata:
     `mode=headless_mcp_http`, `transport=http`, stable `session_id`, and
     `ui_refresh.supported=False` for HTTP.

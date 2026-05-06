@@ -293,9 +293,10 @@ resource lock 仍是後續 architecture work。
 `MCPServer(transport="http")` / automation adapter / `ApplicationService.execute()`。
 HTTP structured result 標示 `adapter.mode=headless_mcp_http`、`transport=http`、stable session
 id 和 `ui_refresh.supported=False`。HTTP server 預設 bind `127.0.0.1`，並支援 optional Bearer
-token；這是 local external-agent adapter，不是遠端多使用者服務。Backend-ready long-running
-`train` over HTTP 仍回 structured `long_running_job_required`，直到 future HTTP job API 提供
-progress / cancel / recovery。
+token；token 比對使用 constant-time compare，JSON-RPC body 也有 bounded size limit。這是
+local external-agent adapter，不是遠端多使用者服務或完整 authorization server。Backend-ready
+long-running `train` over HTTP 仍回 structured `long_running_job_required`，直到 future HTTP job
+API 提供 progress / cancel / recovery。
 
 `ApplicationService` 會拿同一組 cached controllers：
 

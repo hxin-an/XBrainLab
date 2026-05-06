@@ -28,11 +28,22 @@ def main() -> int:
         default="XBRAINLAB_MCP_HTTP_TOKEN",
         help="Environment variable containing an optional bearer token.",
     )
+    parser.add_argument(
+        "--max-body-bytes",
+        type=int,
+        default=1_048_576,
+        help="Maximum accepted JSON-RPC request body size.",
+    )
     args = parser.parse_args()
 
     logging.getLogger("XBrainLab").setLevel(logging.WARNING)
     token = os.environ.get(args.token_env) or None
-    return run_http_server(host=args.host, port=args.port, auth_token=token)
+    return run_http_server(
+        host=args.host,
+        port=args.port,
+        auth_token=token,
+        max_body_bytes=args.max_body_bytes,
+    )
 
 
 if __name__ == "__main__":

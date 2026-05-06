@@ -37,6 +37,48 @@
 
 ## 2026-05-06
 
+### 17:43 MCP HTTP request hardening
+
+- scope：
+  - Harden the local MCP HTTP adapter without changing command semantics or claiming remote
+    authorization certification.
+- red / focused tests：
+  - Added `test_http_mcp_rejects_oversized_requests_before_parsing`.
+  - Red gate failed because `build_http_server(max_body_bytes=...)` did not exist.
+- 做了什麼：
+  - Added `DEFAULT_MAX_BODY_BYTES` and server-level `max_body_bytes`.
+  - `POST /mcp` now rejects oversized bodies with HTTP `413` and a structured
+    `payload_too_large` response before JSON parsing.
+  - Optional Bearer token comparison now uses `hmac.compare_digest()`.
+  - `scripts/dev/run_mcp_http_server.py` exposes `--max-body-bytes`.
+- validation：
+  - Red gate:
+    `poetry run pytest --capture=sys tests/unit/mcp/test_http_server.py::test_http_mcp_rejects_oversized_requests_before_parsing -q`
+    -> failed with `TypeError: build_http_server() got an unexpected keyword argument 'max_body_bytes'`.
+  - Focused pass:
+    same command -> `1 passed`.
+  - Regression:
+    `poetry run pytest --capture=sys tests/unit/mcp/test_http_server.py tests/integration/mcp/test_http_walkthrough_artifact.py -q`
+    -> `5 passed`.
+    `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q`
+    -> `15 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/mcp/http_server.py scripts/dev/run_mcp_http_server.py tests/unit/mcp/test_http_server.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/mcp/http_server.py scripts/dev/run_mcp_http_server.py tests/unit/mcp/test_http_server.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Quality / docs:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is MCP HTTP adapter hardening, not a tool-call benchmark claim update.
+- 不能宣稱：
+  - This is not remote auth certification, multi-user server hardening, or long-running job
+    progress / cancel / recovery.
+
 ### 17:31 MCP local HTTP transport baseline
 
 - scope：

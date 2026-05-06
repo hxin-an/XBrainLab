@@ -1703,6 +1703,8 @@ long-running training through MCP、Windows Desktop 真人啟動或 product comp
     automation schema / `ApplicationService.execute()`。
   - optional Bearer token 支援可由 launcher env var 啟用；預設 bind `127.0.0.1`，不宣稱
     remote multi-user service。
+  - Token comparison uses constant-time comparison, and JSON-RPC request bodies are bounded before
+    parsing.
 - 新增 `scripts/dev/run_mcp_http_server.py` 作為 local HTTP entrypoint。
 - 新增 `scripts/dev/capture_mcp_http_walkthrough.py`：
   - client calls 只用 Python standard library `http.client` / `json`。
@@ -1718,10 +1720,12 @@ long-running training through MCP、Windows Desktop 真人啟動或 product comp
   - `preview_ok`：`True`
   - `train_boundary_error_type`：`long_running_job_required`
 - focused validation：
+  - `poetry run pytest --capture=sys tests/unit/mcp/test_http_server.py::test_http_mcp_rejects_oversized_requests_before_parsing -q`
+  - red first on missing `max_body_bytes`, then `1 passed`
   - `poetry run pytest --capture=sys tests/unit/mcp/test_http_server.py tests/integration/mcp/test_http_walkthrough_artifact.py -q`
-  - `4 passed`
+  - `5 passed`
   - `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q`
-  - `14 passed`
+  - `15 passed`
   - `poetry run ruff check XBrainLab/mcp scripts/dev/run_mcp_http_server.py scripts/dev/capture_mcp_http_walkthrough.py tests/unit/mcp tests/integration/mcp`
   - `PASS`
   - `poetry run basedpyright XBrainLab/mcp scripts/dev/run_mcp_http_server.py scripts/dev/capture_mcp_http_walkthrough.py tests/unit/mcp tests/integration/mcp`

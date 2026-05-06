@@ -40,6 +40,26 @@ def _post_json(
         conn.close()
 
 
+def _post_raw(
+    port: int,
+    path: str,
+    body: str,
+    *,
+    token: str | None = None,
+) -> tuple[int, dict[str, Any]]:
+    conn = HTTPConnection("127.0.0.1", port, timeout=10)
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    try:
+        conn.request("POST", path, body, headers)
+        response = conn.getresponse()
+        text = response.read().decode("utf-8")
+        return response.status, json.loads(text)
+    finally:
+        conn.close()
+
+
 def _get_json(
     port: int,
     path: str,
@@ -70,6 +90,26 @@ def _start_server(
     thread = Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     return httpd, port, thread
+
+
+def test_http_mcp_rejects_oversized_requests_before_parsing():
+    port = _free_port()
+    httpd = build_http_server(host="127.0.0.1", port=port, max_body_bytes=16)
+    thread = Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, response = _post_raw(port, "/mcp", '{"jsonrpc":"2.0","id":1}')
+
+        assert status == 413
+        assert response == {
+            "error": "payload_too_large",
+            "message": "MCP HTTP request body is too large.",
+            "max_body_bytes": 16,
+        }
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=10)
 
 
 def test_http_mcp_server_lists_and_calls_application_tools(tmp_path: Path):

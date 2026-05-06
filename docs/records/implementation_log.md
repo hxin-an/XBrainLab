@@ -42,6 +42,37 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 MCP HTTP Request Hardening
+
+### 狀態
+
+The local MCP HTTP adapter now has a bounded request body policy and constant-time Bearer token
+comparison.
+
+### 已可宣稱
+
+- Oversized JSON-RPC request bodies are rejected before JSON parsing with a user-readable
+  `payload_too_large` response.
+- Optional Bearer token comparison no longer uses direct string equality.
+- The hardening stays inside the HTTP adapter; command execution still routes through
+  `MCPServer` / automation / `ApplicationService`.
+
+### Evidence 入口
+
+- Source：`XBrainLab/mcp/http_server.py`, `scripts/dev/run_mcp_http_server.py`
+- Tests：`tests/unit/mcp/test_http_server.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is local adapter abuse resistance. It is not remote authorization certification, multi-user
+  auth, or MCP HTTP long-running job execution.
+
+### 下一手重點
+
+- Keep HTTP authorization and job execution separate: do not expose long-running command execution
+  until job ids, progress, cancel, recovery, and resource-lock behavior are defined.
+
 ## 2026-05-06 MCP Local HTTP Transport Baseline
 
 ### 狀態

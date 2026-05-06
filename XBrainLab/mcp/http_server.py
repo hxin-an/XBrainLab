@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import json
 import logging
+from hmac import compare_digest
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 from XBrainLab.backend.application import ApplicationService
 from XBrainLab.mcp.server import MCPServer
+
+DEFAULT_MAX_BODY_BYTES = 1_048_576
 
 
 class MCPHTTPServer(ThreadingHTTPServer):
@@ -30,10 +33,12 @@ class MCPHTTPServer(ThreadingHTTPServer):
         *,
         mcp_server: MCPServer,
         auth_token: str | None = None,
+        max_body_bytes: int = DEFAULT_MAX_BODY_BYTES,
     ) -> None:
         super().__init__(server_address, handler_class)
         self.mcp_server = mcp_server
         self.auth_token = auth_token
+        self.max_body_bytes = max_body_bytes
 
 
 class MCPHTTPRequestHandler(BaseHTTPRequestHandler):
@@ -77,6 +82,16 @@ class MCPHTTPRequestHandler(BaseHTTPRequestHandler):
                 status=HTTPStatus.BAD_REQUEST,
             )
             return
+        if content_length > self.server.max_body_bytes:
+            self._write_json(
+                {
+                    "error": "payload_too_large",
+                    "message": "MCP HTTP request body is too large.",
+                    "max_body_bytes": self.server.max_body_bytes,
+                },
+                status=HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+            )
+            return
 
         body = self.rfile.read(content_length).decode("utf-8")
         try:
@@ -107,7 +122,8 @@ class MCPHTTPRequestHandler(BaseHTTPRequestHandler):
         if not token:
             return True
         expected = f"Bearer {token}"
-        if self.headers.get("Authorization") == expected:
+        provided = self.headers.get("Authorization", "")
+        if compare_digest(provided, expected):
             return True
         self._write_json(
             {
@@ -143,6 +159,7 @@ def build_http_server(
     auth_token: str | None = None,
     service: ApplicationService | None = None,
     mcp_server: MCPServer | None = None,
+    max_body_bytes: int = DEFAULT_MAX_BODY_BYTES,
 ) -> MCPHTTPServer:
     """Build a local HTTP MCP server without starting the serving loop."""
     server = mcp_server or MCPServer(service, transport="http")
@@ -153,6 +170,7 @@ def build_http_server(
         MCPHTTPRequestHandler,
         mcp_server=server,
         auth_token=auth_token or None,
+        max_body_bytes=max_body_bytes,
     )
 
 
@@ -162,6 +180,7 @@ def run_http_server(
     port: int = 8765,
     auth_token: str | None = None,
     service: ApplicationService | None = None,
+    max_body_bytes: int = DEFAULT_MAX_BODY_BYTES,
 ) -> int:
     """Run the local HTTP MCP server until interrupted."""
     httpd = build_http_server(
@@ -169,6 +188,7 @@ def run_http_server(
         port=port,
         auth_token=auth_token,
         service=service,
+        max_body_bytes=max_body_bytes,
     )
     try:
         httpd.serve_forever()

@@ -132,7 +132,9 @@ health / initialize / tools/list / scan_source / preview_interpretation，並保
 `artifacts/mcp/http-walkthrough.json` / `.md`；同 artifact 也確認 backend-ready long-running
 `train` over HTTP 仍回 `long_running_job_required`，不會同步卡住 request。這仍不是
 long-running job progress / cancel / recovery、remote authorization certification、Windows
-human launcher acceptance 或 full MCP client certification。另已新增 non-mocked backend
+human launcher acceptance 或 full MCP client certification。後續 hardening slice 又讓 HTTP adapter
+用 constant-time Bearer token compare，並用 bounded request body size 拒絕過大 JSON-RPC body；
+這是 local adapter abuse guard，不是 remote security certification。另已新增 non-mocked backend
 workflow evidence：synthetic FIF source 會走 scan -> preview -> validate ->
 confirmation-blocked apply -> confirmed apply -> save recipe -> reload recipe review ->
 preprocess -> epoch -> dataset，並檢查 split audit / train-val-test counts。UI-observable

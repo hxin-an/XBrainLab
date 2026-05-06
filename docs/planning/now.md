@@ -674,7 +674,8 @@
     structured result 標示 `mode=headless_mcp_http`、`transport=http`、stable `session_id` 和
     `ui_refresh.supported=False`。
   - optional Bearer token 可由 `XBRAINLAB_MCP_HTTP_TOKEN` 類 env var 啟用；預設 bind
-    `127.0.0.1`，不宣稱遠端多使用者服務。
+    `127.0.0.1`，不宣稱遠端多使用者服務。最新 hardening slice 已把 token check 改成
+    constant-time compare，並加上 JSON-RPC body size limit。
   - `scripts/dev/capture_mcp_http_walkthrough.py` 以 Python standard-library HTTP client 產生
     `artifacts/mcp/http-walkthrough.json` / `.md`，覆蓋 health / initialize / tools/list /
     scan_source / preview_interpretation / backend-ready train long-running boundary。
