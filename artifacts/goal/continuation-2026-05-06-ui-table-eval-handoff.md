@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+9be1149 ui: guard direct study controller lookup
+7effe49 docs: refresh handoff after observer fallback guard
 ed54a8f ui: guard observer controller fallback
 74882c8 docs: sync roadmap after study state guard
 cba9e4f docs: refresh handoff after study state guard
@@ -212,6 +214,21 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Panel constructor / AgentManager direct Study controller lookup guard:
+  - Added `get_legacy_controller_from_study()` as the shared mock / legacy-only controller lookup
+    helper.
+  - Dataset / Preprocess / Training / Evaluation / Visualization panel constructors no longer use
+    `parent.study.get_controller(...)` as real `Study` fallback. MainWindow injection is the
+    product wiring truth.
+  - AgentManager no longer fetches `study.get_controller("preprocess")` during real runtime
+    initialization; that controller remains only for legacy montage apply fallback.
+  - `tests/architecture_compliance.py` now rejects direct `study.get_controller(...)` /
+    `parent.study.get_controller(...)` product UI lookup outside central wiring, InfoPanelService
+    compatibility, or explicit legacy / fallback helpers.
+  - Validation covered red/focused architecture, AgentManager, and five-panel constructor tests;
+    MainWindow / event bridge / major panel regressions; full architecture compliance; full ruff;
+    full basedpyright; `git diff --check`; and `mkdocs build --strict`.
+  - No local LLM eval was run; this was a UI fallback architecture slice under the fast dev gate.
 - Observer wiring controller-tree fallback guard:
   - EvaluationPanel / VisualizationPanel no longer use
     `controller.study.get_controller("training")` to fill in missing `training_controller` wiring
