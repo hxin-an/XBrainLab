@@ -5795,3 +5795,33 @@ Post-load label compatibility target selection no longer presents itself as `Imp
 
 - This is compatibility-path wording cleanup. It does not make post-load labels the primary data
   entry workflow or complete embedded label editing in the Data Interpretation wizard.
+
+## 2026-05-06 Data Interpretation Table Geometry Verification
+
+### 狀態
+
+User-reported Data Interpretation preview and loaded Dataset table layout concerns were checked
+against the current product code and refreshed UI-observable replay artifacts.
+
+### 已可宣稱
+
+- Preview/remap wizard metadata, label/event, and Review Summary tables fill their viewport without
+  horizontal overflow in the automated replay.
+- Loaded Dataset table fills the main content area to the sidebar boundary after interpretation
+  apply.
+- Dataset Events column uses semantic `Events (...)` / `Labels (...)` wording and no green
+  success-style event text.
+
+### Evidence 入口
+
+- Artifact：`artifacts/ui/data-interpretation-replay.json`
+- Screenshots：`artifacts/ui/data-interpretation-preview.png`,
+  `artifacts/ui/data-interpretation-applied.png`
+- Tests：Data Interpretation dialog/table geometry focused gates in `tests/unit/ui` and
+  `tests/unit/scripts/test_capture_data_interpretation_replay.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is automated PyQt/offscreen UI-observable evidence. It does not replace Windows human
+  desktop acceptance, DPI/dual-monitor launcher review, or the remaining mature wizard UX work.

@@ -14302,3 +14302,34 @@
 - 不能宣稱：
   - This does not complete embedded label editing in the Data Interpretation wizard, and it does
     not change post-load labels from compatibility path to primary data-entry workflow.
+
+### 2026-05-06 Data Interpretation table geometry verification
+
+- scope：
+  - Check the user-reported Data Interpretation preview table overflow / Review Summary contrast
+    concern and the loaded Dataset table underfill / green Events concern against current code.
+- 做了什麼：
+  - Re-ran focused PyQt gates for Data Interpretation dialog table fit, loaded Dataset table fit,
+    replay geometry review, and Events column wording/color.
+  - Refreshed `scripts/dev/capture_data_interpretation_replay.py` offscreen artifact and inspected
+    `artifacts/ui/data-interpretation-preview.png` /
+    `artifacts/ui/data-interpretation-applied.png`.
+  - Current artifact confirms preview/remap wizard tables fill their viewport with no horizontal
+    scrollbar, Review Summary uses dark subtle alternating rows, loaded Dataset table reaches the
+    sidebar boundary, and Events text is `Events (6)` / `Labels (4)` rather than green `Yes (...)`.
+- validation：
+  - Focused gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_tables_fit_product_layout tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_tables_shrink_without_overflow tests/unit/ui/dataset/test_panel.py::test_dataset_panel_table_columns_fill_available_width tests/unit/ui/dataset/test_panel.py::test_dataset_panel_refits_table_after_loaded_rows_settle tests/unit/ui/dataset/test_panel.py::test_dataset_panel_events_column_uses_semantic_text_and_muted_color tests/unit/scripts/test_capture_data_interpretation_replay.py::test_tree_state_records_rows_and_fit_geometry tests/unit/scripts/test_capture_data_interpretation_replay.py::test_replay_geometry_review_checks_all_wizard_tables -q`
+    -> `7 passed`.
+  - UI-observable replay:
+    `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> passed.
+  - Artifact inspection:
+    `artifacts/ui/data-interpretation-replay.json` shows `ui_quality_review.geometry.passed=True`;
+    preview/remap dialog table `width_gap=0`, `horizontal_scrollbar_max=0`; Dataset table
+    `header_length=993`, `viewport_width=994`, `right_gap_to_boundary=0`.
+- local eval：
+  - Not run. This is UI-observable table/layout verification under the fast dev gate.
+- 不能宣稱：
+  - This does not replace human Windows desktop acceptance, high-DPI / dual-monitor launcher
+    review, or the remaining mature Data Interpretation wizard UX work.
