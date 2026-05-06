@@ -2135,10 +2135,16 @@ class TestDatasetSidebar:
     def test_clear_dataset_refuses_real_study_controller_fallback(self, sidebar):
         from PyQt6.QtWidgets import QMessageBox
 
+        from XBrainLab.backend.application import QueryStateCommand
         from XBrainLab.backend.application.capabilities import CommandCapability
         from XBrainLab.backend.study import Study
 
         sidebar.panel.main_window.study = Study()
+
+        def execute_for(_, command, refresh=True):
+            if isinstance(command, QueryStateCommand):
+                return _command_result(state={"raw": {"loaded": True}})
+            return None
 
         with (
             patch(
@@ -2157,7 +2163,7 @@ class TestDatasetSidebar:
             ),
             patch(
                 "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
-                return_value=None,
+                side_effect=execute_for,
             ),
             patch.object(QMessageBox, "warning") as mock_warning,
             patch.object(QMessageBox, "critical") as mock_critical,

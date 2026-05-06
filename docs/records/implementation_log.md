@@ -42,6 +42,32 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Dataset Clear Availability Fallback Boundary
+
+### 狀態
+
+Dataset sidebar clear-availability checks now treat real `Study` query-`None` as unavailable
+command truth instead of reading `DatasetController.has_data()`. Mock / legacy contexts still use
+the explicit legacy fallback helper.
+
+### 已可宣稱
+
+- A real product runtime cannot enable `Clear Dataset` from stale controller state when
+  `QueryStateCommand(query="state")` unexpectedly returns no command result.
+- The compatibility behavior remains isolated behind `run_legacy_controller_fallback()`.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/sidebar.py`
+- Tests：`tests/unit/ui/dataset/test_dataset_sidebar.py`,
+  `tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This closes one destructive-action availability fallback. It does not complete the full UI
+  command-refresh coordinator or all controller fallback audit items.
+
 ## 2026-05-06 Deterministic Tool-Call Eval Gate
 
 ### 狀態

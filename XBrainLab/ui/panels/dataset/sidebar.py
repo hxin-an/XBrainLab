@@ -323,7 +323,17 @@ class DatasetSidebar(QWidget):
             refresh=False,
         )
         if result is None:
-            has_data = bool(self.controller.has_data()) if self.controller else False
+            try:
+                has_data = bool(
+                    run_legacy_controller_fallback(
+                        self,
+                        lambda: (
+                            self.controller.has_data() if self.controller else False
+                        ),
+                    ),
+                )
+            except LegacyControllerFallbackUnavailableError:
+                return False, "Dataset state is unavailable right now."
             return (
                 has_data,
                 "Remove all loaded data" if has_data else "No dataset to clear.",

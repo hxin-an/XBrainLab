@@ -37,6 +37,52 @@
 
 ## 2026-05-06
 
+### 12:22 Dataset clear availability fallback boundary
+
+- scope：
+  - Continue `UI Command Refresh Coordinator + Controller Fallback Audit`.
+  - Remove one destructive-action availability fallback: Dataset sidebar should not enable
+    `Clear Dataset` from stale `DatasetController.has_data()` when a real `Study`
+    `QueryStateCommand(query="state")` unexpectedly returns `None`.
+- red / focused tests：
+  - Added `test_update_sidebar_refuses_real_study_clear_availability_fallback`.
+  - Red gate failed because `_clear_dataset_availability()` still read
+    `controller.has_data()` in the command-`None` branch.
+- 做了什麼：
+  - `_clear_dataset_availability()` now uses `run_legacy_controller_fallback()` for the
+    query-`None` compatibility path.
+  - Real `Study` contexts return disabled `Clear Dataset` with `Dataset state is unavailable right
+    now.` instead of consulting the controller.
+  - Updated the existing clear-dataset fallback regression so its availability query succeeds
+    before the reset command returns `None`.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_dataset_sidebar.py::test_update_sidebar_refuses_real_study_clear_availability_fallback -q`
+    -> failed on `controller.has_data()` stale-state read.
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar -q`
+    -> `22 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Fast gate:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a UI fallback audit slice under the fast dev gate.
+- 不能宣稱：
+  - This does not complete command-driven UI refresh, remove every Dataset sidebar fallback, or
+    prove human desktop acceptance.
+
 ### 12:12 Deterministic tool-call eval CLI gate
 
 - scope：

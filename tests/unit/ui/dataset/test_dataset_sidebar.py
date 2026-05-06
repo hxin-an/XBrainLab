@@ -90,6 +90,33 @@ def test_update_sidebar_disables_clear_dataset_for_empty_backend_state(qtbot):
     assert "No dataset to clear" in widget.clear_btn.toolTip()
 
 
+def test_update_sidebar_refuses_real_study_clear_availability_fallback(qtbot):
+    from XBrainLab.backend.study import Study
+
+    panel_mock = MagicMock()
+    panel_mock.action_handler = MagicMock()
+    panel_mock.controller = MagicMock()
+    panel_mock.controller.has_data.side_effect = AssertionError(
+        "stale controller state should not decide clear availability",
+    )
+    panel_mock.main_window = QWidget()
+    panel_mock.main_window.study = Study()
+
+    widget = DatasetSidebar(panel_mock, parent=None)
+    qtbot.addWidget(widget)
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
+            lambda *_, **__: None,
+        )
+        widget.update_sidebar()
+
+    panel_mock.controller.has_data.assert_not_called()
+    assert widget.clear_btn.isEnabled() is False
+    assert "state is unavailable" in widget.clear_btn.toolTip()
+
+
 def test_button_connections(sidebar):
     # Verify connections call action handler
     sidebar.import_btn.click()
