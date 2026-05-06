@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+ea16c8b ui: show channel selection fallback warning
+2489ed1 docs: refresh handoff after dataset clear warning
 dc3c486 ui: show dataset clear fallback warning
 a6f140e docs: refresh handoff after preprocess reset warning
 6f6ca72 ui: show preprocess reset fallback warning
@@ -125,6 +127,11 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Channel Selection apply fallback warning:
+  - real `Study` channel-selection apply fallback refusal now shows `Channel Selection Blocked`.
+  - the UI no longer wraps the safe refusal in a generic critical channel-selection failure.
+  - mock / legacy channel-selection fallback still calls
+    `DatasetController.apply_channel_selection()`.
 - Dataset Clear fallback warning:
   - real `Study` clear-dataset fallback refusal now shows `Clear Dataset Blocked`.
   - the UI no longer wraps the safe refusal in a generic critical clear-dataset failure.
@@ -1502,6 +1509,36 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for dc3c486; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_open_channel_selection_refuses_real_study_apply_none_controller_fallback \
+  -q
+# 1 passed for ea16c8b after red failure on missing blocked warning
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar \
+  -q
+# 14 passed for ea16c8b
+
+poetry run ruff check XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/test_sidebars_and_components.py
+poetry run basedpyright XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/test_sidebars_and_components.py
+# focused lint/type passed for ea16c8b
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for ea16c8b
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for ea16c8b
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for ea16c8b; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
