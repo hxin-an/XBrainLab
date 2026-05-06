@@ -164,3 +164,27 @@ def test_legacy_controller_fallback_refuses_real_controller_study(qtbot):
         run_legacy_controller_fallback(widget, fallback)
 
     fallback.assert_not_called()
+
+
+def test_named_controller_context_uses_application_service(qtbot):
+    study = Study()
+    widget = QWidget()
+    cast(Any, widget).preprocess_controller = SimpleNamespace(study=study)
+    qtbot.addWidget(widget)
+
+    ui_capability = get_command_capability(widget, CommandName.TRAIN)
+
+    assert ui_capability is not None
+
+
+def test_legacy_controller_fallback_refuses_named_real_controller(qtbot):
+    study = Study()
+    widget = QWidget()
+    cast(Any, widget).preprocess_controller = SimpleNamespace(study=study)
+    qtbot.addWidget(widget)
+    fallback = MagicMock()
+
+    with pytest.raises(RuntimeError, match="could not safely complete"):
+        run_legacy_controller_fallback(widget, fallback)
+
+    fallback.assert_not_called()

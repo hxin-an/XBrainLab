@@ -5299,3 +5299,28 @@ or local `preprocess_controller` variables as controller receivers for UI mutati
 
 - This hardens one static audit gap. It does not remove all remaining controller fallback paths or
   complete command-driven UI refresh coordinator closure.
+
+## 2026-05-06 Named Controller Study Lookup
+
+### 狀態
+
+UI application capability helpers now resolve real `Study` objects from named controller attributes
+such as `self.preprocess_controller`, not only from `.controller`.
+
+### 已可宣稱
+
+- Named-controller UI contexts use ApplicationService capability lookup when backed by a real
+  `Study`.
+- Legacy controller fallback is refused for named-controller real `Study` contexts.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/application_capabilities.py`
+- Tests：`tests/unit/ui/test_application_capabilities.py`,
+  `tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This aligns runtime study lookup with the static named-controller mutation guard. It does not
+  remove all explicit legacy fallbacks or complete all UI command refresh coordinator work.

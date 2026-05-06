@@ -13451,3 +13451,48 @@
 - 不能宣稱：
   - This does not complete the full controller fallback audit, remove existing explicit legacy
     fallbacks, or finish command-driven UI refresh coordinator closure.
+
+### 2026-05-06 Named controller study lookup
+
+- scope：
+  - Align the runtime ApplicationService helper with the named-controller static audit.
+  - Before this slice, `find_study()` only found real product runtime through `.study`,
+    `.main_window.study`, or `.controller.study`; a widget/helper that only held
+    `self.preprocess_controller` could be misclassified as legacy and allowed to run controller
+    fallback.
+- red / focused tests：
+  - Added `test_named_controller_context_uses_application_service`.
+  - Added `test_legacy_controller_fallback_refuses_named_real_controller`.
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_application_capabilities.py::test_named_controller_context_uses_application_service tests/unit/ui/test_application_capabilities.py::test_legacy_controller_fallback_refuses_named_real_controller -q`
+    -> failed as expected because capability lookup returned `None` and legacy fallback was not
+    refused.
+- 做了什麼：
+  - Updated `find_study()` to scan context attributes ending in `_controller` and return their
+    `.study` when present.
+  - This keeps named-controller contexts on the ApplicationService / capability / legacy-refusal
+    path instead of treating them as non-Study compatibility contexts.
+- validation：
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_application_capabilities.py::test_named_controller_context_uses_application_service tests/unit/ui/test_application_capabilities.py::test_legacy_controller_fallback_refuses_named_real_controller -q`
+    -> `2 passed`.
+  - UI capability / montage regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_application_capabilities.py tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker -q`
+    -> `16 passed`.
+  - Focused lint / type:
+    `poetry run ruff check XBrainLab/ui/application_capabilities.py tests/unit/ui/test_application_capabilities.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/application_capabilities.py tests/unit/ui/test_application_capabilities.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Fast gate:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is a UI runtime fallback-boundary slice under the fast dev gate; no tool-call
+    benchmark claim changed.
+- 不能宣稱：
+  - This does not remove all legacy fallback branches, complete command-driven UI refresh
+    coordinator closure, or prove human desktop acceptance.

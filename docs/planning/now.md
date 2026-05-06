@@ -409,8 +409,9 @@
   `controller.update_metadata()` / `controller.start_training()` 這類 mutating controller method
   擋住；只有 `run_legacy_controller_fallback()` 或明確 legacy / fallback helper 可以保留 controller
   mutation。最新 named-controller receiver guard 又把 `self.preprocess_controller` /
-  `preprocess_controller` 這類具名 controller receiver 納入同一 audit。這是 fallback audit
-  guardrail，不是 controller 退場完成。
+  `preprocess_controller` 這類具名 controller receiver 納入同一 audit；runtime `find_study()`
+  也已能從具名 controller 找到 real `Study`，避免這類 context 退到 legacy fallback。這是
+  fallback audit guardrail，不是 controller 退場完成。
 - 後續 Training sidebar bypass cleanup 修掉重新 split 前清 datasets 和 Clear History 的 direct
   controller mutation；destructive cleanup 會走 `ClearDatasetsCommand` /
   `ClearTrainingHistoryCommand`，且 Clear History 現在有 user confirmation。
