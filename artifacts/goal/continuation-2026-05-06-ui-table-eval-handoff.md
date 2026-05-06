@@ -30,9 +30,12 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+bfa241a test: guard no-capability controller reads
+71a04a7 docs: refresh handoff after dataset action guard
 9e3a8cb ui: guard dataset action fallback gates
 5330278 docs: refresh handoff after preprocess fallback guard
 cf831b2 ui: guard preprocess fallback gates
+70f2548 docs: refresh handoff after dataset fallback guard
 41a61d2 ui: guard dataset sidebar fallback state
 73e1e6e docs: refresh handoff after training fallback guard
 a697457 ui: guard training preflight fallback
@@ -182,6 +185,18 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Capability-none controller readiness architecture guard:
+  - `tests/architecture_compliance.py` now flags direct controller readiness calls inside
+    `capability is None` branches unless the reads are isolated behind explicit legacy helper
+    wrappers.
+  - `PreprocessSidebar.update_sidebar()` no-capability render fallback now uses
+    `_legacy_preprocessed_data_list_for_render()` instead of directly reading
+    `PreprocessController.get_preprocessed_data_list()`.
+  - Validation covered red architecture guard tests, the stricter architecture compliance run,
+    Preprocess sidebar regression, full fast gate (`git diff --check`, ruff, basedpyright,
+    mkdocs strict, backend integration, and agent/tool deterministic regression).
+  - No local LLM eval was run; this was an architecture guard / UI fallback audit slice under the
+    fast dev gate.
 - Dataset action handler no-capability preflight fallback boundary:
   - `DatasetActionHandler.import_data()`, `_can_start_interpretation()`, and
     `open_smart_parser()` no longer directly read `DatasetController.is_locked()` / `has_data()`
@@ -771,6 +786,43 @@ bb57beb ui: use backend truth for split replacement
 ## Validation Already Run
 
 ```bash
+poetry run pytest --capture=sys \
+  tests/unit/test_architecture_compliance.py::test_capability_readiness_guard_flags_explicit_legacy_none_branch \
+  tests/unit/test_architecture_compliance.py::test_capability_readiness_guard_allows_explicit_legacy_helper -q
+# red first for bfa241a; failed because direct no-capability controller readiness reads were still allowed
+
+poetry run pytest --capture=sys \
+  tests/unit/test_architecture_compliance.py::test_capability_readiness_guard_flags_explicit_legacy_none_branch \
+  tests/unit/test_architecture_compliance.py::test_capability_readiness_guard_allows_explicit_legacy_helper \
+  tests/unit/test_architecture_compliance.py::test_capability_readiness_guard_allows_local_legacy_value_helper -q
+# 3 passed for bfa241a
+
+poetry run python tests/architecture_compliance.py
+# Architecture compliant! for bfa241a
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar \
+  tests/unit/ui/preprocess -q
+# 76 passed for bfa241a
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+poetry run pytest --capture=sys tests/integration/backend -q
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/test_architecture_compliance.py \
+  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar \
+  tests/unit/ui/preprocess -q
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py -q
+# fast gate passed for bfa241a:
+# ruff all checks passed; basedpyright 0 errors/warnings/notes; mkdocs passed with existing
+# Material advisory; backend 7 passed; architecture/preprocess regression 112 passed;
+# agent/tool deterministic regression 20 passed.
+
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_refuses_real_study_controller_fallback -q
 # red first for 1b950fe; failed on stale controller.has_epoch_data() read
