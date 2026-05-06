@@ -291,10 +291,18 @@ class TrainingSidebar(QWidget):
                     ClearDatasetsCommand(confirmed=True),
                 )
                 if clear_result is None:
-                    run_legacy_controller_fallback(
-                        self,
-                        lambda: self.controller.clean_datasets(force_update=True),
-                    )
+                    try:
+                        run_legacy_controller_fallback(
+                            self,
+                            lambda: self.controller.clean_datasets(force_update=True),
+                        )
+                    except LegacyControllerFallbackUnavailableError as exc:
+                        QMessageBox.warning(
+                            self,
+                            "Data Splitting Blocked",
+                            str(exc),
+                        )
+                        return
                 elif clear_result.failed:
                     QMessageBox.critical(
                         self,

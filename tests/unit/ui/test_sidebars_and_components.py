@@ -915,6 +915,81 @@ class TestTrainingSidebar:
         mock_info.assert_not_called()
         assert "could not safely complete" in mock_warning.call_args.args[2]
 
+    def test_split_data_refuses_real_study_clear_none_controller_fallback(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.application import (
+            ClearDatasetsCommand,
+            QueryStateCommand,
+        )
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        raw = MagicMock()
+        raw.is_raw.return_value = True
+        study.data_manager.loaded_data_list = [raw]
+        study.data_manager.preprocessed_data_list = [raw]
+        study.data_manager.epoch_data = MagicMock(name="service_epoch_data")
+        sidebar.panel.main_window.study = study
+        generator = MagicMock()
+
+        query_result = _command_result(
+            payload_type="dataset_generation_context",
+            epoch_available=True,
+            generator_exists=True,
+            epoch_data=study.data_manager.epoch_data,
+            dataset_generator=MagicMock(name="old_generator"),
+        )
+
+        def execute_for(_, command, refresh=True):
+            if isinstance(command, QueryStateCommand):
+                assert refresh is False
+                return query_result
+            if isinstance(command, ClearDatasetsCommand):
+                return None
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                return_value=SimpleNamespace(enabled=True, reasons=[]),
+            ),
+            patch.object(
+                sidebar,
+                "_should_clear_datasets_before_split",
+                return_value=True,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog",
+            ) as mock_dialog,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                side_effect=execute_for,
+            ),
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch.object(QMessageBox, "warning") as mock_warning,
+            patch.object(QMessageBox, "critical") as mock_critical,
+            patch.object(QMessageBox, "information") as mock_info,
+        ):
+            mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            mock_dialog.return_value.get_result.return_value = generator
+            sidebar.split_data()
+
+        sidebar.panel.controller.clean_datasets.assert_not_called()
+        sidebar.panel.controller.apply_data_splitting.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Data Splitting Blocked"
+        mock_critical.assert_not_called()
+        mock_info.assert_not_called()
+        assert "could not safely complete" in mock_warning.call_args.args[2]
+
     def test_select_model_accepted(self, sidebar):
         sidebar.panel.controller.is_training.return_value = False
         mock_holder = MagicMock()
