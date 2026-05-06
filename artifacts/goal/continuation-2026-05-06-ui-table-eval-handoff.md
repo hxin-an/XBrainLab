@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+6e99b03 ui: surface eval claim boundary
 ca469ff ui: render eval dashboard artifact
 83b0015 test: guard stale render fallbacks
 e79d3b6 ui: guard dataset render fallback
@@ -164,6 +165,9 @@ bb57beb ui: use backend truth for split replacement
     capturing raw Markdown / pipe-table text.
   - `artifacts/ui/human-like-walkthrough/20-eval-dashboard.png` now shows dark model-comparison
     and metric tables, matching the main product visual language better.
+  - The same screenshot now surfaces the Thesis Claim Boundary before the benchmark tables, so the
+    first viewport states that the score does not claim UI usability, Windows launcher coverage, or
+    product completion.
   - This was a UI-observable artifact polish slice only; no deterministic or local LLM benchmark
     score changed.
 - Stale render fallback architecture guard:
@@ -600,6 +604,29 @@ bb57beb ui: use backend truth for split replacement
 ## Validation Already Run
 
 ```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/scripts/test_capture_human_like_product_walkthrough.py \
+  tests/integration/ui/test_product_walkthrough.py -q
+# 21 passed for 6e99b03
+
+QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py
+# exit 0; claim boundary visible at top of 20-eval-dashboard.png
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 6e99b03; mkdocs still prints the existing Material advisory
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py -q
+# 20 passed
+
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/scripts/test_capture_human_like_product_walkthrough.py -q
 # 17 passed
