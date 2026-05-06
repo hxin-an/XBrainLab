@@ -12761,3 +12761,46 @@
 - 不能宣稱：
   - This does not replace human desktop acceptance, true local-model long-session testing, or
     autonomous ChatPanel workflow certification.
+
+### 2026-05-06 Training updated observer handler routing
+
+- scope：
+  - Continue `UI Command Refresh Coordinator + Controller Fallback Audit` after the artifact
+    evidence slice.
+  - The coordinator already knew how to route `training_updated`, but `TrainingPanel` still wired
+    the actual observer to a lambda that only called `update_loop()`.
+  - Preserve live progress updates while making the actual observer callback enter the shared
+    coordinator path.
+- red / focused tests：
+  - Added `test_training_updated_observer_enters_refresh_coordinator`.
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/training/test_training_panel.py::test_training_updated_observer_enters_refresh_coordinator -q`
+    -> failed as expected because `refresh_after_observer()` was not called.
+- 做了什麼：
+  - Replaced the `training_updated` lambda bridge with named `_on_training_updated()`.
+  - `_on_training_updated()` now runs `update_loop()` for live progress and then calls
+    `refresh_after_observer(self, event_name="training_updated")`.
+  - Updated `docs/architecture/ui.md` so the current UI architecture no longer claims the live
+    training update loop is Training-panel-only.
+- validation：
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/training/test_training_panel.py::test_training_updated_observer_enters_refresh_coordinator tests/unit/ui/training/test_training_panel.py::test_training_panel_refreshes_progress_and_plot_on_training_updated -q`
+    -> `2 passed`.
+  - UI refresh regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/training/test_training_panel.py tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_panel_event_bridges.py -q`
+    -> `56 passed`.
+  - Fast gate:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is UI observer routing under the fast dev gate; no tool-call benchmark claim
+    changed.
+- 不能宣稱：
+  - This does not complete full command-driven UI refresh coordination, remove controller observer
+    events, or finish controller fallback audit.

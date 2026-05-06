@@ -120,7 +120,7 @@ class TrainingPanel(BasePanel):
         self._create_bridge(
             self.controller,
             "training_updated",
-            lambda *args, **kwargs: self.update_loop(),
+            self._on_training_updated,
         )
         self._create_bridge(
             self.controller,
@@ -236,6 +236,11 @@ class TrainingPanel(BasePanel):
         if hasattr(self, "sidebar"):
             self.sidebar.on_training_stopped()
         refresh_after_observer(self, event_name="training_stopped")
+
+    def _on_training_updated(self):
+        """Refresh live training progress and shared observer status."""
+        self.update_loop()
+        refresh_after_observer(self, event_name="training_updated")
 
     def _on_history_cleared(self):
         """Event handler: History cleared."""

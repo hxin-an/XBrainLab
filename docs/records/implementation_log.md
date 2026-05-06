@@ -4931,3 +4931,29 @@ text snapshots and in top-level `chatpanel.visible_messages`.
 
 - This strengthens automated UI-observable evidence. It is not a human desktop acceptance run,
   long local-model soak, or proof of every ChatPanel autonomous workflow.
+
+## 2026-05-06 Training Updated Observer Handler Routing
+
+### 狀態
+
+`TrainingPanel` live `training_updated` observer handling now keeps the live progress `update_loop()`
+and also enters `refresh_after_observer(..., event_name="training_updated")`.
+
+### 已可宣稱
+
+- Live training progress updates are no longer isolated to the Training panel only.
+- The training-owner observer route can refresh downstream Evaluation / Visualization readiness,
+  aggregate info, and assistant backend status through the same coordinator scope as other training
+  lifecycle events.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/training/panel.py`
+- Tests：`tests/unit/ui/training/test_training_panel.py`
+- Architecture doc：`docs/architecture/ui.md`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is one callback-specific observer cleanup. UI refresh remains a mixed model and still needs
+  the broader command-driven refresh coordinator / controller fallback audit.

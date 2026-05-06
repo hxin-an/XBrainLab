@@ -635,6 +635,38 @@ def test_training_panel_refreshes_progress_and_plot_on_training_updated(
     assert panel.tab_acc.train_vals[-1] == 0.81
 
 
+def test_training_updated_observer_enters_refresh_coordinator(
+    mock_main_window,
+    qtbot,
+):
+    """training_updated should refresh live progress and shared UI status."""
+    controller = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+    controller.get_formatted_history = MagicMock(return_value=[])
+
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+
+    with patch(
+        "XBrainLab.ui.panels.training.panel.refresh_after_observer",
+        return_value=True,
+    ) as refresh_after_observer:
+        controller.notify("training_updated")
+        qtbot.wait(50)
+
+    refresh_after_observer.assert_called_once_with(
+        panel,
+        event_name="training_updated",
+    )
+
+
 def test_training_panel_clears_log_on_history_cleared(
     mock_main_window,
     qtbot,
