@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+28db597 ui: keep assistant footer on scan source
+30efdbf docs: refresh handoff after assistant status guard
 24441d8 ui: tolerate partial assistant capabilities
 4a0fc3a docs: refresh handoff after command helper guard
 8bafc5a ui: centralize info panel command query
@@ -220,6 +222,15 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- ChatPanel no-data footer wording:
+  - AgentManager and ChatPanel no longer fall back to `Import files to begin` when no data is
+    loaded and no available command labels are present.
+  - The no-data footer remains `No EEG data open · Scan a data source to begin`, preserving Data
+    Interpretation as the product data-entry mental model.
+  - Validation covered red/focused footer tests, full ChatPanel / AgentManager UI regressions,
+    full ruff, full basedpyright, architecture compliance, `git diff --check`, and
+    `mkdocs build --strict`.
+  - No local LLM eval was run; this was UI wording/product-language cleanup.
 - ChatPanel backend-status resilience:
   - `AgentManager.refresh_backend_status()` no longer assumes the capability snapshot contains
     `train`.
