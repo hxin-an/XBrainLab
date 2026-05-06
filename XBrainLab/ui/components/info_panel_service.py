@@ -24,17 +24,29 @@ class InfoPanelService(QObject):
 
     """
 
-    def __init__(self, study: "Study"):
+    def __init__(
+        self,
+        study: "Study",
+        *,
+        observe_controller_events: bool = True,
+    ):
         """Initialize the service and connect to backend controllers.
 
         Args:
             study: The application ``Study`` instance.
+            observe_controller_events: Whether this service should subscribe
+                directly to controller observer events. MainWindow product
+                runtime delegates aggregate refresh to the UI refresh
+                coordinator; standalone / legacy contexts can keep direct
+                observation enabled.
 
         """
         super().__init__()
         self.study = study
         self._listeners: weakref.WeakSet = weakref.WeakSet()
-        self._setup_bridges()
+        self._observes_controller_events = observe_controller_events
+        if observe_controller_events:
+            self._setup_bridges()
 
     def _setup_bridges(self):
         """Connect observer bridges to dataset and preprocess controllers."""

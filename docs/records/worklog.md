@@ -37,6 +37,47 @@
 
 ## 2026-05-06
 
+### 10:58 MainWindow aggregate info observer deduplication
+
+- scope：
+  - Continue `UI Command Refresh Coordinator + Controller Fallback Audit`.
+  - Remove one product-runtime duplicate aggregate-info refresh path: MainWindow already refreshes
+    shared status through `refresh_coordinator`, while `InfoPanelService` also subscribed directly
+    to `data_changed` / `preprocess_changed`.
+- red / focused tests：
+  - Added `test_main_window_delegates_info_refresh_to_coordinator`.
+  - Red gate failed because `MainWindow` still constructed `InfoPanelService(study)` without
+    disabling direct controller observation.
+- 做了什麼：
+  - Added `observe_controller_events` to `InfoPanelService`; default remains `True` for standalone /
+    legacy service usage.
+  - MainWindow now constructs `InfoPanelService(study, observe_controller_events=False)`, so product
+    runtime aggregate info updates flow through `refresh_coordinator` shared-status refresh.
+  - Added a focused InfoPanelService unit test proving disabled observer mode creates no dataset /
+    preprocess bridges.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_main_window_sync.py::test_main_window_delegates_info_refresh_to_coordinator -q`
+    -> failed because InfoPanelService was called without `observe_controller_events=False`.
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_main_window_sync.py::test_main_window_delegates_info_refresh_to_coordinator tests/unit/ui/components/test_info_panel_service.py::test_service_can_delegate_observer_refresh_to_main_window_coordinator tests/unit/ui/components/test_info_panel_service.py::test_successful_legacy_import_updates_info_once -q`
+    -> `3 passed`.
+  - Regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/components/test_info_panel_service.py tests/unit/ui/test_main_window_sync.py tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_panel_event_bridges.py tests/integration/ui/test_e2e_qtbot.py::TestInfoService -q`
+    -> `56 passed`.
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `34 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/components/info_panel_service.py XBrainLab/ui/main_window.py tests/unit/ui/test_main_window_sync.py tests/unit/ui/components/test_info_panel_service.py`
+    -> pass.
+    `poetry run basedpyright XBrainLab/ui/components/info_panel_service.py XBrainLab/ui/main_window.py tests/unit/ui/test_main_window_sync.py tests/unit/ui/components/test_info_panel_service.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+- local eval：
+  - Not run. This is a UI refresh architecture slice under the fast dev gate.
+- 不能宣稱：
+  - This does not complete command-driven UI refresh, remove all observer callbacks, or prove human
+    desktop acceptance.
+
 ### 10:41 Human-like walkthrough eval dashboard presentation
 
 - scope：

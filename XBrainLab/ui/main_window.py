@@ -142,7 +142,10 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.top_bar)
 
         # 2. Services (Must be before panels to allow registration)
-        self.info_service = InfoPanelService(self.study)
+        self.info_service = InfoPanelService(
+            self.study,
+            observe_controller_events=False,
+        )
 
         # 3. Stacked Widget (Content Area)
         self.stack = QStackedWidget()

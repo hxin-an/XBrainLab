@@ -115,6 +115,23 @@ def test_update_info_panel_uses_info_service(main_window):
     main_window.info_service.notify_all.assert_called_once()
 
 
+def test_main_window_delegates_info_refresh_to_coordinator(mock_study, qtbot):
+    """Product MainWindow should not double-subscribe aggregate info refresh."""
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow.init_panels"),
+        patch("XBrainLab.ui.main_window.MainWindow.init_agent"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+        patch("XBrainLab.ui.main_window.InfoPanelService") as service_cls,
+    ):
+        window = MainWindow(mock_study)
+
+    qtbot.addWidget(window)
+    service_cls.assert_called_once_with(
+        mock_study,
+        observe_controller_events=False,
+    )
+
+
 def test_update_info_panel_keeps_legacy_direct_panel_fallback(main_window):
     """Older injected contexts without InfoPanelService can still update directly."""
     delattr(main_window, "info_service")

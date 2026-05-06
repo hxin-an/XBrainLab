@@ -30,6 +30,16 @@ def test_service_initialization(service, study_mock):
     # Since bridges are internal, we assume success if no error, or check functionality
 
 
+def test_service_can_delegate_observer_refresh_to_main_window_coordinator(study_mock):
+    """MainWindow can own event refresh without duplicate InfoPanelService bridges."""
+    service = InfoPanelService(study_mock, observe_controller_events=False)
+
+    assert service.study == study_mock
+    assert service._observes_controller_events is False
+    assert not hasattr(service, "dataset_bridge")
+    assert not hasattr(service, "preprocess_bridge")
+
+
 def test_register_and_notify(service, study_mock):
     """Test registering a panel and notifying it."""
     panel_mock = MagicMock()

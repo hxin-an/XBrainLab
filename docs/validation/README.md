@@ -346,6 +346,11 @@ UI baseline capture 結果：
     refresh; successful legacy imports refresh them once through dataset `data_changed`.
   - InfoPanelService no longer subscribes to dataset `import_finished`; aggregate info success
     refresh is owned by `data_changed` / `preprocess_changed`.
+  - Latest aggregate-info follow-up:
+    MainWindow now constructs `InfoPanelService(observe_controller_events=False)`, so product
+    runtime aggregate info refresh is owned by the coordinator shared-status path instead of a
+    second direct InfoPanelService observer bridge. Standalone / legacy InfoPanelService use can
+    still observe controller events directly.
   - focused gate:
     `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
     -> `65 passed`.

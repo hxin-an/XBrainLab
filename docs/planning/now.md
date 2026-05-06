@@ -126,6 +126,10 @@
   `data_changed` observer 擁有。
 - 最新 InfoPanelService duplicate refresh cleanup 已移除 dataset `import_finished` bridge；aggregate
   info panel 的成功資料變更 refresh 由 `data_changed` / `preprocess_changed` 擁有。
+- 最新 MainWindow aggregate-info refresh cleanup 又把 product runtime 的 direct InfoPanelService
+  observer bridges 關掉：MainWindow 以 `observe_controller_events=False` 建立 service，aggregate
+  info 改由 `refresh_coordinator` shared-status path 觸發；standalone / legacy service 仍保留直接
+  observer 選項。
 - 最新 import-finished observer guard 已寫進 `tests/architecture_compliance.py`：新的
   `_create_refresh_bridge(..., "import_finished")` 或 direct `QtObserverBridge(...,
   "import_finished", ...)` 會 fail；`import_finished` 只能透過 named callback handler 處理

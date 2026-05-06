@@ -42,6 +42,39 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 MainWindow Aggregate Info Observer Deduplication
+
+### 狀態
+
+MainWindow product runtime now creates `InfoPanelService` with direct controller observation
+disabled. Aggregate info refresh for the desktop app is owned by the shared-status path in
+`refresh_coordinator`, which calls `MainWindow.update_info_panel()` and then
+`InfoPanelService.notify_all()`. Standalone / legacy service usage can still opt into direct
+controller observer bridges.
+
+### 已可宣稱
+
+- Product MainWindow no longer double-subscribes aggregate info updates through both panel observer
+  refresh and InfoPanelService `data_changed` / `preprocess_changed` bridges.
+- The standalone InfoPanelService compatibility behavior remains available by default.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/components/info_panel_service.py`, `XBrainLab/ui/main_window.py`
+- Tests: `tests/unit/ui/components/test_info_panel_service.py`,
+  `tests/unit/ui/test_main_window_sync.py`, `tests/unit/ui/test_refresh_coordinator.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This narrows one duplicate observer path. It does not complete all UI refresh coordination,
+  remove all observer/event-specific callbacks, or prove human desktop acceptance.
+
+### 下一手重點
+
+Continue classifying remaining observer/manual refresh paths. Product runtime refresh should keep
+moving toward coordinator-owned `CommandResult.changed_state` / observer-route scopes.
+
 ## 2026-05-06 Human-Like Walkthrough Eval Dashboard Presentation
 
 ### 狀態
