@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+261c732 eval: gate deterministic cli runs
+4e8fe12 docs: refresh handoff after visible text guard
 8862d14 test: guard walkthrough internal command text
 70adaf1 docs: refresh handoff after training observer route
 5c390da ui: route live training updates
@@ -168,6 +170,17 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Deterministic tool-call eval CLI gate:
+  - `scripts/agent/evals/run_tool_call_eval.py` now defaults to `--eval-gate fast --repeat-count 1`.
+  - Routine CLI runs must select a changed / affected subset with `--case-id`, `--case-family`, or
+    `--case-limit`; a default full-suite fast run exits `2` and writes
+    `deterministic_gate.json` / `.md` instead of refreshing `latest.json`.
+  - Full-suite deterministic dashboard refresh now requires explicit `--eval-gate release` or
+    `--eval-gate thesis`.
+  - `run_eval()` keeps the Python API full-suite behavior for tests and scorer validation, but also
+    accepts optional case filters for focused checks.
+  - No local LLM eval was run; this slice changes runner policy only and does not update formal
+    deterministic / primary / fallback benchmark claims.
 - Walkthrough internal command leakage guard:
   - `forbidden_visible_text()` now flags selected internal command names beyond the original Data
     Interpretation set, including `configure_training`, `generate_dataset`, `create_epoch`,
@@ -669,6 +682,40 @@ bb57beb ui: use backend truth for split replacement
 ## Validation Already Run
 
 ```bash
+poetry run pytest --capture=sys tests/unit/scripts/test_run_tool_call_eval.py -q
+# 5 passed for 261c732
+
+poetry run ruff check scripts/agent/evals/run_tool_call_eval.py tests/unit/scripts/test_run_tool_call_eval.py
+poetry run basedpyright scripts/agent/evals/run_tool_call_eval.py tests/unit/scripts/test_run_tool_call_eval.py
+# passed for 261c732; basedpyright reported 0 errors, 0 warnings, 0 notes
+
+poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir /tmp/xbrainlab_det_gate_full
+# exit 2 for 261c732; wrote deterministic_gate.json/.md and no latest.json
+
+poetry run python scripts/agent/evals/run_tool_call_eval.py \
+  --output-dir /tmp/xbrainlab_det_gate_case --case-id empty-load-path
+# exit 0 for 261c732; wrote one-case latest.json/latest.md
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 261c732; mkdocs still prints the existing Material advisory
+
+poetry run pytest --capture=sys \
+  tests/unit/scripts/test_run_tool_call_eval.py \
+  tests/integration/agent/test_tool_call_eval.py -q
+# 6 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py -q
+# 20 passed
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed
+
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/scripts/test_capture_human_like_product_walkthrough.py -q
 # 19 passed for 8862d14
@@ -2427,6 +2474,9 @@ do not start a full fallback x3 run. Use deterministic changed cases or primary 
 work is explicitly a release / thesis evidence gate. The local eval CLI now also requires
 full-suite repeat `3` local runs to declare `--eval-gate release` or `--eval-gate thesis`; the
 default candidate gate writes `resource_preflight.*` and exits before model startup.
+The deterministic CLI now mirrors this layering: default `fast` runs require an explicit subset and
+repeat `1`, while full-suite deterministic dashboard refreshes require `--eval-gate release` or
+`--eval-gate thesis`.
 
 ## Still Cannot Claim Product Complete
 
