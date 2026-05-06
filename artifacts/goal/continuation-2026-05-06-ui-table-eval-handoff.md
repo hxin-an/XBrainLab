@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+e79d3b6 ui: guard dataset render fallback
 41930e0 ui: show montage fallback warning
 c26cb99 ui: show inline metadata fallback warning
 789b520 docs: refresh handoff after preprocess warnings
@@ -155,6 +156,12 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- DatasetPanel query-none render fallback boundary:
+  - real `Study` Dataset table refresh now clears to an empty table when
+    `QueryStateCommand(query="data_lists")` returns `None`.
+  - the UI no longer reads stale `DatasetController.get_loaded_data_list()` in that unexpected
+    service-unavailable render path.
+  - mock / legacy non-`Study` render fallback still uses `DatasetController.get_loaded_data_list()`.
 - AgentManager montage fallback warning:
   - real `Study` assistant montage confirmation now shows `Montage setup blocked` when
     `ApplyMontageCommand` returns `None`.
@@ -2043,6 +2050,13 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/integration/agent/test_tool_call_eval.py \
   -q
 # passed for 41930e0; backend integration 7 passed; agent/tool 20 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/dataset/test_panel.py \
+  tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar \
+  tests/unit/scripts/test_capture_data_interpretation_replay.py \
+  -q
+# 35 passed for e79d3b6
 
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/test_agent_manager_coverage.py \
