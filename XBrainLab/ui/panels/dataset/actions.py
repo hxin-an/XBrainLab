@@ -1170,10 +1170,21 @@ class DatasetActionHandler:
                 UpdateMetadataCommand(updates=updates),
             )
             if result is None:
-                run_legacy_controller_fallback(
-                    self.panel,
-                    lambda: self._run_metadata_update_fallback(controller, updates),
-                )
+                try:
+                    run_legacy_controller_fallback(
+                        self.panel,
+                        lambda: self._run_metadata_update_fallback(
+                            controller,
+                            updates,
+                        ),
+                    )
+                except LegacyControllerFallbackUnavailableError as exc:
+                    QMessageBox.warning(
+                        self.panel,
+                        "Metadata Update Blocked",
+                        str(exc),
+                    )
+                    return
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
                 return

@@ -252,6 +252,9 @@
   無法 dispatch 時顯示 `Data Splitting Blocked`，不再開啟缺少 service context 的 splitting dialog。
 - 最新 Remove Files fallback warning slice 也讓 real `Study` remove-files command 無法 dispatch
   時顯示 `Remove Files Blocked`，不再外拋 legacy fallback exception。
+- 最新 Metadata Update fallback warning slice 也讓 real `Study` inline / context-menu metadata
+  update command 無法 dispatch 時顯示 `Metadata Update Blocked`，不再外拋 legacy fallback
+  exception。
 - 最新 Dataset sidebar render cleanup 也把 `is_locked()` / `has_data()` 納入同一 guard：
   有 backend capability 時，button state / tooltip 不再先讀 stale controller lock/data state；
   legacy lock/data reads 只留在 explicit no-capability branch。

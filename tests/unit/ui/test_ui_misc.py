@@ -1130,6 +1130,30 @@ class TestDatasetActionHandler:
         )
         handler.panel.controller.update_metadata.assert_not_called()
 
+    def test_batch_set_refuses_real_study_controller_fallback(self, handler):
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        study.data_manager.loaded_data_list = [MagicMock()]
+        handler.panel.study = study
+        handler.panel.controller = MagicMock()
+
+        with (
+            patch("XBrainLab.ui.panels.dataset.actions.QInputDialog") as mock_input,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                return_value=None,
+            ),
+        ):
+            mock_input.getText.return_value = ("session-01", True)
+            handler._batch_set([0], "Session")
+
+        handler.panel.controller.update_metadata.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert mock_mb.warning.call_args.args[1] == "Metadata Update Blocked"
+        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
+
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_get_target_files_no_selection_apply_all(self, mock_mb, handler):
         handler.panel.table.selectedIndexes.return_value = []
