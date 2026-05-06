@@ -247,7 +247,7 @@ def _run_walkthrough_steps(
     window = MainWindow(study)
     set_window_geometry(window, WINDOW_SIZE)
     window.show()
-    app.processEvents()
+    settle_window_geometry_for_capture(app, window, WINDOW_SIZE)
 
     def capture_step(
         phase: str,
@@ -1811,6 +1811,25 @@ def set_window_geometry(window: QWidget, size: QSize) -> None:
     else:
         window.move(QPoint(0, 0))
     window.resize(size)
+
+
+def settle_window_geometry_for_capture(
+    app: QApplication,
+    window: QWidget,
+    size: QSize,
+    *,
+    recovery_wait_ms: int = 320,
+) -> None:
+    """Let startup geometry timers run, then restore capture dimensions."""
+    deadline = time.monotonic() + max(recovery_wait_ms, 0) / 1000
+    app.processEvents()
+    while time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.01)
+    set_window_geometry(window, size)
+    app.processEvents()
+    window.repaint()
+    app.processEvents()
 
 
 def sanitize(value: Any) -> Any:

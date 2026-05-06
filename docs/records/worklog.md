@@ -37,6 +37,59 @@
 
 ## 2026-05-06
 
+### 15:25 Human-like walkthrough 1280px Dataset table evidence
+
+- scope：
+  - Follow up on the user screenshot showing the loaded Dataset table compressed into a narrow
+    left block in a 1280px window.
+  - Strengthen the automated human-like walkthrough artifact so the loaded Dataset state is
+    captured at 1280px, not after MainWindow startup geometry recovery clamps the offscreen window
+    to a narrower fallback.
+- 做了什麼：
+  - Added `settle_window_geometry_for_capture()` to
+    `scripts/dev/capture_human_like_product_walkthrough.py`.
+  - The walkthrough now lets MainWindow post-show geometry recovery timers run, then reapplies the
+    deterministic `1280x800` capture size before the first screenshot.
+  - Refreshed `artifacts/ui/human-like-walkthrough/*`; latest
+    `06-interpretation-applied.png` is `1280x800`.
+  - Refreshed the 1280px baseline UI screenshots under `artifacts/ui/`.
+  - Spot review: loaded Dataset table fills the main panel up to the sidebar, and Events column
+    text is `Events (6)` / `Labels (4)` rather than green `Yes (...)`.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py::test_settle_window_geometry_reapplies_target_after_startup_timer -q`
+    -> `1 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> exit `0`.
+  - Artifact spot-check:
+    `01-main-initial.png` and `06-interpretation-applied.png` are `1280x800`; narrow assistant
+    screenshot remains intentionally `340x655`.
+  - JSON spot-check:
+    loaded Dataset table `widget_width=1020`, `header_length=993`, `viewport_width=994`,
+    `right_boundary_x=1020`, `right_gap_to_boundary=0`, `horizontal_scrollbar_max=0`; artifact
+    status `passed`, table geometry findings `0`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py -q`
+    -> `20 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py::test_dataset_panel_events_column_uses_semantic_text_and_muted_color -q`
+    -> `1 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration/ui/test_product_walkthrough.py -q`
+    -> `3 passed`.
+  - `poetry run ruff check scripts/dev/capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> `All checks passed!`.
+  - `poetry run basedpyright scripts/dev/capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Fast gate:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is a UI-observable artifact / geometry evidence slice under the fast dev gate.
+- 不能宣稱：
+  - This proves automated PyQt replay geometry for the synthetic walkthrough. It does not replace
+    Windows launcher / DPI / dual-monitor human desktop acceptance or mature Data Interpretation
+    wizard completion.
+
 ### 12:37 Montage preflight fallback boundary
 
 - scope：

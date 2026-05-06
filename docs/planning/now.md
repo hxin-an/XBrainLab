@@ -520,8 +520,10 @@
 - 最新 human-like walkthrough refresh 也把 table geometry 納入 top-level UI quality gate：
   `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` 目前 `status=passed`，
   table geometry review 檢查 `15` 個 table/tree widgets、`0` geometry findings、`0`
-  clipped-row findings；載入資料後 Dataset table 記錄 `header_length=509`、
-  `viewport_width=510`、`horizontal_scrollbar_max=0`。後續 artifact 若 capture 到任何
+  clipped-row findings。最新 capture 會等 MainWindow startup geometry recovery timer 跑完後
+  再回到 `1280x800`，載入資料後 Dataset table 記錄 `widget_width=1020`、
+  `header_length=993`、`viewport_width=994`、`right_gap_to_boundary=0`、
+  `horizontal_scrollbar_max=0`。後續 artifact 若 capture 到任何
   `partial_visible_rows`，human-like quality gate 會 failed。
 - 最新 human-like walkthrough visible-text guard 也把 recipe trace token pattern 納入 forbidden
   visible text；`human-like-walkthrough.json` 現在記錄 boundary 包含 recipe trace tokens，且

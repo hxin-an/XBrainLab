@@ -42,6 +42,37 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Human-Like Walkthrough 1280px Dataset Evidence
+
+### 狀態
+
+The automated human-like walkthrough now waits for MainWindow startup geometry recovery before
+restoring the deterministic `1280x800` capture size. The loaded Dataset screenshot and JSON
+geometry evidence now cover the wide-window table layout reported by the user.
+
+### 已可宣稱
+
+- The automated PyQt walkthrough currently captures loaded Dataset state at `1280x800`.
+- The latest loaded Dataset table fills the main panel up to the sidebar and uses semantic
+  `Events` / `Labels` text instead of green success-style `Yes` state.
+
+### Evidence 入口
+
+- Source：`scripts/dev/capture_human_like_product_walkthrough.py`
+- Artifact：`artifacts/ui/human-like-walkthrough/06-interpretation-applied.png`,
+  `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is automated UI-observable evidence only. Windows launcher, DPI / dual-monitor behavior,
+  human desktop acceptance, and mature Data Interpretation wizard UX remain open.
+
+### 下一手重點
+
+- Continue UI command refresh / controller fallback audit and Data Interpretation wizard maturity
+  work before any product-complete claim.
+
 ## 2026-05-06 Montage Preflight Fallback Boundary
 
 ### 狀態

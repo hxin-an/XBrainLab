@@ -338,26 +338,26 @@
               "Interactive"
             ],
             "stretch_last_section": false,
-            "header_length": 533,
-            "viewport_width": 534,
-            "widget_width": 536,
+            "header_length": 1017,
+            "viewport_width": 1018,
+            "widget_width": 1020,
             "widget_x": 0,
             "column_widths": [
-              141,
-              65,
-              79,
-              52,
-              56,
-              61,
-              79
+              329,
+              115,
+              154,
+              77,
+              88,
+              101,
+              153
             ],
             "horizontal_scrollbar_max": 0,
             "vertical_scrollbar_max": 0,
             "partial_visible_rows": [],
             "text_elide_mode": "ElideRight",
-            "panel_width": 796,
-            "table_right_x": 536,
-            "right_boundary_x": 536,
+            "panel_width": 1280,
+            "table_right_x": 1020,
+            "right_boundary_x": 1020,
             "right_gap_to_boundary": 0
           }
         }
@@ -1860,26 +1860,26 @@
               "Interactive"
             ],
             "stretch_last_section": false,
-            "header_length": 509,
-            "viewport_width": 510,
-            "widget_width": 536,
+            "header_length": 993,
+            "viewport_width": 994,
+            "widget_width": 1020,
             "widget_x": 0,
             "column_widths": [
-              130,
-              63,
+              321,
+              112,
+              150,
               75,
-              52,
-              55,
-              59,
-              75
+              86,
+              99,
+              150
             ],
             "horizontal_scrollbar_max": 0,
             "vertical_scrollbar_max": 0,
             "partial_visible_rows": [],
             "text_elide_mode": "ElideRight",
-            "panel_width": 796,
-            "table_right_x": 536,
-            "right_boundary_x": 536,
+            "panel_width": 1280,
+            "table_right_x": 1020,
+            "right_boundary_x": 1020,
             "right_gap_to_boundary": 0
           }
         }
@@ -2134,26 +2134,26 @@
               "Interactive"
             ],
             "stretch_last_section": false,
-            "header_length": 509,
-            "viewport_width": 510,
-            "widget_width": 536,
+            "header_length": 993,
+            "viewport_width": 994,
+            "widget_width": 1020,
             "widget_x": 0,
             "column_widths": [
-              130,
-              63,
+              321,
+              112,
+              150,
               75,
-              52,
-              55,
-              59,
-              75
+              86,
+              99,
+              150
             ],
             "horizontal_scrollbar_max": 0,
             "vertical_scrollbar_max": 0,
             "partial_visible_rows": [],
             "text_elide_mode": "ElideRight",
-            "panel_width": 796,
-            "table_right_x": 536,
-            "right_boundary_x": 536,
+            "panel_width": 1280,
+            "table_right_x": 1020,
+            "right_boundary_x": 1020,
             "right_gap_to_boundary": 0
           }
         }
@@ -9672,26 +9672,26 @@
             "Interactive"
           ],
           "stretch_last_section": false,
-          "header_length": 533,
-          "viewport_width": 534,
-          "widget_width": 536,
+          "header_length": 1017,
+          "viewport_width": 1018,
+          "widget_width": 1020,
           "widget_x": 0,
           "column_widths": [
-            141,
-            65,
-            79,
-            52,
-            56,
-            61,
-            79
+            329,
+            115,
+            154,
+            77,
+            88,
+            101,
+            153
           ],
           "horizontal_scrollbar_max": 0,
           "vertical_scrollbar_max": 0,
           "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
-          "panel_width": 796,
-          "table_right_x": 536,
-          "right_boundary_x": 536,
+          "panel_width": 1280,
+          "table_right_x": 1020,
+          "right_boundary_x": 1020,
           "right_gap_to_boundary": 0
         }
       },
@@ -10186,26 +10186,26 @@
             "Interactive"
           ],
           "stretch_last_section": false,
-          "header_length": 509,
-          "viewport_width": 510,
-          "widget_width": 536,
+          "header_length": 993,
+          "viewport_width": 994,
+          "widget_width": 1020,
           "widget_x": 0,
           "column_widths": [
-            130,
-            63,
+            321,
+            112,
+            150,
             75,
-            52,
-            55,
-            59,
-            75
+            86,
+            99,
+            150
           ],
           "horizontal_scrollbar_max": 0,
           "vertical_scrollbar_max": 0,
           "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
-          "panel_width": 796,
-          "table_right_x": 536,
-          "right_boundary_x": 536,
+          "panel_width": 1280,
+          "table_right_x": 1020,
+          "right_boundary_x": 1020,
           "right_gap_to_boundary": 0
         }
       },
@@ -10250,26 +10250,26 @@
             "Interactive"
           ],
           "stretch_last_section": false,
-          "header_length": 509,
-          "viewport_width": 510,
-          "widget_width": 536,
+          "header_length": 993,
+          "viewport_width": 994,
+          "widget_width": 1020,
           "widget_x": 0,
           "column_widths": [
-            130,
-            63,
+            321,
+            112,
+            150,
             75,
-            52,
-            55,
-            59,
-            75
+            86,
+            99,
+            150
           ],
           "horizontal_scrollbar_max": 0,
           "vertical_scrollbar_max": 0,
           "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
-          "panel_width": 796,
-          "table_right_x": 536,
-          "right_boundary_x": 536,
+          "panel_width": 1280,
+          "table_right_x": 1020,
+          "right_boundary_x": 1020,
           "right_gap_to_boundary": 0
         }
       },
@@ -19686,33 +19686,33 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 1159775,
+      "pid": 1162459,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 837376
+      "max_rss_kb": 837748
     },
     {
       "label": "before_close",
-      "pid": 1159775,
+      "pid": 1162459,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1070356
+      "max_rss_kb": 1066008
     },
     {
       "label": "after_close",
-      "pid": 1159775,
+      "pid": 1162459,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1070356
+      "max_rss_kb": 1066008
     }
   ],
   "ui_quality_review": {
@@ -19881,13 +19881,13 @@
             "Events"
           ],
           "row_count": 0,
-          "header_length": 533,
-          "viewport_width": 534,
+          "header_length": 1017,
+          "viewport_width": 1018,
           "width_gap": 1,
-          "widget_width": 536,
-          "panel_width": 796,
-          "table_right_x": 536,
-          "right_boundary_x": 536,
+          "widget_width": 1020,
+          "panel_width": 1280,
+          "table_right_x": 1020,
+          "right_boundary_x": 1020,
           "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
           "vertical_scrollbar_max": 0,
@@ -19906,13 +19906,13 @@
             "Interactive"
           ],
           "column_widths": [
-            141,
-            65,
-            79,
-            52,
-            56,
-            61,
-            79
+            329,
+            115,
+            154,
+            77,
+            88,
+            101,
+            153
           ],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": null
@@ -20268,13 +20268,13 @@
             "Events"
           ],
           "row_count": 2,
-          "header_length": 509,
-          "viewport_width": 510,
+          "header_length": 993,
+          "viewport_width": 994,
           "width_gap": 1,
-          "widget_width": 536,
-          "panel_width": 796,
-          "table_right_x": 536,
-          "right_boundary_x": 536,
+          "widget_width": 1020,
+          "panel_width": 1280,
+          "table_right_x": 1020,
+          "right_boundary_x": 1020,
           "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
           "vertical_scrollbar_max": 0,
@@ -20293,13 +20293,13 @@
             "Interactive"
           ],
           "column_widths": [
-            130,
-            63,
+            321,
+            112,
+            150,
             75,
-            52,
-            55,
-            59,
-            75
+            86,
+            99,
+            150
           ],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": null
@@ -20317,13 +20317,13 @@
             "Events"
           ],
           "row_count": 2,
-          "header_length": 509,
-          "viewport_width": 510,
+          "header_length": 993,
+          "viewport_width": 994,
           "width_gap": 1,
-          "widget_width": 536,
-          "panel_width": 796,
-          "table_right_x": 536,
-          "right_boundary_x": 536,
+          "widget_width": 1020,
+          "panel_width": 1280,
+          "table_right_x": 1020,
+          "right_boundary_x": 1020,
           "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
           "vertical_scrollbar_max": 0,
@@ -20342,13 +20342,13 @@
             "Interactive"
           ],
           "column_widths": [
-            130,
-            63,
+            321,
+            112,
+            150,
             75,
-            52,
-            55,
-            59,
-            75
+            86,
+            99,
+            150
           ],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": null
@@ -20543,10 +20543,10 @@
       "after_close_python_threads": 1,
       "python_thread_tolerance": 1,
       "after_close_qt_active_threads": 0,
-      "rss_growth_kb": 232980,
+      "rss_growth_kb": 228260,
       "rss_limit_kb": 600000,
       "boundary": "Coarse process smoke only: RSS uses ru_maxrss high-water mark and this does not prove the absence of leaks."
     }
   },
-  "elapsed_seconds": 4.049
+  "elapsed_seconds": 4.667
 }

@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QComboBox, QTextBrowser, QVBoxLayout, QWidget
+from PyQt6.QtCore import QSize, QTimer
+from PyQt6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QTextBrowser,
+    QVBoxLayout,
+    QWidget,
+)
 
 from scripts.dev.capture_data_interpretation_replay import (
     source_event_field_matches,
@@ -16,6 +23,7 @@ from scripts.dev.capture_human_like_product_walkthrough import (
     merge_ui_quality_into_pass_fail_summary,
     render_eval_dashboard_html,
     render_markdown,
+    settle_window_geometry_for_capture,
     validate_walkthrough_payload,
     visible_text_snapshot,
 )
@@ -101,6 +109,26 @@ def test_validate_walkthrough_payload_accepts_complete_artifact_without_files() 
 
     assert ok is True
     assert reason == ""
+
+
+def test_settle_window_geometry_reapplies_target_after_startup_timer(qtbot) -> None:
+    app = QApplication.instance()
+    assert isinstance(app, QApplication)
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    widget.resize(QSize(420, 360))
+    widget.show()
+    QTimer.singleShot(0, lambda: widget.resize(QSize(640, 480)))
+
+    target = QSize(900, 760)
+    settle_window_geometry_for_capture(
+        app,
+        widget,
+        target,
+        recovery_wait_ms=20,
+    )
+
+    assert widget.size() == target
 
 
 def test_validate_walkthrough_payload_rejects_missing_human_boundary() -> None:
