@@ -48,7 +48,9 @@
 
 HTTP MCP now has a train-only in-memory job baseline. Backend-ready `train` no longer returns the
 old unsupported HTTP job boundary; it creates a job that can be observed and cancelled through the
-HTTP adapter.
+HTTP adapter. The same-session HTTP registry now rejects duplicate train starts while a job is
+starting or running, returning a structured `job_already_running` blocked result instead of
+dispatching a second training command.
 
 ### 已可宣稱
 
@@ -57,6 +59,8 @@ HTTP adapter.
   status, progress snapshot, and command result.
 - `POST /jobs/{id}/cancel` routes through `StopTrainingCommand` / `ApplicationService.execute()`;
   it does not directly mutate controller internals.
+- Duplicate HTTP `train` calls in the same session are resource-guarded while an existing train job
+  is starting or running.
 - The walkthrough artifact now records train job creation, running status, and cancelled status.
 
 ### Evidence 入口
@@ -71,13 +75,13 @@ HTTP adapter.
 ### 不能宣稱完成
 
 - This is train-only and in-memory. Evaluation / visualization jobs, persistence, recovery,
-  resource locks, remote authorization certification, full MCP client certification, and human
-  Windows launcher acceptance remain open.
+  multi-client recovery-grade resource locks, remote authorization certification, full MCP client
+  certification, and human Windows launcher acceptance remain open.
 
 ### 下一手重點
 
-- Extend the job model only after defining resource locks and recovery semantics; avoid adding
-  transport-specific command truth outside ApplicationService / automation.
+- Extend the job model only after defining recovery semantics and multi-client resource ownership;
+  avoid adding transport-specific command truth outside ApplicationService / automation.
 
 ## 2026-05-06 MCP HTTP Request Hardening
 

@@ -4,7 +4,7 @@ import json
 import socket
 from http.client import HTTPConnection
 from pathlib import Path
-from threading import Thread
+from threading import Event, Thread
 from typing import Any, cast
 from unittest.mock import MagicMock
 
@@ -310,6 +310,80 @@ def test_http_mcp_train_uses_job_api_with_status_and_cancel():
         assert status == 200
         assert after_cancel["job"]["status"] == "cancelled"
     finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=10)
+
+
+def test_http_mcp_rejects_duplicate_train_start_while_job_is_starting():
+    service, calls = _training_ready_service()
+    start_entered = Event()
+    release_start = Event()
+    first_response: dict[str, Any] = {}
+
+    def slow_start_training() -> None:
+        calls["started"] += 1
+        if calls["started"] == 1:
+            start_entered.set()
+            release_start.wait(timeout=5)
+        calls["running"] = True
+
+    service.training.start_training = slow_start_training
+    httpd, port, thread = _start_server(service=service)
+    try:
+        _post_json(
+            port,
+            "/mcp",
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"protocolVersion": PROTOCOL_VERSION},
+            },
+        )
+
+        def call_first_train() -> None:
+            first_response["value"] = _post_json(
+                port,
+                "/mcp",
+                {
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "tools/call",
+                    "params": {"name": "train", "arguments": {"confirmed": True}},
+                },
+            )
+
+        first_thread = Thread(target=call_first_train)
+        first_thread.start()
+        assert start_entered.wait(timeout=5)
+
+        status, second = _post_json(
+            port,
+            "/mcp",
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {"name": "train", "arguments": {"confirmed": True}},
+            },
+        )
+
+        release_start.set()
+        first_thread.join(timeout=10)
+
+        assert not first_thread.is_alive()
+        assert first_response["value"][0] == 200
+        assert first_response["value"][1]["result"]["isError"] is False
+        assert status == 200
+        assert second["result"]["isError"] is True
+        structured = second["result"]["structuredContent"]
+        assert structured["accepted"] is False
+        assert structured["result"]["error_type"] == "job_already_running"
+        assert "Training job is already starting" in structured["result"]["message"]
+        assert calls["started"] == 1
+    finally:
+        release_start.set()
         httpd.shutdown()
         httpd.server_close()
         thread.join(timeout=10)

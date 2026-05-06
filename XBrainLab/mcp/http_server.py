@@ -235,6 +235,7 @@ class MCPHTTPJobRegistry:
         self._mcp_server = mcp_server
         self._lock = threading.Lock()
         self._jobs: dict[str, MCPHTTPJobRecord] = {}
+        self._starting_command_name: str | None = None
 
     def job_count(self) -> int:
         with self._lock:
@@ -252,15 +253,34 @@ class MCPHTTPJobRegistry:
         capability: Any,
         adapter: dict[str, Any],
     ) -> dict[str, Any]:
-        command_execution = execute_automation_payload(
-            self._mcp_server.service,
-            payload,
-        ).to_dict()
+        with self._lock:
+            active_job = self._active_job_locked()
+            if self._starting_command_name is not None or active_job is not None:
+                return self._job_conflict_execution(
+                    command_name,
+                    capability,
+                    adapter,
+                    active_job=active_job,
+                )
+            self._starting_command_name = command_name
+
+        try:
+            command_execution = execute_automation_payload(
+                self._mcp_server.service,
+                payload,
+            ).to_dict()
+        except Exception:
+            with self._lock:
+                self._starting_command_name = None
+            raise
+
         command_execution["adapter"] = adapter
         result = command_execution.get("result")
         if not command_execution.get("accepted", False) or (
             isinstance(result, dict) and result.get("status") == "failed"
         ):
+            with self._lock:
+                self._starting_command_name = None
             return command_execution
 
         now = time()
@@ -274,6 +294,7 @@ class MCPHTTPJobRegistry:
         )
         with self._lock:
             self._jobs[record.job_id] = record
+            self._starting_command_name = None
 
         job = self._job_snapshot(record)
         message = f"{_product_command_name(command_name)} job started."
@@ -302,6 +323,75 @@ class MCPHTTPJobRegistry:
                         "supports_cancel": True,
                     },
                     "command_result": command_execution.get("result"),
+                },
+            },
+            "state": self._mcp_server.service.get_state().to_dict(),
+            "adapter": adapter,
+        }
+
+    def _active_job_locked(self) -> dict[str, Any] | None:
+        running = bool(self._mcp_server.service.get_state().active_training.is_running)
+        for record in self._jobs.values():
+            if _job_status(record, running) in {"running", "cancel_requested"}:
+                return self._job_snapshot(record)
+        return None
+
+    def _job_conflict_execution(
+        self,
+        command_name: str,
+        capability: Any,
+        adapter: dict[str, Any],
+        *,
+        active_job: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        fresh_capability = (
+            self._mcp_server.service.get_capabilities().get(command_name) or capability
+        )
+        starting_command_name = self._starting_command_name
+        if starting_command_name is not None:
+            message = (
+                f"{_product_command_name(command_name)} job is already starting. "
+                "Wait for it to appear in the job list before starting another run."
+            )
+        else:
+            message = (
+                f"{_product_command_name(command_name)} job is already running. "
+                "Check the existing job status or cancel it before starting "
+                "another run."
+            )
+        reasons = [message, *list(getattr(fresh_capability, "reasons", []))]
+        return {
+            "accepted": False,
+            "command_name": command_name,
+            "verification": {
+                "schema_valid": True,
+                "capability_enabled": False,
+                "confirmation_required": getattr(
+                    fresh_capability,
+                    "confirmation_required",
+                    False,
+                ),
+                "long_running_job_created": False,
+                "resource_locked": True,
+                "reasons": reasons,
+            },
+            "autonomy": _autonomy_metadata(fresh_capability),
+            "capability": fresh_capability.to_dict(),
+            "result": {
+                "status": "failed",
+                "command_name": command_name,
+                "message": message,
+                "error_type": "job_already_running",
+                "recoverable": True,
+                "diagnostics": {
+                    "job_boundary": {
+                        "supported": True,
+                        "transport": "http",
+                        "supports_progress": True,
+                        "supports_cancel": True,
+                    },
+                    "active_job": active_job,
+                    "starting_command_name": starting_command_name,
                 },
             },
             "state": self._mcp_server.service.get_state().to_dict(),

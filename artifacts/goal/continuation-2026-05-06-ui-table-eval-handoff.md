@@ -237,6 +237,9 @@ bb57beb ui: use backend truth for split replacement
   - Follow-up train job slice added in-memory `mcp-http-job-*` records, `GET /jobs`,
     `GET /jobs/{id}` status, and `POST /jobs/{id}/cancel` routed through `StopTrainingCommand` /
     `ApplicationService`.
+  - Follow-up duplicate-start guard blocks a second HTTP `train` while the same-session train job is
+    starting or running, returning structured `job_already_running` without dispatching a second
+    training command.
   - `MCPServer` now carries transport-scoped adapter metadata:
     `mode=headless_mcp_http`, `transport=http`, stable `session_id`, and
     `ui_refresh.supported=False` for HTTP.
@@ -244,9 +247,10 @@ bb57beb ui: use backend truth for split replacement
     `scripts/dev/capture_mcp_http_walkthrough.py`.
   - Refreshed `artifacts/mcp/http-walkthrough.json` / `.md`; walkthrough covers health,
     initialize, tools/list, scan, preview, train job creation, status, and cancel.
-  - HTTP train job progress/cancel is now a baseline; evaluation / visualization jobs, job
-    persistence / recovery, resource locks, remote authorization certification, and full MCP client
-    certification remain open.
+  - HTTP train job progress/cancel and same-session duplicate-start guard are now a baseline;
+    evaluation / visualization jobs, job persistence / recovery, multi-client recovery-grade
+    resource locks, remote authorization certification, and full MCP client certification remain
+    open.
 - Data Interpretation table geometry verification:
   - User-reported preview table overflow / Review Summary contrast and loaded Dataset table
     underfill / green Events concerns were checked against current code and refreshed replay
@@ -3295,7 +3299,8 @@ repeat `1`, while full-suite deterministic dashboard refreshes require `--eval-g
      artifact.
 3. Continue MCP HTTP job execution after the train-only baseline.
    - Keep HTTP transport thin over ApplicationService / automation truth.
-   - Add resource locks, persistence / recovery, evaluation / visualization jobs, and stronger
-     client certification before treating MCP HTTP as product-complete automation.
+   - Add persistence / recovery, evaluation / visualization jobs, multi-client recovery-grade
+     resource locks, and stronger client certification before treating MCP HTTP as product-complete
+     automation.
 4. Only after product/UI/backend path stabilizes, refresh affected tool-call eval cases using the
    fast/candidate gate. Reserve full primary/fallback x3 for release/thesis evidence.

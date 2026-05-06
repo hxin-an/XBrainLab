@@ -37,6 +37,44 @@
 
 ## 2026-05-06
 
+### 18:12 MCP HTTP duplicate train start guard
+
+- 做了什麼：
+  - Added a same-session start-in-progress guard to `MCPHTTPJobRegistry`.
+  - If an HTTP `train` job is already starting or running, a second `tools/call(train)` returns a
+    structured `job_already_running` blocked result and does not dispatch another training command.
+- red / focused tests：
+  - Added a concurrent HTTP test where the first `train` call blocks inside `start_training()` while
+    a second `train` call arrives.
+  - Red gate first failed because the second call was accepted and `start_training()` was invoked
+    twice.
+- validation：
+  - Red gate:
+    `poetry run pytest --capture=sys tests/unit/mcp/test_http_server.py::test_http_mcp_rejects_duplicate_train_start_while_job_is_starting -q`
+    -> failed on `assert second["result"]["isError"] is True`.
+  - Focused pass:
+    same command -> `1 passed`.
+  - Focused regression:
+    `poetry run pytest --capture=sys tests/unit/mcp/test_http_server.py tests/integration/mcp/test_http_walkthrough_artifact.py -q`
+    -> `6 passed`.
+    `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q`
+    -> `16 passed`.
+  - Focused lint/type/docs:
+    `poetry run ruff check XBrainLab/mcp/http_server.py tests/unit/mcp/test_http_server.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/mcp/http_server.py tests/unit/mcp/test_http_server.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `git diff --check` -> passed.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is MCP HTTP resource-boundary work, not a tool-call benchmark claim update.
+- 不能宣稱：
+  - This is not job persistence / recovery or multi-client distributed resource ownership. It only
+    prevents duplicate train starts inside the current HTTP MCP session.
+
 ### 17:54 MCP HTTP train job baseline
 
 - scope：

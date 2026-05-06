@@ -1709,6 +1709,9 @@ long-running training through MCP、Windows Desktop 真人啟動或 product comp
     jobs in the current session, read `GET /jobs/{id}` for status/progress snapshot, and call
     `POST /jobs/{id}/cancel`; cancel is routed through `StopTrainingCommand` /
     `ApplicationService.execute()`.
+  - Same-session duplicate train starts are guarded: if an HTTP train job is starting or running,
+    another `tools/call(train)` returns structured `job_already_running` instead of dispatching a
+    second training command.
 - 新增 `scripts/dev/run_mcp_http_server.py` 作為 local HTTP entrypoint。
 - 新增 `scripts/dev/capture_mcp_http_walkthrough.py`：
   - client calls 只用 Python standard library `http.client` / `json`。
@@ -1731,10 +1734,12 @@ long-running training through MCP、Windows Desktop 真人啟動或 product comp
   - red first on missing `max_body_bytes`, then `1 passed`
   - `poetry run pytest --capture=sys tests/unit/mcp/test_http_server.py::test_http_mcp_train_uses_job_api_with_status_and_cancel -q`
   - red first on old unsupported boundary, then `1 passed`
+  - `poetry run pytest --capture=sys tests/unit/mcp/test_http_server.py::test_http_mcp_rejects_duplicate_train_start_while_job_is_starting -q`
+  - red first on duplicate train accepted, then `1 passed`
   - `poetry run pytest --capture=sys tests/unit/mcp/test_http_server.py tests/integration/mcp/test_http_walkthrough_artifact.py -q`
-  - `5 passed`
+  - `6 passed`
   - `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q`
-  - `15 passed`
+  - `16 passed`
   - `poetry run ruff check XBrainLab/mcp scripts/dev/run_mcp_http_server.py scripts/dev/capture_mcp_http_walkthrough.py tests/unit/mcp tests/integration/mcp`
   - `PASS`
   - `poetry run basedpyright XBrainLab/mcp scripts/dev/run_mcp_http_server.py scripts/dev/capture_mcp_http_walkthrough.py tests/unit/mcp tests/integration/mcp`

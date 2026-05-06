@@ -299,9 +299,11 @@ local external-agent adapter，不是遠端多使用者服務或完整 authoriza
 long-running `train` over HTTP 現在會建立 in-memory job，並提供 `GET /jobs` list、
 `GET /jobs/{id}` status / progress snapshot 和 `POST /jobs/{id}/cancel` cancellation endpoint；
 cancel 仍透過
-`StopTrainingCommand` / `ApplicationService.execute()`，不直接碰 controller。這是 train-only
-HTTP job baseline；evaluation / visualization jobs、job persistence / recovery、multi-client
-resource lock 和 full remote authorization 仍是後續 architecture work。
+`StopTrainingCommand` / `ApplicationService.execute()`，不直接碰 controller。HTTP registry 也會
+拒絕同一 session 內 duplicate train start：既有 job 正在 start 或 running 時回
+`job_already_running`，不會啟動第二個 training command。這是 train-only HTTP job baseline；
+evaluation / visualization jobs、job persistence / recovery、multi-client recovery-grade resource
+lock 和 full remote authorization 仍是後續 architecture work。
 
 `ApplicationService` 會拿同一組 cached controllers：
 
