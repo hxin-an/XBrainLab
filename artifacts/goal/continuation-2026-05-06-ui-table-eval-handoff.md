@@ -30,6 +30,9 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+fdc4081 ui: humanize interpretation recipe trace
+87960f2 docs: refresh handoff after legacy helper guard
+c10580e test: guard legacy mutation helper calls
 dd6e4b3 test: guard no-refresh mutating commands
 8437e3f ui: guard plain context study lookup
 8819185 docs: refresh handoff after named controller lookup
@@ -196,6 +199,26 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Data Interpretation recipe trace wording:
+  - `DataInterpretationPreviewDialog` now renders backend recipe trace tokens as user-facing
+    `Review Summary` rows.
+  - Visible rows include `Source scan`, `Interpretation candidate`, `Metadata decision`,
+    `Metadata choices`, `Event role choices`, `Label carrier choices`, and `Label import`.
+  - Raw `scan:*`, `choices:*`, and `label_import:*` values remain in backend state / JSON
+    diagnostics, but they are not first-layer wizard text.
+  - Validation covered the red/focused UI test, full dialog/replay unit gate, replay screenshot
+    refresh, full ruff, full basedpyright, architecture compliance, `git diff --check`, and
+    `mkdocs build --strict`.
+  - No local LLM eval was run; this was a UI wording / artifact slice under the fast dev gate.
+- Legacy mutation helper call guard:
+  - `tests/architecture_compliance.py` now identifies legacy / fallback helpers that directly
+    mutate controller state and rejects calls to those helpers unless nested under
+    `run_legacy_controller_fallback()`.
+  - This prevents a helper name from becoming a product runtime controller-mutation bypass.
+  - Validation covered red/focused architecture tests, all architecture-compliance unit tests,
+    full architecture compliance, full ruff, full basedpyright, `git diff --check`, and
+    `mkdocs build --strict`.
+  - No local LLM eval was run; this was a UI architecture guard slice under the fast dev gate.
 - No-refresh mutating command architecture guard:
   - `tests/architecture_compliance.py` now rejects `execute_application_command(..., refresh=False)`
     for mutating commands.
@@ -2877,6 +2900,20 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for c10580e; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/scripts/test_capture_data_interpretation_replay.py \
+  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
+  -q
+# 28 passed for fdc4081
+QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py
+# refreshed data-interpretation preview/remap/applied screenshots and replay JSON for fdc4081
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for fdc4081; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard and changed-case eval
