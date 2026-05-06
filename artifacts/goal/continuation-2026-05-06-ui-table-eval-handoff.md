@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+85b4200 ui: show stop training fallback warning
+23e196d docs: refresh handoff after visualization average guard
 7fc1027 ui: guard visualization average fallback
 ad0ba84 docs: refresh handoff after evaluation selection guard
 c7d13ca ui: guard evaluation stale selection fallback
@@ -117,6 +119,10 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Stop Training fallback warning:
+  - real `Study` stop-training fallback refusal now shows `Stop Training Blocked`.
+  - the UI no longer lets `LegacyControllerFallbackUnavailableError` escape as a raw runtime error.
+  - mock / legacy stop fallback still calls `TrainingController.stop_training()`.
 - Visualization average stale-selection fallback:
   - real `Study` stale Average selections without a service payload no longer recover through
     `VisualizationController.get_averaged_record()`.
@@ -1362,6 +1368,32 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 7fc1027; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_stop_training_refuses_real_study_controller_fallback \
+  -q
+# 1 passed for 85b4200 after red failure on escaped LegacyControllerFallbackUnavailableError
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar \
+  -q
+# 35 passed for 85b4200
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for 85b4200
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for 85b4200
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 85b4200; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
