@@ -152,6 +152,18 @@ raw trace tokens remain in backend diagnostics. This is a completed UI readabili
 Data Interpretation track, not mature recipe diff / import-wizard closure. The Data Interpretation
 replay artifact now also has a visible-text guard for raw command / recipe trace token leakage.
 
+## Future Directions
+
+These are exploratory directions, not current commitments and not Goal 1 completion blockers.
+Revisit them after the architecture-health baseline and documentation reset are complete.
+
+| Direction | Why It Matters | Depends On | Current Status |
+| --- | --- | --- | --- |
+| Expert Workflow Mode | Let experienced EEG / neuroscience users customize workflow branches without being trapped in one guided path. | Clean Command API, capability policy, recipe/state contracts. | Idea; do not implement before architecture health. |
+| Workflow Recipe DSL | Give users and the assistant a compact, replayable workflow format instead of many fragile free-form steps. | Data Interpretation recipe maturity, command verification, safe confirmation boundaries. | Idea; prefer constrained DSL over arbitrary Python/code execution. |
+| Training Model Registry | Make EEGNet and other training models discoverable, comparable, configurable, and compatibility-checked. | Dataset shape snapshot, model config schema, training command cleanup. | Idea; separate from local LLM model selection. |
+| Training Model Explorer | Show model structure, tensor shapes, parameter count, and resource estimate to make model choice understandable. | Training model registry and lightweight PyTorch model introspection. | Idea; first version should be static/low-resource, not live heavy activation visualization. |
+
 ## Roadmap Order
 
 這不是版本承諾，而是從目前 baseline 往成品 closure 推進的順序：

@@ -6076,3 +6076,22 @@ list read after a state snapshot is already available.
 
 - This is a small read-only query resilience fix. It does not complete the broader command-refresh
   coordinator or controller-fallback cleanup.
+
+## 2026-05-06 Future Directions Holding Area
+
+### 狀態
+
+Roadmap now has a short non-committed `Future Directions` section for ideas that should not become
+current blockers.
+
+### 已可宣稱
+
+- Expert workflow mode, constrained workflow recipe DSL, training model registry, and static
+  training model explorer are recorded as future directions.
+- The roadmap explicitly separates training model selection/exploration from local LLM model
+  selection.
+- `now.md` records documentation reset as a near-term cleanup item.
+
+### 不能宣稱完成
+
+- These are not implementation commitments, Goal 1 blockers, or product-complete criteria.

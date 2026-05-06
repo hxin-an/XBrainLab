@@ -1195,11 +1195,15 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
    `CommandResult.changed_state` -> expected panel/sidebar/assistant refresh tests, no silent
    controller mutation in product runtime, and controller reduced to adapter / read-only rendering /
    legacy compatibility boundaries.
-2. Data Interpretation mature wizard：embedded label / anchor / MAT variable editor，避免
+2. 做一次 documentation reset：入口文件要更短、更人類可讀，依文件定位控制資訊揭露。
+   `current.md` 應只保留 current truth / blockers / claim boundary；`roadmap.md` 應維持 track
+   狀態與 future directions；`validation/README.md` 應保留 evidence 分層與 artifact index；
+   `implementation_log.md` 只寫高層 milestone，細節留在 `worklog.md`。
+3. Data Interpretation mature wizard：embedded label / anchor / MAT variable editor，避免
    post-load compatibility label import 繼續主導心智模型。
-3. 進入下一輪 UI polish：mature import wizard editing、analysis page compact controls，以及
+4. 進入下一輪 UI polish：mature import wizard editing、analysis page compact controls，以及
    繼續以 walkthrough screenshots 檢查 narrow / docked composition。最新 ChatPanel narrow slice
    已修正 latest assistant bubble 被 composer 遮住，並新增 ChatPanel geometry artifact gate。
-4. 清楚標記 remaining human desktop acceptance：Windows launcher、雙螢幕、DPI、真人長時間
+5. 清楚標記 remaining human desktop acceptance：Windows launcher、雙螢幕、DPI、真人長時間
    local model session。
 ```
