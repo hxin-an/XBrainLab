@@ -3640,6 +3640,35 @@ UI mutating-path audit 或 human desktop acceptance。
 不是完整 visualization UI product acceptance、interactive desktop render 驗收或 Windows human
 desktop click-through。
 
+2026-05-06 AgentManager montage fallback warning：
+
+- UI/action:
+  - `AgentManager.open_montage_picker_dialog()` now catches legacy fallback refusal when a real
+    `Study` `ApplyMontageCommand` unexpectedly returns no service result.
+  - The real `Study` path shows `Montage setup blocked: ...`, does not call
+    `PreprocessController.apply_montage()`, and does not add `Montage Confirmed`.
+  - Mock / legacy non-`Study` compatibility still keeps the old controller fallback.
+- targeted gates:
+  - Red/focused:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker::test_real_study_montage_refuses_controller_fallback -q`
+    -> failed as expected before the fix, then `1 passed`.
+  - AgentManager regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/components/test_agent_manager.py tests/unit/ui/test_ui_misc.py::TestAgentManagerDeep -q`
+    -> `83 passed`.
+  - Quality gate:
+    `git diff --check`, `poetry run ruff check .`, `poetry run basedpyright`,
+    `poetry run python tests/architecture_compliance.py`, `poetry run mkdocs build --strict`,
+    `poetry run pytest --capture=sys tests/integration/backend -q`, and
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    all passed; backend integration `7 passed`, agent/tool gate `20 passed`.
+- local eval:
+  - not run. This was a fast dev gate UI fallback-language slice; primary/fallback x3 remains
+    reserved for formal release / thesis evidence after resource preflight.
+
+This supports the assistant montage confirmation missing-result boundary showing a product blocked
+status instead of an escaped exception. It does not prove full ChatPanel recovery UX, Windows
+desktop acceptance, or all remaining controller fallback cleanup.
+
 2026-05-05 Visualization sidebar montage capability follow-up：
 
 - UI/action:

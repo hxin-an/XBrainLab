@@ -2,8 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 def _make_manager():
     """Create a stub AgentManager without calling __init__."""
@@ -361,12 +359,14 @@ class TestMontagePicker:
         )
 
     def test_real_study_montage_refuses_controller_fallback(self):
-        """Real Study montage must not fall back to preprocess controller."""
+        """Real Study montage must show a blocked message instead of fallback."""
         from XBrainLab.backend.study import Study
 
         m = _make_manager()
         m.study = Study()
         m.preprocess_controller = MagicMock()
+        status_bar = MagicMock()
+        m.main_window.statusBar.return_value = status_bar
         epoch_data = MagicMock()
         epoch_data.get_mne.return_value.info = {"ch_names": ["C3", "C4"]}
         m.study.epoch_data = epoch_data
@@ -386,8 +386,15 @@ class TestMontagePicker:
                 "XBrainLab.ui.components.agent_manager.execute_application_command",
                 return_value=None,
             ),
-            pytest.raises(RuntimeError, match="could not safely complete"),
+            patch.object(m, "handle_user_input") as mock_hui,
         ):
             m.open_montage_picker_dialog({"montage_name": "standard_1020"})
 
         m.preprocess_controller.apply_montage.assert_not_called()
+        mock_hui.assert_called_once_with("Montage Selection Failed.")
+        status_bar.showMessage.assert_called_once_with(
+            "Montage setup blocked: XBrainLab could not safely complete this "
+            "action from the current window state. Refresh the workflow and "
+            "try again."
+        )
+        m.chat_controller.add_agent_message.assert_not_called()

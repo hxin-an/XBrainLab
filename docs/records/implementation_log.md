@@ -4690,3 +4690,30 @@ assistant backend status are refreshed through `refresh_after_observer()`.
 
 - This is one observer-route cleanup. UI refresh remains a mixed command / observer / manual model,
   and the broader `UI Command Refresh Coordinator + Controller Fallback Audit` remains open.
+
+## 2026-05-06 AgentManager Montage Fallback Warning
+
+### 狀態
+
+Assistant-driven montage confirmation now treats a missing `ApplyMontageCommand` result in a real
+`Study` as a blocked product runtime state instead of letting legacy fallback refusal escape as a
+raw exception.
+
+### 已可宣稱
+
+- The real `Study` assistant montage path does not call `PreprocessController.apply_montage()` when
+  `execute_application_command()` returns `None`.
+- The user sees `Montage setup blocked` in the status bar, while mock / legacy non-`Study`
+  compatibility can still use the old controller fallback.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/components/agent_manager.py`
+- Tests：`tests/unit/ui/test_agent_manager_coverage.py`, `tests/unit/ui/test_ui_misc.py`,
+  `tests/unit/ui/components/test_agent_manager.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is one assistant UI fallback-language slice. It does not complete all ChatPanel workflow
+  recovery, full command-driven UI refresh, or Windows human desktop acceptance.

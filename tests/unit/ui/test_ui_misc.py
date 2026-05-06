@@ -2260,7 +2260,7 @@ class TestAgentManagerDeep:
         dlg = MagicMock()
         mock_dlg_cls.return_value = dlg
         dlg.exec.return_value = True
-        dlg.get_result.return_value = (["C3", "C4"], [[0, 0], [1, 0]])
+        dlg.get_result.return_value = (["C3", "C4"], [[0, 0, 0], [1, 0, 0]])
         mgr.chat_panel = MagicMock()
         mgr.chat_panel.debug_mode = False
         mgr.agent_controller = MagicMock()

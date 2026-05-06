@@ -24,6 +24,7 @@ from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.ui.application_capabilities import (
+    LegacyControllerFallbackUnavailableError,
     blocked_reason,
     execute_application_command,
     get_command_capability,
@@ -1182,13 +1183,20 @@ class AgentManager(QObject):
                     ),
                 )
                 if result is None:
-                    run_legacy_controller_fallback(
-                        self,
-                        lambda: self.preprocess_controller.apply_montage(
-                            chs,
-                            positions,
-                        ),
-                    )
+                    try:
+                        run_legacy_controller_fallback(
+                            self,
+                            lambda: self.preprocess_controller.apply_montage(
+                                chs,
+                                positions,
+                            ),
+                        )
+                    except LegacyControllerFallbackUnavailableError as exc:
+                        sb = self.main_window.statusBar()
+                        if sb:
+                            sb.showMessage(f"Montage setup blocked: {exc}")
+                        self.handle_user_input("Montage Selection Failed.")
+                        return
                 elif result.failed:
                     sb = self.main_window.statusBar()
                     if sb:

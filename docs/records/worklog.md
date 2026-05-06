@@ -12357,3 +12357,55 @@
 - 不能宣稱：
   - This does not prove mature import-wizard UX, Windows human desktop acceptance, dual-monitor /
     DPI behavior, or long real local-model sessions.
+
+### 2026-05-06 AgentManager montage fallback warning
+
+- scope：
+  - Treat assistant-driven montage confirmation as a product UI path when backed by a real `Study`.
+  - If `ApplyMontageCommand` cannot be dispatched, show a user-facing blocked message instead of
+    escaping `LegacyControllerFallbackUnavailableError` or mutating through the preprocess
+    controller.
+- red / focused tests：
+  - Updated `test_real_study_montage_refuses_controller_fallback` from raw exception expectation to
+    visible blocked-status behavior.
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker::test_real_study_montage_refuses_controller_fallback -q`
+    -> failed as expected on escaped `LegacyControllerFallbackUnavailableError`.
+- 做了什麼：
+  - `AgentManager.open_montage_picker_dialog()` now catches
+    `LegacyControllerFallbackUnavailableError` around `run_legacy_controller_fallback()`.
+  - Real `Study` missing-result path shows `Montage setup blocked: ...`, does not call
+    `PreprocessController.apply_montage()`, and returns without adding `Montage Confirmed`.
+  - Mock / legacy non-`Study` compatibility fallback remains intact.
+  - Updated old `TestAgentManagerDeep.test_open_montage_accepted` fixture to use valid 3D montage
+    positions so it continues to test mock/legacy fallback without weakening runtime validation.
+- validation：
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker::test_real_study_montage_refuses_controller_fallback -q`
+    -> `1 passed`.
+  - Montage regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker -q`
+    -> `8 passed`.
+  - AgentManager regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/components/test_agent_manager.py tests/unit/ui/test_ui_misc.py::TestAgentManagerDeep -q`
+    -> `83 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/components/agent_manager.py tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/test_ui_misc.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/components/agent_manager.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Static / docs gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+  - Backend / agent smoke:
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a UI fallback-language / command-boundary slice under the fast dev gate.
+- 不能宣稱：
+  - This does not complete all ChatPanel blocked/recovery UX, the full command-driven UI refresh
+    coordinator, or Windows human desktop acceptance.
