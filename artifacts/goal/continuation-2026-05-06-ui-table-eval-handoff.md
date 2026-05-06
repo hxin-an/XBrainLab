@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+6f06503 ui: show label import fallback warning
+8fca05e docs: refresh handoff after smart parse warning
 eed6066 ui: show smart parse fallback warning
 09c3d40 docs: refresh handoff after metadata warning
 e5d1e20 ui: show metadata fallback warning
@@ -144,6 +146,12 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Label Import fallback warning:
+  - real `Study` label-import apply fallback refusal now shows `Label Import Blocked`.
+  - the UI no longer wraps the legacy fallback refusal in generic `Failed: ...` critical text when
+    `ImportLabelsCommand` returns `None`.
+  - mock / legacy label import fallback still calls `DatasetController.apply_labels_legacy()` /
+    `apply_labels_batch()`.
 - Smart Parse apply fallback warning:
   - real `Study` smart-parse apply fallback refusal now shows `Smart Parse Blocked`.
   - the UI no longer lets the legacy fallback exception escape when `ApplySmartParseCommand`
@@ -1855,6 +1863,32 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/integration/agent/test_tool_call_eval.py \
   -q
 # passed for eed6066; backend integration 7 passed; agent/tool gate 20 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_refuses_real_study_controller_fallback \
+  -q
+# red first because the fallback refusal was shown as generic Failed text, then 1 passed for 6f06503
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler \
+  -q
+# 71 passed for 6f06503
+
+poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py
+poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py
+# passed for 6f06503; basedpyright reported 0 errors, 0 warnings, 0 notes
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+poetry run pytest --capture=sys tests/integration/backend -q
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# passed for 6f06503; backend integration 7 passed; agent/tool gate 20 passed
 
 git diff --check
 poetry run ruff check .
