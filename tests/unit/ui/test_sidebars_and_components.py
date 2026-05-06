@@ -1080,6 +1080,43 @@ class TestTrainingSidebar:
         )
         sidebar.panel.controller.clear_history.assert_not_called()
 
+    def test_clear_history_refuses_real_study_controller_fallback(self, sidebar):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.application.capabilities import CommandCapability
+        from XBrainLab.backend.study import Study
+
+        sidebar.panel.main_window.study = Study()
+        sidebar.panel.controller.is_training.return_value = False
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                return_value=CommandCapability(
+                    command_name="clear_training_history",
+                    enabled=True,
+                    destructive=True,
+                    confirmation_required=True,
+                ),
+            ),
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=None,
+            ),
+            patch.object(QMessageBox, "warning") as mock_warning,
+        ):
+            sidebar.clear_history()
+
+        sidebar.panel.controller.clear_history.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Clear History Blocked"
+        assert "could not safely complete" in mock_warning.call_args.args[2]
+
     def test_training_setting_while_training(self, sidebar):
         sidebar.panel.controller.is_training.return_value = True
         with patch("PyQt6.QtWidgets.QMessageBox.warning"):

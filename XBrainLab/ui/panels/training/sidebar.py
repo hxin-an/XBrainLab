@@ -658,7 +658,14 @@ class TrainingSidebar(QWidget):
                 ClearTrainingHistoryCommand(confirmed=True),
             )
             if result is None:
-                run_legacy_controller_fallback(self, self.controller.clear_history)
+                try:
+                    run_legacy_controller_fallback(
+                        self,
+                        self.controller.clear_history,
+                    )
+                except LegacyControllerFallbackUnavailableError as exc:
+                    QMessageBox.warning(self, "Clear History Blocked", str(exc))
+                    return
             elif result.failed:
                 QMessageBox.warning(self, "Warning", result.message)
                 return

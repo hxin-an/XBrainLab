@@ -42,6 +42,37 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Clear History Fallback Warning Boundary
+
+### 狀態
+
+`TrainingSidebar.clear_history()` now converts real `Study` legacy fallback refusal into a
+user-facing warning. If the clear-history command unexpectedly cannot dispatch in a real product
+context, the UI shows `Clear History Blocked` instead of wrapping the fallback refusal in a generic
+error warning.
+
+### 已可宣稱
+
+- Real `Study` Clear History fallback refusal is visible as product language instead of a generic
+  error wrapper.
+- Mock / legacy clear-history fallback behavior remains available through the explicit fallback
+  helper.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/training/sidebar.py`
+- Tests: `tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not audit every TrainingSidebar mutating fallback or complete long-running training
+  desktop acceptance.
+
+### 下一手重點
+
+Continue converting remaining real `Study` fallback refusals into user-facing blocked states.
+
 ## 2026-05-06 Stop Training Fallback Warning Boundary
 
 ### 狀態

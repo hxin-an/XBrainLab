@@ -230,6 +230,8 @@
   stale controller history。
 - 最新 Stop Training fallback warning slice 也讓 real `Study` stop command 意外無法 dispatch
   時顯示 `Stop Training Blocked`，不再把 legacy fallback refusal 外拋成 raw RuntimeError。
+- 最新 Clear History fallback warning slice 同樣讓 real `Study` clear-history command 無法 dispatch
+  時顯示 `Clear History Blocked`，不再用 generic error 包住 fallback refusal。
 - 最新 Dataset sidebar render cleanup 也把 `is_locked()` / `has_data()` 納入同一 guard：
   有 backend capability 時，button state / tooltip 不再先讀 stale controller lock/data state；
   legacy lock/data reads 只留在 explicit no-capability branch。

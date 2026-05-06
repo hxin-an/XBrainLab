@@ -946,6 +946,8 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   回 `None` 時清成 empty training display，不再回讀 stale controller history。
   最新 Stop Training fallback warning slice 也讓 real `Study` stop command 意外無法 dispatch 時
   顯示 `Stop Training Blocked`，不再把 legacy fallback refusal 外拋成 raw RuntimeError。
+  最新 Clear History fallback warning slice 同樣讓 real `Study` clear-history command 無法 dispatch
+  時顯示 `Clear History Blocked`，不再用 generic error 包住 fallback refusal。
   最新 Dataset sidebar render cleanup 又把 `is_locked()` / `has_data()` 納入 guard：real
   `Study` button state 和 tooltip 有 backend capability 時不再先讀 stale controller lock/data
   state；controller lock/data reads 只保留在 explicit no-capability legacy branch。
