@@ -144,9 +144,20 @@ class ControlSidebar(QWidget):
             )
             return
 
-        if capability is None and not self.controller.has_epoch_data():
-            QMessageBox.warning(self, "Warning", "No epoch data available.")
-            return
+        if capability is None:
+            try:
+                has_epoch_data = bool(
+                    run_legacy_controller_fallback(
+                        self,
+                        self.controller.has_epoch_data,
+                    ),
+                )
+            except LegacyControllerFallbackUnavailableError:
+                self._show_legacy_fallback_warning("Montage blocked")
+                return
+            if not has_epoch_data:
+                QMessageBox.warning(self, "Warning", "No epoch data available.")
+                return
 
         channel_query = execute_application_command(
             self,

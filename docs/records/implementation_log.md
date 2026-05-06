@@ -42,6 +42,31 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Montage Preflight Fallback Boundary
+
+### 狀態
+
+Visualization `Set Montage` now treats a missing command capability in real `Study` runtime as an
+unsafe legacy boundary before reading `VisualizationController.has_epoch_data()`.
+
+### 已可宣稱
+
+- Real product runtime no longer uses stale controller epoch state to decide whether the montage
+  dialog may open when `apply_montage` capability lookup unexpectedly returns `None`.
+- Mock / legacy contexts still use the explicit controller fallback helper.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/visualization/control_sidebar.py`
+- Tests：`tests/unit/ui/visualization/test_control_sidebar.py`,
+  `tests/unit/ui/test_visualization_panel_redesign.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This closes one Visualization sidebar preflight fallback. It does not finish all UI fallback
+  audits, visualization UX acceptance, or interactive desktop 3D verification.
+
 ## 2026-05-06 Data Interpretation Replay Geometry Gate
 
 ### 狀態

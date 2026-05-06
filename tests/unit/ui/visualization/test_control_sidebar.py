@@ -222,7 +222,9 @@ def test_sidebar_set_montage_legacy_result_uses_controller_fallback(
 
 def test_sidebar_set_montage_refuses_real_study_controller_fallback(qtbot):
     controller = MagicMock()
-    controller.has_epoch_data.return_value = True
+    controller.has_epoch_data.side_effect = AssertionError(
+        "stale epoch state should not be read",
+    )
     controller.get_channel_names.return_value = ["Ch1", "Ch2"]
     main_window = QMainWindow()
     cast(Any, main_window).study = Study()
@@ -255,6 +257,7 @@ def test_sidebar_set_montage_refuses_real_study_controller_fallback(qtbot):
     mock_dialog.assert_not_called()
     mock_warning.assert_called_once()
     assert "could not safely complete" in mock_warning.call_args.args[2]
+    controller.has_epoch_data.assert_not_called()
     controller.set_montage.assert_not_called()
 
 

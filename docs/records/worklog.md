@@ -37,6 +37,53 @@
 
 ## 2026-05-06
 
+### 12:37 Montage preflight fallback boundary
+
+- scope：
+  - Continue UI controller fallback audit in Visualization.
+  - Remove one real `Study` preflight controller read: `Set Montage` should not use stale
+    `VisualizationController.has_epoch_data()` when the `apply_montage` capability lookup
+    unexpectedly returns `None`.
+- red / focused tests：
+  - Hardened `test_sidebar_set_montage_refuses_real_study_controller_fallback`.
+  - Red gate failed because `set_montage()` still called `controller.has_epoch_data()` before
+    refusing the real `Study` fallback.
+- 做了什麼：
+  - Wrapped the capability-`None` epoch-data preflight in `run_legacy_controller_fallback()`.
+  - Real `Study` now shows the existing user-facing `Montage blocked` fallback warning without
+    reading stale controller epoch state.
+  - Mock / legacy non-`Study` path still uses `controller.has_epoch_data()`.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_refuses_real_study_controller_fallback -q`
+    -> failed on stale `controller.has_epoch_data()` read.
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_refuses_real_study_controller_fallback tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_legacy_result_uses_controller_fallback tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage -q`
+    -> `3 passed`.
+  - Visualization sidebar regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py tests/unit/ui/test_visualization_panel_redesign.py -q`
+    -> `28 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/visualization/control_sidebar.py tests/unit/ui/visualization/test_control_sidebar.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/visualization/control_sidebar.py tests/unit/ui/visualization/test_control_sidebar.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Fast gate:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a UI fallback audit slice under the fast dev gate.
+- 不能宣稱：
+  - This does not complete Visualization UI acceptance, 3D render verification, or the full
+    controller fallback audit.
+
 ### 12:30 Data Interpretation replay geometry gate
 
 - scope：
