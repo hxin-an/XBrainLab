@@ -5385,7 +5385,8 @@ requires their call sites to remain inside `run_legacy_controller_fallback()`.
 ### 狀態
 
 The Data Interpretation wizard now renders recipe trace entries in `Review Summary` as user-facing
-rows instead of exposing backend trace tokens.
+rows instead of exposing backend trace tokens. The Data Interpretation replay artifact now also
+checks captured UI text for selected raw command names and recipe trace tokens.
 
 ### 已可宣稱
 
@@ -5393,6 +5394,8 @@ rows instead of exposing backend trace tokens.
   choices`, and `Label import`.
 - Raw `scan:*`, `choices:*`, and `label_import:*` trace tokens remain in backend diagnostics /
   JSON artifacts, but are no longer first-layer wizard text.
+- `artifacts/ui/data-interpretation-replay.json` records
+  `ui_quality_review.visible_text.passed=true` for the replay fixture.
 
 ### Evidence 入口
 

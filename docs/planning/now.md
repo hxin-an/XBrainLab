@@ -790,6 +790,8 @@
     例如 `Source scan`、`Metadata choices`、`Event role choices` 和 `Label import`；raw
     `scan:*` / `choices:*` / `label_import:*` token 仍保留在 backend diagnostics，不顯示在 wizard
     第一層 review。
+  - 最新 replay-level guard 讓 `data-interpretation-replay.json` 的 `ui_quality_review.visible_text`
+    檢查可見 replay text 是否洩漏 raw command / recipe trace tokens；目前 artifact 是 `passed=true`。
   - Dataset table `Events` 欄現在用 `Events (n)` 表示 recording events、`Labels (n)` 表示外部
     labels；external labels 使用中性文字，不再用綠色表示成功狀態。
   - Dataset sidebar `Channel Selection` 也已改成中性 sidebar action；它會修改資料，不再用

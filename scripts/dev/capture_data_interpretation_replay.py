@@ -9,6 +9,7 @@ Expected usage in WSL/headless environments:
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -54,6 +55,18 @@ APPLIED_SCREENSHOT = ARTIFACTS_DIR / "data-interpretation-applied.png"
 REPLAY_JSON = ARTIFACTS_DIR / "data-interpretation-replay.json"
 WINDOW_SIZE = QSize(1280, 800)
 GEOMETRY_WIDTH_TOLERANCE_PX = 2
+VISIBLE_INTERNAL_MARKERS = (
+    "scan_source",
+    "preview_interpretation",
+    "validate_interpretation",
+    "apply_interpretation",
+    "save_interpretation_recipe",
+    "reload_interpretation_recipe",
+)
+VISIBLE_TRACE_TOKEN_PATTERN = re.compile(
+    r"\b(?:scan|candidate|metadata|metadata_override|choices|label_import|"
+    r"label_carrier|class_map|recipe):[A-Za-z0-9_.<>/-]+",
+)
 
 
 def write_synthetic_raw_fif() -> Path:
@@ -374,6 +387,72 @@ def build_replay_geometry_review(ui_state: dict[str, Any]) -> dict[str, Any]:
             "and clipped visible rows. It is not a substitute for human UI review."
         ),
     }
+
+
+def build_visible_text_review(ui_state: dict[str, Any]) -> dict[str, Any]:
+    """Check UI-observable text for raw internal command or recipe trace tokens."""
+    rows: list[dict[str, Any]] = []
+    for location, text in iter_visible_text_values(ui_state):
+        lowered = text.lower()
+        markers = [marker for marker in VISIBLE_INTERNAL_MARKERS if marker in lowered]
+        trace_tokens = VISIBLE_TRACE_TOKEN_PATTERN.findall(text)
+        if markers or trace_tokens:
+            rows.append(
+                {
+                    "location": location,
+                    "text": text,
+                    "markers": markers,
+                    "trace_tokens": trace_tokens,
+                }
+            )
+    return {
+        "passed": not rows,
+        "findings": rows,
+        "boundary": (
+            "Checks user-visible replay text for selected raw command names and "
+            "recipe trace tokens. Backend command payloads and diagnostics may "
+            "still preserve raw trace values."
+        ),
+    }
+
+
+def ensure_visible_text_review_passed(visible_text_review: dict[str, Any]) -> None:
+    """Raise when UI-observable replay text exposes internal tokens."""
+    if visible_text_review["passed"]:
+        return
+    raise RuntimeError(
+        "Data Interpretation replay visible-text review failed: "
+        f"{visible_text_review['findings']}",
+    )
+
+
+def iter_visible_text_values(
+    value: Any,
+    prefix: str = "",
+) -> list[tuple[str, str]]:
+    """Flatten UI state visible-text fields and table/tree rows into text entries."""
+    rows: list[tuple[str, str]] = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            location = f"{prefix}.{key}" if prefix else str(key)
+            if key in {
+                "visible_text",
+                "visible_panel_text",
+                "metadata_rows",
+                "label_carrier_rows",
+                "event_rows",
+                "review_summary_rows",
+                "rows",
+            } or isinstance(item, dict):
+                rows.extend(iter_visible_text_values(item, location))
+        return rows
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            rows.extend(iter_visible_text_values(item, f"{prefix}[{index}]"))
+        return rows
+    if isinstance(value, str) and value.strip():
+        return [(prefix, " ".join(value.split()))]
+    return rows
 
 
 def ensure_replay_geometry_passed(geometry_review: dict[str, Any]) -> None:
@@ -770,15 +849,18 @@ def capture_replay(app: QApplication) -> int:
                 },
             }
             geometry_review = build_replay_geometry_review(replay["ui_state"])
+            visible_text_review = build_visible_text_review(replay["ui_state"])
             replay["ui_quality_review"] = {
                 "geometry": geometry_review,
+                "visible_text": visible_text_review,
                 "human_design_review_boundary": (
                     "This automated replay catches obvious table/tree geometry "
-                    "regressions. Human desktop review still decides polish, DPI, "
-                    "and Windows launcher acceptance."
+                    "and visible internal-token regressions. Human desktop review "
+                    "still decides polish, DPI, and Windows launcher acceptance."
                 ),
             }
             ensure_replay_geometry_passed(geometry_review)
+            ensure_visible_text_review_passed(visible_text_review)
             REPLAY_JSON.write_text(
                 json.dumps(replay, indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",

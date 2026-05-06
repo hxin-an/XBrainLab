@@ -13616,10 +13616,13 @@
   - Mapped trace entries to user-facing rows, including `Source scan`, `Interpretation candidate`,
     `Metadata decision`, `Metadata override`, `Metadata choices`, `Event role choices`,
     `Label carrier choices`, `Class map decision`, and `Label import`.
+  - Added replay-level visible text review in `capture_data_interpretation_replay.py`; captured UI
+    text now fails the replay if it exposes selected raw command names or recipe trace tokens.
   - Refreshed Data Interpretation screenshot artifacts:
     `artifacts/ui/data-interpretation-preview.png`,
     `artifacts/ui/data-interpretation-remap.png`,
-    `artifacts/ui/data-interpretation-applied.png`.
+    `artifacts/ui/data-interpretation-applied.png`, plus
+    `artifacts/ui/data-interpretation-replay.json`.
 - validation：
   - Focused pass:
     `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_humanizes_recipe_trace -q`
@@ -13629,7 +13632,11 @@
     -> `21 passed`.
   - Replay/unit gate:
     `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
-    -> `28 passed`.
+    -> `30 passed`.
+  - Replay artifact:
+    `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> refreshed replay screenshots and JSON; `ui_quality_review.visible_text.passed=true`,
+    `findings=[]`.
   - Focused lint/type:
     `poetry run ruff check XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
     -> `All checks passed!`;

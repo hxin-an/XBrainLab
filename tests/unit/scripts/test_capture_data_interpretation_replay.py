@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
 from scripts.dev.capture_data_interpretation_replay import (
     apply_replay_review_choices,
     build_replay_geometry_review,
+    build_visible_text_review,
     dataset_sidebar_state,
     source_event_field_matches,
     table_state,
@@ -209,6 +210,43 @@ def test_tree_state_records_rows_and_fit_geometry(qtbot) -> None:
     assert state["partial_visible_rows"] == []
     assert state["text_elide_mode"] == "ElideRight"
     assert state["alternating_row_colors"] is True
+    flat_rows = " ".join(" ".join(row) for row in state["rows"])
+    assert "Source scan" in flat_rows
+    assert "Interpretation candidate" in flat_rows
+    assert "scan:scan-1" not in flat_rows
+    assert "candidate:candidate-1" not in flat_rows
+
+
+def test_visible_text_review_flags_raw_recipe_trace_tokens() -> None:
+    review = build_visible_text_review(
+        {
+            "dialog": {
+                "review_summary_rows": [
+                    ["Recipe trace", "Saved", "scan:scan-1"],
+                    ["Recipe trace", "Saved", "choices:metadata_overrides"],
+                ],
+            },
+        },
+    )
+
+    assert review["passed"] is False
+    assert review["findings"]
+    assert review["findings"][0]["trace_tokens"] == ["scan:scan-1"]
+
+
+def test_visible_text_review_allows_humanized_recipe_trace_rows() -> None:
+    review = build_visible_text_review(
+        {
+            "dialog": {
+                "review_summary_rows": [
+                    ["Source scan", "Recorded", "Source scan is saved in the recipe."],
+                    ["Metadata choices", "Recorded", "Metadata choices were recorded."],
+                ],
+            },
+        },
+    )
+
+    assert review["passed"] is True
 
 
 def test_replay_geometry_review_checks_all_wizard_tables(qtbot) -> None:

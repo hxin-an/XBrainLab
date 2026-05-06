@@ -283,6 +283,16 @@ user-facing rows like `Source scan`, `Metadata choices`, and `Metadata decision`
 artifacts may still contain raw recipe trace tokens for diagnostics. This does not prove mature
 recipe diff UX, full real-data certification, or Windows human desktop acceptance.
 
+Data Interpretation visible-text replay guard:
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+-> `30 passed`；
+`QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+refreshed `artifacts/ui/data-interpretation-replay.json` with
+`ui_quality_review.visible_text.passed=true` and `findings=[]`. This guard checks captured UI text
+for selected raw command names and recipe trace tokens while allowing backend command payloads /
+diagnostics to retain raw trace values. It remains replay-scoped automated evidence, not human
+desktop acceptance.
+
 Human-like clipped-row quality gate:
 `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
 -> `21 passed`；

@@ -4300,6 +4300,11 @@
       ],
       "boundary": "Automated replay geometry checks table/tree header width, viewport fill, horizontal scrollbar state, optional content-boundary gap, and clipped visible rows. It is not a substitute for human UI review."
     },
-    "human_design_review_boundary": "This automated replay catches obvious table/tree geometry regressions. Human desktop review still decides polish, DPI, and Windows launcher acceptance."
+    "visible_text": {
+      "passed": true,
+      "findings": [],
+      "boundary": "Checks user-visible replay text for selected raw command names and recipe trace tokens. Backend command payloads and diagnostics may still preserve raw trace values."
+    },
+    "human_design_review_boundary": "This automated replay catches obvious table/tree geometry and visible internal-token regressions. Human desktop review still decides polish, DPI, and Windows launcher acceptance."
   }
 }
