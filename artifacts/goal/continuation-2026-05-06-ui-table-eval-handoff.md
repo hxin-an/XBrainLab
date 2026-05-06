@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+83b0015 test: guard stale render fallbacks
 e79d3b6 ui: guard dataset render fallback
 41930e0 ui: show montage fallback warning
 c26cb99 ui: show inline metadata fallback warning
@@ -156,6 +157,12 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Stale render fallback architecture guard:
+  - `tests/architecture_compliance.py` now flags direct controller render reads inside
+    `result is None` branches unless they go through `run_legacy_controller_fallback()`.
+  - Covered render methods include loaded/preprocessed data lists, training history, evaluation
+    plans, visualization trainers, montage channel defaults, saliency params, and summary reads.
+  - Current repo passes the new guard.
 - DatasetPanel query-none render fallback boundary:
   - real `Study` Dataset table refresh now clears to an empty table when
     `QueryStateCommand(query="data_lists")` returns `None`.
@@ -2050,6 +2057,14 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/integration/agent/test_tool_call_eval.py \
   -q
 # passed for 41930e0; backend integration 7 passed; agent/tool 20 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/test_architecture_compliance.py \
+  -q
+# 34 passed for 83b0015
+
+poetry run python tests/architecture_compliance.py
+# Architecture compliant for 83b0015
 
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/dataset/test_panel.py \
