@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+c54a06f eval: clarify chinese label missing input
+31ad65f docs: refresh handoff after observer guard
 accf290 test: require observer handlers to coordinate refresh
 f3a04b2 docs: refresh handoff after capability guard
 bfa241a test: guard no-capability controller reads
@@ -187,6 +189,17 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Chinese label-action missing-input fast gate:
+  - Added deterministic eval case `zh-label-action-missing-input` for `幫我貼標籤`.
+  - `infer_user_intent("幫我貼標籤")` now returns `ask_clarification`, after no-tool explanatory
+    guards, so concept questions such as `貼標籤在 BCI 裡是什麼意思?` remain no-tool.
+  - Changed-case artifact is tracked at `artifacts/agent_evals/deterministic_changed/latest.json`
+    / `.md`; it records `1 / 1` passed and `total_suite_cases=122`.
+  - Validation covered the red focused intent test, runner / agent regression, deterministic
+    changed-case gate, full ruff, full basedpyright, architecture compliance, `git diff --check`,
+    and `mkdocs build --strict`.
+  - No local LLM primary / fallback x3 was run. Formal release / thesis evidence remains the prior
+    `121` case gate until the full `122` case suite is rerun with disk / cache / VRAM preflight.
 - Observer handler refresh architecture guard:
   - `tests/architecture_compliance.py` now checks callback-specific observer handlers for known
     refresh events. Named handlers can still do local log / plot / button work, but must call
@@ -2747,9 +2760,25 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for e8e65bc; mkdocs still prints the existing Material advisory
+
+poetry run pytest --capture=sys tests/unit/llm/agent/test_intent.py::test_infers_multilingual_no_call_and_clarification_boundaries -q
+# red first, then 1 passed for c54a06f
+poetry run pytest --capture=sys tests/unit/llm/agent/test_intent.py tests/unit/scripts/test_run_tool_call_eval.py tests/integration/agent/test_tool_call_eval.py -q
+# 12 passed for c54a06f
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/agent/test_verification_layer.py tests/integration/agent/test_tool_call_eval.py -q
+# 100 passed for c54a06f
+poetry run python scripts/agent/evals/run_tool_call_eval.py --case-id zh-label-action-missing-input --output-dir artifacts/agent_evals/deterministic_changed
+# wrote latest.json/latest.md; 1 / 1 changed case passed; total_suite_cases=122
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for c54a06f; mkdocs still prints the existing Material advisory
 ```
 
-No local LLM eval was run for these UI / architecture / lifecycle guard slices.
+No local LLM eval was run for these UI / architecture / lifecycle guard and changed-case eval
+slices.
 
 ## Tool-Call Eval Gate Policy
 
