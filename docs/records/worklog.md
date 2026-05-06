@@ -13549,3 +13549,51 @@
 - 不能宣稱：
   - This does not prove every refresh coordinator gap is closed, remove all explicit legacy
     fallback paths, or complete human desktop acceptance.
+
+### 2026-05-06 Legacy mutation helper call guard
+
+- scope：
+  - Close a fallback-boundary guard gap: a helper named `legacy` / `fallback` could directly mutate
+    a controller and still be callable outside `run_legacy_controller_fallback()`.
+  - This matters because compatibility helpers should remain isolated mock / legacy adapters, not
+    become a product runtime bypass simply because their function names are exempted.
+- red / focused tests：
+  - Added `test_legacy_mutation_helper_guard_flags_unwrapped_call` with
+    `self._run_legacy_label_import()` calling a helper that invokes
+    `self.controller.apply_labels_legacy(...)`.
+  - Added `test_legacy_mutation_helper_guard_allows_wrapped_call` for the same helper behind
+    `run_legacy_controller_fallback(...)`.
+  - Red gate:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_legacy_mutation_helper_guard_flags_unwrapped_call tests/unit/test_architecture_compliance.py::test_legacy_mutation_helper_guard_allows_wrapped_call -q`
+    -> failed as expected because `check_ui_legacy_mutation_helper_calls` did not exist.
+- 做了什麼：
+  - Added `check_ui_legacy_mutation_helper_calls()` to `tests/architecture_compliance.py`.
+  - The checker first identifies legacy / fallback helpers that directly mutate controller state,
+    then rejects calls to those helpers unless the call is nested under
+    `run_legacy_controller_fallback()`.
+  - Wired the checker into the standalone architecture compliance gate.
+  - Updated current UI architecture docs and planning/current truth to record this as a fallback
+    guardrail, not a claim that controller fallback is fully removed.
+- validation：
+  - Focused pass:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_legacy_mutation_helper_guard_flags_unwrapped_call tests/unit/test_architecture_compliance.py::test_legacy_mutation_helper_guard_allows_wrapped_call -q`
+    -> `2 passed`.
+  - Architecture unit / compliance:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` -> `45 passed`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - Quality / docs:
+    `git diff --check` -> passed.
+    `poetry run ruff check tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is a UI architecture guard slice under the fast dev gate; no tool-call benchmark
+    claim changed.
+- 不能宣稱：
+  - This guards one legacy-helper misuse class. It does not remove all explicit controller fallback
+    branches, complete command-driven UI refresh coordinator closure, or satisfy human desktop
+    acceptance.

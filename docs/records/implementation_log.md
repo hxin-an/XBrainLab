@@ -5352,3 +5352,30 @@ commands.
 
 - This protects one coordinator-bypass class. It does not complete all command-driven UI refresh
   coordinator work or remove explicit legacy fallback branches.
+
+## 2026-05-06 Legacy Mutation Helper Call Guard
+
+### 狀態
+
+Architecture compliance now checks legacy / fallback helpers that directly mutate controllers and
+requires their call sites to remain inside `run_legacy_controller_fallback()`.
+
+### 已可宣稱
+
+- A legacy helper name is no longer sufficient to bypass the product runtime controller-mutation
+  audit.
+- Directly mutating helpers such as a legacy label-import adapter are allowed only when the call is
+  nested behind the explicit mock / legacy fallback gate.
+- The current `XBrainLab/ui` source passes this stricter rule.
+
+### Evidence 入口
+
+- Source：`tests/architecture_compliance.py`
+- Tests：`tests/unit/test_architecture_compliance.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This closes one helper-misuse class. It does not remove the remaining explicit legacy fallback
+  branches, complete command-driven UI refresh coordinator closure, or replace human desktop
+  acceptance.

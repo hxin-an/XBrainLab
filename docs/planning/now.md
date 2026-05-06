@@ -413,7 +413,9 @@
   也已能從具名 controller 找到 real `Study`，避免這類 context 退到 legacy fallback。這是
   fallback audit guardrail，不是 controller 退場完成。最新 no-refresh command guard 也會阻擋
   mutating command 使用 `execute_application_command(..., refresh=False)`，只允許 read/query
-  command 抑制 coordinator refresh。
+  command 抑制 coordinator refresh。最新 legacy-mutation helper guard 也要求直接 mutate
+  controller 的 legacy / fallback helper 呼叫必須包在 `run_legacy_controller_fallback()` 內，
+  避免 compatibility helper 被誤用成 real product runtime path。
 - 後續 Training sidebar bypass cleanup 修掉重新 split 前清 datasets 和 Clear History 的 direct
   controller mutation；destructive cleanup 會走 `ClearDatasetsCommand` /
   `ClearTrainingHistoryCommand`，且 Clear History 現在有 user confirmation。

@@ -221,6 +221,15 @@ def check_architecture(root_dir: str) -> int:
             print(f" - {violation}")
         return 1
 
+    legacy_helper_call_violations = check_ui_legacy_mutation_helper_calls(
+        Path(root_dir)
+    )
+    if legacy_helper_call_violations:
+        print("\nUI Legacy Mutation Helper Call Violations Found:")
+        for violation in legacy_helper_call_violations:
+            print(f" - {violation}")
+        return 1
+
     loader_apply_violations = check_ui_direct_loader_apply(Path(root_dir))
     if loader_apply_violations:
         print("\nUI Direct Loader Apply Violations Found:")
@@ -473,6 +482,71 @@ class _DirectControllerMutationVisitor(ast.NodeVisitor):
         if call_name in UI_CONTROLLER_FALLBACK_METHODS and _call_receiver_is_controller(
             node.func
         ):
+            self.violations.append(node)
+            return
+        self.generic_visit(node)
+
+
+def check_ui_legacy_mutation_helper_calls(root_dir: Path) -> list[str]:
+    """Return mutation helpers that can be called outside the legacy gate."""
+    violations: list[str] = []
+    ui_dir = root_dir / "XBrainLab" / "ui"
+    if not ui_dir.exists():
+        return violations
+
+    for py_file in ui_dir.rglob("*.py"):
+        if py_file.name == "__init__.py":
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+
+        helper_names = _legacy_controller_mutation_helper_names(tree)
+        if not helper_names:
+            continue
+
+        visitor = _LegacyMutationHelperCallVisitor(helper_names)
+        visitor.visit(tree)
+        violations.extend(
+            f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
+            f"{_call_name(call.func)}() outside run_legacy_controller_fallback(); "
+            "legacy/fallback helpers that mutate controllers must remain behind "
+            "the explicit mock/legacy gate."
+            for call in visitor.violations
+        )
+    return violations
+
+
+def _legacy_controller_mutation_helper_names(tree: ast.AST) -> set[str]:
+    helper_names: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if not _is_legacy_controller_mutation_helper(node.name):
+            continue
+        visitor = _DirectControllerMutationVisitor()
+        visitor.visit(node)
+        if visitor.violations:
+            helper_names.add(node.name)
+    return helper_names
+
+
+class _LegacyMutationHelperCallVisitor(ast.NodeVisitor):
+    def __init__(self, helper_names: set[str]) -> None:
+        self.helper_names = helper_names
+        self.violations: list[ast.Call] = []
+        self._legacy_gate_depth = 0
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if _call_name(node.func) == "run_legacy_controller_fallback":
+            self._legacy_gate_depth += 1
+            self.generic_visit(node)
+            self._legacy_gate_depth -= 1
+            return
+
+        if _call_name(node.func) in self.helper_names and self._legacy_gate_depth == 0:
             self.violations.append(node)
             return
         self.generic_visit(node)

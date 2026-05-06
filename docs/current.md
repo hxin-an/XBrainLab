@@ -1144,10 +1144,13 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `find_study()` 能從 `self.<name>_controller.study` 找到 real `Study`，因此具名 controller
   context 會走 ApplicationService capability / fallback refusal，而不是被誤判為 legacy context。
   最新 no-refresh command guard 也讓 UI 中的 `execute_application_command(..., refresh=False)`
-  只可用於 read/query commands；mutating command 必須保留 command-driven refresh。這是 product runtime fallback boundary，
-  不是 controller 已完全退場；下一個 architecture cleanup milestone 仍是確認 product runtime
-  mutating path 不 silent fallback 到 controller mutation，controller fallback 只可保留給 explicit
-  mock / unit-test compatibility 或 isolated legacy adapter。
+  只可用於 read/query commands；mutating command 必須保留 command-driven refresh。最新
+  legacy-mutation helper guard 也要求會直接 mutate controller 的 legacy / fallback helper 只能在
+  `run_legacy_controller_fallback()` gate 內被呼叫，避免 helper 名稱本身變成繞過 product runtime
+  policy 的旁路。這是 product runtime fallback boundary，不是 controller 已完全退場；下一個
+  architecture cleanup milestone 仍是確認 product runtime mutating path 不 silent fallback 到
+  controller mutation，controller fallback 只可保留給 explicit mock / unit-test compatibility 或
+  isolated legacy adapter。
 - Agent mapped tools 的一批 path 已直接回 `CommandResult`；`load_data` 也已先做 directory
   expansion 再進 command surface，但不再出現在 Empty / Data Loaded / Preprocessed stage 的
   primary prompt；`attach_labels` 也已從這些 stage 的主工具語言移除。read-only
@@ -1234,7 +1237,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
    context，避免 runtime helper 和 static guard 對 controller receiver 的判斷不一致。最新
    no-refresh command guard 也把 `refresh=False` 限制在 `QueryStateCommand` / `EvaluateCommand`
    / `VisualizeCommand` / query-only `SaliencyCommand()`，避免 mutating command 成功後跳過
-   coordinator refresh。
+   coordinator refresh。最新 legacy-mutation helper guard 又要求直接 mutate controller 的
+   legacy/fallback helper 呼叫必須位在 `run_legacy_controller_fallback()` 內，避免 isolated
+   helper 被誤用成產品 runtime fallback。
    Agent primary stage prompt 已先把 legacy `load_data / attach_labels` 降權，後續要繼續檢查
    UI 是否也完全以 Data Interpretation 作為新資料入口語言；MCP/headless schema 已先把
    legacy commands 標成非 primary workflow。

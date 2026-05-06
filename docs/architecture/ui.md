@@ -202,7 +202,11 @@ mock / legacy adapter：real `Study` context 會拒絕 direct `loader.apply(stud
 Data Interpretation workflow。`find_study()` 現在也會透過 `controller.study` 辨識 real
 `Study`，避免 panel 以 real controller 但沒有 main-window parent 時錯誤開放 fallback。
 Architecture compliance 另新增 direct loader apply guard；非 legacy adapter 的 UI code 不可再
-直接呼叫 `loader.apply(...study...)`。
+直接呼叫 `loader.apply(...study...)`。後續 fallback audit guards 也會阻擋 UI product path
+直接 controller mutation、具名 controller receiver mutation、mutating command
+`refresh=False`，以及會 mutate controller 的 legacy / fallback helper 在
+`run_legacy_controller_fallback()` gate 外被呼叫。這些 guards 是 product runtime fallback
+boundary，不代表 controller 已完全退場。
 
 第一個 manual refresh cleanup 已落在 Training sidebar：generate dataset、configure model /
 training settings、start training 和 clear history 的 service-backed success path 不再直接呼叫

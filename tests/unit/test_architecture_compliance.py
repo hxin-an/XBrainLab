@@ -4,6 +4,7 @@ from tests.architecture_compliance import (
     check_ui_controller_render_fallbacks,
     check_ui_direct_controller_mutations,
     check_ui_direct_loader_apply,
+    check_ui_legacy_mutation_helper_calls,
     check_ui_observer_direct_update_bridges,
     check_ui_observer_handlers_call_refresh_coordinator,
     check_ui_post_command_controller_echoes,
@@ -748,6 +749,43 @@ def _run_metadata_update_fallback(self, controller):
     )
 
     assert check_ui_direct_controller_mutations(tmp_path) == []
+
+
+def test_legacy_mutation_helper_guard_flags_unwrapped_call(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def run(self):
+    self._run_legacy_label_import()
+
+def _run_legacy_label_import(self):
+    self.controller.apply_labels_legacy([], [], None, None)
+""",
+    )
+
+    violations = check_ui_legacy_mutation_helper_calls(tmp_path)
+
+    assert len(violations) == 1
+    assert "_run_legacy_label_import" in violations[0]
+    assert "run_legacy_controller_fallback" in violations[0]
+
+
+def test_legacy_mutation_helper_guard_allows_wrapped_call(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def run(self):
+    run_legacy_controller_fallback(
+        self,
+        lambda: self._run_legacy_label_import(),
+    )
+
+def _run_legacy_label_import(self):
+    self.controller.apply_labels_legacy([], [], None, None)
+""",
+    )
+
+    assert check_ui_legacy_mutation_helper_calls(tmp_path) == []
 
 
 def test_direct_controller_mutation_guard_ignores_non_controller_methods(tmp_path):
