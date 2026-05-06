@@ -42,6 +42,35 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Dataset Inline Metadata Fallback Warning Boundary
+
+### 狀態
+
+`DatasetPanel.on_item_changed()` now converts real `Study` inline metadata edit fallback refusal
+into a user-facing blocked warning. If `UpdateMetadataCommand` unexpectedly cannot dispatch when
+the user edits Subject or Session cells directly in the Dataset table, the UI shows
+`Metadata blocked` and refreshes the table instead of letting the legacy fallback exception escape.
+
+### 已可宣稱
+
+- Real `Study` inline Dataset metadata fallback refusal is visible as product language.
+- Mock / legacy inline metadata fallback behavior remains available through the explicit fallback
+  helper.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/dataset/panel.py`
+- Tests: `tests/unit/ui/dataset/test_panel.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not complete all UI refresh coordinator work or human desktop Dataset acceptance.
+
+### 下一手重點
+
+Continue auditing remaining UI direct-mutation paths and command-result refresh ownership.
+
 ## 2026-05-06 Preprocess Operation Fallback Warning Boundary
 
 ### 狀態

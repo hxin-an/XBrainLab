@@ -400,10 +400,15 @@ class DatasetPanel(BasePanel):
                     UpdateMetadataCommand(index=row, subject=new_value),
                 )
                 if result is None:
-                    run_legacy_controller_fallback(
-                        self,
-                        lambda: controller.update_metadata(row, subject=new_value),
-                    )
+                    try:
+                        run_legacy_controller_fallback(
+                            self,
+                            lambda: controller.update_metadata(row, subject=new_value),
+                        )
+                    except LegacyControllerFallbackUnavailableError as exc:
+                        QMessageBox.warning(self, "Metadata blocked", str(exc))
+                        self._update_panel_after_legacy_result(None)
+                        return
                 elif result.failed:
                     QMessageBox.warning(self, "Metadata blocked", result.message)
                     self.update_panel()
@@ -418,10 +423,15 @@ class DatasetPanel(BasePanel):
                     UpdateMetadataCommand(index=row, session=new_value),
                 )
                 if result is None:
-                    run_legacy_controller_fallback(
-                        self,
-                        lambda: controller.update_metadata(row, session=new_value),
-                    )
+                    try:
+                        run_legacy_controller_fallback(
+                            self,
+                            lambda: controller.update_metadata(row, session=new_value),
+                        )
+                    except LegacyControllerFallbackUnavailableError as exc:
+                        QMessageBox.warning(self, "Metadata blocked", str(exc))
+                        self._update_panel_after_legacy_result(None)
+                        return
                 elif result.failed:
                     QMessageBox.warning(self, "Metadata blocked", result.message)
                     self.update_panel()

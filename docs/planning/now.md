@@ -268,6 +268,9 @@
 - 最新 Preprocess operation fallback warning slice 也讓 filtering / resampling / re-reference /
   normalization / epoching 的 real `Study` command-`None` path 顯示對應 Blocked warning，不再
   包成 generic `failed: ...` error 或嘗試 controller mutation。
+- 最新 Dataset inline metadata fallback warning slice 也讓 table 直接編輯 subject/session 時，
+  real `Study` `UpdateMetadataCommand` 無法 dispatch 會顯示 `Metadata blocked` 並刷新表格，
+  不再外拋 legacy fallback exception。
 - 最新 Dataset sidebar render cleanup 也把 `is_locked()` / `has_data()` 納入同一 guard：
   有 backend capability 時，button state / tooltip 不再先讀 stale controller lock/data state；
   legacy lock/data reads 只留在 explicit no-capability branch。

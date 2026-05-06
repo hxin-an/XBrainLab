@@ -438,6 +438,48 @@ def test_dataset_panel_metadata_service_success_uses_coordinator_refresh(
     mock_update.assert_not_called()
 
 
+def test_dataset_panel_metadata_edit_refuses_real_study_controller_fallback(qtbot):
+    """Inline metadata edits should block instead of falling back in real Study."""
+
+    window = QMainWindow()
+    qtbot.addWidget(window)
+    study = Study()
+    cast(Any, window).study = study
+    controller = MagicMock()
+
+    panel = DatasetPanel(controller=controller, parent=window)
+    qtbot.addWidget(panel)
+    panel.table.blockSignals(True)
+    panel.table.setRowCount(1)
+    panel.table.setColumnCount(7)
+    name_item = QTableWidgetItem("file.set")
+    name_item.setData(Qt.ItemDataRole.UserRole, True)
+    panel.table.setItem(0, 0, name_item)
+    subject_item = QTableWidgetItem("S02")
+    panel.table.setItem(0, 1, subject_item)
+    panel.table.blockSignals(False)
+
+    with (
+        patch.object(panel, "update_panel") as mock_update,
+        patch(
+            "XBrainLab.ui.panels.dataset.panel.get_command_capability",
+            return_value=None,
+        ),
+        patch(
+            "XBrainLab.ui.panels.dataset.panel.execute_application_command",
+            return_value=None,
+        ),
+        patch.object(QMessageBox, "warning") as mock_warning,
+    ):
+        panel.on_item_changed(subject_item)
+
+    controller.update_metadata.assert_not_called()
+    mock_warning.assert_called_once()
+    assert mock_warning.call_args.args[1] == "Metadata blocked"
+    assert "could not safely complete" in mock_warning.call_args.args[2]
+    mock_update.assert_called_once()
+
+
 def test_dataset_panel_metadata_cells_use_backend_update_capability(qtbot):
     """Locked real Study paths should show metadata as read-only."""
     from XBrainLab.backend.study import Study

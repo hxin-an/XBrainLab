@@ -37,6 +37,50 @@
 
 ## 2026-05-06
 
+### 09:51 Dataset inline metadata fallback warning boundary
+
+- scope：
+  - Continue product-runtime fallback warning audit for Dataset metadata edits.
+  - Cover the direct table-edit path in addition to the context-menu metadata path.
+- red / focused tests：
+  - Added `test_dataset_panel_metadata_edit_refuses_real_study_controller_fallback`.
+  - Red gate failed because `DatasetPanel.on_item_changed()` let
+    `LegacyControllerFallbackUnavailableError` escape when `UpdateMetadataCommand` returned
+    `None`.
+- 做了什麼：
+  - Subject and Session inline edit branches now catch real `Study` legacy fallback refusal, show
+    `Metadata blocked`, and refresh the table.
+  - Mock / legacy fallback still calls `DatasetController.update_metadata()`.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py::test_dataset_panel_metadata_edit_refuses_real_study_controller_fallback -q`
+    -> failed on escaped legacy fallback exception.
+  - Focused pass:
+    same command -> `1 passed`.
+  - Dataset panel / action regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `88 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/dataset/panel.py tests/unit/ui/dataset/test_panel.py`
+    -> pass.
+    `poetry run basedpyright XBrainLab/ui/panels/dataset/panel.py tests/unit/ui/dataset/test_panel.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Full fast gate:
+    `git diff --check` -> pass.
+    `poetry run ruff check .` -> pass.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> pass.
+    `poetry run mkdocs build --strict` -> pass.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a Dataset UI fallback language cleanup under the fast dev gate, not a release /
+    thesis benchmark update.
+- 不能宣稱：
+  - This does not complete UI refresh coordinator work, Dataset desktop acceptance, or every
+    remaining read-side fallback audit.
+
 ### 09:39 Preprocess operation fallback warning boundary
 
 - scope：
