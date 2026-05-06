@@ -42,6 +42,36 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Start Training Fallback Warning Boundary
+
+### 狀態
+
+`TrainingSidebar.start_training_ui_action()` now converts real `Study` start-training fallback
+refusal into a user-facing blocked warning. If `TrainCommand` unexpectedly cannot dispatch in a real
+product context, the UI shows `Start Training Blocked` instead of wrapping the safe refusal in a
+generic critical training failure.
+
+### 已可宣稱
+
+- Real `Study` start-training fallback refusal is visible as product language instead of a generic
+  critical error wrapper.
+- Mock / legacy start fallback behavior remains available through the explicit fallback helper.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/training/sidebar.py`
+- Tests: `tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not complete long-running training desktop acceptance or resource/stop lifecycle
+  validation.
+
+### 下一手重點
+
+Continue converting remaining real `Study` fallback refusals into blocked user-facing states.
+
 ## 2026-05-06 Training Settings Fallback Warning Boundary
 
 ### 狀態

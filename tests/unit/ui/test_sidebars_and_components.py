@@ -1563,6 +1563,40 @@ class TestTrainingSidebar:
         assert mock_execute.call_args.args[1].confirmed is True
         sidebar.panel.controller.start_training.assert_not_called()
 
+    def test_start_training_refuses_real_study_controller_fallback(self, sidebar):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.study import Study
+
+        capability = SimpleNamespace(
+            enabled=True,
+            reasons=[],
+            requires_confirmation=False,
+            confirmation_required=False,
+        )
+        sidebar.panel.main_window.study = Study()
+        sidebar.panel.controller.is_training.return_value = False
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                return_value=capability,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=None,
+            ),
+            patch.object(QMessageBox, "warning") as mock_warning,
+            patch.object(QMessageBox, "critical") as mock_critical,
+        ):
+            sidebar.start_training_ui_action()
+
+        sidebar.panel.controller.start_training.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Start Training Blocked"
+        mock_critical.assert_not_called()
+        assert "could not safely complete" in mock_warning.call_args.args[2]
+
     def test_start_training_prefers_backend_capability_over_stale_controller(
         self,
         sidebar,

@@ -595,10 +595,18 @@ class TrainingSidebar(QWidget):
                         return
                 result = execute_application_command(self, TrainCommand(confirmed=True))
                 if result is None:
-                    run_legacy_controller_fallback(
-                        self,
-                        self.controller.start_training,
-                    )
+                    try:
+                        run_legacy_controller_fallback(
+                            self,
+                            self.controller.start_training,
+                        )
+                    except LegacyControllerFallbackUnavailableError as exc:
+                        QMessageBox.warning(
+                            self,
+                            "Start Training Blocked",
+                            str(exc),
+                        )
+                        return
                 elif result.failed:
                     QMessageBox.critical(
                         self,

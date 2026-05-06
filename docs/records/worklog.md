@@ -37,6 +37,51 @@
 
 ## 2026-05-06
 
+### 08:50 Start Training fallback warning boundary
+
+- scope：
+  - Continue product-runtime fallback warning audit for long-running Training sidebar actions.
+  - Prevent real `Study` start-training fallback refusal from being wrapped in generic critical
+    error text.
+- red / focused tests：
+  - Added `test_start_training_refuses_real_study_controller_fallback`.
+  - Red gate failed because `TrainingSidebar.start_training_ui_action()` did not show
+    `Start Training Blocked` when `TrainCommand` returned `None`.
+- 做了什麼：
+  - `TrainingSidebar.start_training_ui_action()` now catches real `Study` legacy fallback refusal
+    and shows `Start Training Blocked`.
+  - Mock / legacy fallback still calls `TrainingController.start_training()`.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_start_training_refuses_real_study_controller_fallback -q`
+    -> failed on missing blocked warning.
+  - Focused pass:
+    same command -> `1 passed`.
+  - TrainingSidebar regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar -q`
+    -> `41 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> pass.
+    `poetry run basedpyright XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Full fast gate:
+    `git diff --check` -> pass.
+    `poetry run ruff check .` -> pass.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> pass.
+    `poetry run mkdocs build --strict` -> pass.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a Training UI fallback language cleanup under the fast dev gate, not a
+    release / thesis benchmark update. It does not justify primary/fallback x3 local eval under
+    16GB VRAM pressure.
+- 不能宣稱：
+  - This does not complete long-running training desktop acceptance, training resource cleanup, or
+    all controller fallback debt.
+
 ### 08:43 Training Settings fallback warning boundary
 
 - scope：
