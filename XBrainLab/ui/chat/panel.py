@@ -105,7 +105,7 @@ class ChatPanel(QWidget):
 
         self.is_processing = False
         self._retry_available = False
-        self._footer_status_text = "No EEG data open · Import files to begin"
+        self._footer_status_text = "No EEG data open · Scan a data source to begin"
         self.setObjectName("AssistantPanel")
         self.setStyleSheet(ASSISTANT_PANEL_STYLE)
         self.init_ui()
@@ -780,7 +780,7 @@ class ChatPanel(QWidget):
         if blocked_reason:
             return f"{stage} · Ask what is blocking training"
         if stage == "No data loaded":
-            return "No EEG data open · Import files to begin"
+            return "No EEG data open · Scan a data source to begin"
         return f"{stage} · Ask what is ready"
 
     def _update_footer_status_label(self) -> None:

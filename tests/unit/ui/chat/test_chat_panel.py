@@ -417,6 +417,22 @@ class TestChatPanelCallbacks:
             "No EEG data open · Scan a data source to begin"
         )
 
+    def test_product_status_empty_stage_without_actions_uses_scan_language(
+        self,
+        chat_panel,
+    ):
+        chat_panel.set_product_status(
+            stage="No data loaded",
+            model_status="Ready",
+            available_commands=[],
+            tooltip="No EEG data open",
+            blocked_reason=None,
+        )
+
+        assert chat_panel.footer_status_label.toolTip() == (
+            "No EEG data open · Scan a data source to begin"
+        )
+
     def test_retry_available_controls_disabled_state(self, chat_panel):
         assert chat_panel.retry_btn.isEnabled() is False
         assert chat_panel.retry_btn.isHidden()

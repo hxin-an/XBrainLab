@@ -5723,3 +5723,28 @@ assistant footer into `Workflow status unavailable`.
 
 - This is a status resilience slice. It does not complete long autonomous ChatPanel workflows,
   Windows human desktop acceptance, or full UI refresh closure.
+
+## 2026-05-06 ChatPanel Data-Entry Footer Wording
+
+### 狀態
+
+No-data footer fallback language now stays on the Data Interpretation mental model even when no
+available command labels are present.
+
+### 已可宣稱
+
+- AgentManager footer hint now says `Scan a data source to begin` for `No data loaded` with no
+  available commands.
+- ChatPanel default / fallback footer text uses the same wording.
+- The old visible fallback `Import files to begin` is no longer the no-data product hint.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/components/agent_manager.py`, `XBrainLab/ui/chat/panel.py`
+- Tests：`tests/unit/ui/test_agent_manager_coverage.py`, `tests/unit/ui/chat/test_chat_panel.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is wording consistency for the assistant footer. It does not complete Data Interpretation
+  wizard maturity, long ChatPanel workflow, or human desktop acceptance.

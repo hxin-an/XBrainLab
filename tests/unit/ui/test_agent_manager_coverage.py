@@ -153,6 +153,14 @@ class TestAgentManagerBackendStatus:
 
         assert AgentManager._product_next_steps(state, {}) == []
 
+    def test_footer_hint_uses_data_interpretation_language_without_commands(self):
+        from XBrainLab.ui.components.agent_manager import AgentManager
+
+        assert (
+            AgentManager._workflow_footer_hint("No data loaded", [])
+            == "No EEG data open · Scan a data source to begin"
+        )
+
 
 class TestAgentManagerRetry:
     """Cover chat retry behaviour."""

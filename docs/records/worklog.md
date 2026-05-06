@@ -14181,3 +14181,43 @@
 - 不能宣稱：
   - This does not complete long autonomous ChatPanel workflow, true Windows desktop acceptance, or
     full UI refresh / controller fallback closure.
+
+### 2026-05-06 ChatPanel no-data footer uses Data Interpretation language
+
+- scope：
+  - Remove the remaining visible no-data fallback wording `Import files to begin`.
+  - Keep assistant footer aligned with Data Interpretation as the product data-entry mental model
+    even when no command labels are available.
+- red / focused tests：
+  - Added `test_footer_hint_uses_data_interpretation_language_without_commands`.
+  - Added `test_product_status_empty_stage_without_actions_uses_scan_language`.
+  - Red gate failed first because AgentManager and ChatPanel both returned
+    `No EEG data open · Import files to begin`.
+- 做了什麼：
+  - `AgentManager._workflow_footer_hint()` now returns
+    `No EEG data open · Scan a data source to begin` for `No data loaded` without available labels.
+  - ChatPanel default `_footer_status_text` and `_footer_status_for()` use the same no-data
+    fallback.
+- validation：
+  - Focused gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py::TestAgentManagerBackendStatus::test_footer_hint_uses_data_interpretation_language_without_commands tests/unit/ui/chat/test_chat_panel.py::TestChatPanelCallbacks::test_product_status_empty_stage_without_actions_uses_scan_language -q`
+    -> red `2 failed`, then `2 passed`.
+  - Regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/components/test_agent_manager.py tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/test_ui_misc.py::TestAgentManagerDeep -q`
+    -> `130 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/components/agent_manager.py XBrainLab/ui/chat/panel.py tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/chat/test_chat_panel.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/components/agent_manager.py XBrainLab/ui/chat/panel.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Quality / docs:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is UI wording/product-language cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not complete ChatPanel long workflow acceptance, import wizard maturity, or Windows
+    human desktop validation.

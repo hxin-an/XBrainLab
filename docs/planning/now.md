@@ -490,6 +490,8 @@
 - 最新 ChatPanel backend-status resilience cleanup 又讓 `AgentManager.refresh_backend_status()`
   面對缺漏 capability map 時 fail soft：missing `train` 或 missing candidate capability 不再把
   footer 打成 `Workflow status unavailable`，而是視為該 command unavailable。
+- 最新 ChatPanel no-data footer wording cleanup 也把 missing-actions fallback 改成
+  `Scan a data source to begin`，不再顯示舊式 `Import files to begin`。
 - 最新 automation / MCP schema cleanup 已把 `load_data` / `attach_labels` / `import_labels`
   在 `AutomationCommandSpec` 和 MCP `tools/list` metadata 中標為 legacy compatibility、非
   primary workflow，並提供 Data Interpretation preferred commands；MCP/headless client 仍可呼叫

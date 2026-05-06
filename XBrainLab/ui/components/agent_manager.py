@@ -952,7 +952,7 @@ class AgentManager(QObject):
         if blocked_reason:
             return f"{stage} · Ask what is blocking training"
         if stage == "No data loaded":
-            return "No EEG data open · Import files to begin"
+            return "No EEG data open · Scan a data source to begin"
         return f"{stage} · Ask what is ready"
 
     @staticmethod
