@@ -3,6 +3,16 @@ name: Documentation Site
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - ".agents/skills/docs-site-product-designer/**"
+      - ".agents/workflows/docs-site-redesign.md"
+      - ".github/workflows/docs-pages.yml"
+      - "artifacts/README.md"
+      - "artifacts/docs-site/**"
+      - "docs/**"
+      - "mkdocs.yml"
   workflow_dispatch:
 
 permissions:
@@ -39,9 +49,11 @@ jobs:
         run: mkdocs build --strict
 
       - name: Configure Pages
+        if: github.event_name != 'pull_request'
         uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: site
@@ -49,6 +61,7 @@ jobs:
   deploy:
     name: Deploy to GitHub Pages
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
