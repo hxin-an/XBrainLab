@@ -1,6 +1,6 @@
 # XBrainLab 操作筆記
 
-最後更新：`2026-05-02`
+最後更新：`2026-05-09`
 
 ## 工作路徑
 
@@ -141,6 +141,15 @@ poetry run python run.py
 ```bash
 poetry run mkdocs build --strict
 ```
+
+部署文件站：
+
+- GitHub Pages workflow：`.github/workflows/docs-pages.yml`
+- 觸發方式：push 到 `main`，或 GitHub Actions 內手動 `workflow_dispatch`
+- publish source：GitHub Pages artifact，內容來自 build output `site/`
+
+`site/` 仍是 build output，不手改、不 commit。GitHub repo settings 需要將 Pages source 設成
+`GitHub Actions`，部署後網址由 workflow 的 `github-pages` environment 顯示。
 
 刷新 fast quality dashboard：
 
