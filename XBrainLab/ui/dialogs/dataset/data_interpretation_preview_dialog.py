@@ -373,6 +373,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
         available_width: int,
     ) -> None:
         required = [min_width for _ in widths]
+        header_item = tree.headerItem()
+        for column in range(min(tree.columnCount(), len(widths))):
+            if header_item is not None and header_item.text(column) == "Format":
+                required[column] = max(required[column], 96)
         for row in range(tree.topLevelItemCount()):
             item = tree.topLevelItem(row)
             if item is None:
