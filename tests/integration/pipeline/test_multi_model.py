@@ -1,5 +1,7 @@
 from unittest.mock import patch
 
+from XBrainLab.llm.core.config import AssistantRuntimeSelection, LLMConfig
+
 
 def test_model_switching(test_app, qtbot):
     """
@@ -9,7 +11,18 @@ def test_model_switching(test_app, qtbot):
     """
     # Patch LLMEngine at the source where AgentWorker imports it
     # AgentWorker is in XBrainLab.llm.agent.worker
-    with patch("XBrainLab.llm.agent.worker.LLMEngine") as MockEngine:
+    selection = AssistantRuntimeSelection(
+        backend_mode="local",
+        model_id=LLMConfig.default_local_model_id(),
+        ui_active_mode="local",
+    )
+    with (
+        patch("XBrainLab.llm.agent.worker.LLMEngine") as MockEngine,
+        patch(
+            "XBrainLab.llm.agent.worker.AgentWorker._resolve_local_runtime",
+            return_value=(selection, "Local runtime ready.", True),
+        ),
+    ):
         # Mock instance
         mock_engine_instance = MockEngine.return_value
 

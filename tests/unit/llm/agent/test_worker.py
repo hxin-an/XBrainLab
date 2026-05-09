@@ -207,6 +207,7 @@ class TestGenerateFromMessages:
         fresh = LLMConfig()
         fresh.inference_mode = "gemini"
         fresh.active_mode = "gemini"
+        fresh.model_name = LLMConfig.default_local_model_id()
         fresh.available_local_model_id = MagicMock(
             return_value=(fresh.model_name, "Local runtime ready.")
         )
@@ -313,6 +314,10 @@ class TestGenerateFromMessages:
         fresh = LLMConfig()
         fresh.inference_mode = "gemini"
         fresh.active_mode = "gemini"
+        fresh.model_name = LLMConfig.default_local_model_id()
+        fresh.available_local_model_id = MagicMock(
+            return_value=(fresh.model_name, "Local runtime ready.")
+        )
 
         with (
             patch("XBrainLab.llm.agent.worker.GenerationThread") as MockGT,
