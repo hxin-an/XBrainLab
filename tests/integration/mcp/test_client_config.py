@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 from scripts.dev.write_mcp_client_config import (
     CONFIG_FILENAME,
@@ -20,6 +23,11 @@ def test_committed_mcp_client_config_launches_prepared_runtime(tmp_path: Path):
     )
     ok, reason = validate_mcp_client_config(config, repo_root=root)
     assert ok is True, reason
+    if os.name == "nt":
+        pytest.skip(
+            "The committed config contract is portable, but the prepared "
+            "POSIX/WSL runtime wrapper is not launched on GitHub Windows."
+        )
 
     subprocess.run(  # noqa: S603
         [

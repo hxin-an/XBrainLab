@@ -859,7 +859,7 @@ class ChatPanel(QWidget):
                     widget = item.widget()
                     if isinstance(widget, MessageBubble):
                         widget.adjust_width(container_width)
-        if was_at_bottom:
+        if was_at_bottom or self._latest_message_bubble() is not None:
             self._scroll_to_bottom()
 
     def _render_message(self, text: str, is_user: bool):

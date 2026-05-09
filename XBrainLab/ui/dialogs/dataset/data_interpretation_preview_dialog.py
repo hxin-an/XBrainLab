@@ -361,7 +361,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             viewport.width(),
             min_width=min_width,
         )
-        self._apply_widget_column_minimums(tree, scaled, min_width)
+        self._apply_widget_column_minimums(tree, scaled, min_width, viewport.width())
         for column, width in enumerate(scaled):
             tree.setColumnWidth(column, width)
 
@@ -370,6 +370,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         tree: QTreeWidget,
         widths: list[int],
         min_width: int,
+        available_width: int,
     ) -> None:
         required = [min_width for _ in widths]
         for row in range(tree.topLevelItemCount()):
@@ -384,6 +385,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
                     widget.currentText()
                 )
                 required[column] = max(required[column], text_width + 42)
+
+        if sum(required) > available_width:
+            return
 
         deficits = [
             max(required_width - widths[index], 0)
