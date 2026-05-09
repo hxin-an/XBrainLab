@@ -1,0 +1,118 @@
+:root {
+  --xlb-ok: #2f7d5a;
+  --xlb-warn: #a26719;
+  --xlb-risk: #9a3f3f;
+  --xlb-info: #315f8c;
+  --xlb-border: rgba(80, 90, 110, 0.22);
+  --xlb-surface: rgba(96, 116, 140, 0.07);
+  --xlb-surface-strong: rgba(96, 116, 140, 0.12);
+}
+
+.md-typeset h1 {
+  font-weight: 680;
+}
+
+.md-typeset h2 {
+  margin-top: 1.6rem;
+}
+
+.md-typeset table:not([class]) {
+  font-size: 0.72rem;
+}
+
+.md-typeset .grid.cards > ul > li,
+.md-typeset .grid.cards > ol > li {
+  border-color: var(--xlb-border);
+  border-radius: 0.3rem;
+  box-shadow: none;
+}
+
+.md-typeset .grid.cards > ul > li:hover,
+.md-typeset .grid.cards > ol > li:hover {
+  border-color: rgba(49, 95, 140, 0.45);
+  box-shadow: 0 0 0 0.05rem rgba(49, 95, 140, 0.16);
+}
+
+.xlb-status-panel {
+  border: 1px solid var(--xlb-border);
+  border-left: 0.18rem solid var(--xlb-info);
+  border-radius: 0.3rem;
+  background: var(--xlb-surface);
+  padding: 0.7rem 0.85rem;
+  margin: 1rem 0;
+}
+
+.xlb-status-panel table {
+  margin: 0;
+}
+
+.xlb-status-panel table th,
+.xlb-status-panel table td {
+  vertical-align: top;
+}
+
+.xlb-evidence-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.6rem;
+  margin: 1rem 0;
+}
+
+.xlb-evidence-strip > div {
+  border: 1px solid var(--xlb-border);
+  border-radius: 0.3rem;
+  background: var(--xlb-surface);
+  padding: 0.65rem 0.75rem;
+}
+
+.xlb-kicker {
+  color: var(--md-default-fg-color--light);
+  display: block;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  margin-bottom: 0.2rem;
+  text-transform: uppercase;
+}
+
+.xlb-badge {
+  border: 1px solid currentColor;
+  border-radius: 0.2rem;
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.18rem 0.28rem;
+  vertical-align: 0.08rem;
+}
+
+.xlb-badge.ok {
+  color: var(--xlb-ok);
+}
+
+.xlb-badge.warn {
+  color: var(--xlb-warn);
+}
+
+.xlb-badge.risk {
+  color: var(--xlb-risk);
+}
+
+.xlb-badge.info {
+  color: var(--xlb-info);
+}
+
+.xlb-artifact-path {
+  color: var(--md-default-fg-color--light);
+  font-size: 0.68rem;
+}
+
+@media screen and (max-width: 760px) {
+  .xlb-status-panel {
+    padding: 0.55rem 0.65rem;
+  }
+
+  .md-typeset table:not([class]) {
+    font-size: 0.68rem;
+  }
+}
