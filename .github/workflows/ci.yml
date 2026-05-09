@@ -1,5 +1,6 @@
 # CI Pipeline — Lint, Format Check, Test, and Coverage
-# Runs on every push and pull request to main
+# Runs product checks when product-relevant files change.
+# Documentation-only changes are validated by Documentation Site instead.
 #
 # Cross-platform notes:
 # - Coverage only on Linux (pytest-cov conflicts with PyTorch on Windows;
@@ -17,12 +18,62 @@ on:
     branches: [main]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-product-scope-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect Change Scope
+    runs-on: ubuntu-latest
+    outputs:
+      product: ${{ steps.scope.outputs.product }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect product-relevant changes
+        id: scope
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git fetch origin "${{ github.base_ref }}" --depth=1
+            changed_files="$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD)"
+          else
+            changed_files="$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" || true)"
+          fi
+
+          if [[ -z "$changed_files" ]]; then
+            echo "product=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          product=false
+          while IFS= read -r file; do
+            case "$file" in
+              XBrainLab/*|tests/*|scripts/*|pyproject.toml|poetry.lock)
+                product=true
+                ;;
+            esac
+          done <<< "$changed_files"
+
+          echo "Changed files:"
+          printf '%s\n' "$changed_files"
+          echo "product=$product" >> "$GITHUB_OUTPUT"
+
+  docs-only:
+    name: Docs-only CI Scope
+    needs: changes
+    if: needs.changes.outputs.product != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip product checks
+        run: echo "No product code, tests, dependency, script, or CI pipeline files changed."
+
   lint:
     name: Lint & Format
+    needs: changes
+    if: needs.changes.outputs.product == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,6 +94,8 @@ jobs:
 
   test:
     name: Test (${{ matrix.os }}, py${{ matrix.python-version }})
+    needs: changes
+    if: needs.changes.outputs.product == 'true'
     runs-on: ${{ matrix.os }}
     defaults:
       run:

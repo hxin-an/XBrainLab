@@ -3,6 +3,16 @@ name: Documentation Site
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - ".agents/skills/docs-site-product-designer/**"
+      - ".agents/workflows/docs-site-redesign.md"
+      - ".github/workflows/docs-pages.yml"
+      - "artifacts/README.md"
+      - "artifacts/docs-site/**"
+      - "docs/**"
+      - "mkdocs.yml"
   workflow_dispatch:
 
 permissions:
@@ -26,30 +36,24 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install Poetry
-        run: |
-          pip install poetry
-          poetry config virtualenvs.create true
-          poetry config virtualenvs.in-project true
-
-      - name: Cache Poetry venv
-        uses: actions/cache@v4
-        with:
-          path: .venv
-          key: docs-venv-${{ runner.os }}-${{ hashFiles('poetry.lock') }}
-          restore-keys: |
-            docs-venv-${{ runner.os }}-
-
       - name: Install documentation dependencies
-        run: poetry install --only docs --no-root --no-interaction
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            "mkdocs>=1.6.1,<2" \
+            "mkdocs-material>=9.6,<10" \
+            "mkdocstrings>=0.29,<1" \
+            "mkdocstrings-python>=1.16,<2"
 
       - name: Build documentation
-        run: poetry run mkdocs build --strict
+        run: mkdocs build --strict
 
       - name: Configure Pages
+        if: github.event_name != 'pull_request'
         uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: site
@@ -57,6 +61,7 @@ jobs:
   deploy:
     name: Deploy to GitHub Pages
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
