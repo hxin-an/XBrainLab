@@ -76,10 +76,10 @@ def test_backend_facade_headless():
         # Test Training Setup Delegation through the application service.
         with (
             patch(
-                "XBrainLab.backend.application.service.ModelHolder"
+                "XBrainLab.backend.application.training_service.ModelHolder"
             ) as MockServiceModelHolder,
             patch(
-                "XBrainLab.backend.application.service.TrainingOption"
+                "XBrainLab.backend.application.training_service.TrainingOption"
             ) as MockTrainingOption,
         ):
             facade.training.set_model_holder = MagicMock()
@@ -121,7 +121,7 @@ def test_backend_facade_headless():
         mock_study_instance.datasets = [MagicMock()]
         mock_study_instance.model_holder = MagicMock()
         mock_study_instance.training_option = MagicMock()
-        facade.run_training()
+        facade.run_training(confirmed=True)
         facade.training.start_training.assert_called_once()
 
         # Lifecycle compatibility methods stay wrapped by ApplicationService.

@@ -13,7 +13,6 @@ import gc
 import json
 import os
 import re
-import resource
 import sys
 import tempfile
 import threading
@@ -69,6 +68,11 @@ from XBrainLab.backend.study import Study
 from XBrainLab.ui.chat.message_bubble import MessageBubble
 from XBrainLab.ui.dialogs.dataset import DataInterpretationPreviewDialog
 from XBrainLab.ui.main_window import MainWindow
+
+try:
+    import resource
+except ModuleNotFoundError:  # pragma: no cover - exercised on Windows CI
+    resource = None
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "ui" / "human-like-walkthrough"
@@ -1876,13 +1880,18 @@ def validate_walkthrough_payload(
 def resource_snapshot(label: str) -> dict[str, Any]:
     """Return lightweight process/thread notes."""
     pool = QThreadPool.globalInstance()
+    max_rss_kb = (
+        resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        if resource is not None
+        else 0
+    )
     return {
         "label": label,
         "pid": os.getpid(),
         "python_threads": threading.active_count(),
         "thread_names": [thread.name for thread in threading.enumerate()[:12]],
         "qt_active_threads": pool.activeThreadCount() if pool is not None else 0,
-        "max_rss_kb": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+        "max_rss_kb": max_rss_kb,
     }
 
 

@@ -49,19 +49,19 @@ def main() -> int:
 
 def build_mcp_client_config(repo_root: Path) -> dict[str, Any]:
     """Build an Inspector-compatible MCP servers file."""
-    wrapper = repo_root / WRAPPER_RELATIVE_PATH
+    wrapper = str(WRAPPER_RELATIVE_PATH)
     return {
         "mcpServers": {
             LOCAL_SERVER_NAME: {
                 "type": "stdio",
                 "command": "bash",
-                "args": [str(wrapper)],
+                "args": [wrapper],
                 "env": {"PYTHONUNBUFFERED": "1"},
             },
             WINDOWS_WSL_SERVER_NAME: {
                 "type": "stdio",
                 "command": "wsl.exe",
-                "args": ["bash", str(wrapper)],
+                "args": ["bash", wrapper],
                 "env": {"PYTHONUNBUFFERED": "1"},
             },
         }
@@ -91,7 +91,7 @@ def validate_mcp_client_config(
     ok, reason = _validate_server_entry(
         local,
         command="bash",
-        args=[str(wrapper)],
+        args=[str(WRAPPER_RELATIVE_PATH)],
         boundary="local prepared runtime",
     )
     if not ok:
@@ -101,7 +101,7 @@ def validate_mcp_client_config(
     ok, reason = _validate_server_entry(
         windows,
         command="wsl.exe",
-        args=["bash", str(wrapper)],
+        args=["bash", str(WRAPPER_RELATIVE_PATH)],
         boundary="Windows WSL prepared runtime",
     )
     if not ok:

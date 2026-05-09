@@ -119,7 +119,7 @@ class TestRealToolChain:
         # Note: In Headless mode, this starts a thread.
         # We need to verify the controller state changes to 'training' or 'running'.
         start_tool = RealStartTrainingTool()
-        res_start = start_tool.execute(study)
+        res_start = start_tool.execute(study, confirmed=True)
 
         assert "started success" in res_start
 

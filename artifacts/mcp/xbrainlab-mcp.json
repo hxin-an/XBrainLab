@@ -4,7 +4,7 @@
       "type": "stdio",
       "command": "bash",
       "args": [
-        "/mnt/d/workspace_v2/projects/lab/XBrainLab/scripts/dev/run_mcp_server_for_client.sh"
+        "scripts/dev/run_mcp_server_for_client.sh"
       ],
       "env": {
         "PYTHONUNBUFFERED": "1"
@@ -15,7 +15,7 @@
       "command": "wsl.exe",
       "args": [
         "bash",
-        "/mnt/d/workspace_v2/projects/lab/XBrainLab/scripts/dev/run_mcp_server_for_client.sh"
+        "scripts/dev/run_mcp_server_for_client.sh"
       ],
       "env": {
         "PYTHONUNBUFFERED": "1"

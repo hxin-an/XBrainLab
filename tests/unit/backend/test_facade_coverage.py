@@ -110,7 +110,7 @@ class TestAttachLabels:
         fake_labels = np.array([1, 2, 1, 2])
         with (
             patch(
-                "XBrainLab.backend.application.service.load_label_file",
+                "XBrainLab.backend.application.data_compatibility_service.load_label_file",
                 return_value=fake_labels,
             ),
         ):
@@ -145,7 +145,7 @@ class TestAttachLabels:
 
         with (
             patch(
-                "XBrainLab.backend.application.service.load_label_file",
+                "XBrainLab.backend.application.data_compatibility_service.load_label_file",
                 side_effect=ValueError("bad file"),
             ),
         ):
@@ -164,7 +164,7 @@ class TestAttachLabels:
         fake_labels = np.array([0, 1, 2, 1, 0])
         with (
             patch(
-                "XBrainLab.backend.application.service.load_label_file",
+                "XBrainLab.backend.application.data_compatibility_service.load_label_file",
                 return_value=fake_labels,
             ),
         ):
@@ -185,7 +185,7 @@ class TestAttachLabels:
         fake_labels = np.array([1, 2])
         with (
             patch(
-                "XBrainLab.backend.application.service.load_label_file",
+                "XBrainLab.backend.application.data_compatibility_service.load_label_file",
                 return_value=fake_labels,
             ),
         ):
@@ -209,7 +209,7 @@ class TestAttachLabels:
         fake_labels = np.array(["left", "right"], dtype=object)
         with (
             patch(
-                "XBrainLab.backend.application.service.load_label_file",
+                "XBrainLab.backend.application.data_compatibility_service.load_label_file",
                 return_value=fake_labels,
             ),
         ):
@@ -474,7 +474,7 @@ class TestGenerateDataset:
         mock_study.get_datasets_generator = MagicMock(return_value=mock_generator)
 
         with patch(
-            "XBrainLab.backend.application.service.DataSplittingConfig"
+            "XBrainLab.backend.application.dataset_generation_service.DataSplittingConfig"
         ) as MockConfig:
             facade.generate_dataset(
                 test_ratio=0.2,
@@ -502,7 +502,7 @@ class TestGenerateDataset:
         mock_study.get_datasets_generator = MagicMock(return_value=mock_generator)
 
         with patch(
-            "XBrainLab.backend.application.service.DataSplittingConfig"
+            "XBrainLab.backend.application.dataset_generation_service.DataSplittingConfig"
         ) as MockConfig:
             facade.generate_dataset(training_mode=mode)
             MockConfig.assert_called_once()
@@ -724,14 +724,18 @@ class TestDelegation:
     def test_set_model_case_insensitive(self):
         facade, _ = _make_facade()
         facade.training.set_model_holder = MagicMock()
-        with patch("XBrainLab.backend.application.service.ModelHolder") as MockMH:
+        with patch(
+            "XBrainLab.backend.application.training_service.ModelHolder"
+        ) as MockMH:
             facade.set_model("EEGNET")
             MockMH.assert_called_once()
 
     def test_configure_training_cpu(self):
         facade, _ = _make_facade()
         facade.training.set_training_option = MagicMock()
-        with patch("XBrainLab.backend.application.service.TrainingOption") as MockTO:
+        with patch(
+            "XBrainLab.backend.application.training_service.TrainingOption"
+        ) as MockTO:
             facade.configure_training(10, 32, 0.001, device="cpu")
             call_kwargs = MockTO.call_args[1]
             assert call_kwargs["use_cpu"] is True
@@ -740,7 +744,9 @@ class TestDelegation:
     def test_configure_training_auto(self):
         facade, _ = _make_facade()
         facade.training.set_training_option = MagicMock()
-        with patch("XBrainLab.backend.application.service.TrainingOption") as MockTO:
+        with patch(
+            "XBrainLab.backend.application.training_service.TrainingOption"
+        ) as MockTO:
             facade.configure_training(10, 32, 0.001, device="auto")
             call_kwargs = MockTO.call_args[1]
             assert call_kwargs["use_cpu"] is False
@@ -749,7 +755,9 @@ class TestDelegation:
     def test_configure_training_adamw(self):
         facade, _ = _make_facade()
         facade.training.set_training_option = MagicMock()
-        with patch("XBrainLab.backend.application.service.TrainingOption") as MockTO:
+        with patch(
+            "XBrainLab.backend.application.training_service.TrainingOption"
+        ) as MockTO:
             facade.configure_training(10, 32, 0.001, optimizer="adamw")
             call_kwargs = MockTO.call_args[1]
             assert call_kwargs["optim"] == torch.optim.AdamW

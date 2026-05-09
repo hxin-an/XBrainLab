@@ -7,8 +7,8 @@
 
 ## Servers
 
-- `default-server`: `bash /mnt/d/workspace_v2/projects/lab/XBrainLab/scripts/dev/run_mcp_server_for_client.sh`
-- `xbrainlab-windows-wsl`: `wsl.exe bash /mnt/d/workspace_v2/projects/lab/XBrainLab/scripts/dev/run_mcp_server_for_client.sh`
+- `default-server`: `bash scripts/dev/run_mcp_server_for_client.sh`
+- `xbrainlab-windows-wsl`: `wsl.exe bash scripts/dev/run_mcp_server_for_client.sh`
 
 ## Inspector
 
@@ -17,9 +17,3 @@ npx @modelcontextprotocol/inspector --config xbrainlab-mcp.json --server default
 ```
 
 The Windows entry is for MCP clients launched from Windows that need to start the prepared WSL runtime.
-
-CLI smoke used for validation in this workspace:
-
-```bash
-npx @modelcontextprotocol/inspector --cli --config artifacts/mcp/xbrainlab-mcp.json --server xbrainlab-windows-wsl --method tools/list
-```

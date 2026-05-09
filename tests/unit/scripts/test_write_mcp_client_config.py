@@ -28,10 +28,15 @@ def test_build_mcp_config_uses_standard_stdio_servers_file(tmp_path: Path):
     assert set(servers) == {LOCAL_SERVER_NAME, WINDOWS_WSL_SERVER_NAME}
     assert servers[LOCAL_SERVER_NAME]["type"] == "stdio"
     assert servers[LOCAL_SERVER_NAME]["command"] == "bash"
-    assert servers[LOCAL_SERVER_NAME]["args"] == [str(wrapper)]
+    assert servers[LOCAL_SERVER_NAME]["args"] == [
+        "scripts/dev/run_mcp_server_for_client.sh"
+    ]
     assert servers[WINDOWS_WSL_SERVER_NAME]["type"] == "stdio"
     assert servers[WINDOWS_WSL_SERVER_NAME]["command"] == "wsl.exe"
-    assert servers[WINDOWS_WSL_SERVER_NAME]["args"] == ["bash", str(wrapper)]
+    assert servers[WINDOWS_WSL_SERVER_NAME]["args"] == [
+        "bash",
+        "scripts/dev/run_mcp_server_for_client.sh",
+    ]
 
 
 def test_validate_mcp_config_enforces_external_client_boundary(tmp_path: Path):
@@ -62,7 +67,7 @@ def test_build_server_command_extracts_config_command(tmp_path: Path):
 
     command = build_server_command(config, LOCAL_SERVER_NAME)
 
-    assert command == ["bash", str(wrapper)]
+    assert command == ["bash", "scripts/dev/run_mcp_server_for_client.sh"]
 
 
 def test_committed_mcp_config_matches_generator_contract():
@@ -75,7 +80,7 @@ def test_committed_mcp_config_matches_generator_contract():
     assert ok is True, reason
     assert build_server_command(config, LOCAL_SERVER_NAME) == [
         "bash",
-        str(root / "scripts" / "dev" / "run_mcp_server_for_client.sh"),
+        "scripts/dev/run_mcp_server_for_client.sh",
     ]
 
 
