@@ -174,7 +174,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._populate_label_carrier_tree()
         self._fit_tree_columns(
             self.label_carrier_tree,
-            (130, 135, 100, 110, 95, 125, 130, 157),
+            (90, 95, 100, 110, 92, 190, 190, 115),
             stretch_column=7,
         )
         label_layout.addWidget(self.label_carrier_tree)
