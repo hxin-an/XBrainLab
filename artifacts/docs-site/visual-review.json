@@ -1,0 +1,26 @@
+{
+  "generated_at": "2026-05-09T07:15:42.813Z",
+  "results": [
+    {
+      "name": "index-desktop",
+      "title": "XBrainLab Project Control Room¶",
+      "tables": 2,
+      "cards": 4,
+      "warning": 1
+    },
+    {
+      "name": "index-mobile",
+      "title": "XBrainLab Project Control Room¶",
+      "tables": 2,
+      "cards": 4,
+      "warning": 1
+    },
+    {
+      "name": "validation-desktop",
+      "title": "XBrainLab Validation¶",
+      "tables": 4,
+      "cards": 0,
+      "warning": 0
+    }
+  ]
+}
