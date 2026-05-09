@@ -1,6 +1,6 @@
 site_name: XBrainLab
-site_description: "EEG Analysis Platform with AI Agent"
-site_url: https://xbrainlab.readthedocs.io/
+site_description: "XBrainLab 本地 EEG/BCI 桌面工具工程文件入口"
+site_url: https://hxin-an.github.io/XBrainLab/
 
 repo_name: XBrainLab
 repo_url: https://github.com/hxin-an/XBrainLab
@@ -13,13 +13,13 @@ theme:
       accent: indigo
       toggle:
         icon: material/brightness-7
-        name: Switch to dark mode
+        name: 切換到深色模式
     - scheme: slate
       primary: indigo
       accent: indigo
       toggle:
         icon: material/brightness-4
-        name: Switch to light mode
+        name: 切換到淺色模式
   features:
     - navigation.sections
     - navigation.indexes
@@ -28,6 +28,10 @@ theme:
 
 extra_css:
   - stylesheets/extra.css
+
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js
+  - javascripts/mermaid-init.js
 
 exclude_docs: |
   agent/**
@@ -40,20 +44,26 @@ exclude_docs: |
   architecture/overview.md
 
 nav:
-  - Home: index.md
-  - Core:
-      - Current: current.md
-      - Operations: operations.md
-  - Product Plan:
-      - Now: planning/now.md
+  - 首頁: index.md
+  - 專案現況:
+      - 目前真相: current.md
+      - 操作方式: operations.md
+  - 產品計畫:
+      - 下一步: planning/now.md
       - Roadmap: planning/roadmap.md
-  - Architecture:
-      - Overview: architecture/README.md
-      - UI: architecture/ui.md
-      - Backend: architecture/backend.md
-      - Agent: architecture/agent.md
-  - Validation:
-      - Validation Strategy: validation/README.md
+  - 目標:
+      - 目標總覽: target/README.md
+      - 目標架構: target/architecture.md
+      - 產品需求: target/requirements.md
+      - Data Interpretation 目標: target/data_interpretation_system.md
+      - Agent 目標: target/agent.md
+  - 目前架構:
+      - 架構總覽: architecture/README.md
+      - UI 現況: architecture/ui.md
+      - Backend 現況: architecture/backend.md
+      - Agent 現況: architecture/agent.md
+  - 驗證:
+      - 驗證策略: validation/README.md
 plugins:
   - search
   - mkdocstrings:

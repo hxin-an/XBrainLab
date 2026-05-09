@@ -1,4 +1,4 @@
-# Target Requirements
+# XBrainLab 目標需求
 
 最後更新：`2026-05-04`
 

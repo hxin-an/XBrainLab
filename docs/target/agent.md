@@ -1,4 +1,4 @@
-# Target Agent
+# XBrainLab Agent 目標
 
 最後更新：`2026-05-04`
 

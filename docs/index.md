@@ -1,100 +1,123 @@
-# XBrainLab Project Control Room
+# XBrainLab 專案控制室
 
-XBrainLab is a local-first EEG / BCI desktop analysis tool under product-delivery engineering.
-This site is the current project portal: it should let a reader understand status, blockers,
-evidence, and next work without digging through raw logs first.
+XBrainLab 是本地優先的 EEG / BCI 桌面分析工具，目前正在產品化整理中。
+這個網站是專案入口：用來快速看懂目前狀態、下一步、架構邊界和證據，不用先翻流水帳。
 
-!!! warning "Current boundary"
-    XBrainLab is not product-complete. Automated UI walkthroughs, dashboard PASS results, MCP
-    walkthroughs, and tool-call evals are useful evidence, but they do not replace human Windows
-    desktop acceptance or long local-model desktop sessions.
+!!! warning "目前邊界"
+    XBrainLab 還不能宣稱 product complete。CI 綠燈、automated UI walkthrough、MCP
+    walkthrough、tool-call eval 都是有用證據，但不能取代 human Windows desktop acceptance、
+    長時間 local-model desktop session，或正式 release approval。
 
 <div class="xlb-status-panel" markdown>
 
 <div class="xlb-evidence-strip" markdown>
 
 <div markdown>
-<span class="xlb-kicker">Product Phase</span>
-Product-delivery engineering. Keep reducing split truth before adding broad new features.
+<span class="xlb-kicker">目前階段</span>
+Windows Desktop MVP baseline：backend、Data Interpretation、tool-call、desktop acceptance。
 </div>
 
 <div markdown>
-<span class="xlb-kicker">Main Blocker</span>
-Docs and architecture evidence are ahead of the readable site entrypoint.
+<span class="xlb-kicker">主要缺口</span>
+Phase 1A 要清掉 product legacy path，收斂 UI page refresh，並同步清理測試。
 </div>
 
 <div markdown>
-<span class="xlb-kicker">UI Evidence</span>
-Automated PyQt walkthrough passed. Human Windows launcher / DPI acceptance remains open.
+<span class="xlb-kicker">目標 vs 現況</span>
+`target/` 是目標態；`architecture/` 是目前實作和風險。
 </div>
 
 <div markdown>
-<span class="xlb-kicker">Agent Evidence</span>
-Formal `121` case local benchmark slice exists. It is not a product-completion claim.
+<span class="xlb-kicker">證據邊界</span>
+artifact 是 evidence，不是 current truth；claim 要回到 Current / Validation 判讀。
 </div>
 
 </div>
 
 </div>
 
-## Start Here
+## 先看這裡
 
 <div class="grid cards" markdown>
 
-- **Current Truth**
+- **目前真相**
 
-    Read the short state of the project, blockers, claim boundaries, and next work.
+    看現在能 claim 什麼、不能 claim 什麼，以及 roadmap 是否和 source code 對齊。
 
-    [Open current.md](current.md)
+    [打開 Current](current.md)
 
-- **Product Plan**
+- **下一步**
 
-    See the product tracks, completion criteria, and future work that is not a current blocker.
+    看下一輪施工焦點：Backend Command Spine / Legacy / Test / UI Refresh Cleanup。
 
-    [Open roadmap](planning/roadmap.md)
+    [打開 Now](planning/now.md)
 
-- **Validation**
+- **Roadmap**
 
-    Understand evidence levels before using any artifact as proof.
+    看 MVP baseline、Release Candidate、Thesis / Agent Evidence、MCP hardening 的階段安排。
 
-    [Open validation](validation/README.md)
+    [打開 Roadmap](planning/roadmap.md)
 
-- **Architecture**
+- **目標架構**
 
-    Trace how UI, assistant, MCP, and scripts should share the backend command spine.
+    看理想狀態：UI、agent、MCP、scripts 共用 Application Service / Command API。
 
-    [Open architecture](architecture/README.md)
+    [打開目標架構](target/architecture.md)
+
+- **目前架構**
+
+    看目前 source code 實際狀態、已落地的 command spine，以及仍存在的架構風險。
+
+    [打開目前架構](architecture/README.md)
+
+- **驗證策略**
+
+    看測試和 artifact 能支撐什麼 claim，哪些不能被過度解讀。
+
+    [打開驗證策略](validation/README.md)
 
 </div>
 
-## Evidence Board
+## 目標與現況怎麼分
 
-| Evidence entry | Supports | Does not support |
+| 區域 | 用途 | 讀法 |
 | --- | --- | --- |
-| `artifacts/quality/latest.md` | Fast engineering health: lint, type, architecture guard, startup smoke, UI baseline, real-data IO. | Product completion, thesis claim, local LLM readiness. |
-| `artifacts/ui/human-like-walkthrough/human-like-walkthrough.md` | Automated PyQt replay with screenshots, visible text, button states, geometry checks. | Human Windows desktop acceptance, DPI / dual-monitor confidence, long local-model session. |
-| `artifacts/agent_evals/dashboard.md` | Tool-call benchmark slice for selected local models and deterministic baseline. | EEG training accuracy, UI usability, product completion. |
-| `artifacts/mcp/http-walkthrough.md` | Headless MCP HTTP transport, tools/list, scan/preview, train job status/cancel baseline. | Full MCP client certification, UI refresh, persistent recovery. |
-| `artifacts/data_interpretation/format-capability-matrix.md` | Representative Data Interpretation scan/preview/validation format boundaries. | Full manual certification for every real dataset or XDF / LSL parser support. |
-| `artifacts/launcher/windows-launcher-walkthrough.md` | Automated Windows launcher command/startup smoke. | Human click-through release approval. |
+| `docs/target/` | 目標態、需求、理想架構、agent 目標。 | 這是方向，不代表目前已完成。 |
+| `docs/architecture/` | 目前實作架構、source code 邊界、active risks。 | 這是 current implementation read。 |
+| `docs/planning/` | 接下來怎麼做。 | `now.md` 是短期，`roadmap.md` 是產品主線。 |
+| `docs/validation/` | evidence 等級和 claim boundary。 | 用來判斷 artifact / tests 能證明什麼。 |
+| `artifacts/` | 機器產生的證據輸出。 | evidence，不是 canonical truth。 |
+
+## 證據板
+
+| 證據入口 | 能支撐 | 不能支撐 |
+| --- | --- | --- |
+| `artifacts/quality/latest.md` | Fast engineering health：lint、type、architecture guard、startup smoke、UI baseline、real-data IO。 | Product completion、thesis claim、local LLM readiness。 |
+| `artifacts/ui/human-like-walkthrough/human-like-walkthrough.md` | Automated PyQt replay with screenshots、visible text、button states、geometry checks。 | Human Windows desktop acceptance、DPI / dual-monitor confidence、long local-model session。 |
+| `artifacts/agent_evals/dashboard.md` | Tool-call benchmark slice for selected local models and deterministic baseline。 | EEG training accuracy、UI usability、product completion。 |
+| `artifacts/mcp/http-walkthrough.md` | Headless MCP HTTP transport、tools/list、scan/preview、train job status/cancel baseline。 | Full MCP client certification、desktop UI refresh、persistent recovery。 |
+| `artifacts/data_interpretation/format-capability-matrix.md` | Representative Data Interpretation scan/preview/validation format boundaries。 | Full manual certification for every real dataset or XDF / LSL parser support。 |
+| `artifacts/launcher/windows-launcher-walkthrough.md` | Automated Windows launcher command/startup smoke。 | Human click-through release approval。 |
 
 Artifact governance lives in `artifacts/README.md`; artifacts are evidence outputs, not canonical
-truth. Current truth belongs in `docs/current.md` and architecture / validation docs.
+truth. Current truth belongs in [current.md](current.md), architecture docs, and validation docs.
 
-## Current Work Queue
+## 目前工作主線
 
-1. Documentation reset: make `current.md`, roadmap, validation, and artifact governance readable.
-2. Architecture health: continue command spine cleanup, refresh coordination, and controller fallback audit.
-3. Data Interpretation maturity: improve label/event review, recipe reload/diff, and format boundaries.
-4. UI / assistant walkthrough: keep screenshot evidence, then add human Windows desktop acceptance.
-5. Release / thesis gates: refresh full local eval only when a formal claim is being updated.
+1. Phase 1A：Backend Command Spine / Legacy / Test / UI Refresh Cleanup。
+2. Phase 1B：Data Interpretation MVP Slice。
+3. Phase 1C：Tool-Call Product Baseline。
+4. Phase 1D：Windows Desktop MVP Acceptance。
+5. Phase 2：Release Candidate Hardening。
+6. Phase 3：Thesis / Formal Agent Evidence。
+7. Phase 4：MCP / External Agent Hardening。
 
-## Site Map
+## 網站地圖
 
-| Section | Use it for |
+| 區域 | 用途 |
 | --- | --- |
-| [Core](current.md) | Current truth and operations. |
-| [Product Plan](planning/now.md) | Now/roadmap split: immediate work versus product tracks. |
-| [Architecture](architecture/README.md) | Current implementation boundaries and command spine. |
-| [Validation](validation/README.md) | Evidence tiers, artifact interpretation, gates. |
-| [Operations](operations.md) | Local build, deployment, and runtime commands. |
+| [專案現況](current.md) | current truth、claim boundary、操作入口。 |
+| [產品計畫](planning/now.md) | immediate work vs roadmap。 |
+| [目標](target/README.md) | 需求、目標架構、agent / Data Interpretation 終局設計。 |
+| [目前架構](architecture/README.md) | 目前 implementation、backend command spine、active risks。 |
+| [驗證](validation/README.md) | evidence tiers、artifact interpretation、validation gates。 |

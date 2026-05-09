@@ -1,82 +1,49 @@
-# XBrainLab Validation
+# XBrainLab 驗證策略
 
 最後更新：`2026-05-09`
 
-Validation in XBrainLab is about claim control. A passing artifact is useful only after we state
-what it can and cannot prove.
+這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
-## Evidence Levels
+## 原則
 
-| Level | What it can support | What it cannot support |
+不要把一種 evidence 放大成所有 claim。
+
+| Evidence | 能支撐 | 不能支撐 |
 | --- | --- | --- |
-| Static / unit / architecture gates | Code health, type/lint cleanliness, architecture guardrails, focused regression checks. | Real user workflow quality or visual product acceptance. |
-| Backend replay | `ApplicationService / Command API` contracts, state transitions, structured results, policy boundaries. | Whether the UI is understandable, clickable, or visually polished. |
-| UI-observable automated walkthrough | PyQt workflow replay with screenshots, visible text, button state, geometry, and backend snapshots. | Human Windows desktop acceptance, dual-monitor/DPI coverage, long local-model sessions. |
-| Local model eval | Tool-call behavior for a specified model, case suite, repeat count, and scorer. | EEG training accuracy, UI usability, release completion. |
-| Human desktop acceptance | A person operates the Windows desktop path under real display/GPU/local-model conditions. | This is not yet complete for the current product. |
+| CI green | branch 基本可 review，跨平台測試目前通過。 | product complete、human desktop acceptance。 |
+| `mkdocs build --strict` | 文件站可建。 | 文件內容一定正確。 |
+| architecture guard | 沒有已知 forbidden path regression。 | 所有 runtime flow 都已人工驗收。 |
+| backend focused tests | command / state / result contract。 | UI 使用者體驗完整。 |
+| automated UI walkthrough | 可觀察 UI baseline、截圖、按鈕狀態。 | 人手 Windows acceptance、DPI / dual-monitor、長時間 local model session。 |
+| tool-call eval | tool selection / parameter / state transition 的 benchmark slice。 | EEG training quality、UI completion、產品完成。 |
+| MCP walkthrough | adapter baseline、tools/list、tools/call、HTTP / stdio path。 | full client certification、remote production security。 |
+| launcher smoke | launcher / startup baseline。 | signed installer、release approval。 |
 
-## Current High-Value Artifacts
+## MVP Gate
 
-| Artifact | Evidence type | Current claim boundary |
-| --- | --- | --- |
-| `artifacts/quality/latest.md` | Fast engineering dashboard. | PASS means engineering health for the configured fast profile, not product completion. |
-| `artifacts/ui/human-like-walkthrough/human-like-walkthrough.md` | Automated UI-observable PyQt walkthrough. | Covers replay conditions only; not human Windows acceptance. |
-| `artifacts/agent_evals/dashboard.md` | Tool-call eval dashboard. | Supports the benchmark slice shown there; does not update claims for source-suite changes unless rerun. |
-| `artifacts/mcp/stdio-walkthrough.md` | MCP stdio command path. | Headless adapter baseline; no desktop UI refresh. |
-| `artifacts/mcp/http-walkthrough.md` | MCP HTTP command path and train job baseline. | No persistence/recovery-grade certification or full client matrix. |
-| `artifacts/data_interpretation/format-capability-matrix.md` | Data Interpretation format boundary matrix. | Representative capability evidence, not full real-data manual certification. |
-| `artifacts/launcher/windows-launcher-walkthrough.md` | Automated Windows launcher/startup command smoke. | Not human click-through release approval. |
+| Phase | 需要的最低 evidence |
+| --- | --- |
+| 1A Backend Cleanup | architecture guard、focused command tests、UI refresh tests。 |
+| 1B Data Interpretation | scan / preview / validate / apply tests，加 representative format artifact。 |
+| 1C Tool-Call Baseline | agent tool tests、MCP adapter tests、blocked reason / structured result checks。 |
+| 1D Desktop Acceptance | human Windows click-through notes，加 automated walkthrough screenshot evidence。 |
 
-## Standard Gates
+## Artifact 解讀
 
-Run from repo root.
+`artifacts/` 是機器產物和 evidence，不是 current truth。
+
+current truth 以這些文件為準：
+
+- [current.md](../current.md)
+- [planning/roadmap.md](../planning/roadmap.md)
+- [architecture/README.md](../architecture/README.md)
+- [validation/README.md](README.md)
+
+## 常用 docs gate
 
 ```bash
 poetry run mkdocs build --strict
+git diff --check
 ```
 
-```bash
-poetry run python scripts/dev/update_quality_dashboard.py
-```
-
-```bash
-poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q
-```
-
-```bash
-poetry run pytest --capture=sys \
-  tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics \
-  tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet \
-  -q
-```
-
-## Tool-Call Eval Gates
-
-| Gate | Use when | Model / repeat policy |
-| --- | --- | --- |
-| Fast dev | Daily prompt, scorer, normalizer, and case wording changes. | Deterministic changed / failed cases; repeat `1`; no fallback model. |
-| Candidate | Affected family needs real local model signal. | Primary model subset; repeat `1` or `2`. |
-| Release / thesis | Updating formal benchmark or thesis evidence. | Deterministic full suite, primary x3, fallback x3, dashboard refresh, resource notes. |
-
-Full local release/thesis runs must check disk, cache, and VRAM pressure before loading a model.
-
-## Interpretation Rules
-
-- Dashboard PASS is engineering health, not release completion.
-- Mock-heavy tests are regression floor, not workflow evidence.
-- Automated walkthrough screenshots are UI-observable evidence, not human acceptance.
-- Tool-call eval is an agent-behavior claim, not a UI/product claim.
-- Public local-only fixture evidence does not guarantee clean-clone always-on CI.
-- Optional `llm` group evidence must be explicit before claiming local LLM readiness.
-
-## Reporting Format
-
-When adding or citing validation evidence, record:
-
-| Field | Meaning |
-| --- | --- |
-| Command | Exact command or artifact generator. |
-| Result | Pass/fail and important summary lines. |
-| Supports | The claim this evidence can reasonably support. |
-| Does not support | The nearest tempting overclaim. |
-| Follow-up | The next gate needed for stronger confidence. |
+如果改 CSS / layout，還要留下 built site screenshot 或可視覺審核 artifact。

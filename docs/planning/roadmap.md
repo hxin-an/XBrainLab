@@ -2,60 +2,64 @@
 
 最後更新：`2026-05-09`
 
-This roadmap is the product spine. It is not a worklog and it does not list every completed slice.
+這份 roadmap 是產品主線，不是施工日誌。它用來決定：**先做什麼，做到什麼程度才算過關，哪些 claim 不能先講。**
 
-## North Star
+## 產品北極星
 
-XBrainLab should become a local-first EEG / BCI desktop analysis tool:
+XBrainLab 要先成為一個能在 Windows 本地穩定操作的 EEG / BCI 桌面工具：
 
 ```text
-choose source
--> interpret data / labels / events
--> confirm ambiguous semantics
+啟動桌面 app
+-> 解讀 EEG data / label / event
+-> 使用者確認模糊語意
 -> preprocess / epoch / dataset / train
--> evaluate / visualize / inspect saliency
--> let UI, assistant, MCP, and scripts share the same workflow truth
+-> evaluate / visualize
+-> UI、assistant、MCP、script 看到同一份 workflow truth
 ```
 
-Completion cannot be claimed from backend JSON, mock tests, deterministic eval, or written reports
-alone. The product path needs visible UI evidence and eventually human desktop acceptance.
+## MVP 包含什麼
 
-## Product Tracks
+| MVP 部分 | 完成後要能做到 |
+| --- | --- |
+| 1A Backend Command Spine Cleanup | 主要產品路徑走 `ApplicationService / Command API`，legacy fallback 不再是正式成功路徑。 |
+| 1B Data Interpretation MVP Slice | 使用者能處理代表性的 label / event / trigger ambiguity。 |
+| 1C Tool-Call Product Baseline | assistant / MCP 使用同一套 backend state、capability policy、command result。 |
+| 1D Windows Desktop Acceptance | 人能在 Windows 桌面完成代表性 EEG workflow。 |
 
-| Track | Goal | Current read | Done when |
+MVP 之後才做 release candidate、formal thesis evidence、完整 MCP client certification。
+
+## 階段表
+
+| Phase | 重點 | 完成判準 | 不能宣稱 |
 | --- | --- | --- | --- |
-| Documentation Truth | Readers can find current truth, plan, architecture, validation, and artifact boundaries quickly. | This redesign is the active reset. | `current.md`, roadmap, validation, and artifact governance are concise and build cleanly. |
-| Backend Command Spine | UI, agent, headless scripts, and MCP all use `ApplicationService / Command API`. | Spine is the main route; focused services now own many workflows. | Product runtime does not silently mutate through controller fallbacks; command results drive major refresh scopes. |
-| Data Interpretation | Data Interpretation is the primary new data-entry language. | Scan / preview / validate / confirm/apply / recipe baseline exists. | Common label/event review can be completed without returning to legacy import-label mental models. |
-| UI Product Experience | The desktop feels like an EEG workflow tool, not a debug panel. | Automated walkthrough and screenshots exist after multiple polish rounds. | Import through analysis can be operated by a person, with human Windows launcher / DPI / local-model evidence. |
-| Agent Runtime | Assistant acts as workflow operator using state snapshot, policy, and typed command results. | Formal local tool-call benchmark slice exists; source suite has since changed. | Tool-call reports separate metrics, failure taxonomy, model comparison, and claim boundary. |
-| Automation / MCP | External agents can operate the same command surface. | stdio, Inspector, and HTTP train-job baselines exist. | Job semantics, authorization, persistence/recovery, and client certification boundaries are explicit. |
-| Packaging / Release | A Windows user can launch and complete a representative workflow. | Automated launcher/startup baseline exists. | Human click-through release acceptance passes with logs and recovery guidance. |
+| 0 Repo / CI | branch、PR、CI、Git 狀態可理解。 | checks green，沒有 merge conflict，dirty local settings 不混進 commit。 | product complete。 |
+| 1A Backend Cleanup | command spine、legacy cleanup、UI refresh、test cleanup。 | 主要 mutating product path 可追到 command route；測試不保護第二套 workflow truth。 | 所有 controller 都消失。 |
+| 1B Data Interpretation | 新資料入口可用。 | wizard 可 preview / validate / confirm / apply 代表性資料語意。 | 支援所有格式或 final import system。 |
+| 1C Tool-Call Baseline | assistant / MCP 不走旁路。 | readiness、blocked reason、structured result 和 UI backend truth 一致。 | formal thesis benchmark 完成。 |
+| 1D Desktop MVP | 人手 Windows workflow 驗收。 | launcher -> import -> preprocess -> train -> evaluate / visualize 可完成。 | signed installer 或 release approval。 |
+| 2 Release Candidate | 可下載測試版與限制說明。 | candidate artifact、version、known limitations、troubleshooting。 | 每次 merge 自動正式發布。 |
+| 3 Thesis Evidence | formal agent / tool-call 評估。 | case suite、model、repeat count、scorer version 都清楚。 | agent score 代表 UI 完成。 |
+| 4 MCP Hardening | 外部 agent adapter 成熟化。 | session ownership、auth、job lifecycle、client matrix。 | headless MCP 等於控制使用者桌面 UI。 |
 
-## Current Priority Order
+## Phase 1A 的特別說明
 
-1. Documentation reset.
-2. Architecture health: command spine, refresh coordinator, controller fallback audit.
-3. Data Interpretation mature wizard.
-4. UI / assistant product walkthrough toward human acceptance.
-5. Release / thesis gates after product path stabilization.
+這一段是 MVP 前置，不是可有可無的重構。
 
-## Future Work
+`BackendFacade` 可以保留，但它的角色必須明確：
 
-These are product directions, not current blockers.
+- assistant / script 的 high-level convenience wrapper。
+- `ApplicationService / Command API` 的入口包裝。
+- 不自己重做 workflow logic。
+- 不替 UI / agent / MCP 維護另一套 state truth。
 
-| Direction | Purpose | Boundary |
-| --- | --- | --- |
-| Expert Workflow Mode | Let experienced EEG users jump, rerun, and compare workflow segments. | Still must use Command API and capability policy; no arbitrary Python execution in v1. |
-| Workflow Recipe DSL | Replace fragile long tool-call chains with a restricted declarative workflow recipe. | Every step still needs verification and confirmation where appropriate. |
-| EEG Training Model Registry | Track task fit, input requirements, resource profile, and explainability support for EEG models. | This is about EEG models, not LLM selection. |
-| Training Model Node Visualization | Show model layers, tensor shapes, parameter count, and activation memory estimate. | Avoid heavy live activation animation until the product path is stable. |
-| Training Compatibility Check | Warn before model selection when dataset shape or resource fit is poor. | First version should be a low-risk preflight, not a full AutoML system. |
+如果 `BackendFacade`、UI controller fallback、test adapter 任一方開始定義自己的 workflow 成功條件，
+Phase 1A 就還沒完成。
 
-## Non-Goals
+## Not Now
 
-- Do not treat future work as the current checklist.
-- Do not let API / Gemini / remote LLM return to product execution.
-- Do not let MCP, UI, or agent bypass `ApplicationService`.
-- Do not use Chinese-company or China-source LLM models.
-- Do not interpret tool-call eval as product completion.
+- signed installer / notarization。
+- formal thesis benchmark refresh。
+- full local model x3 release gate。
+- Expert Workflow Mode。
+- Workflow Recipe DSL。
+- Training Model Registry / Model Node Visualization。
