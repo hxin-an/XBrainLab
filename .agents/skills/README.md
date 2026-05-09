@@ -35,6 +35,7 @@ skill 是「可重用能力」，不是長流程。長流程放 `.agents/workflo
 | `code-reviewer` | 以 bug / regression / missing tests 優先的 code review。 |
 | `clean-code-reviewer` | 檢查 maintainability、god object、legacy/fallback creep、重複 workflow truth。 |
 | `ui-product-reviewer` | 檢查桌面 UI 是否像使用者產品，而不是 debug panel。 |
+| `docs-site-product-designer` | 重設 MkDocs 文件站資訊架構與視覺層級，讓 docs 像 project portal。 |
 | `data-interpretation-reviewer` | 檢查 EEG/BCI import、label/event、BIDS、recipe 語意是否可信。 |
 | `mcp-adapter-reviewer` | 檢查 MCP stdio/HTTP、session、tools/list、tools/call 是否只是 adapter。 |
 | `release-packaging-reviewer` | 檢查 launcher、packaging、平台驗證、logs、first-run 和 release evidence。 |
