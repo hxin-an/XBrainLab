@@ -22,7 +22,7 @@ def build_label_carrier_plan(
     """Build reviewable label-carrier rows for interpretation preview."""
     choices = normalize_label_carrier_choices(choices_payload)
     return [
-        _label_carrier_plan_for_path(Path(carrier), choices)
+        _label_carrier_plan_for_path(Path(carrier), choices, raw_path=str(carrier))
         for carrier in label_carriers
     ]
 
@@ -73,8 +73,11 @@ def normalize_label_carrier_choices(payload: Any) -> dict[str, dict[str, str]]:
 def _label_carrier_plan_for_path(
     path: Path,
     choices: dict[str, dict[str, str]],
+    *,
+    raw_path: str | None = None,
 ) -> dict[str, Any]:
-    carrier_choice = _choice_for_label_carrier(path, choices)
+    source_path = raw_path or str(path)
+    carrier_choice = _choice_for_label_carrier(path, choices, source_path)
     label_candidates = _label_candidates_for_carrier(path)
     anchor_candidates = _anchor_candidates_for_carrier(path, label_candidates)
     selected_label = carrier_choice.get("label_field") or (
@@ -84,7 +87,7 @@ def _label_carrier_plan_for_path(
         anchor_candidates[0] if anchor_candidates else ""
     )
     return {
-        "path": str(path),
+        "path": source_path,
         "name": path.name,
         "format": _label_carrier_format(path),
         "label_candidates": label_candidates,
@@ -104,8 +107,14 @@ def _label_carrier_plan_for_path(
 def _choice_for_label_carrier(
     path: Path,
     choices: dict[str, dict[str, str]],
+    raw_path: str,
 ) -> dict[str, str]:
-    return choices.get(str(path), choices.get(path.name, {}))
+    return choices.get(
+        raw_path,
+        choices.get(
+            path.as_posix(), choices.get(str(path), choices.get(path.name, {}))
+        ),
+    )
 
 
 def _label_carrier_format(path: Path) -> str:

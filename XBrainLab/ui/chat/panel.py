@@ -175,7 +175,7 @@ class ChatPanel(QWidget):
 
         self.send_btn = QToolButton()
         self.send_btn.setText("Send")
-        self.send_btn.setFixedSize(64, 36)
+        self.send_btn.setFixedSize(76, 36)
         self.send_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.send_btn.clicked.connect(self._on_send)
         self.send_btn.setStyleSheet(SEND_BUTTON_STYLE)
@@ -838,10 +838,13 @@ class ChatPanel(QWidget):
 
         """
         scroll_bar = self.scroll_area.verticalScrollBar()
+        latest_bubble = self._latest_message_bubble()
+        latest_visible = self._message_bubble_visible(latest_bubble)
         was_at_bottom = (
             scroll_bar is None
             or scroll_bar.maximum() <= 0
             or scroll_bar.value() >= scroll_bar.maximum() - 2
+            or latest_visible
         )
         super().resizeEvent(event)
         self._update_footer_status_label()
@@ -964,8 +967,29 @@ class ChatPanel(QWidget):
         if not scroll_bar:
             return
         scroll_bar.setValue(scroll_bar.maximum())
-        if scroll_bar.maximum() > 0:
+        latest_bubble = self._latest_message_bubble()
+        if latest_bubble is not None:
+            self.scroll_area.ensureWidgetVisible(latest_bubble, 0, 8)
+            scroll_bar.setValue(scroll_bar.maximum())
+        if scroll_bar.maximum() > 0 and scroll_bar.value() >= scroll_bar.maximum() - 2:
             self._pending_scroll_to_bottom = False
+
+    def _latest_message_bubble(self) -> MessageBubble | None:
+        for index in range(self.chat_layout.count() - 1, -1, -1):
+            item = self.chat_layout.itemAt(index)
+            widget = item.widget() if item is not None else None
+            if isinstance(widget, MessageBubble) and widget.isVisible():
+                return widget
+        return None
+
+    def _message_bubble_visible(self, bubble: MessageBubble | None) -> bool:
+        if bubble is None:
+            return True
+        viewport = self.scroll_area.viewport()
+        if viewport is None:
+            return True
+        bottom_y = bubble.mapTo(viewport, bubble.rect().bottomLeft()).y()
+        return bottom_y <= viewport.height() + 2
 
     def append_message(self, sender: str, text: str):
         """Append a message bubble.

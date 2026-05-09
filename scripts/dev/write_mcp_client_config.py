@@ -13,6 +13,7 @@ MARKDOWN_FILENAME = "xbrainlab-mcp.md"
 LOCAL_SERVER_NAME = "default-server"
 WINDOWS_WSL_SERVER_NAME = "xbrainlab-windows-wsl"
 WRAPPER_RELATIVE_PATH = Path("scripts/dev/run_mcp_server_for_client.sh")
+WRAPPER_CLIENT_ARG = "scripts/dev/run_mcp_server_for_client.sh"
 
 
 def main() -> int:
@@ -49,19 +50,18 @@ def main() -> int:
 
 def build_mcp_client_config(repo_root: Path) -> dict[str, Any]:
     """Build an Inspector-compatible MCP servers file."""
-    wrapper = str(WRAPPER_RELATIVE_PATH)
     return {
         "mcpServers": {
             LOCAL_SERVER_NAME: {
                 "type": "stdio",
                 "command": "bash",
-                "args": [wrapper],
+                "args": [WRAPPER_CLIENT_ARG],
                 "env": {"PYTHONUNBUFFERED": "1"},
             },
             WINDOWS_WSL_SERVER_NAME: {
                 "type": "stdio",
                 "command": "wsl.exe",
-                "args": ["bash", wrapper],
+                "args": ["bash", WRAPPER_CLIENT_ARG],
                 "env": {"PYTHONUNBUFFERED": "1"},
             },
         }
@@ -91,7 +91,7 @@ def validate_mcp_client_config(
     ok, reason = _validate_server_entry(
         local,
         command="bash",
-        args=[str(WRAPPER_RELATIVE_PATH)],
+        args=[WRAPPER_CLIENT_ARG],
         boundary="local prepared runtime",
     )
     if not ok:
@@ -101,7 +101,7 @@ def validate_mcp_client_config(
     ok, reason = _validate_server_entry(
         windows,
         command="wsl.exe",
-        args=["bash", str(WRAPPER_RELATIVE_PATH)],
+        args=["bash", WRAPPER_CLIENT_ARG],
         boundary="Windows WSL prepared runtime",
     )
     if not ok:

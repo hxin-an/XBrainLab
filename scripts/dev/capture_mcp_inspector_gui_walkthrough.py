@@ -556,6 +556,11 @@ def sanitize_text(text: str) -> str:
 
 def wsl_path_to_windows(path: Path) -> str:
     """Convert /mnt/<drive>/... paths for Windows executables."""
+    raw = path.as_posix()
+    if raw.startswith("/mnt/") and len(raw) > 6 and raw[6] == "/":
+        drive = raw[5].upper()
+        suffix = raw[6:].replace("/", "\\")
+        return f"{drive}:{suffix}"
     resolved = str(path.resolve())
     if resolved.startswith("/mnt/") and len(resolved) > 6 and resolved[6] == "/":
         drive = resolved[5].upper()

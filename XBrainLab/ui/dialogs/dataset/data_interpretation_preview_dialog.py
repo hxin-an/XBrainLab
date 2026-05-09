@@ -361,8 +361,55 @@ class DataInterpretationPreviewDialog(BaseDialog):
             viewport.width(),
             min_width=min_width,
         )
+        self._apply_widget_column_minimums(tree, scaled, min_width)
         for column, width in enumerate(scaled):
             tree.setColumnWidth(column, width)
+
+    @staticmethod
+    def _apply_widget_column_minimums(
+        tree: QTreeWidget,
+        widths: list[int],
+        min_width: int,
+    ) -> None:
+        required = [min_width for _ in widths]
+        for row in range(tree.topLevelItemCount()):
+            item = tree.topLevelItem(row)
+            if item is None:
+                continue
+            for column in range(min(tree.columnCount(), len(widths))):
+                widget = tree.itemWidget(item, column)
+                if not isinstance(widget, QComboBox):
+                    continue
+                text_width = widget.fontMetrics().horizontalAdvance(
+                    widget.currentText()
+                )
+                required[column] = max(required[column], text_width + 42)
+
+        deficits = [
+            max(required_width - widths[index], 0)
+            for index, required_width in enumerate(required)
+        ]
+        deficit = sum(deficits)
+        if deficit <= 0:
+            return
+        for index, required_width in enumerate(required):
+            widths[index] = max(widths[index], required_width)
+
+        shrink_order = sorted(
+            range(len(widths)),
+            key=lambda index: widths[index] - required[index],
+            reverse=True,
+        )
+        remaining = deficit
+        for index in shrink_order:
+            capacity = max(widths[index] - required[index], 0)
+            if capacity <= 0:
+                continue
+            shrink = min(capacity, remaining)
+            widths[index] -= shrink
+            remaining -= shrink
+            if remaining <= 0:
+                break
 
     def _fit_review_tree_height(self) -> None:
         if not hasattr(self, "review_tree"):
@@ -373,7 +420,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self.review_tree.sizeHintForRow(index)
             for index in range(min(row_count, visible_rows))
         ]
-        row_height = max(23, *(height for height in row_heights if height > 0))
+        positive_row_heights = [height for height in row_heights if height > 0]
+        row_height = max(positive_row_heights) if positive_row_heights else 23
         header = self.review_tree.header()
         header_height = header.height() if header is not None else 28
         frame_padding = self.review_tree.frameWidth() * 2
