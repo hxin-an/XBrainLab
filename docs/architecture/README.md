@@ -1,79 +1,75 @@
 # XBrainLab Architecture
 
-最後更新：`2026-05-01`
+最後更新：`2026-05-09`
 
-這份文件是架構總覽，不放太多細節。細節拆到 `docs/architecture/`。
+This is the current implementation overview. Target requirements live in `docs/target/`; validation
+boundaries live in `docs/validation/`.
 
-這裡描述目前實際架構。理想架構與需求請看 `docs/target/`。
+## Architecture Read
 
-## 架構評斷
+XBrainLab combines:
 
-一份 `ARCHITECTURE.md` 不夠描述 XBrainLab。
+- PyQt desktop UI.
+- EEG import, preprocessing, epoching, dataset, training, evaluation, and visualization workflows.
+- Backend managers and a shared application command surface.
+- In-app local-only assistant runtime.
+- MCP / headless automation adapters.
+- Validation and thesis evidence tooling.
 
-原因是 XBrainLab 同時包含：
+The architecture goal is one workflow truth: human UI, assistant tools, scripts, and MCP adapters
+should observe the same readiness, policy, command result, and state snapshot.
 
-- PyQt desktop UI
-- EEG data import / preprocessing / training / evaluation pipeline
-- backend facade and managers
-- in-app tool-calling assistant
-- local-first assistant runtime
-- validation and thesis evidence system
-
-如果全部塞進單一文件，會變成另一份 agent 長文，難以維護。因此目前採用：
-
-- 一份 architecture overview
-- 五份分層架構文件
-
-## 系統分層
+## Control Surface
 
 ```text
-User
-  |
-  v
-PyQt UI
-  |
-  v
-Controllers / Facade
-  |
-  v
-Study / DataManager / TrainingManager
-  |
-  v
-Data pipeline / Models / Evaluation / Visualization
+Human user
+  -> PyQt UI panels / dialogs
+  -> ApplicationService.execute(Command)
+  -> focused command services
+  -> Study / DataManager / TrainingManager / pipeline objects
 
-In-app Assistant
-  |
-  v
-Local LLM Runtime + Tool Surface
-  |
-  v
-Same backend operation surface used by human workflows
+Assistant / MCP / headless scripts
+  -> tool or JSON payload
+  -> same ApplicationService command surface
+  -> same policy, state snapshot, and structured result envelope
 ```
 
-## 核心分層文件
+## Current Layer Map
 
-| 文件 | 內容 |
+| Layer | Responsibility | Current risk |
+| --- | --- | --- |
+| UI | User workflow, visible state, dialogs, refresh after command results. | Some refresh and fallback paths still mix observer/manual/controller reads. |
+| ApplicationService | Dispatch, capability/confirmation policy, state/result envelope. | Must stay a spine, not absorb every workflow implementation again. |
+| Focused services | Data Interpretation, dataset generation, training, analysis, lifecycle commands. | Boundaries need continued tests as workflows mature. |
+| Backend domain | Study, data managers, training managers, IO/pipeline/model code. | Legacy compatibility paths must not become product defaults. |
+| Assistant runtime | Local-only LLM and workflow tool surface. | Long desktop local-model sessions still need acceptance evidence. |
+| MCP / automation | Headless access to the same command surface. | HTTP jobs, auth, persistence, and client certification remain bounded baselines. |
+| Validation | Evidence generation and claim discipline. | Artifacts must not be read as broader claims than they support. |
+
+## Architecture Documents
+
+| File | Use |
 | --- | --- |
-| [ui.md](ui.md) | PyQt UI、panels、dialogs、event / refresh 邊界。 |
-| [backend.md](backend.md) | backend facade、Study、DataManager、TrainingManager、controllers。 |
-| [data_pipeline.md](data_pipeline.md) | EEG import、labels、preprocess、epoching、dataset、training、evaluation。 |
-| [agent.md](agent.md) | app 內 assistant、local-only runtime 目標、tool calls。 |
-| [validation.md](validation.md) | 測試層、quality dashboard、UI baseline、real-data validation。 |
+| [ui.md](ui.md) | PyQt panels, dialogs, event/refresh boundaries. |
+| [backend.md](backend.md) | Backend facade, Study, managers, controllers, command spine. |
+| [data_pipeline.md](data_pipeline.md) | EEG import, labels, preprocessing, epoching, dataset, training, evaluation. |
+| [agent.md](agent.md) | In-app assistant, local-only runtime, tool calls. |
+| [validation.md](validation.md) | Test layers, dashboard, UI baselines, real-data evidence. |
 
-## 目前架構原則
+## Current Architecture Principles
 
-- 先穩定既有 PyQt app，再做 agent redesign。
-- human user 和 in-app assistant 應是同一套軟體能力面的兩種控制模式。
-- assistant product runtime 已是 local-only；remote backend modules 已從 product package 移除。
-- `openai` / `google-genai` 只保留在 optional `legacy-remote-llm` dependency group，不是 default deps。
-- tool-call surface 不應被舊工具邊界綁死，應以 workflow intent 重設計。
-- validation 是 thesis-critical，不是最後補測試。
-- 文件主張必須能對到 source code、test、artifact 或 runtime evidence。
+- Stabilize the existing PyQt app before expanding agent autonomy.
+- Treat human user and assistant as two control modes over the same backend capability surface.
+- Keep product runtime local-only; API / Gemini dependencies remain outside default execution.
+- Do not let MCP, scripts, UI, or agent tools bypass `ApplicationService`.
+- Make every major claim traceable to source, test, artifact, or runtime evidence.
+- Keep records/worklog as history, not active architecture truth.
 
-## 目前最大風險
+## Active Architecture Risks
 
-- 文件和 runtime evidence 尚未完全重建可信度。
-- legacy 閱讀面已清乾淨；`docs/legacy/` 和 `.agents/legacy/` 都已刪除。
-- 新 workspace 的標準 `dev,test,docs` environment 已可用，但 optional `llm` group 尚未驗證。
-- local LLM prompt / structured smoke 已通過，但真 local LLM 長時間 ChatPanel walkthrough
-  仍未跑，不能把 runtime smoke 等同完整 assistant product acceptance。
+| Risk | Why it matters | Current direction |
+| --- | --- | --- |
+| UI refresh split truth | Users may see stale state even when command result is correct. | Continue command-result refresh coordinator and changed-state tests. |
+| Controller fallback creep | Product runtime can silently diverge from the command spine. | Audit real `Study` paths and keep fallbacks limited to explicit mock/legacy contexts. |
+| Data Interpretation maturity | Baseline exists, but common real-world label/event ambiguity remains hard. | Mature wizard review surfaces and recipe reload/diff behavior. |
+| MCP job semantics | Headless long-running commands need clear lifecycle and recovery boundaries. | Keep HTTP job support explicit and avoid overclaiming certification. |

@@ -1,63 +1,101 @@
-# XBrainLab Docs
+# XBrainLab Project Control Room
 
-這裡是 XBrainLab 的文件入口。
+XBrainLab is a local-first EEG / BCI desktop analysis tool under product-delivery engineering.
+This site is the current project portal: it should let a reader understand status, blockers,
+evidence, and next work without digging through raw logs first.
 
-現在文件分成幾個明確區域：
+!!! warning "Current boundary"
+    XBrainLab is not product-complete. Automated UI walkthroughs, dashboard PASS results, MCP
+    walkthroughs, and tool-call evals are useful evidence, but they do not replace human Windows
+    desktop acceptance or long local-model desktop sessions.
 
-```text
-docs/
-  current.md       目前狀態
-  operations.md    操作指令
-  target/          需求與理想架構
-  architecture/    目前實際架構
-  planning/        短期與長期規劃
-  decisions/       已確認決策
-  validation/      驗證策略與證據邊界
-  records/         高層狀態快照與細節 worklog
-```
+<div class="xlb-status-panel" markdown>
 
-## 先看這幾份
+<div class="xlb-evidence-strip" markdown>
 
-1. [current.md](current.md)
-   - 目前真實狀態、不能信什麼、下一步是什麼。
-2. [target/README.md](target/README.md)
-   - 需求、理想架構與 agent 目標。
-3. [architecture/README.md](architecture/README.md)
-   - 系統總覽與分層架構入口。
-4. [planning/now.md](planning/now.md)
-   - 目前短期焦點。
-5. [planning/roadmap.md](planning/roadmap.md)
-   - 少量路線規劃、階段主線和暫存問題。
-6. [decisions/README.md](decisions/README.md)
-   - 目前有效決策。
-7. [validation/README.md](validation/README.md)
-   - 測試、dashboard、資料集和 thesis evidence 的可信邊界。
+<div markdown>
+<span class="xlb-kicker">Product Phase</span>
+Product-delivery engineering. Keep reducing split truth before adding broad new features.
+</div>
 
-## 文件分工
+<div markdown>
+<span class="xlb-kicker">Main Blocker</span>
+Docs and architecture evidence are ahead of the readable site entrypoint.
+</div>
 
-| 文件 | 用途 |
+<div markdown>
+<span class="xlb-kicker">UI Evidence</span>
+Automated PyQt walkthrough passed. Human Windows launcher / DPI acceptance remains open.
+</div>
+
+<div markdown>
+<span class="xlb-kicker">Agent Evidence</span>
+Formal `121` case local benchmark slice exists. It is not a product-completion claim.
+</div>
+
+</div>
+
+</div>
+
+## Start Here
+
+<div class="grid cards" markdown>
+
+- **Current Truth**
+
+    Read the short state of the project, blockers, claim boundaries, and next work.
+
+    [Open current.md](current.md)
+
+- **Product Plan**
+
+    See the product tracks, completion criteria, and future work that is not a current blocker.
+
+    [Open roadmap](planning/roadmap.md)
+
+- **Validation**
+
+    Understand evidence levels before using any artifact as proof.
+
+    [Open validation](validation/README.md)
+
+- **Architecture**
+
+    Trace how UI, assistant, MCP, and scripts should share the backend command spine.
+
+    [Open architecture](architecture/README.md)
+
+</div>
+
+## Evidence Board
+
+| Evidence entry | Supports | Does not support |
+| --- | --- | --- |
+| `artifacts/quality/latest.md` | Fast engineering health: lint, type, architecture guard, startup smoke, UI baseline, real-data IO. | Product completion, thesis claim, local LLM readiness. |
+| `artifacts/ui/human-like-walkthrough/human-like-walkthrough.md` | Automated PyQt replay with screenshots, visible text, button states, geometry checks. | Human Windows desktop acceptance, DPI / dual-monitor confidence, long local-model session. |
+| `artifacts/agent_evals/dashboard.md` | Tool-call benchmark slice for selected local models and deterministic baseline. | EEG training accuracy, UI usability, product completion. |
+| `artifacts/mcp/http-walkthrough.md` | Headless MCP HTTP transport, tools/list, scan/preview, train job status/cancel baseline. | Full MCP client certification, UI refresh, persistent recovery. |
+| `artifacts/data_interpretation/format-capability-matrix.md` | Representative Data Interpretation scan/preview/validation format boundaries. | Full manual certification for every real dataset or XDF / LSL parser support. |
+| `artifacts/launcher/windows-launcher-walkthrough.md` | Automated Windows launcher command/startup smoke. | Human click-through release approval. |
+
+Artifact governance lives in `artifacts/README.md`; artifacts are evidence outputs, not canonical
+truth. Current truth belongs in `docs/current.md` and architecture / validation docs.
+
+## Current Work Queue
+
+1. Documentation reset: make `current.md`, roadmap, validation, and artifact governance readable.
+2. Architecture health: continue command spine cleanup, refresh coordination, and controller fallback audit.
+3. Data Interpretation maturity: improve label/event review, recipe reload/diff, and format boundaries.
+4. UI / assistant walkthrough: keep screenshot evidence, then add human Windows desktop acceptance.
+5. Release / thesis gates: refresh full local eval only when a formal claim is being updated.
+
+## Site Map
+
+| Section | Use it for |
 | --- | --- |
-| [current.md](current.md) | 目前狀態、blocker、下一步。 |
-| [operations.md](operations.md) | 安裝、啟動、測試、環境操作。 |
-| [target/](target/README.md) | 需求、理想架構、agent 目標。 |
-| [architecture/](architecture/README.md) | 目前實際架構與 source 對照。 |
-| [planning/](planning/now.md) | 短期現在做什麼、長期路線。 |
-| [decisions/](decisions/README.md) | 討論後確認的決策。 |
-| [validation/](validation/README.md) | 驗證策略、目前 evidence、mock 邊界。 |
-| [records/](records/implementation_log.md) | 高層狀態快照與細節 worklog。 |
-
-## 目前最重要提醒
-
-`artifacts/quality/latest.*` 已在新 workspace 刷新，fast dashboard 目前是 clean `PASS`。這代表工程健康快照通過，但不代表 thesis claim 或 optional LLM runtime 已完整驗證。
-
-目前工作已進入 product-delivery engineering。legacy / active 閱讀面已收掉；後端
-`ApplicationService / Command API` 第一版已落地。下一步是把 UI 和 agent 的
-backend command surface 統一，修穩 UI chat / agent panel，完成 local-only LLM
-runtime 的 product path 封口與桌面啟動方式。Tool-call eval / thesis evidence 要等產品主線穩定後再做。
-
-assistant product runtime 目前已是 local-only：remote backend modules 已從 product package
-移除，`LLMConfig` / `LLMEngine` / `AgentWorker` 不會 instantiate API / Gemini backend。
-`openai` / `google-genai` 只留在 optional `legacy-remote-llm` dependency group。真 local LLM
-長時間 ChatPanel walkthrough 仍未跑，不能用 local runtime smoke 直接宣稱完整產品驗收完成。
-
-給 agent 看的 thesis context 現在放在 `.agents/context/thesis.md`，不放在人類 active 入口。
+| [Core](current.md) | Current truth and operations. |
+| [Product Plan](planning/now.md) | Now/roadmap split: immediate work versus product tracks. |
+| [Architecture](architecture/README.md) | Current implementation boundaries and command spine. |
+| [Validation](validation/README.md) | Evidence tiers, artifact interpretation, gates. |
+| [Target](target/README.md) | Requirements and intended system shape. |
+| [Records](records/implementation_log.md) | Milestone history and detailed worklog, not primary truth. |

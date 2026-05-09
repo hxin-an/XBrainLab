@@ -22,15 +22,21 @@ theme:
         name: Switch to light mode
   features:
     - navigation.sections
-    - navigation.expand
+    - navigation.indexes
     - search.highlight
     - content.code.copy
+
+extra_css:
+  - stylesheets/extra.css
 
 nav:
   - Home: index.md
   - Core:
       - Current: current.md
       - Operations: operations.md
+  - Product Plan:
+      - Now: planning/now.md
+      - Roadmap: planning/roadmap.md
   - Target:
       - Overview: target/README.md
       - Requirements: target/requirements.md
@@ -47,9 +53,6 @@ nav:
   - Research:
       - BCI/EEG Import Label Source: research/bci_eeg_import_label_design_source.md
       - Tool-Call Agent Best Practices: research/tool_call_agent_best_practices.md
-  - Planning:
-      - Now: planning/now.md
-      - Roadmap: planning/roadmap.md
   - Decisions:
       - Decisions: decisions/README.md
   - Validation:
@@ -72,6 +75,8 @@ plugins:
 
 markdown_extensions:
   - admonition
+  - attr_list
+  - md_in_html
   - pymdownx.details
   - pymdownx.superfences
   - pymdownx.highlight:
