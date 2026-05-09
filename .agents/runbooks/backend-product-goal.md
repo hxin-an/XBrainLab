@@ -1,6 +1,6 @@
 # Backend Product Goal
 
-最後更新：`2026-05-03`
+最後更新：`2026-05-09`
 
 這份 goal 給長時間 Codex runner 使用。它不是 checklist 型小任務，而是工程級交付目標。
 
@@ -30,7 +30,7 @@ Milestone 是最低門檻，不是工作上限。若你草草達成文字 checkl
 
 ## 硬性邊界
 
-- 不 push。
+- 完成可驗證 milestone 後要 push；push 前確認 commit scope、validation 和 staged files 乾淨。
 - 不碰 `.vscode/settings.json`。
 - 不碰 root `settings.json`。
 - 不把 `/mnt/d/repos/XBrainLab` 當 active repo。
@@ -166,7 +166,7 @@ poetry run pytest --capture=sys tests/unit/ui/chat tests/integration/ui/test_pro
 - 每完成一個可驗證 milestone，commit 一次。
 - commit message 要描述實際成果，不要寫 vague progress。
 - commit 前確認 `.vscode/settings.json` 和 root `settings.json` 沒被 staged。
-- 不 push。
+- commit 後要 push 目前 branch，若 credentials / network 不可用，明確記錄 push failure 與重試方式。
 - 不用 destructive git command。
 
 ## Final Response 要求

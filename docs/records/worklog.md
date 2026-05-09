@@ -6063,7 +6063,7 @@
     - final rerun overall `PASS` at `2026-05-02 17:44:37 UTC+08:00`
 - 接續 / 本輪剩餘：
   - final lint / format / mkdocs / dashboard gate。
-  - local commits；不 push。
+  - local commits；當時未執行 push。
   - 真 Windows launcher click-through 和真 local model 長時間 UI walkthrough 仍未做。
 
 ### 12:02 Chat product blocker correction
