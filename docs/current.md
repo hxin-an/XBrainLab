@@ -2,8 +2,8 @@
 
 最後更新：`2026-05-09`
 
-This page is the short operational truth. It intentionally omits slice-by-slice history; use
-`docs/records/implementation_log.md` and `docs/records/worklog.md` only when you need the trail.
+This page is the short operational truth. It intentionally omits slice-by-slice history so the
+documentation site stays readable as a project control room.
 
 ## Status Snapshot
 

@@ -97,5 +97,4 @@ truth. Current truth belongs in `docs/current.md` and architecture / validation 
 | [Product Plan](planning/now.md) | Now/roadmap split: immediate work versus product tracks. |
 | [Architecture](architecture/README.md) | Current implementation boundaries and command spine. |
 | [Validation](validation/README.md) | Evidence tiers, artifact interpretation, gates. |
-| [Target](target/README.md) | Requirements and intended system shape. |
-| [Records](records/implementation_log.md) | Milestone history and detailed worklog, not primary truth. |
+| [Operations](operations.md) | Local build, deployment, and runtime commands. |

@@ -2,8 +2,8 @@
 
 最後更新：`2026-05-09`
 
-This is the current implementation overview. Target requirements live in `docs/target/`; validation
-boundaries live in `docs/validation/`.
+This is the current implementation overview. Validation boundaries live in
+`docs/validation/README.md`.
 
 ## Architecture Read
 
@@ -52,9 +52,8 @@ Assistant / MCP / headless scripts
 | --- | --- |
 | [ui.md](ui.md) | PyQt panels, dialogs, event/refresh boundaries. |
 | [backend.md](backend.md) | Backend facade, Study, managers, controllers, command spine. |
-| [data_pipeline.md](data_pipeline.md) | EEG import, labels, preprocessing, epoching, dataset, training, evaluation. |
 | [agent.md](agent.md) | In-app assistant, local-only runtime, tool calls. |
-| [validation.md](validation.md) | Test layers, dashboard, UI baselines, real-data evidence. |
+| [../validation/README.md](../validation/README.md) | Evidence tiers, dashboard interpretation, and claim boundaries. |
 
 ## Current Architecture Principles
 
