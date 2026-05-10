@@ -64,6 +64,8 @@ nav:
       - Agent 現況: architecture/agent.md
   - 驗證:
       - 驗證策略: validation/README.md
+  - 產品回饋:
+      - UI/UX 觀察: records/product_feedback.md
 plugins:
   - search
   - mkdocstrings:

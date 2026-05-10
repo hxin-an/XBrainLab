@@ -118,6 +118,7 @@ truth. Current truth belongs in [current.md](current.md), architecture docs, and
 | --- | --- |
 | [專案現況](current.md) | current truth、claim boundary、操作入口。 |
 | [產品計畫](planning/now.md) | immediate work vs roadmap。 |
+| [產品回饋](records/product_feedback.md) | 人工使用時的 UI / UX 觀察、困惑點、未來設計方向。 |
 | [目標](target/README.md) | 需求、目標架構、agent / Data Interpretation 終局設計。 |
 | [目前架構](architecture/README.md) | 目前 implementation、backend command spine、active risks。 |
 | [驗證](validation/README.md) | evidence tiers、artifact interpretation、validation gates。 |
