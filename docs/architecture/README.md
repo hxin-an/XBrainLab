@@ -1,74 +1,58 @@
-# XBrainLab Architecture
+# XBrainLab 目前架構
 
 最後更新：`2026-05-09`
 
-This is the current implementation overview. Validation boundaries live in
-`docs/validation/README.md`.
+這裡描述目前實作，不描述理想終局。目標態請看 [target/architecture.md](../target/architecture.md)。
 
-## Architecture Read
+## 一句話
 
-XBrainLab combines:
-
-- PyQt desktop UI.
-- EEG import, preprocessing, epoching, dataset, training, evaluation, and visualization workflows.
-- Backend managers and a shared application command surface.
-- In-app local-only assistant runtime.
-- MCP / headless automation adapters.
-- Validation and thesis evidence tooling.
-
-The architecture goal is one workflow truth: human UI, assistant tools, scripts, and MCP adapters
-should observe the same readiness, policy, command result, and state snapshot.
-
-## Control Surface
+XBrainLab 正在把 UI、assistant、MCP、scripts 收斂到同一個 backend command surface：
 
 ```text
-Human user
-  -> PyQt UI panels / dialogs
-  -> ApplicationService.execute(Command)
+UI / assistant / MCP / scripts
+  -> ApplicationService / Command API
   -> focused command services
-  -> Study / DataManager / TrainingManager / pipeline objects
-
-Assistant / MCP / headless scripts
-  -> tool or JSON payload
-  -> same ApplicationService command surface
-  -> same policy, state snapshot, and structured result envelope
+  -> Study / DataManager / TrainingManager
 ```
 
-## Current Layer Map
+這個方向已經有實作基礎，但還沒有完全收乾淨。
 
-| Layer | Responsibility | Current risk |
+## 目前分層
+
+| Layer | 現在負責 | 目前風險 |
 | --- | --- | --- |
-| UI | User workflow, visible state, dialogs, refresh after command results. | Some refresh and fallback paths still mix observer/manual/controller reads. |
-| ApplicationService | Dispatch, capability/confirmation policy, state/result envelope. | Must stay a spine, not absorb every workflow implementation again. |
-| Focused services | Data Interpretation, dataset generation, training, analysis, lifecycle commands. | Boundaries need continued tests as workflows mature. |
-| Backend domain | Study, data managers, training managers, IO/pipeline/model code. | Legacy compatibility paths must not become product defaults. |
-| Assistant runtime | Local-only LLM and workflow tool surface. | Long desktop local-model sessions still need acceptance evidence. |
-| MCP / automation | Headless access to the same command surface. | HTTP jobs, auth, persistence, and client certification remain bounded baselines. |
-| Validation | Evidence generation and claim discipline. | Artifacts must not be read as broader claims than they support. |
+| PyQt UI | 使用者 workflow、dialogs、visible state、page refresh。 | 還要避免各頁自己維護第二份 workflow truth。 |
+| `ApplicationService` | command dispatch、capability / confirmation gate、result envelope。 | 必須保持 spine，不要變成 god object。 |
+| focused services | Data Interpretation、preprocess、dataset、training、analysis、lifecycle。 | 邊界要靠 tests 和 architecture guard 維持。 |
+| `Study` / managers | domain state、data lifecycle、training lifecycle。 | legacy controller mutation path 還要在 product runtime 清乾淨。 |
+| `BackendFacade` | assistant / script 的 high-level wrapper。 | 不能變成第二套 backend 或重新定義成功條件。 |
+| assistant / MCP | tool / JSON payload 轉 command。 | MVP 先做 baseline；client certification 屬 Phase 4。 |
 
-## Architecture Documents
+## Roadmap 對應
 
-| File | Use |
+| Roadmap | 架構含義 |
 | --- | --- |
-| [ui.md](ui.md) | PyQt panels, dialogs, event/refresh boundaries. |
-| [backend.md](backend.md) | Backend facade, Study, managers, controllers, command spine. |
-| [agent.md](agent.md) | In-app assistant, local-only runtime, tool calls. |
-| [../validation/README.md](../validation/README.md) | Evidence tiers, dashboard interpretation, and claim boundaries. |
+| Phase 1A | 清 product legacy path、UI refresh truth、test adapter truth。 |
+| Phase 1B | 讓 Data Interpretation 成為正式資料入口。 |
+| Phase 1C | 讓 assistant / MCP 走相同 command / capability / state snapshot。 |
+| Phase 1D | 用人手 Windows workflow 驗證整條產品線。 |
 
-## Current Architecture Principles
+## Active Risks
 
-- Stabilize the existing PyQt app before expanding agent autonomy.
-- Treat human user and assistant as two control modes over the same backend capability surface.
-- Keep product runtime local-only; API / Gemini dependencies remain outside default execution.
-- Do not let MCP, scripts, UI, or agent tools bypass `ApplicationService`.
-- Make every major claim traceable to source, test, artifact, or runtime evidence.
-- Keep records/worklog as history, not active architecture truth.
-
-## Active Architecture Risks
-
-| Risk | Why it matters | Current direction |
+| Risk | 為什麼重要 | 處理方向 |
 | --- | --- | --- |
-| UI refresh split truth | Users may see stale state even when command result is correct. | Continue command-result refresh coordinator and changed-state tests. |
-| Controller fallback creep | Product runtime can silently diverge from the command spine. | Audit real `Study` paths and keep fallbacks limited to explicit mock/legacy contexts. |
-| Data Interpretation maturity | Baseline exists, but common real-world label/event ambiguity remains hard. | Mature wizard review surfaces and recipe reload/diff behavior. |
-| MCP job semantics | Headless long-running commands need clear lifecycle and recovery boundaries. | Keep HTTP job support explicit and avoid overclaiming certification. |
+| legacy controller path | 桌面操作可能繞過 command spine，測試也可能保護舊路徑。 | real `Study` product path 不再 hidden fallback。 |
+| UI refresh split truth | backend state 正確但畫面顯示舊狀態。 | command result / changed state 驅動 refresh。 |
+| `BackendFacade` scope creep | wrapper 若重做 workflow logic，就會和 UI / MCP 分裂。 | 只包 command API，不自己判斷 workflow 成功。 |
+| Data Interpretation maturity | 資料語意錯會污染後續 training / evidence。 | MVP 先處理代表性 ambiguity，不誇大 final support。 |
+| MCP session confusion | headless session 容易被誤解成桌面 UI 控制。 | Phase 4 明確 session ownership 和 client matrix。 |
+
+## 深入頁面
+
+| File | 用途 |
+| --- | --- |
+| [backend.md](backend.md) | backend command spine、controllers、facade 詳細現況。 |
+| [ui.md](ui.md) | PyQt panels、refresh、observer boundary。 |
+| [agent.md](agent.md) | in-app assistant、local-only runtime、tool calls。 |
+| [data_pipeline.md](data_pipeline.md) | EEG import / preprocess / dataset / training pipeline。 |
+| [validation.md](validation.md) | 測試層級與 evidence 邊界。 |

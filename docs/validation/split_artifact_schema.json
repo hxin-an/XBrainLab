@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xbrainlab.local/schemas/split-artifact.schema.json",
+  "title": "XBrainLab Thesis Split Artifact",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "protocol",
+    "audit",
+    "environment",
+    "config",
+    "datasets"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "protocol": {
+      "enum": ["trial-wise", "session-wise", "subject-wise"]
+    },
+    "seed": {
+      "type": ["integer", "null"]
+    },
+    "repeat": {
+      "type": ["integer", "null"]
+    },
+    "audit": {
+      "type": "object",
+      "required": ["ok", "dataset_count", "issues"],
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "dataset_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["dataset_name", "severity", "message", "indices"],
+            "properties": {
+              "dataset_name": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": ["warning", "error"]
+              },
+              "message": {
+                "type": "string"
+              },
+              "indices": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "required": ["python", "platform"],
+      "additionalProperties": true
+    },
+    "config": {
+      "type": "object"
+    },
+    "datasets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "selected", "indices", "counts", "groups"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "selected": {
+            "type": "boolean"
+          },
+          "indices": {
+            "type": "object",
+            "required": ["train", "validation", "test"],
+            "properties": {
+              "train": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "validation": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "test": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "counts": {
+            "type": "object",
+            "required": ["train", "validation", "test"],
+            "properties": {
+              "train": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "validation": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "test": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "groups": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}

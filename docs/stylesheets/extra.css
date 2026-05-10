@@ -107,6 +107,22 @@
   font-size: 0.68rem;
 }
 
+.md-typeset .mermaid {
+  background: var(--xlb-surface);
+  border: 1px solid var(--xlb-border);
+  border-radius: 0.3rem;
+  margin: 1rem 0;
+  overflow-x: auto;
+  padding: 0.7rem;
+}
+
+.md-typeset .mermaid svg {
+  display: block;
+  height: auto;
+  max-width: none;
+  min-width: 52rem;
+}
+
 @media screen and (max-width: 760px) {
   .xlb-status-panel {
     padding: 0.55rem 0.65rem;
