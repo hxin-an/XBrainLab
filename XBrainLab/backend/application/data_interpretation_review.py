@@ -17,6 +17,9 @@ class InterpretationPreview:
     summary: str
     file_count: int
     label_carrier_count: int
+    source_selection: str = "Source"
+    selected_eeg_files: list[str] = dc_field(default_factory=list)
+    action_items: list[dict[str, str]] = dc_field(default_factory=list)
     label_carrier_preview: list[dict[str, Any]] = dc_field(default_factory=list)
     metadata_preview: list[dict[str, Any]] = dc_field(default_factory=list)
     format_capabilities: list[dict[str, Any]] = dc_field(default_factory=list)
@@ -26,6 +29,7 @@ class InterpretationPreview:
     downstream_impacts: list[str] = dc_field(default_factory=list)
     event_roles: dict[str, str] = dc_field(default_factory=dict)
     class_map: dict[str, str] = dc_field(default_factory=dict)
+    class_map_source: str = ""
     recipe_reload_summary: dict[str, Any] = dc_field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -43,6 +47,7 @@ class ValidationDecision:
     required_confirmations: list[str] = dc_field(default_factory=list)
     blocked_reasons: list[str] = dc_field(default_factory=list)
     downstream_impacts: list[str] = dc_field(default_factory=list)
+    action_items: list[dict[str, str]] = dc_field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return _serialize(self)
@@ -79,6 +84,9 @@ def build_interpretation_preview(
         summary=summary,
         file_count=file_count,
         label_carrier_count=label_count,
+        source_selection=_source_selection_text(candidate),
+        selected_eeg_files=list(candidate.selected_eeg_files),
+        action_items=_build_action_items(candidate),
         label_carrier_preview=[dict(item) for item in candidate.label_carrier_plan],
         metadata_preview=metadata_preview,
         format_capabilities=[dict(item) for item in candidate.format_capabilities],
@@ -92,6 +100,7 @@ def build_interpretation_preview(
         ],
         event_roles=dict(candidate.event_roles),
         class_map=dict(candidate.class_map),
+        class_map_source=str(getattr(candidate, "class_map_source", "") or ""),
         recipe_reload_summary=_recipe_reload_summary(
             getattr(candidate, "choices", {}),
             scan=scan,
@@ -99,6 +108,25 @@ def build_interpretation_preview(
             candidate=candidate,
         ),
     )
+
+
+def _source_selection_text(candidate: Any) -> str:
+    choices = getattr(candidate, "choices", {}) or {}
+    has_selected_files = bool(
+        isinstance(choices, dict)
+        and (choices.get("selected_eeg_files") or choices.get("eeg_files"))
+    )
+    file_count = len(getattr(candidate, "selected_eeg_files", []) or [])
+    if has_selected_files:
+        return f"{file_count} selected file(s)"
+    source_kind = str(getattr(candidate, "source_kind", "") or "").lower()
+    if source_kind == "file":
+        return "Single file"
+    if source_kind == "bids":
+        return "BIDS folder"
+    if source_kind == "folder":
+        return "Folder"
+    return source_kind or "Source"
 
 
 def validate_interpretation_candidate(candidate: Any) -> ValidationDecision:
@@ -113,6 +141,7 @@ def validate_interpretation_candidate(candidate: Any) -> ValidationDecision:
             downstream_impacts=[
                 "Preprocess, epoch, dataset, and training remain blocked.",
             ],
+            action_items=_build_action_items(candidate),
         )
     if candidate.confirmation_items:
         return ValidationDecision(
@@ -125,6 +154,7 @@ def validate_interpretation_candidate(candidate: Any) -> ValidationDecision:
                 "Downstream workflow remains blocked until the interpretation "
                 "is confirmed and applied.",
             ],
+            action_items=_build_action_items(candidate),
         )
     return ValidationDecision(
         candidate_id=candidate.candidate_id,
@@ -135,7 +165,157 @@ def validate_interpretation_candidate(candidate: Any) -> ValidationDecision:
             "Applied interpretation becomes the source truth for preprocessing, "
             "epoching, dataset generation, training, and saliency.",
         ],
+        action_items=_build_action_items(candidate),
     )
+
+
+def _build_action_items(candidate: Any) -> list[dict[str, str]]:
+    items: list[dict[str, str]] = []
+    choices = getattr(candidate, "choices", {}) or {}
+    skip_labels = bool(isinstance(choices, dict) and choices.get("skip_labels"))
+
+    items.extend(
+        [
+            _action_item(
+                issue=reason,
+                impact="This import cannot be applied until the issue is fixed.",
+                next_action="Fix this item before importing.",
+                target_step=_target_step_for_text(reason),
+                severity="blocked",
+            )
+            for reason in _unique_strings(getattr(candidate, "blocked_reasons", []))
+        ]
+    )
+    items.extend(
+        [
+            _action_item(
+                issue=confirmation,
+                impact=(
+                    "This choice affects imported metadata, labels, or downstream "
+                    "training readiness."
+                ),
+                next_action="Review the target step and confirm the choice.",
+                target_step=_target_step_for_text(confirmation),
+                severity="needs_confirmation",
+            )
+            for confirmation in _unique_strings(
+                getattr(candidate, "confirmation_items", [])
+            )
+        ]
+    )
+    items.extend(
+        [
+            _action_item(
+                issue=warning,
+                impact=(
+                    "Import may still be usable, but downstream labels or "
+                    "metadata may need review."
+                ),
+                next_action=(
+                    "Open the target step and resolve or confirm this item "
+                    "before import."
+                ),
+                target_step=_target_step_for_text(warning),
+                severity="warning",
+            )
+            for warning in _unique_strings(getattr(candidate, "warnings", []))
+        ]
+    )
+
+    label_carriers = list(getattr(candidate, "label_carriers", []) or [])
+    if not label_carriers and skip_labels:
+        items.append(
+            _action_item(
+                issue="Labels skipped for now.",
+                impact=(
+                    "Supervised dataset generation and training remain limited "
+                    "until labels or event semantics are added."
+                ),
+                next_action=(
+                    "Continue only for inspection, or return to Load Labels "
+                    "before supervised training."
+                ),
+                target_step="Load Labels",
+                severity="limited",
+            )
+        )
+    elif not label_carriers:
+        items.append(
+            _action_item(
+                issue="No external label file or folder is attached.",
+                impact=(
+                    "Supervised workflows may be limited unless reliable "
+                    "internal events are confirmed."
+                ),
+                next_action=(
+                    "Load a label file, load a label folder, or continue without "
+                    "labels."
+                ),
+                target_step="Load Labels",
+                severity="warning",
+            )
+        )
+    return _dedupe_action_items(items)
+
+
+def _action_item(
+    *,
+    issue: str,
+    impact: str,
+    next_action: str,
+    target_step: str,
+    severity: str,
+) -> dict[str, str]:
+    return {
+        "issue": issue,
+        "impact": impact,
+        "next_action": next_action,
+        "target_step": target_step,
+        "severity": severity,
+    }
+
+
+def _target_step_for_text(text: str) -> str:
+    lowered = text.lower()
+    if any(token in lowered for token in ("eeg file", "source", "scan")):
+        return "Choose EEG Data"
+    if any(token in lowered for token in ("label", "event", "carrier")):
+        if "no " in lowered or "missing" in lowered:
+            return "Load Labels"
+        return "Match Labels"
+    if any(
+        token in lowered for token in ("subject", "session", "task", "run", "metadata")
+    ):
+        return "Review Metadata"
+    return "Review and Import"
+
+
+def _unique_strings(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    result: list[str] = []
+    for value in values:
+        text = str(value).strip()
+        if text and text not in result:
+            result.append(text)
+    return result
+
+
+def _dedupe_action_items(items: list[dict[str, str]]) -> list[dict[str, str]]:
+    result: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str, str]] = set()
+    for item in items:
+        key = (
+            item.get("target_step", ""),
+            item.get("issue", ""),
+            item.get("impact", ""),
+            item.get("next_action", ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(item)
+    return result
 
 
 def _recipe_reload_summary(

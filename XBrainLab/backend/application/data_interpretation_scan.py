@@ -34,7 +34,9 @@ class ScanResult:
     source_hint: str = "auto"
     source_kind: str = "unknown"
     eeg_files: list[str] = dc_field(default_factory=list)
+    label_sources: list[str] = dc_field(default_factory=list)
     label_carriers: list[str] = dc_field(default_factory=list)
+    label_carrier_sources: dict[str, str] = dc_field(default_factory=dict)
     metadata: list[FileMetadataResolution] = dc_field(default_factory=list)
     bids: dict[str, Any] = dc_field(default_factory=dict)
     format_capabilities: list[dict[str, Any]] = dc_field(default_factory=list)
@@ -50,6 +52,7 @@ def scan_source_path(
     scan_id: str,
     source_path: str,
     source_hint: str = "auto",
+    label_sources: list[str] | None = None,
 ) -> ScanResult:
     """Scan a file, folder, BIDS root, device export, or recipe path."""
     if not str(source_path).strip():
@@ -67,17 +70,29 @@ def scan_source_path(
         for item in files
         if _has_supported_suffix(item, SUPPORTED_EEG_EXTENSIONS)
     )
-    label_carriers = sorted(
-        str(item)
-        for item in files
-        if _is_label_carrier(item) or _is_bids_events_file(item)
+    auto_label_carriers = [
+        item for item in files if _is_label_carrier(item) or _is_bids_events_file(item)
+    ]
+    normalized_label_sources, source_label_carriers, source_warnings = (
+        _label_carriers_from_sources(label_sources or [])
     )
+    label_carrier_sources: dict[str, str] = {}
+    for carrier in auto_label_carriers:
+        label_carrier_sources[str(carrier)] = "auto"
+    for source, carriers in source_label_carriers:
+        for carrier in carriers:
+            label_carrier_sources.setdefault(str(carrier), str(source))
+    label_carriers = sorted(label_carrier_sources)
     metadata = [
         _metadata_for_file(Path(file_path), scan_root, source_kind)
         for file_path in eeg_files
     ]
+    source_label_files = [
+        carrier for _, carriers in source_label_carriers for carrier in carriers
+    ]
+    all_files = _dedupe_paths([*files, *source_label_files])
     bids = _bids_summary(scan_root, source_kind, eeg_files, label_carriers)
-    format_capabilities = _format_capabilities(files)
+    format_capabilities = _format_capabilities(all_files)
     warnings = _scan_warnings(
         source_kind,
         eeg_files,
@@ -85,6 +100,7 @@ def scan_source_path(
         bids,
         format_capabilities,
     )
+    warnings.extend(source_warnings)
     blocked_reasons = _scan_blocked_reasons(eeg_files, format_capabilities)
 
     return ScanResult(
@@ -93,7 +109,9 @@ def scan_source_path(
         source_hint=source_hint,
         source_kind=source_kind,
         eeg_files=eeg_files,
+        label_sources=[str(item) for item in normalized_label_sources],
         label_carriers=label_carriers,
+        label_carrier_sources=label_carrier_sources,
         metadata=metadata,
         bids=bids,
         format_capabilities=format_capabilities,
@@ -117,8 +135,50 @@ def _source_kind(path: Path, source_hint: str) -> str:
 
 def _candidate_files(path: Path) -> list[Path]:
     if path.is_file():
-        return [path]
-    return [item for item in path.rglob("*") if item.is_file()]
+        return [path.resolve()]
+    return [item.resolve() for item in path.rglob("*") if item.is_file()]
+
+
+def _label_carriers_from_sources(
+    label_sources: list[str],
+) -> tuple[list[Path], list[tuple[Path, list[Path]]], list[str]]:
+    normalized: list[Path] = []
+    source_carriers: list[tuple[Path, list[Path]]] = []
+    warnings: list[str] = []
+    for source_text in label_sources:
+        if not str(source_text).strip():
+            continue
+        source = Path(source_text).expanduser()
+        if not source.exists():
+            warnings.append(f"Label source was not found: {source_text}.")
+            continue
+        resolved = source.resolve()
+        if resolved not in normalized:
+            normalized.append(resolved)
+        carriers = [
+            item
+            for item in _candidate_files(resolved)
+            if _is_label_carrier(item) or _is_bids_events_file(item)
+        ]
+        if not carriers:
+            warnings.append(
+                "Label source did not contain a supported label/event file: "
+                f"{resolved}."
+            )
+        source_carriers.append((resolved, carriers))
+    return normalized, source_carriers, warnings
+
+
+def _dedupe_paths(paths: list[Path]) -> list[Path]:
+    result: list[Path] = []
+    seen: set[str] = set()
+    for path in paths:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(path)
+    return result
 
 
 def _has_supported_suffix(path: Path, suffixes: tuple[str, ...]) -> bool:

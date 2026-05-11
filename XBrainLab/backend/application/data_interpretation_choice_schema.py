@@ -40,6 +40,20 @@ _LABEL_CARRIER_CHOICE_SCHEMA: dict[str, Any] = {
             ],
             "description": "How carrier timing should be interpreted.",
         },
+        "placement_method": {
+            "type": "string",
+            "enum": ["eeg_event", "time_field", "interval"],
+            "description": (
+                "How label rows are positioned on the EEG timeline for review "
+                "and downstream epoch setup."
+            ),
+        },
+        "duration_field": {
+            "type": "string",
+            "description": (
+                "Optional duration or end-time field preserved for epoch setup."
+            ),
+        },
         "granularity": {
             "type": "string",
             "enum": ["trial", "event", "recording", "stream", "unknown"],
@@ -82,12 +96,35 @@ _CHOICES_SCHEMA: dict[str, Any] = {
             "items": {"type": "string"},
             "description": "Selected EEG files from the latest scan result.",
         },
+        "label_sources": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Additional label/event files or folders attached from outside "
+                "the selected EEG source."
+            ),
+        },
+        "skip_labels": {
+            "type": "boolean",
+            "description": (
+                "User explicitly chose to continue without attaching external "
+                "labels for now."
+            ),
+        },
         "required_label_carriers": {
             "type": "array",
             "items": {"type": "string"},
             "description": (
                 "Saved label/event carriers that must be present or explicitly "
                 "remapped before apply."
+            ),
+        },
+        "excluded_label_carriers": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Auto-detected or loaded label/event carriers the user removed "
+                "from this import."
             ),
         },
         "eeg_file_remap": {

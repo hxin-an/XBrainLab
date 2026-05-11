@@ -179,6 +179,14 @@ class TestDataInterpretationDefinitions:
         params = _property_value(BaseScanSourceTool.parameters)
         assert "source_path" in params["required"]
 
+    def test_scan_source_accepts_external_label_sources(self):
+        params = _property_value(BaseScanSourceTool.parameters)
+        label_sources = params["properties"]["label_sources"]
+
+        assert label_sources["type"] == "array"
+        assert label_sources["items"]["type"] == "string"
+        assert "label/event files or folders" in label_sources["description"]
+
     def test_reload_recipe_requires_recipe_path(self):
         params = _property_value(BaseReloadInterpretationRecipeTool.parameters)
         assert "recipe_path" in params["required"]

@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-05-06`
+最後更新：`2026-05-11`
 
 ## 這份文件的用途
 
@@ -34,6 +34,52 @@
 - 證據：
 - 接續 / 本輪剩餘：
 ```
+
+## 2026-05-11
+
+### 22:20 Backend test hygiene boundary slice
+
+- 做了什麼：
+  - Spawned the four required read-only auditors and used their findings before implementation.
+  - Fixed Data Interpretation review snapshot precedence so a new scan/candidate no longer mixes
+    old applied label/class/format truth into current review state.
+  - Made apply enforce the target candidate's own confirmation decision, replace active raw data
+    before import, and preserve label source / label carrier mode / excluded carrier choices in
+    applied interpretation and recipe replay.
+  - Strengthened backend, script, UI route, agent, MCP, and integration tests for selected scope,
+    external label sources, structured action items, recipe reload/apply, and stale fixture paths.
+  - Updated the compact inventory in `docs/validation/README.md`, including the remaining risk
+    that the replacement `tests/fixtures/data/` tree must be included in the PR.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_state.py tests/unit/backend/application/test_data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_recipe.py tests/unit/backend/application/test_data_interpretation_service.py -q`
+    -> `29 passed`.
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_report_dataset_validation_matrix.py tests/unit/scripts/test_run_public_cross_source_training_smoke.py -q`
+    -> `4 passed`.
+  - `env MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/llm/tools/test_definitions.py tests/unit/llm/tools/test_application_surface.py tests/unit/mcp/test_server.py -q`
+    -> `181 passed`.
+  - `env QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `194 passed`.
+  - `env MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py -q`
+    -> `7 passed`.
+  - `env MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `139 passed`.
+  - `env MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q`
+    -> `31 passed`, `8 warnings`.
+  - `env MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet -q`
+    -> `2 passed`.
+  - `poetry run ruff check <dirty Python scope>` -> `All checks passed!`.
+  - `poetry run basedpyright <dirty Python scope>` -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+  - `poetry run python scripts/dev/update_quality_dashboard.py` -> generated
+    `artifacts/quality/latest.md`, `Overall status: FAIL`.
+    The dashboard failures were full-repo basedpyright (`63 errors`, outside the changed-file
+    gate), UI baseline capture exit `1`, and a stale UI theme unit assertion. The theme assertion
+    was updated to preserve disabled danger-button semantics for `Clear Dataset`, and
+    `tests/unit/ui/styles/test_theme.py -q` then passed.
+- 接續 / 本輪剩餘：
+  - Do not call the goal complete until Gate 4 is reconciled with the pre-existing Load Labels /
+    Match Labels dirty UX changes, full dashboard failures are either fixed or accepted as
+    out-of-scope blockers, and the replacement `tests/fixtures/data/` files are included in the PR.
 
 ## 2026-05-06
 
@@ -14960,3 +15006,415 @@
 - 不能宣稱：
   - This is the first documentation reset slice only. `current.md`, `validation/README.md`, and
     records still need follow-up trimming.
+
+### 2026-05-10 Data Import wizard baseline
+
+- scope：
+  - Replace the debug-style Data Interpretation preview with a task-oriented Data Import wizard
+    baseline.
+  - Keep the implementation on the existing `ApplicationService / Command API` path so UI,
+    agent, headless scripts and MCP consume the same contract.
+- red / focused tests：
+  - Added external label-source coverage for scan, candidate, service and recipe paths.
+  - Added structured action-item coverage for preview / validation payloads.
+  - Added dialog coverage for task-oriented labels, external label folder attach, skip-label
+    limited state, primary action visibility, and table geometry.
+  - Added product-flow unit smoke: import source -> add label folder -> review metadata -> match
+    labels -> review/import.
+- 做了什麼：
+  - `ScanSourceCommand` now accepts `label_sources`; scan merges auto-discovered and user-added
+    label/event carriers and records carrier source provenance.
+  - candidate, applied interpretation, recipe, state snapshot and choice schema preserve
+    `label_sources`, label matching choices, metadata overrides and skip-label choices.
+  - preview / validation emit structured `action_items` with target step, issue, impact, next
+    action and severity.
+  - Dataset sidebar now exposes `Import file`, `Import folder`, `Import BIDS folder`.
+  - Data Import dialog sections are `Choose EEG Data`, `Attach Labels`, `Review Metadata`,
+    `Match Labels`, `Review and Import`; Match Labels uses `Label file`, `EEG file`,
+    `Label source`, `Alignment`, `Label unit`, `Use as`.
+  - Dialog can add label files/folders from a different location, rescan the source with those
+    labels, run Smart Parse metadata edits into choices, and skip labels with supervised-limited
+    review language.
+  - LLM tool definitions, real/mock tools and command surface now pass `label_sources`.
+- validation：
+  - Focused backend + dialog:
+    `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/unit/backend/application/test_data_interpretation_scan.py tests/unit/backend/application/test_data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_review.py tests/unit/backend/application/test_data_interpretation_recipe.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `58 passed`.
+  - Product / command surface regression:
+    `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_rescans_after_add_label_folder_product_flow tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/dataset/test_panel.py::test_dataset_panel_apply_loader_refuses_real_study tests/unit/scripts/test_capture_data_interpretation_replay.py tests/integration/ui/test_product_walkthrough.py tests/unit/llm/tools/test_definitions.py tests/unit/llm/tools/test_application_surface.py tests/unit/mcp/test_server.py -q`
+    -> `203 passed`.
+  - Combined focused pack after lint fixes:
+    same focused backend + product / command surface set -> `261 passed`.
+  - HTTP MCP regression required localhost socket permission outside the sandbox:
+    `... pytest --capture=sys tests/unit/mcp/test_http_server.py -q` -> `6 passed`.
+  - Focused lint:
+    `ruff check` on touched Python files -> `All checks passed!`.
+  - Focused type check:
+    `basedpyright` on touched backend / UI / tool files -> `0 errors, 0 warnings, 0 notes`.
+- 不能宣稱：
+  - This does not claim full BIDS support.
+  - This does not finish downstream supervised-limited capability policy, GDF internal event
+    productization, or human Windows desktop acceptance.
+
+### 2026-05-10 Data Import step-panel correction
+
+- scope：
+  - Correct the Data Import UX from sectioned single-page preview into the agreed mental model:
+    one task-oriented panel per step.
+- red / focused tests：
+  - Added `test_data_interpretation_preview_dialog_uses_one_panel_per_step`.
+  - Red gate first failed because `DataInterpretationPreviewDialog` had no `step_stack`.
+  - Added product-flow dialog test that clicks through Choose -> Attach label folder ->
+    Review Metadata -> Match Labels -> Review and Import.
+- 做了什麼：
+  - `DataInterpretationPreviewDialog` now uses a `QStackedWidget` with five panels:
+    `Choose EEG Data`, `Attach Labels`, `Review Metadata`, `Match Labels`, `Review and Import`.
+  - Footer now has `Back` / `Next`; the primary apply/remap/import action is hidden until the
+    final Review and Import step.
+  - Existing metadata, label source attach, Smart Parse, label matching, event/class details,
+    remap and review trees remain backed by the same widgets and result contract.
+  - Replay geometry capture now switches to each relevant step before recording tree geometry, so
+    artifact checks do not read hidden table dimensions.
+- validation：
+  - Dialog tests:
+    `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `33 passed`.
+  - Focused backend / UI / product / tool / MCP stdio regression:
+    previous focused pack plus updated dialog and replay tests -> `263 passed`.
+- 不能宣稱：
+  - This still does not replace human Windows desktop acceptance or screenshot review.
+  - Downstream supervised-limited capability policy and GDF internal event productization remain
+    outside this correction.
+
+### 2026-05-10 Data Import wizard visual polish
+
+- scope：
+  - Improve the step-panel wizard from functional but visually rough PyQt defaults to a coherent
+    XBrainLab dark desktop UI.
+- 做了什麼：
+  - Added a visible five-step progress row with active / completed / upcoming states.
+  - Styled the full dialog, step panels, group boxes, trees, combo boxes, footer, primary and
+    secondary buttons with the existing XBrainLab dark theme tokens.
+  - Removed the white default background, white Cancel button and over-bright footer separator.
+  - Re-exported wizard screenshots to `artifacts/ui/data-import-wizard-steps/`.
+- validation：
+  - `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
+    -> `42 passed`.
+  - `basedpyright XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `ruff check XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py`
+    -> `All checks passed!`.
+- 不能宣稱：
+  - Screenshots are offscreen Linux Qt artifacts, not human Windows desktop acceptance.
+  - Further polish may still be needed for stepper affordance, long review text and real DPI.
+
+### 2026-05-10 Data Import task-panel layout correction
+
+- scope：
+  - Address manual feedback that the wizard still looked like tables placed into separate panels
+    rather than step-specific product panels.
+- 做了什麼：
+  - Reworked `DataInterpretationPreviewDialog` step contents into task-specific layouts:
+    source summary cards, label source/action cards, metadata status + edit area, label matching
+    workspace, and grouped Review and Import action cards.
+  - Moved the wizard footer into a conventional right-aligned button group:
+    `Back`, `Next` / final apply, `Cancel`.
+  - Kept compatibility data trees for recipe/remap/test state, but normal review now uses grouped
+    action cards instead of the first-layer flat warning table.
+  - Re-exported `artifacts/ui/data-import-wizard-steps/01-choose-eeg-data.png` through
+    `05-review-and-import.png`.
+- validation：
+  - `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
+    -> `42 passed`.
+  - `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... python scripts/dev/capture_data_interpretation_replay.py`
+    -> PASS and updated replay screenshots / JSON.
+  - Focused lint:
+    `ruff check XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py scripts/dev/capture_data_interpretation_replay.py tests/unit/scripts/test_capture_data_interpretation_replay.py`
+    -> `All checks passed!`.
+  - Focused type check:
+    `basedpyright XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `git diff --check` -> PASS.
+- 不能宣稱：
+  - This is a stronger task-panel visual baseline, not final Windows desktop acceptance.
+  - Very long review text and high-DPI Windows rendering still need human walkthrough.
+
+### 2026-05-10 Data Import footer and Dataset sidebar cleanup
+
+- scope：
+  - Address follow-up feedback that `Cancel` should be visually separated from wizard navigation,
+    Attach Labels still felt awkward, and main Dataset operations were cluttered.
+- 做了什麼：
+  - Moved Data Import `Cancel` to the left side of the footer; `Back`, `Next`, and final apply stay
+    on the right.
+  - Simplified Attach Labels into a full-width `Label sources` card plus an `Add or continue`
+    action card.
+  - Removed `Add Labels to Loaded Data` and `Smart Parse Metadata` from the visible first-layer
+    Dataset sidebar; the compatibility buttons still exist hidden so legacy/test paths are not
+    deleted.
+  - Renamed Dataset sidebar groups from `OPERATIONS` / `EXECUTION` to `IMPORT` / `DATASET`.
+  - Re-exported wizard step screenshots and Data Interpretation replay artifacts.
+- validation：
+  - `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/dataset/test_panel_minimal.py tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
+    -> `55 passed`.
+  - `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... python scripts/dev/capture_data_interpretation_replay.py`
+    -> PASS.
+  - Focused lint:
+    `ruff check XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/dataset/test_dataset_sidebar.py scripts/dev/capture_data_interpretation_replay.py tests/unit/scripts/test_capture_data_interpretation_replay.py`
+    -> `All checks passed!`.
+  - Focused type check:
+    `basedpyright XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py XBrainLab/ui/panels/dataset/sidebar.py scripts/dev/capture_data_interpretation_replay.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+- 不能宣稱：
+  - Hidden compatibility buttons mean old label / smart-parse paths still exist; they are removed
+    from first-layer UI, not deleted from the product codebase.
+  - Many-row import remains outer-scroll based; human review on a large real dataset is still
+    needed.
+
+### 2026-05-11 Data Import Load Labels and Match Labels first version
+
+- scope：
+  - Turn the label workflow into a clearer first-version product UX after manual review:
+    `Load Labels` is about which label files are available, while `Match Labels` is about how
+    those labels map onto EEG files and events.
+- 做了什麼：
+  - Renamed the wizard step and primary actions from Attach/Add/Skip wording to
+    `Load Labels`, `Load label file`, `Load label folder`, and `Continue without labels`.
+  - Replaced the first-layer Match Labels table with a compact pairing board:
+    `EEG file <- Label file`, plus a separate `Place labels on EEG` rule area for label field,
+    alignment, label unit and downstream use.
+  - Kept the hidden compatibility tree as recipe state so existing label source, label matching
+    and confirmation choices still round-trip through `get_result()`.
+  - Re-exported review screenshots:
+    `artifacts/ui/data-import-wizard-steps/02-load-labels-many.png`,
+    `04-match-labels-pairing-board.png`, and `05-review-and-import-first-version.png`.
+  - Updated canonical target / validation docs to use `Load Labels` and pairing-board wording.
+- validation：
+  - `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `39 passed`.
+  - `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/integration/ui/test_product_walkthrough.py -q`
+    -> `3 passed`.
+  - `ruff check XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+    -> `All checks passed!`.
+  - `basedpyright XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `mkdocs build --strict` -> PASS with existing Material / nav informational warnings.
+- 不能宣稱：
+  - This is a polished first version, not 100% confidence for every EEG label format.
+  - Drag-and-drop manual repair, richer per-format parsing fallback and Windows high-DPI human
+    acceptance remain future validation work.
+
+### 2026-05-11 Data Import selected-scope and pairing repair
+
+- scope：
+  - Address manual review findings after the first Match Labels version: selected `Load file`
+    scope was visually polluted by other EEG files in the scan folder, pairing rows asked users
+    to choose EEG files instead of label files, and Class names still looked like a large table.
+- 做了什麼：
+  - Match Labels now uses `preview.selected_eeg_files` for pairing rows, label target options and
+    unmatched status. Folder scan can still discover nearby labels, but unselected EEG files no
+    longer appear as missing-label rows.
+  - Reoriented the pairing board to one row per selected EEG: the user chooses a `Label file`, and
+    the `Matched` / `Needs label` badge sits to the right of that label selector.
+  - Preserved backend recipe shape by syncing the visible EEG-row selector back into hidden
+    label-carrier `target_file` choices.
+  - Replaced the visible Class names table with a compact two-column class-map editor while
+    retaining the hidden compatibility tree for existing recipe tests.
+  - Updated Review action-item copy from `Attach Labels` to `Load Labels`.
+  - Re-exported selected-scope screenshots:
+    `artifacts/ui/data-import-wizard-steps/01-choose-eeg-data-selected-scope.png` and
+    `04-match-labels-pairing-board-selected-scope.png`.
+- validation：
+  - `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/unit/backend/application/test_data_interpretation_review.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `45 passed`.
+  - `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/integration/ui/test_product_walkthrough.py -q`
+    -> `3 passed`.
+  - `ruff check XBrainLab/backend/application/data_interpretation_review.py XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/backend/application/test_data_interpretation_review.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+    -> `All checks passed!`.
+  - `basedpyright XBrainLab/backend/application/data_interpretation_review.py XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/backend/application/test_data_interpretation_review.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+- 不能宣稱：
+  - `Place labels on EEG` still needs a deeper UX decision; current controls are functional but
+    still too form-like for final product quality.
+
+### 2026-05-11 Data Import Match Labels source model and placement handoff
+
+- scope：
+  - Deliver the final first-version Match Labels design after UX review: the panel should solve
+    where labels come from, which label file applies to each EEG file, what field becomes the
+    label value, and how those rows are placed on EEG.
+- 做了什麼：
+  - Added a first-layer `Label source` choice with two normal paths:
+    `Labels inside EEG files` and `Loaded label files`.
+  - For internal EEG labels, file pairing is hidden and the panel only shows event/class
+    candidates that the current preview can actually support.
+  - For loaded label files, merged the rule area into `Label values and placement` with
+    `Label field`, `Use as`, `Placement method`, `Target event / time`, `Label unit`, and
+    `Duration field`.
+  - Extended label-carrier choices / schema / recipe reload to preserve `placement_method` and
+    `duration_field`; duration is saved as epoch handoff evidence and does not make import choose
+    the epoch window.
+  - Kept the hidden compatibility tree for existing recipe and command round-trips.
+  - Re-exported screenshots:
+    `04-match-labels-final-loaded-label-files.png`,
+    `04-match-labels-final-many-labels.png`,
+    `04-match-labels-final-internal-events.png`.
+- validation：
+  - `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `42 passed`.
+  - `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/unit/backend/application/test_data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_recipe.py tests/unit/backend/application/test_automation.py -q`
+    -> `23 passed`.
+  - `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/integration/ui/test_product_walkthrough.py -q`
+    -> `3 passed`.
+  - Focused `ruff check ...` -> `All checks passed!`.
+  - Focused `basedpyright ...` -> `0 errors, 0 warnings, 0 notes`.
+
+### 2026-05-11 Data Import file picker visibility fix
+
+- scope：
+  - Fix a reported issue where `Import file` opened a picker that showed folders but hid files.
+- 做了什麼：
+  - Changed the `Import file` picker filter to show `All files (*)` first, then EEG-specific
+    filters.
+  - Added uppercase and lowercase EEG extensions to the filter (`.gdf/.GDF`, `.vhdr/.VHDR`,
+    `.fif/.FIF`, etc.) so platform-specific case handling does not hide valid files.
+  - Added a regression test that inspects the file picker filter used by `Import file`.
+- validation：
+  - `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/unit/ui/test_ui_misc.py -q`
+    -> `141 passed`.
+  - Focused `ruff check ...` -> `All checks passed!`.
+  - Focused `basedpyright ...` -> `0 errors, 0 warnings, 0 notes`.
+  - `python -m mkdocs build --strict` -> completed successfully.
+  - `python -m mkdocs build --strict` -> completed successfully.
+  - `mkdocs build --strict` -> PASS with existing Material / nav informational warnings.
+  - `git diff --check` -> PASS.
+- 不能宣稱：
+  - Internal EEG event candidates are still limited by what preview exposes today; richer event
+    inspection belongs in the next import / epoch slice.
+  - Epoch UI has not yet been redesigned to consume `duration_field`; the recipe now preserves
+    the evidence needed for that follow-up.
+
+### 2026-05-11 Data Import inside-label and Load Labels source control
+
+- scope：
+  - Address follow-up review on the inside-label path: class names should render predictably,
+    loaded label sources need a removal action in `Load Labels`, and choosing inside EEG labels
+    must not keep applying external label-file choices.
+- 做了什麼：
+  - Sorted `Class names` rows by class code before rendering.
+  - Added a `Remove` action to user-loaded label source rows in the `Load Labels` step.
+  - When `Labels inside EEG files` is selected while label files are available, the dialog now
+    returns `label_carrier=embedded_events` and suppresses `label_carrier_choices`.
+  - Backend candidate building now treats `label_carrier=embedded_events` as an active request to
+    ignore external label carriers, skip missing required carrier blocking, and avoid external
+    label class-map inference.
+- validation：
+  - `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `45 passed`.
+  - `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/unit/backend/application/test_data_interpretation_candidate.py -q`
+    -> `12 passed`.
+- 不能宣稱：
+  - This does not yet inspect actual internal event meanings from every EEG format; it only makes
+    the selected source mode explicit and prevents accidental external-label application.
+
+### 2026-05-11 Data Import label removal and selected-scope regressions
+
+- scope：
+  - Fix the product issue where `Load Labels` removal was only available for user-loaded sources
+    and could disappear after a rescan; auto-detected label carriers must also be removable.
+  - Add background test coverage for single-file selected scope so importing one EEG file does
+    not silently import sibling EEG files from the same folder.
+- 做了什麼：
+  - Added `Remove` to auto-detected label carrier rows in `Load Labels`.
+  - Added `excluded_label_carriers` to the shared choices schema and backend candidate builder.
+    Removed carriers are filtered from `label_carriers`, `label_carrier_plan`, and recipe trace.
+  - Kept user-loaded source removal in `Load Labels`; after rescan, the user-loaded source row
+    remains removable even if it produced detected label carriers.
+  - Added focused UI tests for auto-detected carrier removal and post-rescan source removal.
+  - Background xhigh fast worker added backend tests for single-file scan scope and apply scope
+    with sibling EEG files present.
+- validation：
+  - `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/backend/application/test_data_interpretation_candidate.py -q`
+    -> `60 passed`.
+  - `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/backend/application/test_data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_scan.py tests/unit/backend/application/test_data_interpretation_service.py -q`
+    -> `70 passed`.
+  - Focused `ruff check ...` -> `All checks passed!`.
+  - Focused `basedpyright ...` -> `0 errors, 0 warnings, 0 notes`.
+- 不能宣稱：
+  - Relative-path selected scope still needs a separate regression test; current new selected-scope
+    tests use absolute paths.
+
+### 2026-05-11 Data Import inside-label class-map source separation
+
+- scope：
+  - Fix Match Labels behavior after removing label files and choosing `Labels inside EEG files`:
+    external `.mat` class values such as `1/2/3/4` must not remain visible as if they were EEG
+    internal class names.
+- 做了什麼：
+  - Added `class_map_source` to interpretation candidates and previews.
+  - Backend now marks class maps inferred from label carriers as `label_carriers`, while user
+    supplied class-map choices are marked as `user_choices`.
+  - Match Labels now hides class maps whose source is `label_carriers` when the user selects
+    `Labels inside EEG files`; it falls back to internal event-use rows instead.
+  - Event/class review rows refresh when label source mode changes or label carriers are removed,
+    so stale external class rows do not remain in the same wizard instance.
+- validation：
+  - `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/backend/application/test_data_interpretation_candidate.py -q`
+    -> `61 passed`.
+  - Focused `ruff check ...` -> `All checks passed!`.
+  - Focused `basedpyright ...` -> `0 errors, 0 warnings, 0 notes`.
+- 不能宣稱：
+  - This does not yet implement full internal EEG event-name extraction for every format. It only
+    prevents external label class values from being presented as internal EEG class names.
+
+### 2026-05-11 Data Import label-source toggle crash fix
+
+- scope：
+  - Fix a runtime crash in Match Labels when label files were cleared and the user switched label
+    source modes. The class-map widget could be scheduled for Qt deletion while Python still kept
+    a stale wrapper reference.
+- 做了什麼：
+  - Made the class-map rows widget optional and cleared its reference before removal.
+  - Guarded removal against already-deleted Qt wrappers.
+  - Rebuild event/class review rows safely whenever label source mode changes.
+  - Added a regression test that toggles between `Loaded label files` and `Labels inside EEG files`
+    after class-map widget rebuild.
+- validation：
+  - `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `49 passed`.
+  - Focused `ruff check ...` -> `All checks passed!`.
+  - Focused `basedpyright ...` -> `0 errors, 0 warnings, 0 notes`.
+
+### 2026-05-11 Data Import Match Labels inside-file layout
+
+- scope：
+  - Rework the `Labels inside EEG files` panel to match the reviewed UX model instead of showing
+    a generic `Internal EEG events` row.
+- 做了什麼：
+  - Added a visible inside-file layout with `Candidate label events`, editable `Class names`, and
+    `Not used as labels`.
+  - Candidate label rows show EEG event code, `Use as`, and coverage only; class names are edited
+    in a separate code -> class name table.
+  - Unknown names no longer render as `Name needed` per row; the summary states that event names
+    need review.
+  - Added support for `preview.internal_event_preview` / `preview.inside_eeg_events` payloads so
+    future backend event inspection can feed the reviewed layout directly.
+  - Fixed the old event-tree height clamp that compressed the new inside-file sections after
+    step changes, resizes, or show events.
+  - Removed the redundant `Events inside EEG files` status card when the inside-file event review
+    panel already has candidates, reducing vertical noise.
+  - Changed class names from two large side-by-side cards into a compact editable `Code` /
+    `Class name` table.
+  - Updated loaded-label first-layer wording to the reviewed flow: `Read labels from`,
+    `Place labels by`, `Align to`, `Label unit`, `Duration field`, and `Use as`.
+  - Refreshed UI artifacts:
+    `artifacts/ui/data-import-wizard-steps/04-match-labels-inside-eeg-discussed-layout.png`
+    and
+    `artifacts/ui/data-import-wizard-steps/04-match-labels-loaded-label-files-discussed-layout.png`.
+- validation：
+  - `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `51 passed`.
+  - `env HOME=/tmp/xbrainlab-home QT_QPA_PLATFORM=offscreen ... pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/backend/application/test_data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_scan.py tests/unit/backend/application/test_data_interpretation_service.py -q`
+    -> `74 passed`.
+  - Focused `ruff check ...` -> `All checks passed!`.
+  - Focused `basedpyright ...` -> `0 errors, 0 warnings, 0 notes`.

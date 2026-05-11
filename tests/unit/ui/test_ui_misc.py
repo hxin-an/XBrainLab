@@ -119,6 +119,27 @@ class TestDatasetActionHandler:
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_data_file_picker_does_not_hide_files(
+        self,
+        mock_mb,
+        mock_fd,
+        handler,
+    ):
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileNames.return_value = ([], "")
+
+        handler.import_data()
+
+        filter_text = mock_fd.getOpenFileNames.call_args.args[3]
+        assert filter_text.startswith("All files (*)")
+        assert "*.gdf" in filter_text
+        assert "*.GDF" in filter_text
+        assert "*.vhdr" in filter_text
+        assert "*.VHDR" in filter_text
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_import_data_success(self, mock_mb, mock_fd, handler):
         handler.panel.controller = MagicMock()
         handler.panel.controller.is_locked.return_value = False
@@ -422,6 +443,66 @@ class TestDatasetActionHandler:
         ]
         handler.panel.controller.import_files.assert_not_called()
         handler.panel.update_panel.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_bids_source_routes_bids_source_hint(
+        self,
+        mock_mb,
+        mock_fd,
+        mock_preview_dialog,
+        handler,
+    ):
+        from XBrainLab.backend.application import (
+            ApplyInterpretationCommand,
+            PreviewInterpretationCommand,
+            ScanSourceCommand,
+            ValidateInterpretationCommand,
+        )
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getExistingDirectory.return_value = "/tmp/bids-root"
+        mock_preview_dialog.return_value.exec.return_value = True
+        mock_preview_dialog.return_value.get_result.return_value = {
+            "confirmed": False,
+            "save_recipe": False,
+        }
+        commands = []
+
+        def fake_execute(_panel, command):
+            commands.append(command)
+            if isinstance(command, ScanSourceCommand):
+                return _command_result(scan_result={"source_path": command.source_path})
+            if isinstance(command, PreviewInterpretationCommand):
+                return _command_result(
+                    preview={"summary": "Found 1 EEG file(s)."},
+                    candidate={"candidate_id": "candidate-1"},
+                )
+            if isinstance(command, ValidateInterpretationCommand):
+                return _command_result(
+                    validation_decision={
+                        "candidate_id": "candidate-1",
+                        "decision": "safe",
+                        "required_confirmations": [],
+                        "blocked_reasons": [],
+                    },
+                )
+            if isinstance(command, ApplyInterpretationCommand):
+                return _command_result(applied_interpretation={})
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            side_effect=fake_execute,
+        ):
+            handler.import_bids_source()
+
+        assert isinstance(commands[0], ScanSourceCommand)
+        assert commands[0].source_path == "/tmp/bids-root"
+        assert commands[0].source_hint == "bids"
+        mock_mb.critical.assert_not_called()
 
     def test_import_folder_prefers_backend_scan_capability_over_stale_controller(
         self,
@@ -897,6 +978,135 @@ class TestDatasetActionHandler:
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_data_rescans_after_add_label_folder_product_flow(
+        self,
+        mock_mb,
+        mock_fd,
+        mock_preview_dialog,
+        handler,
+    ):
+        from XBrainLab.backend.application import (
+            ApplyInterpretationCommand,
+            PreviewInterpretationCommand,
+            ScanSourceCommand,
+            ValidateInterpretationCommand,
+        )
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        eeg_file = "/tmp/eeg/sub-01_task-mi_raw.fif"
+        label_folder = "/tmp/labels"
+        label_file = "/tmp/labels/sub-01_task-mi_events.tsv"
+        mock_fd.getOpenFileNames.return_value = ([eeg_file], "")
+
+        first_dialog = MagicMock()
+        first_dialog.exec.return_value = True
+        first_dialog.get_result.return_value = {
+            "confirmed": False,
+            "save_recipe": False,
+            "label_sources_changed": True,
+            "label_sources": [label_folder],
+            "choices": {},
+        }
+        second_dialog = MagicMock()
+        second_dialog.exec.return_value = True
+        second_dialog.get_result.return_value = {
+            "confirmed": True,
+            "save_recipe": False,
+            "choices": {
+                "metadata_overrides": {
+                    "sub-01_task-mi_raw.fif": {"subject": "S01", "task": "mi"}
+                },
+                "label_carrier_choices": {
+                    label_file: {
+                        "label_field": "trial_type",
+                        "anchor": "onset",
+                        "time_model": "seconds",
+                        "granularity": "trial",
+                        "role": "class cue labels",
+                    }
+                },
+            },
+        }
+        mock_preview_dialog.side_effect = [first_dialog, second_dialog]
+        commands = []
+
+        def fake_execute(_panel, command):
+            commands.append(command)
+            if isinstance(command, ScanSourceCommand):
+                labels = [label_file] if command.label_sources else []
+                return _command_result(
+                    scan_result={
+                        "scan_id": f"scan-{len([c for c in commands if isinstance(c, ScanSourceCommand)])}",
+                        "source_path": command.source_path,
+                        "eeg_files": [eeg_file],
+                        "label_sources": list(command.label_sources),
+                        "label_carriers": labels,
+                    }
+                )
+            if isinstance(command, PreviewInterpretationCommand):
+                candidate_id = (
+                    "candidate-with-labels"
+                    if commands
+                    and any(
+                        isinstance(item, ScanSourceCommand) and item.label_sources
+                        for item in commands
+                    )
+                    else "candidate-no-labels"
+                )
+                return _command_result(
+                    preview={"summary": "Found EEG data."},
+                    candidate={"candidate_id": candidate_id},
+                )
+            if isinstance(command, ValidateInterpretationCommand):
+                return _command_result(
+                    validation_decision={
+                        "candidate_id": command.candidate_id,
+                        "decision": "needs_confirmation",
+                        "required_confirmations": ["Confirm label matching."],
+                        "blocked_reasons": [],
+                    },
+                )
+            if isinstance(command, ApplyInterpretationCommand):
+                return _command_result(applied_interpretation={})
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            side_effect=fake_execute,
+        ):
+            handler.import_data()
+
+        scans = [
+            command for command in commands if isinstance(command, ScanSourceCommand)
+        ]
+        previews = [
+            command
+            for command in commands
+            if isinstance(command, PreviewInterpretationCommand)
+        ]
+        applies = [
+            command
+            for command in commands
+            if isinstance(command, ApplyInterpretationCommand)
+        ]
+        assert len(scans) == 2
+        assert scans[0].label_sources == []
+        assert scans[1].label_sources == [label_folder]
+        assert len(previews) == 3
+        assert previews[-1].choices["metadata_overrides"] == {
+            "sub-01_task-mi_raw.fif": {"subject": "S01", "task": "mi"}
+        }
+        assert (
+            previews[-1].choices["label_carrier_choices"][label_file]["label_field"]
+            == "trial_type"
+        )
+        assert applies[-1].candidate_id == "candidate-with-labels"
+        assert applies[-1].confirmed is True
+
+    @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_import_data_saves_recipe_when_requested(
         self,
         mock_mb,
@@ -1052,6 +1262,83 @@ class TestDatasetActionHandler:
         ):
             handler.import_data()
 
+        mock_mb.critical.assert_called_once()
+        handler.panel.controller.import_files.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_data_blocks_multi_parent_selection_missing_from_scan(
+        self,
+        mock_mb,
+        mock_fd,
+        mock_preview_dialog,
+        handler,
+    ):
+        from XBrainLab.backend.application import (
+            ApplyInterpretationCommand,
+            PreviewInterpretationCommand,
+            ScanSourceCommand,
+            ValidateInterpretationCommand,
+        )
+
+        first_file = "/mnt/a/sub-01.fif"
+        second_file = "/tmp/b/sub-02.fif"
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileNames.return_value = ([first_file, second_file], "")
+        mock_preview_dialog.return_value.exec.return_value = True
+        mock_preview_dialog.return_value.get_result.return_value = {
+            "confirmed": False,
+            "save_recipe": False,
+        }
+        commands = []
+
+        def fake_execute(_panel, command):
+            commands.append(command)
+            if isinstance(command, ScanSourceCommand):
+                return _command_result(
+                    scan_result={
+                        "scan_id": "scan-1",
+                        "source_path": command.source_path,
+                        "eeg_files": [first_file],
+                    },
+                )
+            if isinstance(command, PreviewInterpretationCommand):
+                assert command.choices["selected_eeg_files"] == [
+                    first_file,
+                    second_file,
+                ]
+                return _command_result(
+                    preview={},
+                    candidate={"candidate_id": "candidate-1"},
+                )
+            if isinstance(command, ValidateInterpretationCommand):
+                return _command_result(
+                    validation_decision={
+                        "candidate_id": "candidate-1",
+                        "decision": "blocked",
+                        "required_confirmations": [],
+                        "blocked_reasons": [
+                            (
+                                "Selected EEG file(s) were not found in the current "
+                                "scan: sub-02.fif."
+                            )
+                        ],
+                    },
+                )
+            if isinstance(command, ApplyInterpretationCommand):
+                raise AssertionError("blocked multi-parent selection must not apply")
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            side_effect=fake_execute,
+        ):
+            handler.import_data()
+
+        assert isinstance(commands[0], ScanSourceCommand)
+        assert commands[0].source_path == first_file
         mock_mb.critical.assert_called_once()
         handler.panel.controller.import_files.assert_not_called()
 

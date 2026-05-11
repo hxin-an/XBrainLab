@@ -84,6 +84,7 @@ class ScanSourceCommand:
 
     source_path: str
     source_hint: str = "auto"
+    label_sources: list[str] = field(default_factory=list)
 
     @property
     def name(self) -> CommandName:

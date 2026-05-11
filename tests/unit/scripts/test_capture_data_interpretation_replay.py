@@ -80,10 +80,11 @@ def test_dataset_sidebar_state_records_button_tooltips(qtbot) -> None:
     sidebar = SidebarStub()
     smart_parse_btn: QPushButton | None = None
     for name, text in {
-        "import_btn": "Interpret EEG Source",
-        "import_folder_btn": "Interpret Folder",
+        "import_btn": "Import file",
+        "import_folder_btn": "Import folder",
+        "import_bids_btn": "Import BIDS folder",
         "reload_recipe_btn": "Reload Import Recipe",
-        "import_label_btn": "Add Labels to Loaded Data",
+        "import_label_btn": "Add labels",
         "smart_parse_btn": "Smart Parse Metadata",
         "chan_select_btn": "Channel Selection",
         "clear_btn": "Clear Dataset",
@@ -100,7 +101,8 @@ def test_dataset_sidebar_state_records_button_tooltips(qtbot) -> None:
 
     state = dataset_sidebar_state(sidebar)
 
-    assert state["import_source"]["text"] == "Interpret EEG Source"
+    assert state["import_source"]["text"] == "Import file"
+    assert state["import_bids"]["text"] == "Import BIDS folder"
     assert state["smart_parse"] == {
         "text": "Smart Parse Metadata",
         "enabled": False,
@@ -196,13 +198,19 @@ def test_tree_state_records_rows_and_fit_geometry(qtbot) -> None:
     dialog.resize(760, 720)
     dialog.show()
     qtbot.wait(0)
+    _show_dialog_step(dialog, "Review and Import", qtbot)
     dialog._fit_all_tree_columns_to_viewport()
 
     state = tree_state(dialog.review_tree)
 
-    assert state["headers"] == ["Item", "Status", "What it means"]
+    assert state["headers"] == ["Target step", "Issue", "Impact", "Next action"]
     assert state["rows"]
-    assert state["resize_modes"] == ["Interactive", "Interactive", "Interactive"]
+    assert state["resize_modes"] == [
+        "Interactive",
+        "Interactive",
+        "Interactive",
+        "Interactive",
+    ]
     assert state["stretch_last_section"] is False
     assert abs(state["header_length"] - state["viewport_width"]) <= 2
     assert state["horizontal_scrollbar_max"] == 0
@@ -281,16 +289,35 @@ def test_replay_geometry_review_checks_all_wizard_tables(qtbot) -> None:
     dialog.resize(900, 740)
     dialog.show()
     qtbot.wait(0)
-    dialog._fit_all_tree_columns_to_viewport()
 
     review = build_replay_geometry_review(
         {
             "dialog": {
                 "tables": {
-                    "metadata": tree_state(dialog.file_tree),
-                    "label_carriers": tree_state(dialog.label_carrier_tree),
-                    "events": tree_state(dialog.event_tree),
-                    "review_summary": tree_state(dialog.review_tree),
+                    "metadata": _tree_state_for_step(
+                        dialog,
+                        "Review Metadata",
+                        dialog.file_tree,
+                        qtbot,
+                    ),
+                    "label_carriers": _tree_state_for_step(
+                        dialog,
+                        "Match Labels",
+                        dialog.label_carrier_tree,
+                        qtbot,
+                    ),
+                    "events": _tree_state_for_step(
+                        dialog,
+                        "Match Labels",
+                        dialog.event_tree,
+                        qtbot,
+                    ),
+                    "review_summary": _tree_state_for_step(
+                        dialog,
+                        "Review and Import",
+                        dialog.review_tree,
+                        qtbot,
+                    ),
                 },
             },
         },
@@ -331,3 +358,14 @@ def test_replay_geometry_review_flags_underfilled_tree() -> None:
 
 def table_item(text: str) -> QTableWidgetItem:
     return QTableWidgetItem(text)
+
+
+def _tree_state_for_step(dialog, step_title: str, tree, qtbot) -> dict:
+    _show_dialog_step(dialog, step_title, qtbot)
+    dialog._fit_all_tree_columns_to_viewport()
+    return tree_state(tree)
+
+
+def _show_dialog_step(dialog, step_title: str, qtbot) -> None:
+    dialog._go_to_step(dialog._step_titles.index(step_title))
+    qtbot.wait(0)

@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-05-10`
+最後更新：`2026-05-11`
 
 這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
@@ -56,12 +56,55 @@ current truth 以這些文件為準：
 ```text
 launcher
 -> main window visible on current screen
--> Interpret Data Source
--> select A01T/A02T/A03T fixtures
--> preview shows selected scope, not confusing scan scope
--> Confirm and Apply remains visible
--> apply loads exactly selected files
+-> Import file / Import folder
+-> Load label folder from a different location
+-> Review Metadata
+-> Match Labels
+-> Review and Import
+-> preview shows selected scope separately from scan location
+-> primary Import / Apply action remains visible
+-> apply loads exactly selected EEG files and loaded label carriers
 ```
+
+2026-05-10 automated coverage now includes focused backend tests for external `label_sources`,
+selected scope vs scan location, structured action items, dialog primary-action visibility,
+left-side Cancel / right-side wizard navigation behavior, no nested table scroll regression,
+one-panel-per-step wizard navigation, task-panel layout checks, Dataset sidebar first-layer action
+cleanup, and a product-flow unit smoke for import -> load label folder -> review metadata ->
+match labels -> review/import. Updated offscreen screenshots live under
+`artifacts/ui/data-import-wizard-steps/`. This is not a replacement for human Windows desktop
+acceptance or a full BIDS support claim.
+
+2026-05-11 follow-up coverage adds the final first-version Match Labels source model:
+`Labels inside EEG files` hides loaded-label pairing, while `Loaded label files` exposes file
+pairing plus label field, placement method, target event / time, label unit, duration field and
+check status. Focused tests now cover placement / duration preservation for epoch handoff,
+inside-EEG source selection suppressing external label-file choices, and removing a loaded label
+source from `Load Labels`. Follow-up coverage also verifies that auto-detected label carriers can
+be removed from `Load Labels` and are excluded from the backend candidate through
+`excluded_label_carriers`. Background test coverage now adds single-file selected-scope regressions
+for sibling EEG files and service apply. Follow-up tests verify that class maps inferred from
+external label carriers are not shown or saved when the user chooses `Labels inside EEG files`.
+Offscreen screenshots include:
+
+- `artifacts/ui/data-import-wizard-steps/04-match-labels-final-loaded-label-files.png`
+- `artifacts/ui/data-import-wizard-steps/04-match-labels-final-many-labels.png`
+- `artifacts/ui/data-import-wizard-steps/04-match-labels-final-internal-events.png`
+
+## Backend Test Hygiene Inventory
+
+2026-05-11 compact inventory for the backend/test hygiene branch:
+
+| Cluster | Classification | Current evidence | Action in this branch |
+| --- | --- | --- | --- |
+| Data Interpretation backend lifecycle | Strong behavior tests | `tests/unit/backend/application/test_data_interpretation_service.py` covers scan -> preview -> validate -> apply, external label sources, selected file scope, metadata apply, label import recipe state. `tests/integration/backend/test_application_service_workflow.py` covers non-mocked ApplicationService interpretation -> recipe reload -> dataset workflow. | Strengthened selected-scope and service apply coverage; added relative selected-file normalization coverage. |
+| Scan / candidate / review / recipe contracts | Useful unit contract tests | `test_data_interpretation_scan.py`, `test_data_interpretation_candidate.py`, `test_data_interpretation_review.py`, `test_data_interpretation_recipe.py`, `test_data_interpretation_label_carriers.py`. | Preserves BIDS/file/folder scan behavior, selected scope, external label source provenance, structured action items, recipe reload/remap, label source mode, placement, duration, and class-map source. |
+| UI command route | Mock-heavy but useful command contract tests | `tests/unit/ui/test_ui_misc.py` asserts import file/folder/BIDS/reload route through `ScanSourceCommand`, `PreviewInterpretationCommand`, `ValidateInterpretationCommand`, and `ApplyInterpretationCommand` without controller import fallback. `tests/unit/ui/dataset/test_dataset_sidebar.py` and `test_panel.py` guard real-Study fallback refusal. | Backend/test continuation adds command-route coverage only. The current dirty worktree still contains earlier Load Labels / Match Labels UX edits, so product UI acceptance must be judged separately from these route tests. |
+| Agent / MCP command parity | Useful contract and adapter tests | `tests/unit/llm/tools/test_application_surface.py`, `tests/unit/llm/tools/test_definitions.py`, `tests/unit/llm/agent/test_tool_call_normalizer.py`, `tests/unit/mcp/test_server.py`, and `tests/integration/mcp/*` cover exposed Data Interpretation command names, confirmation boundary, blocked reasons, schema exposure, and state truth. | Tool schema, MCP tools/list, and real/mock tool surfaces carry `label_sources` and the shared choice schema. |
+| Real-data fixture validation | Strong integration evidence when fixtures are present | Real-data tests now resolve fixtures under `tests/fixtures/data/`; scripts use the same path. | Replaced obsolete `tests/data/` path references so deleted tracked fixture files do not turn IO/pipeline tests into false skips. The replacement fixture tree must be included in the PR rather than left untracked. |
+| Legacy direct controller tests | Mock-heavy but useful compatibility tests | Legacy controller fallback tests remain in UI suites to guard mock/legacy contexts and real-Study refusal. | Not deleted; retained because they protect compatibility while architecture guards prevent product fallback bypass. |
+| Obsolete / duplicated clusters | Obsolete path cluster | The obsolete cluster is the deleted `tests/data/` fixture location, replaced by `tests/fixtures/data/`. No test cluster was deleted without replacement. | Consumers and docs were moved to `tests/fixtures/data/`; real-data gates must use that path. |
+| Missing coverage outside this scope | Explicitly out of current backend/test cleanup scope | Full internal event-name extraction for every EEG format, Windows human desktop acceptance, and final Epoch UI consumption of `duration_field`. | Documented as future validation/product work, not claimed by this branch. |
 
 ## 常用 docs gate
 

@@ -170,6 +170,7 @@ def test_dataset_panel_clear_dataset(mock_main_window, mock_controller, qtbot):
     panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
     qtbot.addWidget(panel)
     mock_controller.has_data.return_value = True
+    mock_controller.is_epoched.return_value = True
 
     with (
         patch(
@@ -323,8 +324,8 @@ def test_dataset_panel_apply_loader_refuses_real_study(
     loader.apply.assert_not_called()
     assert infos == []
     assert warnings
-    assert warnings[0][1] == "Interpret Data Source"
-    assert "Data Interpretation workflow" in warnings[0][2]
+    assert warnings[0][1] == "Import EEG Data"
+    assert "guided import workflow" in warnings[0][2]
 
 
 def test_dataset_panel_events_column_uses_semantic_text_and_muted_color(

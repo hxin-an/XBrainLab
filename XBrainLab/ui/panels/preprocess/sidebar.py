@@ -102,7 +102,7 @@ class PreprocessSidebar(QWidget):
         # 1. Aggregate Info
         self.info_panel = AggregateInfoPanel(self.main_window)
         self.info_panel.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
-        layout.addWidget(self.info_panel, stretch=1)
+        layout.addWidget(self.info_panel)
 
         # Separator
         layout.addSpacing(10)
@@ -113,13 +113,14 @@ class PreprocessSidebar(QWidget):
         line.setFixedHeight(1)
         layout.addWidget(line)
         layout.addSpacing(10)
-        layout.addSpacing(10)
 
         # 2. Operations Group
         ops_group = QGroupBox("OPERATIONS")
         ops_group.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
+        ops_group.setMinimumHeight(Stylesheets.SIDEBAR_PRIMARY_GROUP_MIN_HEIGHT)
         ops_layout = QVBoxLayout(ops_group)
         ops_layout.setContentsMargins(0, 10, 0, 0)
+        ops_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.btn_filter = QPushButton("Filtering")
         self.btn_filter.setStyleSheet(Stylesheets.SIDEBAR_BTN)
@@ -143,12 +144,14 @@ class PreprocessSidebar(QWidget):
         ops_layout.addWidget(self.btn_normalize)
 
         layout.addWidget(ops_group)
+        layout.addSpacing(Stylesheets.SIDEBAR_GROUP_GAP)
 
         # 3. Execution Group
         exec_group = QGroupBox("EXECUTION")
         exec_group.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
         exec_layout = QVBoxLayout(exec_group)
         exec_layout.setContentsMargins(0, 10, 0, 0)
+        exec_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.btn_epoch = QPushButton("Epoching")
         self.btn_epoch.setStyleSheet(Stylesheets.BTN_SUCCESS)

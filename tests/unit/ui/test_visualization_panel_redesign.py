@@ -84,7 +84,7 @@ def test_visualization_panel_layout_and_sidebar(qtbot):
     assert panel.method_combo.count() >= 3
     assert panel.sidebar.btn_montage.text() == "Set Montage"
     assert panel.sidebar.btn_saliency.text() == "Saliency Settings"
-    assert panel.sidebar.btn_export.text() == "Export Saliency"
+    assert panel.sidebar.btn_export.isHidden()
 
 
 def test_visualization_panel_populates_controls_for_multiple_trainers(qtbot):

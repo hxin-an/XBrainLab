@@ -28,9 +28,10 @@ class TestThemeConstants:
         assert Theme.METRICS_TABLE_BG
         assert Theme.METRICS_TABLE_GRID
 
-    def test_disabled_action_buttons_use_neutral_tokens(self):
+    def test_disabled_action_buttons_keep_action_semantics(self):
         assert Theme.BTN_SUCCESS_DISABLED_BG == Theme.BTN_DISABLED_BG
-        assert Theme.BTN_DANGER_DISABLED_BG == Theme.BTN_DISABLED_BG
+        assert Theme.BTN_DANGER_DISABLED_BG != Theme.BTN_DISABLED_BG
+        assert Theme.BTN_DANGER_DISABLED_TEXT != Theme.BTN_DISABLED_TEXT
         assert Theme.BTN_WARNING_DISABLED_BG == Theme.BTN_DISABLED_BG
 
 

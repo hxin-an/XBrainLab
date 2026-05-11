@@ -43,10 +43,12 @@ def test_sidebar_init(mock_panel, qtbot):
     sidebar = ControlSidebar(mock_panel)
     qtbot.addWidget(sidebar)
 
-    assert sidebar.findChild(QPushButton, "").text() == "Set Montage"
     assert isinstance(sidebar.btn_montage, QPushButton)
     assert isinstance(sidebar.btn_saliency, QPushButton)
     assert isinstance(sidebar.btn_export, QPushButton)
+    assert sidebar.btn_montage.text() == "Set Montage"
+    assert sidebar.btn_saliency.text() == "Saliency Settings"
+    assert sidebar.btn_export.isHidden()
 
 
 def test_sidebar_set_montage(mock_panel, qtbot):

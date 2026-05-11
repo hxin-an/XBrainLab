@@ -21,6 +21,9 @@ def test_import_recipe_from_dict_rehydrates_metadata_and_mappings():
             "source_path": "/data",
             "source_kind": "bids",
             "selected_eeg_files": ["/data/sub-01.fif"],
+            "skip_labels": True,
+            "label_carrier": "external_files",
+            "excluded_label_carriers": ["/data/rejected_events.tsv"],
             "metadata": [
                 {
                     "file": "/data/sub-01.fif",
@@ -39,6 +42,9 @@ def test_import_recipe_from_dict_rehydrates_metadata_and_mappings():
 
     assert isinstance(recipe, ImportRecipe)
     assert recipe.metadata[0].subject.value == "01"
+    assert recipe.skip_labels is True
+    assert recipe.label_carrier == "external_files"
+    assert recipe.excluded_label_carriers == ["/data/rejected_events.tsv"]
     assert recipe.event_roles == {"trial_type": "class cue"}
     assert recipe.class_map == {"left": "0"}
 
@@ -49,10 +55,14 @@ def test_build_import_recipe_preserves_applied_trace_and_writes_json(tmp_path):
         source_path="/data",
         source_kind="folder",
         loaded_files=["/data/sample.fif"],
+        label_sources=["/external-labels"],
         label_carriers=["/data/events.tsv"],
         label_carrier_plan=[{"path": "/data/events.tsv"}],
         metadata=[],
         format_capabilities=[{"format": "MNE FIF"}],
+        skip_labels=True,
+        label_carrier="external_files",
+        excluded_label_carriers=["/data/rejected_events.tsv"],
         validation_decision="needs_confirmation",
         confirmations=["Confirm metadata."],
         event_roles={"trial_type": "class cue"},
@@ -71,6 +81,10 @@ def test_build_import_recipe_preserves_applied_trace_and_writes_json(tmp_path):
     loaded = load_import_recipe(str(target))
 
     assert target.read_bytes().endswith(b"\n")
+    assert loaded.label_sources == ["/external-labels"]
+    assert loaded.skip_labels is True
+    assert loaded.label_carrier == "external_files"
+    assert loaded.excluded_label_carriers == ["/data/rejected_events.tsv"]
     assert loaded.recipe_trace == ["scan", "apply", "recipe:recipe-1"]
     assert loaded.warnings == ["Review labels."]
     assert loaded.label_imports == [{"status": "applied"}]
@@ -83,6 +97,7 @@ def test_choices_from_import_recipe_recreates_review_choices():
         source_path="/data",
         source_kind="bids",
         selected_eeg_files=["/data/sub-01.fif"],
+        label_sources=["/external-labels"],
         label_carriers=["/data/events.tsv"],
         label_carrier_plan=[
             {
@@ -90,7 +105,9 @@ def test_choices_from_import_recipe_recreates_review_choices():
                 "selected_target_file": "sub-01.fif",
                 "selected_label_field": "trial_type",
                 "selected_anchor": "onset",
+                "selected_duration_field": "duration",
                 "time_model": "seconds",
+                "placement_method": "interval",
                 "granularity": "trial",
                 "role": "class cue labels",
             }
@@ -132,12 +149,19 @@ def test_choices_from_import_recipe_recreates_review_choices():
         ],
         event_roles={"trial_type": "class cue"},
         class_map={"1": "left", "2": "right"},
+        skip_labels=True,
+        label_carrier="external_files",
+        excluded_label_carriers=["/data/rejected_events.tsv"],
     )
 
     choices = choices_from_import_recipe(recipe)
 
     assert choices["recipe_id"] == "recipe-1"
     assert choices["selected_eeg_files"] == ["/data/sub-01.fif"]
+    assert choices["label_sources"] == ["/external-labels"]
+    assert choices["skip_labels"] is True
+    assert choices["label_carrier"] == "external_files"
+    assert choices["excluded_label_carriers"] == ["/data/rejected_events.tsv"]
     assert choices["required_label_carriers"] == ["/data/events.tsv"]
     assert choices["metadata_overrides"] == {
         "sub-01.fif": {"subject": "S01", "task": "motor-imagery"}
@@ -146,7 +170,9 @@ def test_choices_from_import_recipe_recreates_review_choices():
         "target_file": "sub-01.fif",
         "label_field": "trial_type",
         "anchor": "onset",
+        "duration_field": "duration",
         "time_model": "seconds",
+        "placement_method": "interval",
         "granularity": "trial",
         "role": "class cue labels",
     }

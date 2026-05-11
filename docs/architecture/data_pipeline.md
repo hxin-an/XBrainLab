@@ -1,6 +1,6 @@
 # Data Pipeline Architecture
 
-最後更新：`2026-05-01`
+最後更新：`2026-05-10`
 
 ## 可信度
 
@@ -215,6 +215,63 @@ Study.train(interact=False/True)
 - `DatasetGenerator` 支援多種 split，但文件還沒逐一映射到正式 thesis protocol。
 - public fixture tests 可能因資料未下載而 skip，不能被寫成 always-on CI evidence。
 - training smoke 目前看的是流程閉環和 metrics 存在，不看 scientific performance。
+
+## Data Import UX Redesign Gap Audit
+
+這段是 2026-05-10 對照新版 Data Import UX target 後的 backend / UI audit。它描述目前
+Data Import wizard baseline 和仍未完成的產品化差距，不是新增目標態。
+
+### 目前已有支撐
+
+- Data Interpretation 已有 `scan -> preview -> validate -> apply -> recipe` command lifecycle。
+- `scan_source_path()` 能掃單一 file、folder、BIDS-like root，並找到 supported EEG files。
+- label carrier discovery 目前支援 `.mat`、`.csv`、`.tsv`、`.txt` 和 BIDS `events.tsv`。
+- label carrier planner 能從 MAT variables、CSV / TSV headers、BIDS events columns 推出
+  label field / anchor candidates，並保存到 candidate / recipe choices。
+- multi-file UI 會以 common parent scan，並透過 `choices.selected_eeg_files` 限定實際 import
+  scope；preview payload 已開始區分 selected scope 和 scan location。
+- `ScanSourceCommand.label_sources` 可帶入 EEG source 之外的 label / event file 或 folder；
+  `scan_source_path()` 會合併 auto-discovered 和 user-added carriers，並保留 carrier source。
+- preview / validation payload 已輸出 `action_items`，每項包含 `target_step`、`issue`、`impact`、
+  `next_action` 和 `severity`，供 UI、agent、headless、MCP 讀同一份 command result。
+- import dialog 目前以 `QStackedWidget` step panels 呈現，一次只顯示一個 task panel：
+  Choose EEG Data、Attach Labels、Review Metadata、Match Labels、Review and Import。
+- Dataset sidebar 主要入口已改成 `Import file`、`Import folder`、`Import BIDS folder`；BIDS
+  入口仍是 BIDS-like scan hint，不代表完整 BIDS support。
+- apply path 能在部分情況自動套 label：timestamp labels、sample-index anchored MAT labels、
+  trial-order sequence labels。
+- metadata edit、smart parse、remove files 已有 `DataTableCommandService` command path。
+
+### 2026-05-10 已交付 slice
+
+| Target UX need | Current implementation | Remaining boundary |
+| --- | --- | --- |
+| Attach label file / folder independent from EEG source | `ScanSourceCommand.label_sources`、dialog `Add label file` / `Add label folder`、service rescan loop、recipe `label_sources` preservation。 | Label source add currently rescans and reopens the wizard with the attached source; later polish can keep the user on the same visual step after rescan. |
+| Selected scope vs scan location | dialog shows selected scope separately from scan location in source summary cards; candidate metadata is filtered by selected EEG files. | More screenshot evidence is still useful for multi-file fixture walkthroughs. |
+| Match Labels task-oriented UI | label table columns are `Label file`、`EEG file`、`Label source`、`Alignment`、`Label unit`、`Use as`；backend terms remain recipe internals. | Advanced event/class diagnostics still live in the same dialog instead of a collapsed details surface. |
+| Actionable Review and Import checklist | preview / validation emits structured action items; UI renders grouped review cards with issue、impact、next action and target step. | The hidden compatibility tree still backs legacy payload tests / remap selectors, but it is no longer the first-layer review layout. |
+| Import without labels / limited mode | `Skip labels for now` is saved in choices and produces a supervised-limited action item. | Downstream dataset/training capability policy should consume this limited state more explicitly. |
+| UI / agent / MCP alignment | ApplicationService, tool definitions, real/mock tools, state snapshot, stdio MCP and HTTP MCP tests use the same extended command surface. | Broader tool-call eval waits until product stabilization. |
+
+### Remaining gaps
+
+| Target UX need | Current gap | 實作方向 |
+| --- | --- | --- |
+| Metadata review step + Smart Parse | dialog button opens the Smart Parser helper and writes overrides into choices, but parser rule provenance is still basic. | Record parser rule / manual edit provenance more explicitly in recipe trace. |
+| GDF internal event productization | GDF internal events 目前多半變成需要確認的 event role hint，還不是清楚的 event code / class map review。 | Candidate builder 需要 event extraction summary：event code counts、candidate class cues、trial anchors、ignored artifact/boundary。 |
+| Wizard polish | Current implementation is a task-oriented step-panel dialog with step-specific cards, left-side Cancel, right-side navigation/apply, and screenshot evidence under `artifacts/ui/data-import-wizard-steps/`. | Human Windows desktop acceptance is still needed; offscreen screenshots are product evidence but not release approval. |
+| Grouped checklist hierarchy | action items are structured and rendered as target-step review cards. | Very long review text may still need a detail drawer or row expansion after human walkthrough. |
+| Downstream limited state | Skip-label choice is preserved and reviewable, but downstream supervised workflow blocking still needs a dedicated capability signal. | Capability policy 要能表示 imported raw-only / supervised-limited 狀態，並阻擋 supervised dataset / training claim。 |
+
+### 建議下一個 backend slice
+
+不要先大改整個 importer。下一個有效切片應是：
+
+1. 讓 downstream capability policy 讀 skip-label / supervised-limited state。
+2. 補 event extraction summary，讓 internal GDF / BIDS events 的 class cues 更容易人工確認。
+3. 把 metadata Smart Parse provenance 寫進 recipe trace。
+4. 補 screenshot / walkthrough artifact：EEG files 在 `eeg/`、labels 在 sibling `labels/`，使用者能
+   attach labels 並完成 preview / validate / apply。
 
 ## 後續重構前要做
 

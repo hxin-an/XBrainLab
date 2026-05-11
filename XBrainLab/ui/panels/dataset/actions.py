@@ -151,9 +151,12 @@ class DatasetActionHandler:
             return
 
         filter_str = (
-            "All Supported (*.set *.gdf *.fif *.edf *.bdf *.cnt *.vhdr);;"
-            "EEGLAB (*.set);;GDF (*.gdf);;FIF (*.fif);;"
-            "EDF/BDF (*.edf *.bdf);;Neuroscan CNT (*.cnt);;BrainVision (*.vhdr)"
+            "All files (*);;"
+            "EEG files (*.set *.SET *.gdf *.GDF *.fif *.FIF *.edf *.EDF "
+            "*.bdf *.BDF *.cnt *.CNT *.vhdr *.VHDR);;"
+            "EEGLAB (*.set *.SET);;GDF (*.gdf *.GDF);;"
+            "FIF (*.fif *.FIF);;EDF/BDF (*.edf *.EDF *.bdf *.BDF);;"
+            "Neuroscan CNT (*.cnt *.CNT);;BrainVision (*.vhdr *.VHDR)"
         )
         filepaths, _ = QFileDialog.getOpenFileNames(
             self.panel,
@@ -219,6 +222,31 @@ class DatasetActionHandler:
             return
         try:
             handled = self._run_data_interpretation_import([source_path])
+            if not handled:
+                QMessageBox.critical(
+                    self.panel,
+                    "Interpretation unavailable",
+                    "Data Interpretation command service is unavailable.",
+                )
+        except Exception as e:
+            QMessageBox.critical(self.panel, "Error", f"Import failed: {e}")
+
+    def import_bids_source(self):
+        """Interpret a BIDS-like folder through the Data Interpretation flow."""
+        if not self._can_start_interpretation():
+            return
+        source_path = QFileDialog.getExistingDirectory(
+            self.panel,
+            "Choose BIDS Folder for Import",
+            "",
+        )
+        if not source_path:
+            return
+        try:
+            handled = self._run_data_interpretation_import(
+                [source_path],
+                source_hint="bids",
+            )
             if not handled:
                 QMessageBox.critical(
                     self.panel,
@@ -436,12 +464,22 @@ class DatasetActionHandler:
             )
         return True
 
-    def _run_data_interpretation_import(self, filepaths: list[str]) -> bool:
+    def _run_data_interpretation_import(
+        self,
+        filepaths: list[str],
+        *,
+        source_hint: str = "auto",
+    ) -> bool:
         """Run the Data Interpretation command sequence for selected files."""
         source_path, choices = self._interpretation_source_and_choices(filepaths)
+        label_sources: list[str] = []
         scan_result = execute_application_command(
             self.panel,
-            ScanSourceCommand(source_path=source_path),
+            ScanSourceCommand(
+                source_path=source_path,
+                source_hint=source_hint,
+                label_sources=label_sources,
+            ),
         )
         if scan_result is None:
             return False
@@ -485,34 +523,96 @@ class DatasetActionHandler:
             validation_result,
             "validation_decision",
         )
-        dialog = DataInterpretationPreviewDialog(
-            self.panel,
-            scan_result=scan,
-            preview=preview,
-            validation_decision=decision,
-        )
-        if not dialog.exec():
-            return True
 
-        if str(decision.get("decision")) == "blocked":
-            QMessageBox.critical(
+        while True:
+            dialog = DataInterpretationPreviewDialog(
                 self.panel,
-                "Interpretation blocked",
-                self._decision_reason(decision),
+                scan_result=scan,
+                preview=preview,
+                validation_decision=decision,
             )
-            return True
+            if not dialog.exec():
+                return True
 
-        raw_dialog_result = dialog.get_result()
-        dialog_result = (
-            dict(raw_dialog_result) if isinstance(raw_dialog_result, dict) else {}
-        )
-        raw_dialog_choices = dialog_result.get("choices")
-        dialog_choices: dict[str, Any] = (
-            {str(key): value for key, value in raw_dialog_choices.items()}
-            if isinstance(raw_dialog_choices, dict)
-            else {}
-        )
-        if dialog_choices:
+            raw_dialog_result = dialog.get_result()
+            dialog_result = (
+                dict(raw_dialog_result) if isinstance(raw_dialog_result, dict) else {}
+            )
+            raw_dialog_choices = dialog_result.get("choices")
+            dialog_choices: dict[str, Any] = (
+                {str(key): value for key, value in raw_dialog_choices.items()}
+                if isinstance(raw_dialog_choices, dict)
+                else {}
+            )
+            next_label_sources = self._dialog_label_sources(
+                dialog_result,
+                label_sources,
+            )
+            if next_label_sources != label_sources:
+                label_sources = next_label_sources
+                scan_result = execute_application_command(
+                    self.panel,
+                    ScanSourceCommand(
+                        source_path=source_path,
+                        source_hint=source_hint,
+                        label_sources=label_sources,
+                    ),
+                )
+                if scan_result is None:
+                    return False
+                if scan_result.failed:
+                    QMessageBox.critical(
+                        self.panel,
+                        "Source scan failed",
+                        scan_result.message,
+                    )
+                    return True
+                scan = self._diagnostic_payload(scan_result, "scan_result")
+                preview_result = execute_application_command(
+                    self.panel,
+                    PreviewInterpretationCommand(choices=choices),
+                )
+                if preview_result is None:
+                    return False
+                if preview_result.failed:
+                    QMessageBox.critical(
+                        self.panel,
+                        "Interpretation preview failed",
+                        preview_result.message,
+                    )
+                    return True
+                candidate = self._diagnostic_payload(preview_result, "candidate")
+                candidate_id = self._optional_payload_id(candidate, "candidate_id")
+                validation_result = execute_application_command(
+                    self.panel,
+                    ValidateInterpretationCommand(candidate_id=candidate_id),
+                )
+                if validation_result is None:
+                    return False
+                if validation_result.failed:
+                    QMessageBox.critical(
+                        self.panel,
+                        "Interpretation validation failed",
+                        validation_result.message,
+                    )
+                    return True
+                preview = self._diagnostic_payload(preview_result, "preview")
+                decision = self._diagnostic_payload(
+                    validation_result,
+                    "validation_decision",
+                )
+                continue
+
+            if str(decision.get("decision")) == "blocked":
+                QMessageBox.critical(
+                    self.panel,
+                    "Interpretation blocked",
+                    self._decision_reason(decision),
+                )
+                return True
+
+            if not dialog_choices:
+                break
             choices = self._merge_interpretation_choices(choices, dialog_choices)
             preview_result = execute_application_command(
                 self.panel,
@@ -556,6 +656,7 @@ class DatasetActionHandler:
                     self._decision_reason(decision),
                 )
                 return True
+            break
 
         confirmed = str(decision.get("decision")) == "needs_confirmation" and bool(
             dialog_result.get("confirmed"),
@@ -587,6 +688,23 @@ class DatasetActionHandler:
             " ".join(part for part in [apply_result.message, recipe_message] if part),
         )
         return True
+
+    @staticmethod
+    def _dialog_label_sources(
+        dialog_result: dict[str, Any],
+        current_sources: list[str],
+    ) -> list[str]:
+        if not bool(dialog_result.get("label_sources_changed")):
+            return list(current_sources)
+        raw_sources = dialog_result.get("label_sources")
+        if not isinstance(raw_sources, list):
+            return list(current_sources)
+        result: list[str] = []
+        for source in raw_sources:
+            text = str(source).strip()
+            if text and text not in result:
+                result.append(text)
+        return result
 
     def _save_interpretation_recipe(self) -> str:
         """Persist the latest applied interpretation recipe if requested."""

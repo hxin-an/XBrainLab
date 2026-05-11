@@ -191,6 +191,7 @@ class RealScanSourceTool(BaseScanSourceTool):
         study: Any,
         source_path: str | None = None,
         source_hint: str = "auto",
+        label_sources: list[str] | None = None,
         **kwargs,
     ) -> str:
         if not source_path:
@@ -198,6 +199,7 @@ class RealScanSourceTool(BaseScanSourceTool):
         result = BackendFacade(study).service.scan_source(
             source_path=source_path,
             source_hint=source_hint,
+            label_sources=label_sources or [],
         )
         return _application_result_message(result)
 

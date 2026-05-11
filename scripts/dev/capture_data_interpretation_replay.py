@@ -23,7 +23,6 @@ from PyQt6.QtCore import QPoint, QSize, Qt, QTimer
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
-    QDialogButtonBox,
     QHeaderView,
     QLabel,
     QTableWidget,
@@ -192,6 +191,9 @@ def dataset_sidebar_state(sidebar: Any) -> dict[str, dict[str, Any]]:
     return {
         "import_source": button_state(sidebar.import_btn),
         "import_folder": button_state(sidebar.import_folder_btn),
+        "import_bids": button_state(sidebar.import_bids_btn)
+        if hasattr(sidebar, "import_bids_btn")
+        else {"text": "", "enabled": False, "tooltip": ""},
         "reload_recipe": button_state(sidebar.reload_recipe_btn),
         "import_labels": button_state(sidebar.import_label_btn),
         "smart_parse": button_state(sidebar.smart_parse_btn),
@@ -594,14 +596,13 @@ def apply_replay_review_choices(
                 target_selector.setCurrentText(SECOND_SOURCE_PATH.name)
         else:
             label_item.setText(1, SECOND_SOURCE_PATH.name)
-        set_tree_cell(dialog.label_carrier_tree, label_item, 3, "trial_type")
-        set_tree_cell(dialog.label_carrier_tree, label_item, 4, "onset")
-        set_tree_cell(dialog.label_carrier_tree, label_item, 5, "Seconds")
-        set_tree_cell(dialog.label_carrier_tree, label_item, 6, "Trial")
+        set_tree_cell(dialog.label_carrier_tree, label_item, 2, "trial_type")
+        set_tree_cell(dialog.label_carrier_tree, label_item, 3, "onset")
+        set_tree_cell(dialog.label_carrier_tree, label_item, 4, "Trial")
         set_tree_cell(
             dialog.label_carrier_tree,
             label_item,
-            7,
+            5,
             "Class cue labels",
         )
 
@@ -623,6 +624,31 @@ def source_event_field_matches(item: QTreeWidgetItem, source_field: str) -> bool
     tooltip_match = item.toolTip(0) == f"Source event field: {source_field}"
     legacy_visible_match = item.text(0) == source_field
     return tooltip_match or legacy_visible_match
+
+
+def show_dialog_step(
+    dialog: DataInterpretationPreviewDialog,
+    step_title: str,
+    app: QApplication,
+) -> None:
+    """Show one wizard step before screenshot or geometry capture."""
+    step_titles = getattr(dialog, "_step_titles", [])
+    if step_title in step_titles:
+        dialog._go_to_step(step_titles.index(step_title))
+    app.processEvents()
+
+
+def tree_state_for_step(
+    dialog: DataInterpretationPreviewDialog,
+    step_title: str,
+    tree: QTreeWidget,
+    app: QApplication,
+) -> dict[str, Any]:
+    """Capture geometry for the tree while its wizard panel is visible."""
+    show_dialog_step(dialog, step_title, app)
+    dialog._fit_all_tree_columns_to_viewport()
+    app.processEvents()
+    return tree_state(tree)
 
 
 def capture_replay(app: QApplication) -> int:
@@ -666,13 +692,24 @@ def capture_replay(app: QApplication) -> int:
             dialog.show()
             app.processEvents()
             dialog_choices = apply_replay_review_choices(dialog)
+            show_dialog_step(dialog, "Review and Import", app)
             dialog.repaint()
             app.processEvents()
             capture_widget(dialog, PREVIEW_SCREENSHOT)
+            ok_button = dialog.apply_button
 
             dialog_state = {
                 "title": dialog.windowTitle(),
                 "decision": dialog.decision,
+                "current_step": "Review and Import",
+                "back_button": {
+                    "text": dialog.back_button.text(),
+                    "enabled": dialog.back_button.isEnabled(),
+                },
+                "next_button": {
+                    "text": dialog.next_button.text(),
+                    "visible": dialog.next_button.isVisible(),
+                },
                 "visible_text": visible_texts(dialog),
                 "metadata_rows": tree_rows(dialog.file_tree),
                 "label_carrier_rows": tree_rows(dialog.label_carrier_tree),
@@ -680,14 +717,39 @@ def capture_replay(app: QApplication) -> int:
                 "review_summary_rows": sanitized(tree_rows(dialog.review_tree)),
                 "tables": sanitized(
                     {
-                        "metadata": tree_state(dialog.file_tree),
-                        "label_carriers": tree_state(dialog.label_carrier_tree),
-                        "events": tree_state(dialog.event_tree),
-                        "review_summary": tree_state(dialog.review_tree),
+                        "metadata": tree_state_for_step(
+                            dialog,
+                            "Review Metadata",
+                            dialog.file_tree,
+                            app,
+                        ),
+                        "label_carriers": tree_state_for_step(
+                            dialog,
+                            "Match Labels",
+                            dialog.label_carrier_tree,
+                            app,
+                        ),
+                        "events": tree_state_for_step(
+                            dialog,
+                            "Match Labels",
+                            dialog.event_tree,
+                            app,
+                        ),
+                        "review_summary": tree_state_for_step(
+                            dialog,
+                            "Review and Import",
+                            dialog.review_tree,
+                            app,
+                        ),
                     }
                 ),
                 "review_choices": sanitized(dialog_choices),
-                "apply_button_enabled": dialog.decision != "blocked",
+                "apply_button_enabled": (
+                    ok_button.isEnabled() if ok_button is not None else False
+                ),
+                "apply_button_visible": (
+                    ok_button.isVisible() if ok_button is not None else False
+                ),
                 "save_recipe_checked": dialog.save_recipe_check.isChecked(),
                 "screenshot": PREVIEW_SCREENSHOT.name,
             }
@@ -755,23 +817,43 @@ def capture_replay(app: QApplication) -> int:
                     next_index = 1 if selector.count() > 1 else 0
                     selector.setCurrentIndex(next_index)
             app.processEvents()
+            show_dialog_step(remap_dialog, "Review and Import", app)
             remap_dialog.repaint()
             app.processEvents()
             capture_widget(remap_dialog, REMAP_SCREENSHOT)
-            remap_ok_button = remap_dialog.button_box.button(
-                QDialogButtonBox.StandardButton.Ok,
-            )
+            remap_ok_button = remap_dialog.apply_button
             remap_dialog_state = {
                 "title": remap_dialog.windowTitle(),
                 "decision": remap_dialog.decision,
+                "current_step": "Review and Import",
                 "visible_text": visible_texts(remap_dialog),
                 "review_summary_rows": sanitized(tree_rows(remap_dialog.review_tree)),
                 "tables": sanitized(
                     {
-                        "metadata": tree_state(remap_dialog.file_tree),
-                        "label_carriers": tree_state(remap_dialog.label_carrier_tree),
-                        "events": tree_state(remap_dialog.event_tree),
-                        "review_summary": tree_state(remap_dialog.review_tree),
+                        "metadata": tree_state_for_step(
+                            remap_dialog,
+                            "Review Metadata",
+                            remap_dialog.file_tree,
+                            app,
+                        ),
+                        "label_carriers": tree_state_for_step(
+                            remap_dialog,
+                            "Match Labels",
+                            remap_dialog.label_carrier_tree,
+                            app,
+                        ),
+                        "events": tree_state_for_step(
+                            remap_dialog,
+                            "Match Labels",
+                            remap_dialog.event_tree,
+                            app,
+                        ),
+                        "review_summary": tree_state_for_step(
+                            remap_dialog,
+                            "Review and Import",
+                            remap_dialog.review_tree,
+                            app,
+                        ),
                     }
                 ),
                 "remap_choices": sanitized(

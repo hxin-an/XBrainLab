@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QDialog, QMainWindow, QWidget
+from PyQt6.QtWidgets import QDialog, QGroupBox, QMainWindow, QWidget
 
 
 def _command_result(**diagnostics):
@@ -49,6 +50,41 @@ class TestPreprocessSidebar:
 
     def test_creates(self, sidebar):
         assert isinstance(sidebar, QWidget)
+
+    def test_right_sidebars_keep_operation_area_at_consistent_y(self, qtbot):
+        from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
+        from XBrainLab.ui.panels.preprocess.sidebar import PreprocessSidebar
+        from XBrainLab.ui.panels.training.sidebar import TrainingSidebar
+        from XBrainLab.ui.panels.visualization.control_sidebar import ControlSidebar
+        from XBrainLab.ui.styles.stylesheets import Stylesheets
+
+        sidebars = []
+        for sidebar_class in (
+            DatasetSidebar,
+            PreprocessSidebar,
+            TrainingSidebar,
+            ControlSidebar,
+        ):
+            panel = _make_panel_mock()
+            panel.action_handler = MagicMock()
+            sidebar = sidebar_class(panel)
+            qtbot.addWidget(sidebar)
+            sidebars.append(sidebar)
+
+        for sidebar in sidebars:
+            layout = sidebar.layout()
+            assert layout is not None
+            assert layout.stretch(0) == 0
+            groups = sidebar.findChildren(QGroupBox)
+            primary_group = next(
+                group
+                for group in groups
+                if group.title() in {"IMPORT", "OPERATIONS", "CONFIGURATION"}
+            )
+            assert (
+                primary_group.minimumHeight()
+                == Stylesheets.SIDEBAR_PRIMARY_GROUP_MIN_HEIGHT
+            )
 
     def test_update_sidebar(self, sidebar):
         sidebar.update_sidebar()
@@ -2042,13 +2078,17 @@ class TestDatasetSidebar:
 
         sb.update_sidebar()
 
-        assert sb.import_btn.toolTip() == "Scan, preview, validate, and apply EEG data"
+        assert sb.import_btn.toolTip() == (
+            "Choose EEG data, review metadata and labels, then import"
+        )
         assert sb.import_folder_btn.toolTip() == (
-            "Scan a folder or BIDS root, then preview and confirm it"
+            "Choose an EEG folder, review metadata and labels, then import"
         )
         assert sb.reload_recipe_btn.toolTip() == (
             "Review a saved import recipe before applying it"
         )
+        assert sb.clear_btn.isEnabled() is False
+        assert "Create epochs" in sb.clear_btn.toolTip()
         assert sb.smart_parse_btn.isEnabled()
         assert sb.smart_parse_btn.toolTip() == (
             "Auto-extract Subject/Session from filenames"
@@ -2303,6 +2343,7 @@ class TestDatasetSidebar:
     def test_clear_dataset(self, sidebar):
         from PyQt6.QtWidgets import QMessageBox
 
+        sidebar.panel.controller.is_epoched.return_value = True
         with patch.object(
             QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes
         ):
@@ -2322,6 +2363,7 @@ class TestDatasetSidebar:
         raw = MagicMock()
         raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
         study.data_manager.loaded_data_list = [raw]
+        cast(Any, study).epoch_data = object()
         panel = _make_panel_mock()
         panel.main_window.study = study
         sb = DatasetSidebar(panel)
@@ -2353,7 +2395,7 @@ class TestDatasetSidebar:
 
         def execute_for(_, command, refresh=True):
             if isinstance(command, QueryStateCommand):
-                return _command_result(state={"raw": {"loaded": True}})
+                return _command_result(state={"epoch": {"exists": True}})
             return None
 
         with (

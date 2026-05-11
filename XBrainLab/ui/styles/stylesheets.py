@@ -14,6 +14,9 @@ class Stylesheets:
     selectors and ``Theme`` constants to ensure visual consistency.
     """
 
+    SIDEBAR_PRIMARY_GROUP_MIN_HEIGHT = 170
+    SIDEBAR_GROUP_GAP = 12
+
     # Generic GroupBox (Used in AggregateInfoPanel, etc.)
     GROUP_BOX_MINIMAL = f"""
         QGroupBox {{
@@ -70,7 +73,7 @@ class Stylesheets:
         }}
         QPushButton:disabled {{
             background-color: {Theme.BTN_DANGER_DISABLED_BG};
-            color: {Theme.BTN_DISABLED_TEXT};
+            color: {Theme.BTN_DANGER_DISABLED_TEXT};
             border: 1px solid {Theme.BTN_DANGER_DISABLED_BORDER};
         }}
     """

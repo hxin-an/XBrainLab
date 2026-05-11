@@ -269,9 +269,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
     ):
         PreviewDialog.return_value.exec.return_value = True
         PreviewDialog.return_value.get_result.return_value = {"confirmed": True}
-        assert test_app.dataset_panel.sidebar.import_btn.text() == (
-            "Interpret Data Source"
-        )
+        assert test_app.dataset_panel.sidebar.import_btn.text() == "Import file"
         _click(qtbot, test_app.dataset_panel.sidebar.import_btn)
 
     assert test_app.study.loaded_data_list

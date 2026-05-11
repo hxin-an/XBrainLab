@@ -117,10 +117,12 @@ class InterpretationStateSnapshot:
     latest_recipe_id: str | None = None
     source_path: str | None = None
     source_kind: str | None = None
+    label_sources: list[str] = field(default_factory=list)
     validation_decision: str | None = None
     pending_confirmation: bool = False
     blocked_reasons: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    action_items: list[dict[str, str]] = field(default_factory=list)
     summary: str | None = None
     metadata_preview: list[dict[str, Any]] = field(default_factory=list)
     label_carriers: list[str] = field(default_factory=list)

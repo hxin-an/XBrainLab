@@ -52,6 +52,10 @@ def test_tools_list_uses_application_command_schema():
     tools = {tool["name"]: tool for tool in response["result"]["tools"]}
     scan = tools[CommandName.SCAN_SOURCE.value]
     assert scan["inputSchema"]["required"] == ["source_path"]
+    assert scan["inputSchema"]["properties"]["label_sources"] == {
+        "type": "array",
+        "items": {"type": "string"},
+    }
     assert "adapter" in scan["outputSchema"]["properties"]
     assert scan["x_xbrainlab"]["taxonomy"] == "data_interpretation"
     assert scan["x_xbrainlab"]["capability"]["can_auto_execute"] is True

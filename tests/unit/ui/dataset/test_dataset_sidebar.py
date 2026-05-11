@@ -1,3 +1,4 @@
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -5,6 +6,7 @@ from PyQt6.QtWidgets import QMessageBox, QPushButton, QWidget
 
 from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
 from XBrainLab.ui.styles.stylesheets import Stylesheets
+from XBrainLab.ui.styles.theme import Theme
 
 
 @pytest.fixture
@@ -25,6 +27,7 @@ def sidebar(qtbot):
 def test_init_ui(sidebar):
     assert isinstance(sidebar.import_btn, QPushButton)
     assert isinstance(sidebar.import_folder_btn, QPushButton)
+    assert isinstance(sidebar.import_bids_btn, QPushButton)
     assert isinstance(sidebar.reload_recipe_btn, QPushButton)
     assert isinstance(sidebar.import_label_btn, QPushButton)
     assert isinstance(sidebar.smart_parse_btn, QPushButton)
@@ -32,9 +35,21 @@ def test_init_ui(sidebar):
     assert isinstance(sidebar.clear_btn, QPushButton)
 
 
+def test_add_labels_is_visible_while_smart_parse_stays_in_wizard(sidebar):
+    assert sidebar.import_label_btn.isHidden() is False
+    assert sidebar.import_label_btn.text() == "Add labels"
+    assert sidebar.smart_parse_btn.isHidden()
+
+
 def test_channel_selection_uses_neutral_action_style(sidebar):
     assert sidebar.chan_select_btn.styleSheet() == Stylesheets.SIDEBAR_BTN
     assert sidebar.chan_select_btn.styleSheet() != Stylesheets.BTN_SUCCESS
+
+
+def test_clear_dataset_disabled_keeps_danger_tone(sidebar):
+    assert Theme.BTN_DANGER_DISABLED_BG != Theme.BTN_DISABLED_BG
+    assert Theme.BTN_DANGER_DISABLED_BG in sidebar.clear_btn.styleSheet()
+    assert Theme.BTN_DANGER_DISABLED_TEXT in sidebar.clear_btn.styleSheet()
 
 
 def test_update_sidebar_locked(sidebar):
@@ -87,7 +102,47 @@ def test_update_sidebar_disables_clear_dataset_for_empty_backend_state(qtbot):
     widget.update_sidebar()
 
     assert widget.clear_btn.isEnabled() is False
-    assert "No dataset to clear" in widget.clear_btn.toolTip()
+    assert "Create epochs" in widget.clear_btn.toolTip()
+
+
+def test_update_sidebar_keeps_clear_disabled_for_raw_without_epoch(qtbot):
+    from XBrainLab.backend.study import Study
+
+    panel_mock = MagicMock()
+    panel_mock.action_handler = MagicMock()
+    panel_mock.controller = MagicMock()
+    panel_mock.main_window = QWidget()
+    panel_mock.main_window.study = Study()
+    raw = MagicMock()
+    raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
+    panel_mock.main_window.study.loaded_data_list = [raw]
+
+    widget = DatasetSidebar(panel_mock, parent=None)
+    qtbot.addWidget(widget)
+
+    widget.update_sidebar()
+
+    assert widget.clear_btn.isEnabled() is False
+    assert "Create epochs" in widget.clear_btn.toolTip()
+
+
+def test_update_sidebar_enables_clear_dataset_when_epoch_exists(qtbot):
+    from XBrainLab.backend.study import Study
+
+    panel_mock = MagicMock()
+    panel_mock.action_handler = MagicMock()
+    panel_mock.controller = MagicMock()
+    panel_mock.main_window = QWidget()
+    panel_mock.main_window.study = Study()
+    cast(Any, panel_mock.main_window.study).epoch_data = object()
+
+    widget = DatasetSidebar(panel_mock, parent=None)
+    qtbot.addWidget(widget)
+
+    widget.update_sidebar()
+
+    assert widget.clear_btn.isEnabled() is True
+    assert "epoched dataset" in widget.clear_btn.toolTip()
 
 
 def test_update_sidebar_refuses_real_study_clear_availability_fallback(qtbot):
@@ -208,6 +263,9 @@ def test_button_connections(sidebar):
 
     sidebar.import_folder_btn.click()
     sidebar.panel.action_handler.import_folder_source.assert_called_once()
+
+    sidebar.import_bids_btn.click()
+    sidebar.panel.action_handler.import_bids_source.assert_called_once()
 
     sidebar.reload_recipe_btn.click()
     sidebar.panel.action_handler.reload_interpretation_recipe.assert_called_once()

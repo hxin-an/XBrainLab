@@ -197,9 +197,9 @@ class DatasetPanel(BasePanel):
             logger.warning("Blocked legacy loader apply in real Study context.")
             QMessageBox.warning(
                 self,
-                "Interpret Data Source",
-                "Use Interpret Data Source or Interpret Folder / BIDS so "
-                "the import goes through the Data Interpretation workflow.",
+                "Import EEG Data",
+                "Use Import file, Import folder, or Import BIDS folder so "
+                "the data goes through the guided import workflow.",
             )
             return
         except Exception as exc:

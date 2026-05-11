@@ -248,10 +248,15 @@ class ApplicationService:
         self,
         source_path: str,
         source_hint: str = "auto",
+        label_sources: list[str] | None = None,
     ) -> CommandResult:
         """Scan a source path for a data interpretation."""
         return self.execute(
-            ScanSourceCommand(source_path=source_path, source_hint=source_hint),
+            ScanSourceCommand(
+                source_path=source_path,
+                source_hint=source_hint,
+                label_sources=list(label_sources or []),
+            ),
         )
 
     def preview_interpretation(

@@ -11,6 +11,14 @@
 要先做這件事，因為 MVP 前最大的風險不是功能不夠多，而是 UI、backend、assistant、MCP
 各自保存一套 workflow truth。
 
+Data Import 這條線已先補一輪 UX target alignment 並交付第一版 task-oriented step-panel
+wizard baseline：primary import actions、external label sources、selected scope vs scan location、
+structured action items、recipe preservation 和 UI / agent / MCP command surface 對齊。
+最新 UI polish 已把每個 wizard step 改成不同任務 panel，不再只是把表格搬到各 step；footer
+也已把 `Cancel` 放左下、流程導航 / apply 放右下。主 Dataset sidebar 已移除第一層
+`Add Labels to Loaded Data` / `Smart Parse Metadata` 舊入口。這仍需要 human Windows desktop
+acceptance。
+
 ## 本輪要達到
 
 | 工作 | 完成判準 |
@@ -19,6 +27,7 @@
 | UI refresh cleanup | command 成功後的頁面更新由 shared refresh route / changed state 驅動，不由各頁自己猜。 |
 | Test cleanup | 測試不再把 legacy fallback 當作預期成功路徑；mock 只隔離外部依賴。 |
 | Validation reality-gap audit | 盤點現有 tests / artifacts / smoke 的 claim boundary，補上 human-observable product smoke，避免 dashboard PASS 但實機 workflow 仍不可用。 |
+| Data Import UX alignment | task-oriented step-panel wizard baseline 和第一輪 task-panel visual polish 已交付；後續不再以 debug-style preview 為目標。 |
 | BackendFacade boundary | `BackendFacade` 只包 `ApplicationService / Command API`，不重做 workflow logic。 |
 | Architecture guard | 新增或維持 guard，防止 product path 繞過 command spine。 |
 | Docs alignment | `current`、`roadmap`、`architecture` 不互相矛盾。 |
@@ -27,7 +36,7 @@
 
 | Phase | 開始條件 |
 | --- | --- |
-| 1B Data Interpretation MVP Slice | Phase 1A 的 product path / refresh / test truth 收斂到可維護狀態。 |
+| 1B Data Interpretation MVP Slice | downstream supervised-limited state、event extraction summary、metadata recipe provenance 和 screenshot artifact 補齊。 |
 | 1C Tool-Call Product Baseline | command surface 和 state snapshot 足夠穩定。 |
 | 1D Windows Desktop Acceptance | backend / UI / Data Interpretation / assistant baseline 可跑代表性 workflow。 |
 | 2 Release Candidate | human desktop MVP acceptance 有證據。 |

@@ -112,7 +112,7 @@ class TrainingSidebar(QWidget):
         # So we pass main_window.
         self.info_panel = AggregateInfoPanel(self.main_window)
         self.info_panel.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
-        layout.addWidget(self.info_panel, stretch=1)
+        layout.addWidget(self.info_panel)
 
         layout.addSpacing(10)
         line = QFrame()
@@ -126,8 +126,10 @@ class TrainingSidebar(QWidget):
         # Group 1: Configuration
         config_group = QGroupBox("CONFIGURATION")
         config_group.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
+        config_group.setMinimumHeight(Stylesheets.SIDEBAR_PRIMARY_GROUP_MIN_HEIGHT)
         config_layout = QVBoxLayout(config_group)
         config_layout.setContentsMargins(0, 10, 0, 0)
+        config_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.btn_split = QPushButton("Dataset Splitting")
         self.btn_split.setStyleSheet(Stylesheets.SIDEBAR_BTN)
@@ -145,13 +147,14 @@ class TrainingSidebar(QWidget):
         config_layout.addWidget(self.btn_setting)
 
         layout.addWidget(config_group)
-        layout.addSpacing(20)
+        layout.addSpacing(Stylesheets.SIDEBAR_GROUP_GAP)
 
         # Group 2: Execution
         exec_group = QGroupBox("EXECUTION")
         exec_group.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
         exec_layout = QVBoxLayout(exec_group)
         exec_layout.setContentsMargins(0, 10, 0, 0)
+        exec_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.btn_start = QPushButton("Start Training")
         self.btn_start.setStyleSheet(Stylesheets.BTN_SUCCESS)

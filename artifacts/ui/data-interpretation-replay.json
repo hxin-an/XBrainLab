@@ -109,6 +109,7 @@
           "latest_recipe_id": null,
           "source_path": "<replay_source>",
           "source_kind": "bids",
+          "label_sources": [],
           "validation_decision": null,
           "pending_confirmation": false,
           "blocked_reasons": [],
@@ -116,6 +117,7 @@
             "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
             "External label/event carriers require preview before apply."
           ],
+          "action_items": [],
           "summary": null,
           "metadata_preview": [],
           "label_carriers": [],
@@ -192,9 +194,13 @@
             "<replay_source>/sub-01_task-mi_run-1_raw.fif",
             "<replay_source>/sub-01_task-mi_run-2_raw.fif"
           ],
+          "label_sources": [],
           "label_carriers": [
             "<replay_source>/events.tsv"
           ],
+          "label_carrier_sources": {
+            "<replay_source>/events.tsv": "auto"
+          },
           "metadata": [
             {
               "file": "<replay_source>/sub-01_task-mi_run-1_raw.fif",
@@ -436,12 +442,50 @@
           "latest_recipe_id": null,
           "source_path": "<replay_source>",
           "source_kind": "bids",
+          "label_sources": [],
           "validation_decision": null,
           "pending_confirmation": false,
           "blocked_reasons": [],
           "warnings": [
             "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
             "External label/event carriers require preview before apply."
+          ],
+          "action_items": [
+            {
+              "issue": "Confirm label carrier alignment, anchor event, and class map before applying.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Match Labels",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Confirm session metadata for sub-01_task-mi_run-1_raw.fif.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Review Metadata",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Review Metadata",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
+              "impact": "Import may still be usable, but downstream labels or metadata may need review.",
+              "next_action": "Open the target step and resolve or confirm this item before import.",
+              "target_step": "Choose EEG Data",
+              "severity": "warning"
+            },
+            {
+              "issue": "External label/event carriers require preview before apply.",
+              "impact": "Import may still be usable, but downstream labels or metadata may need review.",
+              "next_action": "Open the target step and resolve or confirm this item before import.",
+              "target_step": "Match Labels",
+              "severity": "warning"
+            }
           ],
           "summary": "Found 2 EEG file(s) and 1 label/event carrier(s).",
           "metadata_preview": [
@@ -544,6 +588,8 @@
               "path": "<replay_source>/events.tsv",
               "name": "events.tsv",
               "format": "BIDS events",
+              "source_kind": "auto_discovered",
+              "source_location": "",
               "label_candidates": [
                 "trial_type"
               ],
@@ -640,6 +686,7 @@
             "<replay_source>/sub-01_task-mi_run-1_raw.fif",
             "<replay_source>/sub-01_task-mi_run-2_raw.fif"
           ],
+          "label_sources": [],
           "label_carriers": [
             "<replay_source>/events.tsv"
           ],
@@ -648,6 +695,8 @@
               "path": "<replay_source>/events.tsv",
               "name": "events.tsv",
               "format": "BIDS events",
+              "source_kind": "auto_discovered",
+              "source_location": "",
               "label_candidates": [
                 "trial_type"
               ],
@@ -816,11 +865,51 @@
           "summary": "Found 2 EEG file(s) and 1 label/event carrier(s).",
           "file_count": 2,
           "label_carrier_count": 1,
+          "source_selection": "BIDS folder",
+          "action_items": [
+            {
+              "issue": "Confirm label carrier alignment, anchor event, and class map before applying.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Match Labels",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Confirm session metadata for sub-01_task-mi_run-1_raw.fif.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Review Metadata",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Review Metadata",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
+              "impact": "Import may still be usable, but downstream labels or metadata may need review.",
+              "next_action": "Open the target step and resolve or confirm this item before import.",
+              "target_step": "Choose EEG Data",
+              "severity": "warning"
+            },
+            {
+              "issue": "External label/event carriers require preview before apply.",
+              "impact": "Import may still be usable, but downstream labels or metadata may need review.",
+              "next_action": "Open the target step and resolve or confirm this item before import.",
+              "target_step": "Match Labels",
+              "severity": "warning"
+            }
+          ],
           "label_carrier_preview": [
             {
               "path": "<replay_source>/events.tsv",
               "name": "events.tsv",
               "format": "BIDS events",
+              "source_kind": "auto_discovered",
+              "source_location": "",
               "label_candidates": [
                 "trial_type"
               ],
@@ -1079,12 +1168,50 @@
           "latest_recipe_id": null,
           "source_path": "<replay_source>",
           "source_kind": "bids",
+          "label_sources": [],
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
           "blocked_reasons": [],
           "warnings": [
             "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
             "External label/event carriers require preview before apply."
+          ],
+          "action_items": [
+            {
+              "issue": "Confirm label carrier alignment, anchor event, and class map before applying.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Match Labels",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Confirm session metadata for sub-01_task-mi_run-1_raw.fif.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Review Metadata",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Review Metadata",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
+              "impact": "Import may still be usable, but downstream labels or metadata may need review.",
+              "next_action": "Open the target step and resolve or confirm this item before import.",
+              "target_step": "Choose EEG Data",
+              "severity": "warning"
+            },
+            {
+              "issue": "External label/event carriers require preview before apply.",
+              "impact": "Import may still be usable, but downstream labels or metadata may need review.",
+              "next_action": "Open the target step and resolve or confirm this item before import.",
+              "target_step": "Match Labels",
+              "severity": "warning"
+            }
           ],
           "summary": "Found 2 EEG file(s) and 1 label/event carrier(s).",
           "metadata_preview": [
@@ -1187,6 +1314,8 @@
               "path": "<replay_source>/events.tsv",
               "name": "events.tsv",
               "format": "BIDS events",
+              "source_kind": "auto_discovered",
+              "source_location": "",
               "label_candidates": [
                 "trial_type"
               ],
@@ -1292,6 +1421,43 @@
           "blocked_reasons": [],
           "downstream_impacts": [
             "Downstream workflow remains blocked until the interpretation is confirmed and applied."
+          ],
+          "action_items": [
+            {
+              "issue": "Confirm label carrier alignment, anchor event, and class map before applying.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Match Labels",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Confirm session metadata for sub-01_task-mi_run-1_raw.fif.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Review Metadata",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Review Metadata",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
+              "impact": "Import may still be usable, but downstream labels or metadata may need review.",
+              "next_action": "Open the target step and resolve or confirm this item before import.",
+              "target_step": "Choose EEG Data",
+              "severity": "warning"
+            },
+            {
+              "issue": "External label/event carriers require preview before apply.",
+              "impact": "Import may still be usable, but downstream labels or metadata may need review.",
+              "next_action": "Open the target step and resolve or confirm this item before import.",
+              "target_step": "Match Labels",
+              "severity": "warning"
+            }
           ]
         }
       }
@@ -1393,12 +1559,43 @@
           "latest_recipe_id": null,
           "source_path": "<replay_source>",
           "source_kind": "bids",
+          "label_sources": [],
           "validation_decision": null,
           "pending_confirmation": false,
           "blocked_reasons": [],
           "warnings": [
             "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
             "External label/event carriers require preview before apply."
+          ],
+          "action_items": [
+            {
+              "issue": "Confirm label carrier alignment, anchor event, and class map before applying.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Match Labels",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Review Metadata",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
+              "impact": "Import may still be usable, but downstream labels or metadata may need review.",
+              "next_action": "Open the target step and resolve or confirm this item before import.",
+              "target_step": "Choose EEG Data",
+              "severity": "warning"
+            },
+            {
+              "issue": "External label/event carriers require preview before apply.",
+              "impact": "Import may still be usable, but downstream labels or metadata may need review.",
+              "next_action": "Open the target step and resolve or confirm this item before import.",
+              "target_step": "Match Labels",
+              "severity": "warning"
+            }
           ],
           "summary": "Found 2 EEG file(s) and 1 label/event carrier(s).",
           "metadata_preview": [
@@ -1505,6 +1702,8 @@
               "path": "<replay_source>/events.tsv",
               "name": "events.tsv",
               "format": "BIDS events",
+              "source_kind": "auto_discovered",
+              "source_location": "",
               "label_candidates": [
                 "trial_type"
               ],
@@ -1601,6 +1800,7 @@
             "<replay_source>/sub-01_task-mi_run-1_raw.fif",
             "<replay_source>/sub-01_task-mi_run-2_raw.fif"
           ],
+          "label_sources": [],
           "label_carriers": [
             "<replay_source>/events.tsv"
           ],
@@ -1609,6 +1809,8 @@
               "path": "<replay_source>/events.tsv",
               "name": "events.tsv",
               "format": "BIDS events",
+              "source_kind": "auto_discovered",
+              "source_location": "",
               "label_candidates": [
                 "trial_type"
               ],
@@ -1787,9 +1989,9 @@
                 "target_file": "sub-01_task-mi_run-2_raw.fif",
                 "granularity": "trial",
                 "role": "class cue labels",
+                "time_model": "seconds",
                 "label_field": "trial_type",
-                "anchor": "onset",
-                "time_model": "seconds"
+                "anchor": "onset"
               }
             }
           },
@@ -1807,11 +2009,44 @@
           "summary": "Found 2 EEG file(s) and 1 label/event carrier(s).",
           "file_count": 2,
           "label_carrier_count": 1,
+          "source_selection": "BIDS folder",
+          "action_items": [
+            {
+              "issue": "Confirm label carrier alignment, anchor event, and class map before applying.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Match Labels",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Review Metadata",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
+              "impact": "Import may still be usable, but downstream labels or metadata may need review.",
+              "next_action": "Open the target step and resolve or confirm this item before import.",
+              "target_step": "Choose EEG Data",
+              "severity": "warning"
+            },
+            {
+              "issue": "External label/event carriers require preview before apply.",
+              "impact": "Import may still be usable, but downstream labels or metadata may need review.",
+              "next_action": "Open the target step and resolve or confirm this item before import.",
+              "target_step": "Match Labels",
+              "severity": "warning"
+            }
+          ],
           "label_carrier_preview": [
             {
               "path": "<replay_source>/events.tsv",
               "name": "events.tsv",
               "format": "BIDS events",
+              "source_kind": "auto_discovered",
+              "source_location": "",
               "label_candidates": [
                 "trial_type"
               ],
@@ -2073,12 +2308,43 @@
           "latest_recipe_id": null,
           "source_path": "<replay_source>",
           "source_kind": "bids",
+          "label_sources": [],
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
           "blocked_reasons": [],
           "warnings": [
             "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
             "External label/event carriers require preview before apply."
+          ],
+          "action_items": [
+            {
+              "issue": "Confirm label carrier alignment, anchor event, and class map before applying.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Match Labels",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Review Metadata",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
+              "impact": "Import may still be usable, but downstream labels or metadata may need review.",
+              "next_action": "Open the target step and resolve or confirm this item before import.",
+              "target_step": "Choose EEG Data",
+              "severity": "warning"
+            },
+            {
+              "issue": "External label/event carriers require preview before apply.",
+              "impact": "Import may still be usable, but downstream labels or metadata may need review.",
+              "next_action": "Open the target step and resolve or confirm this item before import.",
+              "target_step": "Match Labels",
+              "severity": "warning"
+            }
           ],
           "summary": "Found 2 EEG file(s) and 1 label/event carrier(s).",
           "metadata_preview": [
@@ -2185,6 +2451,8 @@
               "path": "<replay_source>/events.tsv",
               "name": "events.tsv",
               "format": "BIDS events",
+              "source_kind": "auto_discovered",
+              "source_location": "",
               "label_candidates": [
                 "trial_type"
               ],
@@ -2289,6 +2557,36 @@
           "blocked_reasons": [],
           "downstream_impacts": [
             "Downstream workflow remains blocked until the interpretation is confirmed and applied."
+          ],
+          "action_items": [
+            {
+              "issue": "Confirm label carrier alignment, anchor event, and class map before applying.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Match Labels",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Review Metadata",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
+              "impact": "Import may still be usable, but downstream labels or metadata may need review.",
+              "next_action": "Open the target step and resolve or confirm this item before import.",
+              "target_step": "Choose EEG Data",
+              "severity": "warning"
+            },
+            {
+              "issue": "External label/event carriers require preview before apply.",
+              "impact": "Import may still be usable, but downstream labels or metadata may need review.",
+              "next_action": "Open the target step and resolve or confirm this item before import.",
+              "target_step": "Match Labels",
+              "severity": "warning"
+            }
           ]
         }
       }
@@ -2390,12 +2688,43 @@
           "latest_recipe_id": null,
           "source_path": "<replay_source>",
           "source_kind": "bids",
+          "label_sources": [],
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
           "blocked_reasons": [],
           "warnings": [
             "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
             "External label/event carriers require preview before apply."
+          ],
+          "action_items": [
+            {
+              "issue": "Confirm label carrier alignment, anchor event, and class map before applying.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Match Labels",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Review Metadata",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
+              "impact": "Import may still be usable, but downstream labels or metadata may need review.",
+              "next_action": "Open the target step and resolve or confirm this item before import.",
+              "target_step": "Choose EEG Data",
+              "severity": "warning"
+            },
+            {
+              "issue": "External label/event carriers require preview before apply.",
+              "impact": "Import may still be usable, but downstream labels or metadata may need review.",
+              "next_action": "Open the target step and resolve or confirm this item before import.",
+              "target_step": "Match Labels",
+              "severity": "warning"
+            }
           ],
           "summary": "Found 2 EEG file(s) and 1 label/event carrier(s).",
           "metadata_preview": [
@@ -2502,6 +2831,8 @@
               "path": "<replay_source>/events.tsv",
               "name": "events.tsv",
               "format": "BIDS events",
+              "source_kind": "auto_discovered",
+              "source_location": "",
               "label_candidates": [
                 "trial_type"
               ],
@@ -2726,12 +3057,43 @@
           "latest_recipe_id": null,
           "source_path": "<replay_source>",
           "source_kind": "bids",
+          "label_sources": [],
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
           "blocked_reasons": [],
           "warnings": [
             "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
             "External label/event carriers require preview before apply."
+          ],
+          "action_items": [
+            {
+              "issue": "Confirm label carrier alignment, anchor event, and class map before applying.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Match Labels",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
+              "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+              "next_action": "Review the target step and confirm the choice.",
+              "target_step": "Review Metadata",
+              "severity": "needs_confirmation"
+            },
+            {
+              "issue": "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
+              "impact": "Import may still be usable, but downstream labels or metadata may need review.",
+              "next_action": "Open the target step and resolve or confirm this item before import.",
+              "target_step": "Choose EEG Data",
+              "severity": "warning"
+            },
+            {
+              "issue": "External label/event carriers require preview before apply.",
+              "impact": "Import may still be usable, but downstream labels or metadata may need review.",
+              "next_action": "Open the target step and resolve or confirm this item before import.",
+              "target_step": "Match Labels",
+              "severity": "warning"
+            }
           ],
           "summary": "Found 2 EEG file(s) and 1 label/event carrier(s).",
           "metadata_preview": [
@@ -2838,6 +3200,8 @@
               "path": "<replay_source>/events.tsv",
               "name": "events.tsv",
               "format": "BIDS events",
+              "source_kind": "auto_discovered",
+              "source_location": "",
               "label_candidates": [
                 "trial_type"
               ],
@@ -2955,6 +3319,7 @@
             "<replay_source>/sub-01_task-mi_run-1_raw.fif",
             "<replay_source>/sub-01_task-mi_run-2_raw.fif"
           ],
+          "label_sources": [],
           "label_carriers": [
             "<replay_source>/events.tsv"
           ],
@@ -2963,6 +3328,8 @@
               "path": "<replay_source>/events.tsv",
               "name": "events.tsv",
               "format": "BIDS events",
+              "source_kind": "auto_discovered",
+              "source_location": "",
               "label_candidates": [
                 "trial_type"
               ],
@@ -3101,6 +3468,7 @@
               "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
             }
           ],
+          "skip_labels": false,
           "validation_decision": "needs_confirmation",
           "confirmations": [
             "Confirm label carrier alignment, anchor event, and class map before applying.",
@@ -3198,22 +3566,58 @@
   },
   "ui_state": {
     "dialog": {
-      "title": "Interpret Data Source",
+      "title": "Import EEG Data",
       "decision": "needs_confirmation",
+      "current_step": "Review and Import",
+      "back_button": {
+        "text": "Back",
+        "enabled": true
+      },
+      "next_button": {
+        "text": "Next: Attach Labels",
+        "visible": false
+      },
       "visible_text": [
-        "Select source | Scan result | Preview | Confirm | Apply | Save recipe",
+        "1. Choose EEG Data",
+        "2. Attach Labels",
+        "3. Review Metadata",
+        "4. Match Labels",
+        "5. Review and Import",
         "Found 2 EEG file(s) and 1 label/event carrier(s).",
-        "Source",
-        "/tmp/xbrainlab_data_interpretation_replay",
-        "Type",
-        "bids",
-        "Files",
-        "2",
-        "Label carriers",
-        "1",
-        "BIDS",
-        "BIDS-like source, 01, 1 events.tsv file(s)",
+        "Review and Import",
+        "Only items that affect import readiness are shown here.",
+        "Import readiness",
         "Review and confirm these choices before applying.",
+        "Recipe",
+        "Source, metadata edits, label choices, and confirmations",
+        "Choose EEG Data",
+        "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
+        "Impact",
+        "Import may still be usable, but downstream labels or metadata may need review.",
+        "Next",
+        "Open the target step and resolve or confirm this item before import.",
+        "Review Metadata",
+        "Confirm session metadata for sub-01_task-mi_run-1_raw.fif.",
+        "Impact",
+        "This choice affects imported metadata, labels, or downstream training readiness.",
+        "Next",
+        "Review the target step and confirm the choice.",
+        "Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
+        "Impact",
+        "This choice affects imported metadata, labels, or downstream training readiness.",
+        "Next",
+        "Review the target step and confirm the choice.",
+        "Match Labels",
+        "Confirm label carrier alignment, anchor event, and class map before applying.",
+        "Impact",
+        "This choice affects imported metadata, labels, or downstream training readiness.",
+        "Next",
+        "Review the target step and confirm the choice.",
+        "External label/event carriers require preview before apply.",
+        "Impact",
+        "Import may still be usable, but downstream labels or metadata may need review.",
+        "Next",
+        "Open the target step and resolve or confirm this item before import.",
         "Review the items marked Needs confirmation, then confirm and apply."
       ],
       "metadata_rows": [
@@ -3236,20 +3640,13 @@
         [
           "events.tsv",
           "sub-01 run-2",
-          "BIDS events",
           "Trial type",
           "Onset",
-          "Seconds",
           "Trial",
           "Class cue labels"
         ]
       ],
       "event_rows": [
-        [
-          "events.tsv",
-          "label / event carrier",
-          "Review alignment, anchor, and class map before apply."
-        ],
         [
           "Label carrier",
           "event role",
@@ -3283,49 +3680,34 @@
       ],
       "review_summary_rows": [
         [
-          "Warning",
-          "Review",
-          "Multiple EEG files were discovered; subject/session/run mapping should be reviewed."
+          "Choose EEG Data",
+          "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
+          "Import may still be usable, but downstream labels or metadata may need review.",
+          "Open the target step and resolve or confirm this item before import."
         ],
         [
-          "Warning",
-          "Review",
-          "External label/event carriers require preview before apply."
+          "Review Metadata",
+          "Confirm session metadata for sub-01_task-mi_run-1_raw.fif.",
+          "This choice affects imported metadata, labels, or downstream training readiness.",
+          "Review the target step and confirm the choice."
         ],
         [
-          "Confirmation",
-          "Needs confirmation",
-          "Confirm label carrier alignment, anchor event, and class map before applying."
+          "Review Metadata",
+          "Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
+          "This choice affects imported metadata, labels, or downstream training readiness.",
+          "Review the target step and confirm the choice."
         ],
         [
-          "Confirmation",
-          "Needs confirmation",
-          "Confirm session metadata for sub-01_task-mi_run-1_raw.fif."
+          "Match Labels",
+          "Confirm label carrier alignment, anchor event, and class map before applying.",
+          "This choice affects imported metadata, labels, or downstream training readiness.",
+          "Review the target step and confirm the choice."
         ],
         [
-          "Confirmation",
-          "Needs confirmation",
-          "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
-        ],
-        [
-          "Downstream impact",
-          "After apply",
-          "Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session."
-        ],
-        [
-          "Format capability",
-          "Needs review",
-          "BIDS events: needs review. BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
-        ],
-        [
-          "Format capability",
-          "Supported",
-          "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
-        ],
-        [
-          "Format capability",
-          "Supported",
-          "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+          "Match Labels",
+          "External label/event carriers require preview before apply.",
+          "Import may still be usable, but downstream labels or metadata may need review.",
+          "Open the target step and resolve or confirm this item before import."
         ]
       ],
       "tables": {
@@ -3361,14 +3743,14 @@
             "Interactive"
           ],
           "stretch_last_section": false,
-          "header_length": 982,
-          "viewport_width": 982,
+          "header_length": 958,
+          "viewport_width": 958,
           "column_widths": [
-            360,
-            152,
-            166,
-            207,
-            97
+            351,
+            148,
+            162,
+            202,
+            95
           ],
           "horizontal_scrollbar_max": 0,
           "vertical_scrollbar_max": 0,
@@ -3378,23 +3760,19 @@
         },
         "label_carriers": {
           "headers": [
-            "Carrier",
-            "Matched EEG",
-            "Format",
-            "Label field",
-            "Anchor",
-            "Time",
-            "Granularity",
-            "Role"
+            "Label file",
+            "EEG file",
+            "Label source",
+            "Alignment",
+            "Label unit",
+            "Use as"
           ],
           "rows": [
             [
               "events.tsv",
               "sub-01 run-2",
-              "BIDS events",
               "Trial type",
               "Onset",
-              "Seconds",
               "Trial",
               "Class cue labels"
             ]
@@ -3405,22 +3783,18 @@
             "Interactive",
             "Interactive",
             "Interactive",
-            "Interactive",
-            "Interactive",
             "Interactive"
           ],
           "stretch_last_section": false,
-          "header_length": 982,
-          "viewport_width": 982,
+          "header_length": 958,
+          "viewport_width": 958,
           "column_widths": [
-            130,
-            135,
-            100,
-            110,
-            95,
-            125,
-            130,
-            157
+            193,
+            147,
+            152,
+            177,
+            137,
+            152
           ],
           "horizontal_scrollbar_max": 0,
           "vertical_scrollbar_max": 0,
@@ -3431,15 +3805,10 @@
         "events": {
           "headers": [
             "Item",
-            "Role",
+            "Use as",
             "Meaning"
           ],
           "rows": [
-            [
-              "events.tsv",
-              "label / event carrier",
-              "Review alignment, anchor, and class map before apply."
-            ],
             [
               "Label carrier",
               "event role",
@@ -3477,12 +3846,12 @@
             "Interactive"
           ],
           "stretch_last_section": false,
-          "header_length": 982,
-          "viewport_width": 982,
+          "header_length": 948,
+          "viewport_width": 948,
           "column_widths": [
-            274,
-            186,
-            522
+            264,
+            180,
+            504
           ],
           "horizontal_scrollbar_max": 0,
           "vertical_scrollbar_max": 0,
@@ -3492,72 +3861,60 @@
         },
         "review_summary": {
           "headers": [
-            "Item",
-            "Status",
-            "What it means"
+            "Target step",
+            "Issue",
+            "Impact",
+            "Next action"
           ],
           "rows": [
             [
-              "Warning",
-              "Review",
-              "Multiple EEG files were discovered; subject/session/run mapping should be reviewed."
+              "Choose EEG Data",
+              "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
+              "Import may still be usable, but downstream labels or metadata may need review.",
+              "Open the target step and resolve or confirm this item before import."
             ],
             [
-              "Warning",
-              "Review",
-              "External label/event carriers require preview before apply."
+              "Review Metadata",
+              "Confirm session metadata for sub-01_task-mi_run-1_raw.fif.",
+              "This choice affects imported metadata, labels, or downstream training readiness.",
+              "Review the target step and confirm the choice."
             ],
             [
-              "Confirmation",
-              "Needs confirmation",
-              "Confirm label carrier alignment, anchor event, and class map before applying."
+              "Review Metadata",
+              "Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
+              "This choice affects imported metadata, labels, or downstream training readiness.",
+              "Review the target step and confirm the choice."
             ],
             [
-              "Confirmation",
-              "Needs confirmation",
-              "Confirm session metadata for sub-01_task-mi_run-1_raw.fif."
+              "Match Labels",
+              "Confirm label carrier alignment, anchor event, and class map before applying.",
+              "This choice affects imported metadata, labels, or downstream training readiness.",
+              "Review the target step and confirm the choice."
             ],
             [
-              "Confirmation",
-              "Needs confirmation",
-              "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
-            ],
-            [
-              "Downstream impact",
-              "After apply",
-              "Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session."
-            ],
-            [
-              "Format capability",
-              "Needs review",
-              "BIDS events: needs review. BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
-            ],
-            [
-              "Format capability",
-              "Supported",
-              "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
-            ],
-            [
-              "Format capability",
-              "Supported",
-              "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+              "Match Labels",
+              "External label/event carriers require preview before apply.",
+              "Import may still be usable, but downstream labels or metadata may need review.",
+              "Open the target step and resolve or confirm this item before import."
             ]
           ],
           "resize_modes": [
             "Interactive",
             "Interactive",
+            "Interactive",
             "Interactive"
           ],
           "stretch_last_section": false,
-          "header_length": 972,
-          "viewport_width": 972,
+          "header_length": 638,
+          "viewport_width": 638,
           "column_widths": [
-            179,
-            173,
-            620
+            104,
+            154,
+            211,
+            169
           ],
           "horizontal_scrollbar_max": 0,
-          "vertical_scrollbar_max": 4,
+          "vertical_scrollbar_max": 0,
           "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": true
@@ -3582,60 +3939,85 @@
             "target_file": "sub-01_task-mi_run-2_raw.fif",
             "granularity": "trial",
             "role": "class cue labels",
+            "time_model": "seconds",
             "label_field": "trial_type",
-            "anchor": "onset",
-            "time_model": "seconds"
+            "anchor": "onset"
           }
         }
       },
       "apply_button_enabled": true,
+      "apply_button_visible": true,
       "save_recipe_checked": true,
       "screenshot": "data-interpretation-preview.png"
     },
     "remap_dialog": {
-      "title": "Interpret Data Source",
+      "title": "Import EEG Data",
       "decision": "blocked",
+      "current_step": "Review and Import",
       "visible_text": [
-        "Select source | Scan result | Preview | Confirm | Apply | Save recipe",
+        "1. Choose EEG Data",
+        "2. Attach Labels",
+        "3. Review Metadata",
+        "4. Match Labels",
+        "5. Review and Import",
         "Reloaded recipe needs file and label carrier remap.",
-        "Source",
-        "/tmp/xbrainlab_data_interpretation_replay",
-        "Type",
-        "folder",
-        "Files",
-        "2",
-        "Label carriers",
-        "1",
-        "BIDS",
-        "Not detected",
+        "Review and Import",
+        "Only items that affect import readiness are shown here.",
+        "Import readiness",
         "Choose replacement recipe files before applying.",
+        "Recipe",
+        "Source, metadata edits, label choices, and confirmations",
+        "Choose EEG Data",
+        "Cannot import yet",
+        "Impact",
+        "Selected EEG file(s) were not found in the current scan: old_raw.fif.",
+        "Next",
+        "Fix first",
+        "Attach Labels",
+        "Cannot import yet",
+        "Impact",
+        "Saved label/event carrier(s) were not found in the current scan: old_events.tsv.",
+        "Next",
+        "Fix first",
+        "Review and Import",
+        "Reloaded recipe",
+        "Impact",
+        "Saved recipe choices were reapplied before validation.",
+        "Next",
+        "Review any changed files before importing.",
+        "Recipe replacements",
         "Choose replacement EEG files and label/event carriers, then apply the remap to recheck this saved recipe."
       ],
       "review_summary_rows": [
         [
-          "Remap EEG file",
-          "Select",
+          "Review and Import",
+          "Recipe EEG file",
+          "Saved recipe file is missing: old_raw.fif.",
           "sub-01_task-mi_run-1_raw.fif"
         ],
         [
-          "Remap label carrier",
-          "Select",
+          "Review and Import",
+          "Recipe label file",
+          "Saved recipe label is missing: old_events.tsv.",
           "events.tsv"
         ],
         [
+          "Review and Import",
           "Reloaded recipe",
-          "Reapplied",
-          "Saved recipe choices were reapplied before validation."
+          "Saved recipe choices were reapplied before validation.",
+          "Review any changed files before importing."
         ],
         [
-          "Blocked reason",
-          "Blocked",
-          "Selected EEG file(s) were not found in the current scan: old_raw.fif."
+          "Choose EEG Data",
+          "Cannot import yet",
+          "Selected EEG file(s) were not found in the current scan: old_raw.fif.",
+          "Fix first"
         ],
         [
-          "Blocked reason",
-          "Blocked",
-          "Saved label/event carrier(s) were not found in the current scan: old_events.tsv."
+          "Attach Labels",
+          "Cannot import yet",
+          "Saved label/event carrier(s) were not found in the current scan: old_events.tsv.",
+          "Fix first"
         ]
       ],
       "tables": {
@@ -3671,14 +4053,14 @@
             "Interactive"
           ],
           "stretch_last_section": false,
-          "header_length": 982,
-          "viewport_width": 982,
+          "header_length": 958,
+          "viewport_width": 958,
           "column_widths": [
-            360,
-            152,
-            166,
-            207,
-            97
+            351,
+            148,
+            162,
+            202,
+            95
           ],
           "horizontal_scrollbar_max": 0,
           "vertical_scrollbar_max": 0,
@@ -3688,23 +4070,19 @@
         },
         "label_carriers": {
           "headers": [
-            "Carrier",
-            "Matched EEG",
-            "Format",
-            "Label field",
-            "Anchor",
-            "Time",
-            "Granularity",
-            "Role"
+            "Label file",
+            "EEG file",
+            "Label source",
+            "Alignment",
+            "Label unit",
+            "Use as"
           ],
           "rows": [
             [
               "events.tsv",
               "Needs review",
-              "TSV",
               "",
               "",
-              "Needs review",
               "Needs review",
               "External labels"
             ]
@@ -3715,22 +4093,18 @@
             "Interactive",
             "Interactive",
             "Interactive",
-            "Interactive",
-            "Interactive",
             "Interactive"
           ],
           "stretch_last_section": false,
-          "header_length": 982,
-          "viewport_width": 982,
+          "header_length": 958,
+          "viewport_width": 958,
           "column_widths": [
-            130,
-            135,
-            100,
-            110,
-            95,
-            125,
-            130,
-            157
+            193,
+            147,
+            152,
+            177,
+            137,
+            152
           ],
           "horizontal_scrollbar_max": 0,
           "vertical_scrollbar_max": 0,
@@ -3741,14 +4115,14 @@
         "events": {
           "headers": [
             "Item",
-            "Role",
+            "Use as",
             "Meaning"
           ],
           "rows": [
             [
-              "events.tsv",
-              "label / event carrier",
-              "Review alignment, anchor, and class map before apply."
+              "No additional event choices",
+              "recording only",
+              "Label files are already matched above."
             ]
           ],
           "resize_modes": [
@@ -3757,12 +4131,12 @@
             "Interactive"
           ],
           "stretch_last_section": false,
-          "header_length": 982,
-          "viewport_width": 982,
+          "header_length": 598,
+          "viewport_width": 598,
           "column_widths": [
-            274,
-            186,
-            522
+            169,
+            121,
+            308
           ],
           "horizontal_scrollbar_max": 0,
           "vertical_scrollbar_max": 0,
@@ -3772,49 +4146,57 @@
         },
         "review_summary": {
           "headers": [
-            "Item",
-            "Status",
-            "What it means"
+            "Target step",
+            "Issue",
+            "Impact",
+            "Next action"
           ],
           "rows": [
             [
-              "Remap EEG file",
-              "Select",
+              "Review and Import",
+              "Recipe EEG file",
+              "Saved recipe file is missing: old_raw.fif.",
               "sub-01_task-mi_run-1_raw.fif"
             ],
             [
-              "Remap label carrier",
-              "Select",
+              "Review and Import",
+              "Recipe label file",
+              "Saved recipe label is missing: old_events.tsv.",
               "events.tsv"
             ],
             [
+              "Review and Import",
               "Reloaded recipe",
-              "Reapplied",
-              "Saved recipe choices were reapplied before validation."
+              "Saved recipe choices were reapplied before validation.",
+              "Review any changed files before importing."
             ],
             [
-              "Blocked reason",
-              "Blocked",
-              "Selected EEG file(s) were not found in the current scan: old_raw.fif."
+              "Choose EEG Data",
+              "Cannot import yet",
+              "Selected EEG file(s) were not found in the current scan: old_raw.fif.",
+              "Fix first"
             ],
             [
-              "Blocked reason",
-              "Blocked",
-              "Saved label/event carrier(s) were not found in the current scan: old_events.tsv."
+              "Attach Labels",
+              "Cannot import yet",
+              "Saved label/event carrier(s) were not found in the current scan: old_events.tsv.",
+              "Fix first"
             ]
           ],
           "resize_modes": [
             "Interactive",
             "Interactive",
+            "Interactive",
             "Interactive"
           ],
           "stretch_last_section": false,
-          "header_length": 982,
-          "viewport_width": 982,
+          "header_length": 958,
+          "viewport_width": 958,
           "column_widths": [
-            181,
-            175,
-            626
+            141,
+            230,
+            330,
+            257
           ],
           "horizontal_scrollbar_max": 0,
           "vertical_scrollbar_max": 0,
@@ -3842,14 +4224,19 @@
     "dataset_panel": {
       "sidebar_buttons": {
         "import_source": {
-          "text": "Interpret Data Source",
+          "text": "Import file",
           "enabled": true,
-          "tooltip": "Scan, preview, validate, and apply EEG data"
+          "tooltip": "Choose EEG data, review metadata and labels, then import"
         },
         "import_folder": {
-          "text": "Interpret Folder / BIDS",
+          "text": "Import folder",
           "enabled": true,
-          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+          "tooltip": "Choose an EEG folder, review metadata and labels, then import"
+        },
+        "import_bids": {
+          "text": "Import BIDS folder",
+          "enabled": true,
+          "tooltip": "Choose a BIDS-like folder and review metadata and events"
         },
         "reload_recipe": {
           "text": "Reload Import Recipe",
@@ -3877,7 +4264,7 @@
           "tooltip": "Remove all loaded data"
         }
       },
-      "import_button_text": "Interpret Data Source",
+      "import_button_text": "Import file",
       "import_button_enabled": true,
       "import_label_button_text": "Add Labels to Loaded Data",
       "import_label_button_enabled": true,
@@ -3951,14 +4338,19 @@
     "empty_dataset_sidebar": {
       "buttons": {
         "import_source": {
-          "text": "Interpret Data Source",
+          "text": "Import file",
           "enabled": true,
-          "tooltip": "Scan, preview, validate, and apply EEG data"
+          "tooltip": "Choose EEG data, review metadata and labels, then import"
         },
         "import_folder": {
-          "text": "Interpret Folder / BIDS",
+          "text": "Import folder",
           "enabled": true,
-          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+          "tooltip": "Choose an EEG folder, review metadata and labels, then import"
+        },
+        "import_bids": {
+          "text": "Import BIDS folder",
+          "enabled": true,
+          "tooltip": "Choose a BIDS-like folder and review metadata and events"
         },
         "reload_recipe": {
           "text": "Reload Import Recipe",
@@ -4009,8 +4401,8 @@
             "Run"
           ],
           "row_count": 2,
-          "header_length": 982,
-          "viewport_width": 982,
+          "header_length": 958,
+          "viewport_width": 958,
           "width_gap": 0,
           "widget_width": 0,
           "panel_width": 0,
@@ -4030,11 +4422,11 @@
             "Interactive"
           ],
           "column_widths": [
-            360,
-            152,
-            166,
-            207,
-            97
+            351,
+            148,
+            162,
+            202,
+            95
           ],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
@@ -4042,18 +4434,16 @@
         {
           "widget": "dialog.tables.label_carriers",
           "headers": [
-            "Carrier",
-            "Matched EEG",
-            "Format",
-            "Label field",
-            "Anchor",
-            "Time",
-            "Granularity",
-            "Role"
+            "Label file",
+            "EEG file",
+            "Label source",
+            "Alignment",
+            "Label unit",
+            "Use as"
           ],
           "row_count": 1,
-          "header_length": 982,
-          "viewport_width": 982,
+          "header_length": 958,
+          "viewport_width": 958,
           "width_gap": 0,
           "widget_width": 0,
           "panel_width": 0,
@@ -4071,19 +4461,15 @@
             "Interactive",
             "Interactive",
             "Interactive",
-            "Interactive",
-            "Interactive",
             "Interactive"
           ],
           "column_widths": [
-            130,
-            135,
-            100,
-            110,
-            95,
-            125,
-            130,
-            157
+            193,
+            147,
+            152,
+            177,
+            137,
+            152
           ],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
@@ -4092,12 +4478,12 @@
           "widget": "dialog.tables.events",
           "headers": [
             "Item",
-            "Role",
+            "Use as",
             "Meaning"
           ],
-          "row_count": 7,
-          "header_length": 982,
-          "viewport_width": 982,
+          "row_count": 6,
+          "header_length": 948,
+          "viewport_width": 948,
           "width_gap": 0,
           "widget_width": 0,
           "panel_width": 0,
@@ -4115,9 +4501,9 @@
             "Interactive"
           ],
           "column_widths": [
-            274,
-            186,
-            522
+            264,
+            180,
+            504
           ],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
@@ -4125,19 +4511,20 @@
         {
           "widget": "dialog.tables.review_summary",
           "headers": [
-            "Item",
-            "Status",
-            "What it means"
+            "Target step",
+            "Issue",
+            "Impact",
+            "Next action"
           ],
-          "row_count": 9,
-          "header_length": 972,
-          "viewport_width": 972,
+          "row_count": 5,
+          "header_length": 638,
+          "viewport_width": 638,
           "width_gap": 0,
           "widget_width": 0,
           "panel_width": 0,
           "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
-          "vertical_scrollbar_max": 4,
+          "vertical_scrollbar_max": 0,
           "partial_visible_rows": [],
           "fits_viewport": true,
           "fills_viewport": true,
@@ -4146,12 +4533,14 @@
           "resize_modes": [
             "Interactive",
             "Interactive",
+            "Interactive",
             "Interactive"
           ],
           "column_widths": [
-            179,
-            173,
-            620
+            104,
+            154,
+            211,
+            169
           ],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": true
@@ -4166,8 +4555,8 @@
             "Run"
           ],
           "row_count": 2,
-          "header_length": 982,
-          "viewport_width": 982,
+          "header_length": 958,
+          "viewport_width": 958,
           "width_gap": 0,
           "widget_width": 0,
           "panel_width": 0,
@@ -4187,11 +4576,11 @@
             "Interactive"
           ],
           "column_widths": [
-            360,
-            152,
-            166,
-            207,
-            97
+            351,
+            148,
+            162,
+            202,
+            95
           ],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
@@ -4199,18 +4588,16 @@
         {
           "widget": "remap_dialog.tables.label_carriers",
           "headers": [
-            "Carrier",
-            "Matched EEG",
-            "Format",
-            "Label field",
-            "Anchor",
-            "Time",
-            "Granularity",
-            "Role"
+            "Label file",
+            "EEG file",
+            "Label source",
+            "Alignment",
+            "Label unit",
+            "Use as"
           ],
           "row_count": 1,
-          "header_length": 982,
-          "viewport_width": 982,
+          "header_length": 958,
+          "viewport_width": 958,
           "width_gap": 0,
           "widget_width": 0,
           "panel_width": 0,
@@ -4228,19 +4615,15 @@
             "Interactive",
             "Interactive",
             "Interactive",
-            "Interactive",
-            "Interactive",
             "Interactive"
           ],
           "column_widths": [
-            130,
-            135,
-            100,
-            110,
-            95,
-            125,
-            130,
-            157
+            193,
+            147,
+            152,
+            177,
+            137,
+            152
           ],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
@@ -4249,12 +4632,12 @@
           "widget": "remap_dialog.tables.events",
           "headers": [
             "Item",
-            "Role",
+            "Use as",
             "Meaning"
           ],
           "row_count": 1,
-          "header_length": 982,
-          "viewport_width": 982,
+          "header_length": 598,
+          "viewport_width": 598,
           "width_gap": 0,
           "widget_width": 0,
           "panel_width": 0,
@@ -4272,9 +4655,9 @@
             "Interactive"
           ],
           "column_widths": [
-            274,
-            186,
-            522
+            169,
+            121,
+            308
           ],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
@@ -4282,13 +4665,14 @@
         {
           "widget": "remap_dialog.tables.review_summary",
           "headers": [
-            "Item",
-            "Status",
-            "What it means"
+            "Target step",
+            "Issue",
+            "Impact",
+            "Next action"
           ],
           "row_count": 5,
-          "header_length": 982,
-          "viewport_width": 982,
+          "header_length": 958,
+          "viewport_width": 958,
           "width_gap": 0,
           "widget_width": 0,
           "panel_width": 0,
@@ -4303,12 +4687,14 @@
           "resize_modes": [
             "Interactive",
             "Interactive",
+            "Interactive",
             "Interactive"
           ],
           "column_widths": [
-            181,
-            175,
-            626
+            141,
+            230,
+            330,
+            257
           ],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": true

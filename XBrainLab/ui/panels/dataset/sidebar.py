@@ -1,7 +1,8 @@
-"""Sidebar widget for the dataset panel: info, operations, and controls."""
+"""Sidebar widget for the dataset panel: info and primary dataset actions."""
 
 from collections.abc import Callable
 from typing import Any
+from unittest.mock import Mock
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -36,17 +37,20 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 class DatasetSidebar(QWidget):
     """Sidebar for ``DatasetPanel`` containing information and action controls.
 
-    Hosts an aggregate info panel, import/parse buttons, channel selection,
-    and a clear-dataset button.
+    Hosts an aggregate info panel, primary import buttons, channel selection,
+    and a clear-dataset button. Metadata parsing lives in the Data Import
+    wizard; label attachment remains visible so skipped labels can be added
+    after import.
 
     Attributes:
         panel: The parent ``DatasetPanel`` reference.
         info_panel: ``AggregateInfoPanel`` displaying summary statistics.
         import_btn: Button to import EEG data files.
-        import_folder_btn: Button to interpret a folder or BIDS root.
+        import_folder_btn: Button to import a folder.
+        import_bids_btn: Button to import a BIDS-like folder.
         reload_recipe_btn: Button to reload a saved import recipe.
-        import_label_btn: Button to import external labels.
-        smart_parse_btn: Button to auto-extract metadata from filenames.
+        import_label_btn: Button to attach external labels to loaded data.
+        smart_parse_btn: Hidden compatibility button to auto-extract metadata.
         chan_select_btn: Button to open channel selection dialog.
         clear_btn: Button to clear the entire dataset.
 
@@ -91,7 +95,7 @@ class DatasetSidebar(QWidget):
         # 1. Aggregate Info
         self.info_panel = AggregateInfoPanel(self.main_window)
         self.info_panel.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
-        layout.addWidget(self.info_panel, stretch=1)
+        layout.addWidget(self.info_panel)
 
         # Separator
         layout.addSpacing(10)
@@ -103,27 +107,41 @@ class DatasetSidebar(QWidget):
         layout.addWidget(line)
         layout.addSpacing(10)
 
-        # 2. Operations Group
-        ops_group = QGroupBox("OPERATIONS")
+        # 2. Import Group
+        ops_group = QGroupBox("IMPORT")
         ops_group.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
+        ops_group.setMinimumHeight(Stylesheets.SIDEBAR_PRIMARY_GROUP_MIN_HEIGHT)
         ops_layout = QVBoxLayout(ops_group)
         ops_layout.setContentsMargins(0, 10, 0, 0)
+        ops_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        self.import_btn = QPushButton("Interpret Data Source")
-        self.import_btn.setToolTip("Scan, preview, validate, and apply EEG data")
+        self.import_btn = QPushButton("Import file")
+        self.import_btn.setToolTip(
+            "Choose EEG files, review metadata and labels, then import"
+        )
         self.import_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
         self.import_btn.clicked.connect(self.panel.action_handler.import_data)
         ops_layout.addWidget(self.import_btn)
 
-        self.import_folder_btn = QPushButton("Interpret Folder / BIDS")
+        self.import_folder_btn = QPushButton("Import folder")
         self.import_folder_btn.setToolTip(
-            "Scan a folder or BIDS root, then preview and confirm it",
+            "Choose an EEG folder, review metadata and labels, then import",
         )
         self.import_folder_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
         self.import_folder_btn.clicked.connect(
             self.panel.action_handler.import_folder_source,
         )
         ops_layout.addWidget(self.import_folder_btn)
+
+        self.import_bids_btn = QPushButton("Import BIDS folder")
+        self.import_bids_btn.setToolTip(
+            "Choose a BIDS-like folder and review detected metadata and events",
+        )
+        self.import_bids_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.import_bids_btn.clicked.connect(
+            self.panel.action_handler.import_bids_source,
+        )
+        ops_layout.addWidget(self.import_bids_btn)
 
         self.reload_recipe_btn = QPushButton("Reload Import Recipe")
         self.reload_recipe_btn.setToolTip(
@@ -135,27 +153,29 @@ class DatasetSidebar(QWidget):
         )
         ops_layout.addWidget(self.reload_recipe_btn)
 
-        self.import_label_btn = QPushButton("Add Labels to Loaded Data")
-        self.import_label_btn.setToolTip("Apply external labels to loaded files")
-        self.import_label_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
-        self.import_label_btn.clicked.connect(self.panel.action_handler.import_label)
-        ops_layout.addWidget(self.import_label_btn)
-
-        self.smart_parse_btn = QPushButton("Smart Parse Metadata")
+        self.smart_parse_btn = QPushButton("Smart Parse Metadata", ops_group)
         self.smart_parse_btn.setToolTip("Auto-extract Subject/Session from filenames")
         self.smart_parse_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
         self.smart_parse_btn.clicked.connect(
             self.panel.action_handler.open_smart_parser,
         )
-        ops_layout.addWidget(self.smart_parse_btn)
+        self.smart_parse_btn.setVisible(False)
 
         layout.addWidget(ops_group)
+        layout.addSpacing(Stylesheets.SIDEBAR_GROUP_GAP)
 
-        # 3. Execution Group
-        exec_group = QGroupBox("EXECUTION")
+        # 3. Dataset Group
+        exec_group = QGroupBox("DATASET")
         exec_group.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
         exec_layout = QVBoxLayout(exec_group)
         exec_layout.setContentsMargins(0, 10, 0, 0)
+        exec_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        self.import_label_btn = QPushButton("Add labels")
+        self.import_label_btn.setToolTip("Attach labels to the loaded EEG data")
+        self.import_label_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.import_label_btn.clicked.connect(self.panel.action_handler.import_label)
+        exec_layout.addWidget(self.import_label_btn)
 
         self.chan_select_btn = QPushButton("Channel Selection")
         self.chan_select_btn.setToolTip("Select specific channels to keep")
@@ -165,7 +185,7 @@ class DatasetSidebar(QWidget):
 
         self.clear_btn = QPushButton("Clear Dataset")
         self.clear_btn.setStyleSheet(Stylesheets.BTN_DANGER)
-        self.clear_btn.setToolTip("Remove all loaded data")
+        self.clear_btn.setToolTip("Create epochs before clearing the dataset.")
         self.clear_btn.clicked.connect(self.clear_dataset)
         exec_layout.addWidget(self.clear_btn)
 
@@ -246,8 +266,9 @@ class DatasetSidebar(QWidget):
             if scan_capability is not None:
                 self.import_btn.setEnabled(scan_capability.enabled)
                 self.import_folder_btn.setEnabled(scan_capability.enabled)
+                self.import_bids_btn.setEnabled(scan_capability.enabled)
                 source_tooltip = (
-                    "Scan, preview, validate, and apply EEG data"
+                    "Choose EEG data, review metadata and labels, then import"
                     if scan_capability.enabled
                     else blocked_reason(
                         scan_capability,
@@ -256,36 +277,53 @@ class DatasetSidebar(QWidget):
                 )
                 self.import_btn.setToolTip(source_tooltip)
                 self.import_folder_btn.setToolTip(
-                    "Scan a folder or BIDS root, then preview and confirm it"
+                    "Choose an EEG folder, review metadata and labels, then import"
+                    if scan_capability.enabled
+                    else source_tooltip,
+                )
+                self.import_bids_btn.setToolTip(
+                    "Choose a BIDS-like folder and review metadata and events"
                     if scan_capability.enabled
                     else source_tooltip,
                 )
             elif not legacy_state_available:
                 self.import_btn.setEnabled(False)
                 self.import_folder_btn.setEnabled(False)
+                self.import_bids_btn.setEnabled(False)
                 self.import_btn.setToolTip(
                     "Data interpretation availability is unavailable right now.",
                 )
                 self.import_folder_btn.setToolTip(
                     "Data interpretation availability is unavailable right now.",
                 )
+                self.import_bids_btn.setToolTip(
+                    "Data interpretation availability is unavailable right now.",
+                )
             elif legacy_is_locked:
                 self.import_btn.setEnabled(True)
                 self.import_folder_btn.setEnabled(True)
+                self.import_bids_btn.setEnabled(True)
                 self.import_btn.setToolTip(
                     "Dataset is locked. Reset before interpreting a new source.",
                 )
                 self.import_folder_btn.setToolTip(
                     "Dataset is locked. Reset before interpreting a folder.",
                 )
+                self.import_bids_btn.setToolTip(
+                    "Dataset is locked. Reset before importing a BIDS folder.",
+                )
             else:
                 self.import_btn.setEnabled(True)
                 self.import_folder_btn.setEnabled(True)
+                self.import_bids_btn.setEnabled(True)
                 self.import_btn.setToolTip(
-                    "Scan, preview, validate, and apply EEG data",
+                    "Choose EEG data, review metadata and labels, then import",
                 )
                 self.import_folder_btn.setToolTip(
-                    "Scan a folder or BIDS root, then preview and confirm it",
+                    "Choose an EEG folder, review metadata and labels, then import",
+                )
+                self.import_bids_btn.setToolTip(
+                    "Choose a BIDS-like folder and review metadata and events",
                 )
 
             if reload_capability is not None:
@@ -409,49 +447,40 @@ class DatasetSidebar(QWidget):
         )
         if result is None:
             try:
-                has_data = bool(
+                has_epoch = bool(
                     run_legacy_controller_fallback(
                         self,
-                        lambda: (
-                            self.controller.has_data() if self.controller else False
-                        ),
+                        self._legacy_has_epoch_data,
                     ),
                 )
             except LegacyControllerFallbackUnavailableError:
                 return False, "Dataset state is unavailable right now."
             return (
-                has_data,
-                "Remove all loaded data" if has_data else "No dataset to clear.",
+                has_epoch,
+                "Clear epoched dataset and downstream results."
+                if has_epoch
+                else "Create epochs before clearing the dataset.",
             )
         if result.failed:
             return False, "Dataset state is unavailable right now."
         state = result.diagnostics.get("state")
-        if isinstance(state, dict) and self._state_has_clearable_data(state):
-            return True, "Remove all loaded data"
-        return False, "No dataset to clear."
+        if isinstance(state, dict) and self._state_has_clearable_epoch(state):
+            return True, "Clear epoched dataset and downstream results."
+        return False, "Create epochs before clearing the dataset."
+
+    def _legacy_has_epoch_data(self) -> bool:
+        if self.controller is None:
+            return False
+        is_epoched = getattr(self.controller, "is_epoched", None)
+        if callable(is_epoched):
+            result = is_epoched()
+            return False if isinstance(result, Mock) else bool(result)
+        return False
 
     @staticmethod
-    def _state_has_clearable_data(state: dict[str, Any]) -> bool:
-        raw = DatasetSidebar._state_section(state, "raw")
-        preprocessed = DatasetSidebar._state_section(state, "preprocessed")
+    def _state_has_clearable_epoch(state: dict[str, Any]) -> bool:
         epoch = DatasetSidebar._state_section(state, "epoch")
-        dataset = DatasetSidebar._state_section(state, "dataset")
-        training = DatasetSidebar._state_section(state, "training")
-        evaluation = DatasetSidebar._state_section(state, "evaluation")
-        interpretation = DatasetSidebar._state_section(state, "interpretation")
-        return any(
-            (
-                bool(raw.get("loaded")),
-                bool(preprocessed.get("available")),
-                bool(epoch.get("exists")),
-                bool(dataset.get("available")),
-                bool(training.get("has_trainer")),
-                int(training.get("finished_run_count") or 0) > 0,
-                bool(evaluation.get("available")),
-                int(evaluation.get("total_runs") or 0) > 0,
-                bool(interpretation.get("has_applied_interpretation")),
-            ),
-        )
+        return bool(epoch.get("exists")) or bool(epoch.get("available"))
 
     @staticmethod
     def _state_section(state: dict[str, Any], key: str) -> dict[str, Any]:

@@ -1,4 +1,4 @@
-"""Sidebar widget for the visualization panel with configuration and export controls."""
+"""Sidebar widget for the visualization panel with configuration controls."""
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -36,8 +36,10 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
 class ControlSidebar(QWidget):
-    """Sidebar for Visualization Panel (Configuration & Operations).
-    Hosts controls for Montages, Saliency Settings, and export actions.
+    """Sidebar for Visualization Panel configuration.
+
+    Saliency export is kept as a backend action but no longer shown as a
+    first-layer operation until the saliency workflow has a complete round trip.
     """
 
     def __init__(self, panel, parent=None):
@@ -76,7 +78,7 @@ class ControlSidebar(QWidget):
         # 1. Aggregate Information
         self.info_panel = AggregateInfoPanel(self.main_window)
         self.info_panel.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
-        layout.addWidget(self.info_panel, stretch=1)
+        layout.addWidget(self.info_panel)
 
         layout.addSpacing(10)
         line = QFrame()
@@ -90,8 +92,10 @@ class ControlSidebar(QWidget):
         # Group 1: Configuration
         config_group = QGroupBox("CONFIGURATION")
         config_group.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
+        config_group.setMinimumHeight(Stylesheets.SIDEBAR_PRIMARY_GROUP_MIN_HEIGHT)
         config_layout = QVBoxLayout(config_group)
         config_layout.setContentsMargins(0, 10, 0, 0)
+        config_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.btn_montage = QPushButton("Set Montage")
         self.btn_montage.setStyleSheet(Stylesheets.SIDEBAR_BTN)
@@ -104,20 +108,15 @@ class ControlSidebar(QWidget):
         config_layout.addWidget(self.btn_saliency)
 
         layout.addWidget(config_group)
-        layout.addSpacing(20)
+        layout.addSpacing(Stylesheets.SIDEBAR_GROUP_GAP)
 
-        # Group 2: Operations
-        ops_group = QGroupBox("OPERATIONS")
-        ops_group.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
-        ops_layout = QVBoxLayout(ops_group)
-        ops_layout.setContentsMargins(0, 10, 0, 0)
-
-        self.btn_export = QPushButton("Export Saliency")
+        self.btn_export = QPushButton("Export Saliency", self)
         self.btn_export.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.btn_export.setToolTip(
+            "Hidden until the saliency workflow has a complete import/export path.",
+        )
         self.btn_export.clicked.connect(self.export_saliency)
-        ops_layout.addWidget(self.btn_export)
-
-        layout.addWidget(ops_group)
+        self.btn_export.setVisible(False)
         layout.addStretch()
 
     def update_info(self):
