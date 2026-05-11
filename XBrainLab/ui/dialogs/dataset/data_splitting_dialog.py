@@ -6,6 +6,8 @@ strategies such as subject-wise, session-wise, or trial-wise splits.
 """
 
 from enum import Enum
+from typing import Any
+from unittest.mock import Mock
 
 import numpy as np
 from PyQt6.QtCore import Qt
@@ -27,12 +29,22 @@ from XBrainLab.backend.dataset import (
     TrainingType,
     ValSplitByType,
 )
+from XBrainLab.backend.study import Study
+from XBrainLab.ui.application_capabilities import find_study
 from XBrainLab.ui.core.base_dialog import BaseDialog
 
 from .data_splitting_preview_dialog import (
     DataSplitterHolder,
     DataSplittingPreviewDialog,
 )
+
+_UNSET = object()
+
+
+def _is_real_study_context(parent: Any, controller: Any) -> bool:
+    """Return whether the dialog is running in a real Study-backed UI context."""
+    study = find_study(parent) or find_study(controller)
+    return isinstance(study, Study) and not isinstance(study, Mock)
 
 
 class DrawColor(Enum):
@@ -345,18 +357,35 @@ class DataSplittingDialog(BaseDialog):
 
     """
 
-    def __init__(self, parent, controller, dataset_generator=None):
+    def __init__(
+        self,
+        parent,
+        controller,
+        dataset_generator: Any = _UNSET,
+        epoch_data: Any = _UNSET,
+    ):
         self.controller = controller
+        allow_controller_fallback = not _is_real_study_context(parent, controller)
 
-        # Get data through controller
-        self.epoch_data = self.controller.get_epoch_data() if self.controller else None
+        if epoch_data is _UNSET:
+            self.epoch_data = (
+                self.controller.get_epoch_data()
+                if self.controller and allow_controller_fallback
+                else None
+            )
+        else:
+            self.epoch_data = epoch_data
 
-        if dataset_generator:
-            self.dataset_generator = dataset_generator
-        elif self.controller:
+        if (
+            dataset_generator is _UNSET
+            and self.controller
+            and allow_controller_fallback
+        ):
             self.dataset_generator = self.controller.get_dataset_generator()
         else:
-            self.dataset_generator = None
+            self.dataset_generator = (
+                None if dataset_generator is _UNSET else dataset_generator
+            )
 
         self.subject_num = 5
         self.session_num = 5

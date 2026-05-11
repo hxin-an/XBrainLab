@@ -2,6 +2,7 @@ import pytest
 from matplotlib.figure import Figure
 
 from XBrainLab.ui.panels.training.components import MetricTab
+from XBrainLab.ui.styles.theme import Theme
 
 
 @pytest.fixture
@@ -30,6 +31,12 @@ def test_update_plot(metric_tab):
     assert len(metric_tab.ax.lines) == 2
 
 
+def test_empty_plot_uses_dark_theme_text(metric_tab):
+    assert metric_tab.ax.title.get_color() == Theme.TEXT_MUTED
+    assert metric_tab.ax.xaxis.label.get_color() == Theme.TEXT_MUTED
+    assert metric_tab.ax.yaxis.label.get_color() == Theme.TEXT_MUTED
+
+
 def test_clear(metric_tab):
     metric_tab.update_plot(1, 0.5, 0.6)
     metric_tab.clear()
@@ -38,3 +45,6 @@ def test_clear(metric_tab):
     assert len(metric_tab.train_vals) == 0
     assert len(metric_tab.val_vals) == 0
     assert len(metric_tab.ax.lines) == 0
+    assert metric_tab.ax.title.get_color() == Theme.TEXT_MUTED
+    assert metric_tab.ax.xaxis.label.get_color() == Theme.TEXT_MUTED
+    assert metric_tab.ax.yaxis.label.get_color() == Theme.TEXT_MUTED

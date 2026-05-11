@@ -6,6 +6,9 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+from PyQt6.QtWidgets import QWidget
+
+from XBrainLab.backend.study import Study
 
 
 @pytest.fixture
@@ -129,6 +132,31 @@ class TestDataSplittingDialog:
         dlg = DataSplittingDialog(None, controller)
         qtbot.addWidget(dlg)
         assert dlg.windowTitle() == "Data Splitting Setting"
+
+    def test_real_study_requires_explicit_service_context(self, qtbot, controller):
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+            DataSplittingDialog,
+        )
+
+        class RealStudyParent(QWidget):
+            def __init__(self) -> None:
+                super().__init__()
+                self.study = Study()
+
+        parent = RealStudyParent()
+        qtbot.addWidget(parent)
+        controller.get_epoch_data.side_effect = AssertionError("stale controller read")
+        controller.get_dataset_generator.side_effect = AssertionError(
+            "stale controller read"
+        )
+
+        dlg = DataSplittingDialog(parent, controller)
+        qtbot.addWidget(dlg)
+
+        assert dlg.epoch_data is None
+        assert dlg.dataset_generator is None
+        controller.get_epoch_data.assert_not_called()
+        controller.get_dataset_generator.assert_not_called()
 
     def test_update_preview(self, qtbot, controller):
         from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (

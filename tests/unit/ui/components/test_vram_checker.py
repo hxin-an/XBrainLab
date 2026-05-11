@@ -76,6 +76,14 @@ class TestVRAMConflictChecker:
     def test_is_local_mode_from_controller(self, make_checker):
         ctrl = MagicMock()
         ctrl.worker.engine.config.active_mode = "local"
+        ctrl.worker.engine.config.inference_mode = "local"
+        checker = make_checker(controller=ctrl)
+        assert checker._is_local_mode(switching_to_local=False) is True
+
+    def test_is_local_mode_prefers_inference_mode(self, make_checker):
+        ctrl = MagicMock()
+        ctrl.worker.engine.config.active_mode = "gemini"
+        ctrl.worker.engine.config.inference_mode = "local"
         checker = make_checker(controller=ctrl)
         assert checker._is_local_mode(switching_to_local=False) is True
 

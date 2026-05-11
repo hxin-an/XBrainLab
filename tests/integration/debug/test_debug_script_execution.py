@@ -164,7 +164,7 @@ def test_debug_mode_execution_integration(qtbot, debug_script_file):
         # Check `real_chat_panel` content
         last_idx = real_chat_panel.chat_layout.count() - 2
         bubble = real_chat_panel.chat_layout.itemAt(last_idx).widget()
-        assert "System" in bubble.get_text() or "tool" in bubble.get_text().lower()
-        assert "Success" in bubble.get_text()
+        assert "Diagnostic action completed" in bubble.get_text()
+        assert "saved to logs" in bubble.get_text()
 
     app.setProperty("tool_debug_script", None)

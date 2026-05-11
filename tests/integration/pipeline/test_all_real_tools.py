@@ -119,6 +119,7 @@ class TestAllRealTools:
         channels = loaded_study.get_controller("preprocess").get_channel_names()[:2]
         res = tool.execute(loaded_study, channels=channels)
         assert "Selected 2 channels" in res
+        assert "duplicate-channel ambiguity" not in res
 
         data = loaded_study.get_controller("preprocess").get_first_data()
         assert len(data.get_mne().ch_names) == 2
@@ -161,6 +162,8 @@ class TestAllRealTools:
 
         # Tool should run without crashing and return a status string
         assert isinstance(res, str) and len(res) > 0
+        assert "confirm_montage 'standard_1020'" in res
+        assert "duplicate-channel ambiguity" not in res
 
     # --- UI Tools ---
 

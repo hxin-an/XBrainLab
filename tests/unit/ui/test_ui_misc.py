@@ -3,11 +3,23 @@ agent_manager, preprocess_plotter, saliency views, and remaining gaps."""
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 from PyQt6.QtWidgets import QDialog, QMainWindow, QWidget
+
+
+def _command_result(**diagnostics):
+    return SimpleNamespace(
+        ok=True,
+        failed=False,
+        message="ok",
+        diagnostics=diagnostics,
+    )
+
 
 # ====================================================================
 # DataSplitterHolder (pure logic - no Qt needed)
@@ -116,6 +128,945 @@ class TestDatasetActionHandler:
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_data_service_load_success_does_not_fallback_to_controller(
+        self,
+        mock_mb,
+        mock_fd,
+        handler,
+    ):
+        from XBrainLab.backend.application import LoadDataCommand
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileNames.return_value = (["/a.set"], "")
+
+        with (
+            patch.object(
+                handler, "_run_data_interpretation_import", return_value=False
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                return_value=_command_result(success_count=1),
+            ) as mock_execute,
+        ):
+            handler.import_data()
+
+        assert isinstance(mock_execute.call_args.args[1], LoadDataCommand)
+        handler.panel.controller.import_files.assert_not_called()
+        handler.panel.update_panel.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_data_refuses_real_study_direct_load_fallback(
+        self,
+        mock_mb,
+        mock_fd,
+        handler,
+    ):
+        from XBrainLab.backend.application import LoadDataCommand
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileNames.return_value = (["/a.set"], "")
+
+        with (
+            patch.object(
+                handler, "_run_data_interpretation_import", return_value=False
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.get_command_capability",
+                return_value=None,
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                return_value=None,
+            ) as mock_execute,
+        ):
+            handler.import_data()
+
+        assert isinstance(mock_execute.call_args.args[1], LoadDataCommand)
+        handler.panel.controller.import_files.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert mock_mb.warning.call_args.args[1] == "Interpretation Blocked"
+        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
+        mock_mb.critical.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_data_does_not_bypass_interpretation_when_command_surface_exists(
+        self,
+        mock_mb,
+        mock_fd,
+        handler,
+    ):
+        from XBrainLab.backend.application import CommandName
+        from XBrainLab.backend.application.capabilities import CommandCapability
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileNames.return_value = (["/a.set"], "")
+
+        with (
+            patch.object(
+                handler, "_run_data_interpretation_import", return_value=False
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.get_command_capability",
+                return_value=CommandCapability(
+                    command_name=CommandName.SCAN_SOURCE.value,
+                    enabled=True,
+                ),
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            ) as mock_execute,
+        ):
+            handler.import_data()
+
+        mock_execute.assert_not_called()
+        handler.panel.controller.import_files.assert_not_called()
+        mock_mb.critical.assert_called_once_with(
+            handler.panel,
+            "Interpretation unavailable",
+            "Data Interpretation command service is unavailable.",
+        )
+
+    @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_data_real_study_uses_interpretation_commands(
+        self,
+        mock_mb,
+        mock_fd,
+        mock_preview_dialog,
+        handler,
+    ):
+        from XBrainLab.backend.application import (
+            ApplyInterpretationCommand,
+            PreviewInterpretationCommand,
+            ScanSourceCommand,
+            ValidateInterpretationCommand,
+        )
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileNames.return_value = (["/tmp/sub-01_task-mi.fif"], "")
+        mock_preview_dialog.return_value.exec.return_value = True
+        mock_preview_dialog.return_value.get_result.return_value = {
+            "confirmed": False,
+            "save_recipe": False,
+        }
+        commands = []
+
+        def fake_execute(_panel, command):
+            commands.append(command)
+            if isinstance(command, ScanSourceCommand):
+                return _command_result(scan_result={"source_path": command.source_path})
+            if isinstance(command, PreviewInterpretationCommand):
+                return _command_result(
+                    preview={"summary": "Found 1 EEG file(s)."},
+                    candidate={"candidate_id": "candidate-1"},
+                )
+            if isinstance(command, ValidateInterpretationCommand):
+                return _command_result(
+                    validation_decision={
+                        "candidate_id": "candidate-1",
+                        "decision": "safe",
+                        "required_confirmations": [],
+                        "blocked_reasons": [],
+                    },
+                )
+            if isinstance(command, ApplyInterpretationCommand):
+                return _command_result(
+                    applied_interpretation={"candidate_id": "candidate-1"}
+                )
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            side_effect=fake_execute,
+        ):
+            handler.import_data()
+
+        assert [type(command) for command in commands] == [
+            ScanSourceCommand,
+            PreviewInterpretationCommand,
+            ValidateInterpretationCommand,
+            ApplyInterpretationCommand,
+        ]
+        assert commands[-1].candidate_id == "candidate-1"
+        assert commands[-1].confirmed is False
+        handler.panel.controller.import_files.assert_not_called()
+        handler.panel.update_panel.assert_not_called()
+
+    def test_import_data_prefers_backend_scan_capability_over_stale_controller(
+        self,
+        handler,
+    ):
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = True
+
+        with (
+            patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
+            patch.object(
+                handler,
+                "_run_data_interpretation_import",
+                return_value=True,
+            ) as mock_interpret,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            mock_fd.getOpenFileNames.return_value = (
+                ["/tmp/sub-01_task-mi_raw.fif"],
+                "",
+            )
+            handler.import_data()
+
+        mock_fd.getOpenFileNames.assert_called_once()
+        mock_interpret.assert_called_once_with(["/tmp/sub-01_task-mi_raw.fif"])
+        mock_mb.warning.assert_not_called()
+
+    def test_import_data_refuses_real_study_no_capability_lock_fallback(
+        self,
+        handler,
+    ):
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.side_effect = AssertionError(
+            "stale lock state should not be read",
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.get_command_capability",
+                return_value=None,
+            ),
+            patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            mock_fd.getOpenFileNames.return_value = ([], "")
+            handler.import_data()
+
+        handler.panel.controller.is_locked.assert_not_called()
+        mock_fd.getOpenFileNames.assert_called_once()
+        mock_mb.warning.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_folder_source_uses_folder_or_bids_root(
+        self,
+        mock_mb,
+        mock_fd,
+        mock_preview_dialog,
+        handler,
+    ):
+        from XBrainLab.backend.application import (
+            ApplyInterpretationCommand,
+            PreviewInterpretationCommand,
+            ScanSourceCommand,
+            ValidateInterpretationCommand,
+        )
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getExistingDirectory.return_value = "/tmp/bids-root"
+        mock_preview_dialog.return_value.exec.return_value = True
+        mock_preview_dialog.return_value.get_result.return_value = {
+            "confirmed": False,
+            "save_recipe": False,
+        }
+        commands = []
+
+        def fake_execute(_panel, command):
+            commands.append(command)
+            if isinstance(command, ScanSourceCommand):
+                return _command_result(scan_result={"source_path": command.source_path})
+            if isinstance(command, PreviewInterpretationCommand):
+                return _command_result(
+                    preview={"summary": "Found 1 EEG file(s)."},
+                    candidate={"candidate_id": "candidate-1"},
+                )
+            if isinstance(command, ValidateInterpretationCommand):
+                return _command_result(
+                    validation_decision={
+                        "candidate_id": "candidate-1",
+                        "decision": "safe",
+                        "required_confirmations": [],
+                        "blocked_reasons": [],
+                    },
+                )
+            if isinstance(command, ApplyInterpretationCommand):
+                return _command_result(applied_interpretation={})
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            side_effect=fake_execute,
+        ):
+            handler.import_folder_source()
+
+        assert isinstance(commands[0], ScanSourceCommand)
+        assert commands[0].source_path == "/tmp/bids-root"
+        assert [type(command) for command in commands] == [
+            ScanSourceCommand,
+            PreviewInterpretationCommand,
+            ValidateInterpretationCommand,
+            ApplyInterpretationCommand,
+        ]
+        handler.panel.controller.import_files.assert_not_called()
+        handler.panel.update_panel.assert_not_called()
+
+    def test_import_folder_prefers_backend_scan_capability_over_stale_controller(
+        self,
+        handler,
+    ):
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = True
+
+        with (
+            patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
+            patch.object(
+                handler,
+                "_run_data_interpretation_import",
+                return_value=True,
+            ) as mock_interpret,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            mock_fd.getExistingDirectory.return_value = "/tmp/bids-root"
+            handler.import_folder_source()
+
+        mock_fd.getExistingDirectory.assert_called_once()
+        mock_interpret.assert_called_once_with(["/tmp/bids-root"])
+        mock_mb.warning.assert_not_called()
+
+    def test_import_folder_refuses_real_study_no_capability_lock_fallback(
+        self,
+        handler,
+    ):
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.side_effect = AssertionError(
+            "stale lock state should not be read",
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.get_command_capability",
+                return_value=None,
+            ),
+            patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            handler.import_folder_source()
+
+        handler.panel.controller.is_locked.assert_not_called()
+        mock_fd.getExistingDirectory.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert mock_mb.warning.call_args.args[1] == "Interpretation Blocked"
+        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
+
+    @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_reload_interpretation_recipe_reviews_then_applies(
+        self,
+        mock_mb,
+        mock_fd,
+        mock_preview_dialog,
+        handler,
+    ):
+        from XBrainLab.backend.application import (
+            ApplyInterpretationCommand,
+            ReloadInterpretationRecipeCommand,
+        )
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileName.return_value = ("/tmp/import_recipe.json", "")
+        mock_preview_dialog.return_value.exec.return_value = True
+        mock_preview_dialog.return_value.get_result.return_value = {
+            "confirmed": True,
+            "save_recipe": False,
+        }
+        commands = []
+
+        def fake_execute(_panel, command):
+            commands.append(command)
+            if isinstance(command, ReloadInterpretationRecipeCommand):
+                return _command_result(
+                    scan_result={"scan_id": "scan-1"},
+                    preview={"summary": "Recipe ready for review."},
+                    candidate={"candidate_id": "candidate-1"},
+                    validation_decision={
+                        "candidate_id": "candidate-1",
+                        "decision": "needs_confirmation",
+                        "required_confirmations": ["Confirm recipe choices."],
+                        "blocked_reasons": [],
+                    },
+                    recipe={"recipe_id": "recipe-1"},
+                )
+            if isinstance(command, ApplyInterpretationCommand):
+                return _command_result(applied_interpretation={})
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            side_effect=fake_execute,
+        ):
+            handler.reload_interpretation_recipe()
+
+        assert isinstance(commands[0], ReloadInterpretationRecipeCommand)
+        assert commands[0].recipe_path == "/tmp/import_recipe.json"
+        assert isinstance(commands[1], ApplyInterpretationCommand)
+        assert commands[1].candidate_id == "candidate-1"
+        assert commands[1].confirmed is True
+        handler.panel.update_panel.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_reload_interpretation_recipe_repreviews_blocked_label_carrier_remap(
+        self,
+        mock_mb,
+        mock_fd,
+        mock_preview_dialog,
+        handler,
+    ):
+        from XBrainLab.backend.application import (
+            ApplyInterpretationCommand,
+            PreviewInterpretationCommand,
+            ReloadInterpretationRecipeCommand,
+            ValidateInterpretationCommand,
+        )
+
+        old_events = "/tmp/old_events.tsv"
+        new_events = "/tmp/renamed_events.tsv"
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileName.return_value = ("/tmp/import_recipe.json", "")
+        mock_preview_dialog.return_value.exec.return_value = True
+        mock_preview_dialog.return_value.get_result.return_value = {
+            "confirmed": True,
+            "save_recipe": False,
+            "choices": {"label_carrier_remap": {old_events: new_events}},
+        }
+        commands = []
+
+        def fake_execute(_panel, command):
+            commands.append(command)
+            if isinstance(command, ReloadInterpretationRecipeCommand):
+                return _command_result(
+                    scan_result={"scan_id": "scan-1", "label_carriers": [new_events]},
+                    preview={"summary": "Recipe needs remap."},
+                    candidate={
+                        "candidate_id": "candidate-1",
+                        "choices": {
+                            "recipe_id": "recipe-1",
+                            "required_label_carriers": [old_events],
+                            "label_carrier_choices": {
+                                old_events: {"label_field": "trial_type"},
+                            },
+                        },
+                    },
+                    validation_decision={
+                        "candidate_id": "candidate-1",
+                        "decision": "blocked",
+                        "blocked_reasons": [
+                            "Saved label/event carrier(s) were not found in the current scan: old_events.tsv.",
+                        ],
+                    },
+                    recipe={"recipe_id": "recipe-1"},
+                )
+            if isinstance(command, PreviewInterpretationCommand):
+                assert command.scan_id == "scan-1"
+                assert command.choices["required_label_carriers"] == [old_events]
+                assert command.choices["label_carrier_remap"] == {
+                    old_events: new_events,
+                }
+                return _command_result(
+                    preview={"summary": "Recipe remap ready."},
+                    candidate={"candidate_id": "candidate-2"},
+                )
+            if isinstance(command, ValidateInterpretationCommand):
+                return _command_result(
+                    validation_decision={
+                        "candidate_id": "candidate-2",
+                        "decision": "needs_confirmation",
+                        "required_confirmations": ["Confirm carrier remap."],
+                        "blocked_reasons": [],
+                    },
+                )
+            if isinstance(command, ApplyInterpretationCommand):
+                return _command_result(applied_interpretation={})
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            side_effect=fake_execute,
+        ):
+            handler.reload_interpretation_recipe()
+
+        assert [type(command) for command in commands] == [
+            ReloadInterpretationRecipeCommand,
+            PreviewInterpretationCommand,
+            ValidateInterpretationCommand,
+            ApplyInterpretationCommand,
+        ]
+        apply_command = commands[-1]
+        assert isinstance(apply_command, ApplyInterpretationCommand)
+        assert apply_command.candidate_id == "candidate-2"
+        assert apply_command.confirmed is True
+        mock_mb.critical.assert_not_called()
+        handler.panel.update_panel.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_reload_interpretation_recipe_repreviews_blocked_eeg_file_remap(
+        self,
+        mock_mb,
+        mock_fd,
+        mock_preview_dialog,
+        handler,
+    ):
+        from XBrainLab.backend.application import (
+            ApplyInterpretationCommand,
+            PreviewInterpretationCommand,
+            ReloadInterpretationRecipeCommand,
+            ValidateInterpretationCommand,
+        )
+
+        old_file = "/tmp/old_raw.fif"
+        new_file = "/tmp/renamed_raw.fif"
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileName.return_value = ("/tmp/import_recipe.json", "")
+        mock_preview_dialog.return_value.exec.return_value = True
+        mock_preview_dialog.return_value.get_result.return_value = {
+            "confirmed": True,
+            "save_recipe": False,
+            "choices": {"eeg_file_remap": {old_file: new_file}},
+        }
+        commands = []
+
+        def fake_execute(_panel, command):
+            commands.append(command)
+            if isinstance(command, ReloadInterpretationRecipeCommand):
+                return _command_result(
+                    scan_result={"scan_id": "scan-1", "eeg_files": [new_file]},
+                    preview={"summary": "Recipe needs EEG file remap."},
+                    candidate={
+                        "candidate_id": "candidate-1",
+                        "choices": {
+                            "recipe_id": "recipe-1",
+                            "selected_eeg_files": [old_file],
+                        },
+                    },
+                    validation_decision={
+                        "candidate_id": "candidate-1",
+                        "decision": "blocked",
+                        "blocked_reasons": [
+                            "Selected EEG file(s) were not found in the current scan: old_raw.fif.",
+                        ],
+                    },
+                    recipe={"recipe_id": "recipe-1"},
+                )
+            if isinstance(command, PreviewInterpretationCommand):
+                assert command.scan_id == "scan-1"
+                assert command.choices["selected_eeg_files"] == [old_file]
+                assert command.choices["eeg_file_remap"] == {
+                    old_file: new_file,
+                }
+                return _command_result(
+                    preview={"summary": "Recipe remap ready."},
+                    candidate={"candidate_id": "candidate-2"},
+                )
+            if isinstance(command, ValidateInterpretationCommand):
+                return _command_result(
+                    validation_decision={
+                        "candidate_id": "candidate-2",
+                        "decision": "needs_confirmation",
+                        "required_confirmations": ["Confirm EEG file remap."],
+                        "blocked_reasons": [],
+                    },
+                )
+            if isinstance(command, ApplyInterpretationCommand):
+                return _command_result(applied_interpretation={})
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            side_effect=fake_execute,
+        ):
+            handler.reload_interpretation_recipe()
+
+        assert [type(command) for command in commands] == [
+            ReloadInterpretationRecipeCommand,
+            PreviewInterpretationCommand,
+            ValidateInterpretationCommand,
+            ApplyInterpretationCommand,
+        ]
+        apply_command = commands[-1]
+        assert isinstance(apply_command, ApplyInterpretationCommand)
+        assert apply_command.candidate_id == "candidate-2"
+        assert apply_command.confirmed is True
+        mock_mb.critical.assert_not_called()
+        handler.panel.update_panel.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_reload_interpretation_recipe_uses_reload_capability_gate(
+        self,
+        mock_mb,
+        mock_fd,
+        handler,
+    ):
+        from XBrainLab.backend.application import CommandName
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+
+        def fake_capability(_panel, command_name):
+            if command_name == CommandName.RELOAD_INTERPRETATION_RECIPE:
+                return SimpleNamespace(
+                    enabled=False,
+                    reasons=["Recipe reload is unavailable."],
+                )
+            return SimpleNamespace(enabled=True, reasons=[])
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.get_command_capability",
+            side_effect=fake_capability,
+        ):
+            handler.reload_interpretation_recipe()
+
+        mock_mb.warning.assert_called_once()
+        assert "Recipe reload is unavailable" in mock_mb.warning.call_args.args[2]
+        mock_fd.getOpenFileName.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_data_needs_confirmation_applies_confirmed(
+        self,
+        mock_mb,
+        mock_fd,
+        mock_preview_dialog,
+        handler,
+    ):
+        from XBrainLab.backend.application import (
+            ApplyInterpretationCommand,
+            PreviewInterpretationCommand,
+            ScanSourceCommand,
+            ValidateInterpretationCommand,
+        )
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileNames.return_value = (["/tmp/sub-01_task-mi.fif"], "")
+        mock_preview_dialog.return_value.exec.return_value = True
+        mock_preview_dialog.return_value.get_result.return_value = {
+            "confirmed": True,
+            "save_recipe": False,
+        }
+        applied: list[ApplyInterpretationCommand] = []
+
+        def fake_execute(_panel, command):
+            if isinstance(command, ScanSourceCommand):
+                return _command_result(scan_result={})
+            if isinstance(command, PreviewInterpretationCommand):
+                return _command_result(
+                    preview={},
+                    candidate={"candidate_id": "candidate-1"},
+                )
+            if isinstance(command, ValidateInterpretationCommand):
+                return _command_result(
+                    validation_decision={
+                        "candidate_id": "candidate-1",
+                        "decision": "needs_confirmation",
+                        "required_confirmations": ["Confirm event roles."],
+                        "blocked_reasons": [],
+                    },
+                )
+            if isinstance(command, ApplyInterpretationCommand):
+                applied.append(command)
+                return _command_result(applied_interpretation={})
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            side_effect=fake_execute,
+        ):
+            handler.import_data()
+
+        assert applied
+        assert applied[0].confirmed is True
+
+    @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_data_repreviews_dialog_review_choices(
+        self,
+        mock_mb,
+        mock_fd,
+        mock_preview_dialog,
+        handler,
+    ):
+        from XBrainLab.backend.application import (
+            ApplyInterpretationCommand,
+            PreviewInterpretationCommand,
+            ScanSourceCommand,
+            ValidateInterpretationCommand,
+        )
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileNames.return_value = (["/tmp/sub-01_task-mi.fif"], "")
+        mock_preview_dialog.return_value.exec.return_value = True
+        mock_preview_dialog.return_value.get_result.return_value = {
+            "confirmed": True,
+            "save_recipe": False,
+            "choices": {
+                "metadata_overrides": {"sub-01_task-mi.fif": {"session": "session-01"}},
+                "class_map": {"1": "left hand", "2": "right hand"},
+            },
+        }
+        previews: list[PreviewInterpretationCommand] = []
+        applied: list[ApplyInterpretationCommand] = []
+
+        def fake_execute(_panel, command):
+            if isinstance(command, ScanSourceCommand):
+                return _command_result(
+                    scan_result={
+                        "scan_id": "scan-1",
+                        "source_path": command.source_path,
+                    }
+                )
+            if isinstance(command, PreviewInterpretationCommand):
+                previews.append(command)
+                candidate_id = f"candidate-{len(previews)}"
+                return _command_result(
+                    preview={"summary": "Found 1 EEG file(s)."},
+                    candidate={"candidate_id": candidate_id},
+                )
+            if isinstance(command, ValidateInterpretationCommand):
+                return _command_result(
+                    validation_decision={
+                        "candidate_id": command.candidate_id,
+                        "decision": "needs_confirmation",
+                        "required_confirmations": ["Confirm event roles."],
+                        "blocked_reasons": [],
+                    },
+                )
+            if isinstance(command, ApplyInterpretationCommand):
+                applied.append(command)
+                return _command_result(applied_interpretation={})
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            side_effect=fake_execute,
+        ):
+            handler.import_data()
+
+        assert len(previews) == 2
+        assert previews[1].scan_id == "scan-1"
+        assert previews[1].choices["metadata_overrides"] == {
+            "sub-01_task-mi.fif": {"session": "session-01"}
+        }
+        assert previews[1].choices["class_map"] == {
+            "1": "left hand",
+            "2": "right hand",
+        }
+        assert applied
+        assert applied[0].candidate_id == "candidate-2"
+        assert applied[0].confirmed is True
+
+    @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_data_saves_recipe_when_requested(
+        self,
+        mock_mb,
+        mock_fd,
+        mock_preview_dialog,
+        handler,
+    ):
+        from XBrainLab.backend.application import (
+            ApplyInterpretationCommand,
+            PreviewInterpretationCommand,
+            SaveInterpretationRecipeCommand,
+            ScanSourceCommand,
+            ValidateInterpretationCommand,
+        )
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileNames.return_value = (["/tmp/sub-01_task-mi.fif"], "")
+        mock_fd.getSaveFileName.return_value = ("/recipes/import_recipe.json", "")
+        mock_preview_dialog.return_value.exec.return_value = True
+        mock_preview_dialog.return_value.get_result.return_value = {
+            "confirmed": False,
+            "save_recipe": True,
+        }
+        saved: list[SaveInterpretationRecipeCommand] = []
+
+        def fake_execute(_panel, command):
+            if isinstance(command, ScanSourceCommand):
+                return _command_result(scan_result={})
+            if isinstance(command, PreviewInterpretationCommand):
+                return _command_result(
+                    preview={},
+                    candidate={"candidate_id": "candidate-1"},
+                )
+            if isinstance(command, ValidateInterpretationCommand):
+                return _command_result(
+                    validation_decision={
+                        "candidate_id": "candidate-1",
+                        "decision": "safe",
+                        "required_confirmations": [],
+                        "blocked_reasons": [],
+                    },
+                )
+            if isinstance(command, ApplyInterpretationCommand):
+                return _command_result(applied_interpretation={})
+            if isinstance(command, SaveInterpretationRecipeCommand):
+                saved.append(command)
+                return _command_result(import_recipe={"recipe_id": "recipe-1"})
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            side_effect=fake_execute,
+        ):
+            handler.import_data()
+
+        assert saved
+        assert saved[0].recipe_path == "/recipes/import_recipe.json"
+        mock_mb.information.assert_called_once()
+        assert "Recipe saved." in mock_mb.information.call_args.args[2]
+
+    def test_save_interpretation_recipe_uses_backend_capability_before_file_dialog(
+        self,
+        handler,
+    ):
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+
+        with (
+            patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            message = handler._save_interpretation_recipe()
+
+        assert message == ""
+        mock_fd.getSaveFileName.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert (
+            "Apply an interpretation before saving a recipe."
+            in mock_mb.warning.call_args.args[2]
+        )
+
+    def test_offer_label_recipe_save_skips_confirmation_when_save_blocked(
+        self,
+        handler,
+    ):
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        result = SimpleNamespace(diagnostics={"recipe_updated": True})
+
+        with (
+            patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            message = handler._offer_label_recipe_save(result)
+
+        assert message == "Interpretation recipe trace updated in this session."
+        mock_mb.question.assert_not_called()
+        mock_fd.getSaveFileName.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_data_blocked_preview_does_not_apply(
+        self,
+        mock_mb,
+        mock_fd,
+        mock_preview_dialog,
+        handler,
+    ):
+        from XBrainLab.backend.application import (
+            ApplyInterpretationCommand,
+            PreviewInterpretationCommand,
+            ScanSourceCommand,
+            ValidateInterpretationCommand,
+        )
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileNames.return_value = (["/tmp/no-labels.txt"], "")
+        mock_preview_dialog.return_value.exec.return_value = True
+        mock_preview_dialog.return_value.get_result.return_value = {
+            "confirmed": False,
+            "save_recipe": False,
+        }
+
+        def fake_execute(_panel, command):
+            if isinstance(command, ScanSourceCommand):
+                return _command_result(scan_result={})
+            if isinstance(command, PreviewInterpretationCommand):
+                return _command_result(
+                    preview={},
+                    candidate={"candidate_id": "candidate-1"},
+                )
+            if isinstance(command, ValidateInterpretationCommand):
+                return _command_result(
+                    validation_decision={
+                        "candidate_id": "candidate-1",
+                        "decision": "blocked",
+                        "required_confirmations": [],
+                        "blocked_reasons": ["No supported EEG data files were found."],
+                    },
+                )
+            if isinstance(command, ApplyInterpretationCommand):
+                raise AssertionError("blocked interpretation must not apply")
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            side_effect=fake_execute,
+        ):
+            handler.import_data()
+
+        mock_mb.critical.assert_called_once()
+        handler.panel.controller.import_files.assert_not_called()
+
+    def test_interpretation_source_avoids_common_root_scan(self, handler):
+        source_path, choices = handler._interpretation_source_and_choices(
+            ["/mnt/a/sub-01.fif", "/tmp/b/sub-02.fif"],
+        )
+
+        assert source_path == "/mnt/a/sub-01.fif"
+        assert choices == {
+            "selected_eeg_files": ["/mnt/a/sub-01.fif", "/tmp/b/sub-02.fif"],
+        }
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_import_data_exception(self, mock_mb, mock_fd, handler):
         handler.panel.controller = MagicMock()
         handler.panel.controller.is_locked.return_value = False
@@ -127,7 +1078,8 @@ class TestDatasetActionHandler:
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_on_import_finished_success(self, mock_mb, handler):
         handler.on_import_finished(2, [])
-        handler.panel.update_panel.assert_called_once()
+        handler.panel.update_panel.assert_not_called()
+        mock_mb.warning.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_on_import_finished_errors(self, mock_mb, handler):
@@ -183,6 +1135,64 @@ class TestDatasetActionHandler:
         handler._remove_files([0, 1])
         handler.panel.controller.remove_files.assert_called_once_with([0, 1])
 
+    def test_remove_files_refuses_real_study_controller_fallback(self, handler):
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        study.data_manager.loaded_data_list = [MagicMock()]
+        handler.panel.study = study
+        handler.panel.controller = MagicMock()
+
+        with (
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                return_value=None,
+            ),
+        ):
+            mock_mb.StandardButton.Yes = 1
+            mock_mb.StandardButton.No = 2
+            mock_mb.question.return_value = 1
+            handler._remove_files([0])
+
+        handler.panel.controller.remove_files.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert mock_mb.warning.call_args.args[1] == "Remove Files Blocked"
+        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
+
+    def test_remove_files_service_success_uses_coordinator_refresh(self, handler):
+        handler.panel.controller = MagicMock()
+
+        with (
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                return_value=_command_result(),
+            ),
+        ):
+            mock_mb.StandardButton.Yes = 1
+            mock_mb.StandardButton.No = 2
+            mock_mb.question.return_value = 1
+            handler._remove_files([0])
+
+        handler.panel.update_panel.assert_not_called()
+
+    def test_remove_files_uses_backend_capability_before_confirm(self, handler):
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        handler.panel.controller = MagicMock()
+
+        with patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb:
+            handler._remove_files([0, 1])
+
+        mock_mb.question.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert (
+            "Load raw data before removing files." in mock_mb.warning.call_args.args[2]
+        )
+        handler.panel.controller.remove_files.assert_not_called()
+
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_batch_set_session(self, mock_mb, handler):
         handler.panel.controller = MagicMock()
@@ -192,6 +1202,50 @@ class TestDatasetActionHandler:
         handler.panel.controller.update_metadata.assert_called_once_with(
             0, session="sess1"
         )
+
+    def test_batch_set_uses_backend_capability_before_prompt(self, handler):
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        handler.panel.controller = MagicMock()
+
+        with (
+            patch("XBrainLab.ui.panels.dataset.actions.QInputDialog") as mock_input,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            handler._batch_set([0], "Session")
+
+        mock_input.getText.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert (
+            "Load raw data before updating metadata."
+            in (mock_mb.warning.call_args.args[2])
+        )
+        handler.panel.controller.update_metadata.assert_not_called()
+
+    def test_batch_set_refuses_real_study_controller_fallback(self, handler):
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        study.data_manager.loaded_data_list = [MagicMock()]
+        handler.panel.study = study
+        handler.panel.controller = MagicMock()
+
+        with (
+            patch("XBrainLab.ui.panels.dataset.actions.QInputDialog") as mock_input,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                return_value=None,
+            ),
+        ):
+            mock_input.getText.return_value = ("session-01", True)
+            handler._batch_set([0], "Session")
+
+        handler.panel.controller.update_metadata.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert mock_mb.warning.call_args.args[1] == "Metadata Update Blocked"
+        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_get_target_files_no_selection_apply_all(self, mock_mb, handler):
@@ -203,6 +1257,10 @@ class TestDatasetActionHandler:
         handler.panel.controller.get_loaded_data_list.return_value = ["a", "b", "c"]
         result = handler._get_target_files_for_import()
         assert len(result) == 3
+        assert mock_mb.question.call_args.args[1] == "Add Labels to Loaded Data"
+        assert mock_mb.question.call_args.args[2] == (
+            "No files selected. Add labels to all loaded files?"
+        )
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_get_target_files_no_selection_cancel(self, mock_mb, handler):
@@ -226,6 +1284,187 @@ class TestDatasetActionHandler:
                 handler.open_smart_parser()
                 handler.panel.controller.apply_smart_parse.assert_called()
 
+    def test_open_smart_parser_uses_backend_capability(self, handler):
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        handler.panel.controller.is_locked.return_value = False
+        handler.panel.controller.has_data.return_value = True
+        handler.panel.controller.get_filenames.return_value = ["file1.set"]
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.SmartParserDialog",
+            ) as mock_dialog,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            handler.open_smart_parser()
+
+        mock_dialog.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert (
+            "Load raw data before applying smart parse."
+            in (mock_mb.warning.call_args.args[2])
+        )
+
+    def test_open_smart_parser_prefers_backend_capability_over_stale_controller(
+        self,
+        handler,
+    ):
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        raw = MagicMock()
+        raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
+        raw.get_filepath.return_value = "/tmp/sub-01_task-mi_raw.fif"
+        study.data_manager.loaded_data_list = [raw]
+        handler.panel.study = study
+        handler.panel.controller.is_locked.return_value = True
+        handler.panel.controller.has_data.return_value = False
+        handler.panel.controller.get_filenames.return_value = ["sub-01_task-mi_raw.fif"]
+
+        query_result = _command_result()
+        query_result.diagnostics = {
+            "state": {
+                "raw": {
+                    "files": ["sub-01_task-mi_raw.fif"],
+                },
+            },
+        }
+        apply_result = _command_result(success_count=1)
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.SmartParserDialog",
+            ) as mock_dialog,
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                side_effect=[query_result, apply_result],
+            ) as mock_execute,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            mock_dialog.return_value.get_result.return_value = {
+                "/tmp/sub-01_task-mi_raw.fif": ("S01", "session-01")
+            }
+            handler.open_smart_parser()
+
+        handler.panel.controller.get_filenames.assert_not_called()
+        mock_dialog.assert_called_once_with(["sub-01_task-mi_raw.fif"], handler.panel)
+        assert mock_execute.call_count == 2
+        handler.panel.controller.apply_smart_parse.assert_not_called()
+        mock_mb.warning.assert_not_called()
+
+    def test_open_smart_parser_refuses_real_study_controller_fallback(
+        self,
+        handler,
+    ):
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        raw = MagicMock()
+        raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
+        raw.get_filepath.return_value = "/tmp/sub-01_task-mi_raw.fif"
+        study.data_manager.loaded_data_list = [raw]
+        handler.panel.study = study
+        handler.panel.controller = MagicMock()
+
+        query_result = _command_result()
+        query_result.diagnostics = {
+            "state": {
+                "raw": {
+                    "files": ["sub-01_task-mi_raw.fif"],
+                },
+            },
+        }
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.SmartParserDialog",
+            ) as mock_dialog,
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                side_effect=[query_result, None],
+            ),
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            mock_dialog.return_value.get_result.return_value = {
+                "/tmp/sub-01_task-mi_raw.fif": ("S01", "session-01")
+            }
+            handler.open_smart_parser()
+
+        handler.panel.controller.apply_smart_parse.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert mock_mb.warning.call_args.args[1] == "Smart Parse Blocked"
+        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
+
+    def test_open_smart_parser_refuses_real_study_no_capability_preflight_fallback(
+        self,
+        handler,
+    ):
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.side_effect = AssertionError(
+            "stale lock state should not be read",
+        )
+        handler.panel.controller.has_data.side_effect = AssertionError(
+            "stale loaded-data state should not be read",
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.get_command_capability",
+                return_value=None,
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.SmartParserDialog",
+            ) as mock_dialog,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            handler.open_smart_parser()
+
+        handler.panel.controller.is_locked.assert_not_called()
+        handler.panel.controller.has_data.assert_not_called()
+        mock_dialog.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert mock_mb.warning.call_args.args[1] == "Smart Parse Blocked"
+        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
+
+    def test_open_smart_parser_refuses_real_study_filename_fallback(
+        self,
+        handler,
+    ):
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        raw = MagicMock()
+        raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
+        raw.get_filepath.return_value = "/tmp/sub-01_task-mi_raw.fif"
+        study.data_manager.loaded_data_list = [raw]
+        handler.panel.study = study
+        handler.panel.controller = MagicMock()
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.SmartParserDialog",
+            ) as mock_dialog,
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                return_value=None,
+            ),
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            handler.open_smart_parser()
+
+        handler.panel.controller.get_filenames.assert_not_called()
+        mock_dialog.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert mock_mb.warning.call_args.args[1] == "Smart Parse Blocked"
+        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
+
     def test_import_label_returns_early_no_files(self, handler):
         """import_label calls _get_target_files_for_import first; if empty, returns."""
         handler.panel.table.selectedIndexes.return_value = []
@@ -238,6 +1477,50 @@ class TestDatasetActionHandler:
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_without_loaded_rows_guides_to_interpret_source(
+        self,
+        mock_dlg,
+        mock_mb,
+        handler,
+    ):
+        handler.panel.table.rowCount.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = []
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.get_loaded_data_list.return_value = []
+
+        handler.import_label()
+
+        mock_mb.warning.assert_called_once()
+        assert "Interpret a data source" in mock_mb.warning.call_args.args[2]
+        mock_dlg.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_respects_backend_capability_block(
+        self,
+        mock_dlg,
+        mock_mb,
+        handler,
+    ):
+        capability = MagicMock()
+        capability.enabled = False
+        capability.reasons = ["Reset the session before changing labels."]
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.get_command_capability",
+            return_value=capability,
+        ):
+            handler.import_label()
+
+        mock_mb.warning.assert_called_once()
+        assert (
+            "Reset the session before changing labels."
+            in (mock_mb.warning.call_args.args[2])
+        )
+        mock_dlg.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_dialog_cancelled(self, mock_dlg, mock_mb, handler):
         idx = MagicMock()
         idx.row.return_value = 0
@@ -247,6 +1530,85 @@ class TestDatasetActionHandler:
         mock_dlg.return_value.exec.return_value = False
         handler.import_label()
         handler.panel.controller.apply_labels_legacy.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_passes_target_context_to_dialog(
+        self,
+        mock_dlg,
+        mock_mb,
+        handler,
+    ):
+        idx = MagicMock()
+        idx.row.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.controller = MagicMock()
+        data_obj = MagicMock()
+        handler.panel.controller.get_loaded_data_list.return_value = [data_obj]
+        mock_dlg.return_value.exec.return_value = False
+
+        handler.import_label()
+
+        mock_dlg.assert_called_once_with(handler.panel, target_files=[data_obj])
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_uses_table_user_role_before_stale_controller_list(
+        self,
+        mock_dlg,
+        mock_mb,
+        handler,
+    ):
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QTableWidgetItem
+
+        idx = MagicMock()
+        idx.row.return_value = 0
+        data_obj = MagicMock()
+        item = QTableWidgetItem("sub-01_task-mi_raw.fif")
+        item.setData(Qt.ItemDataRole.UserRole, data_obj)
+
+        handler.panel.table.rowCount.return_value = 1
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.table.item.return_value = item
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.get_loaded_data_list.side_effect = AssertionError(
+            "stale loaded list should not be read",
+        )
+        mock_dlg.return_value.exec.return_value = False
+
+        handler.import_label()
+
+        mock_dlg.assert_called_once_with(handler.panel, target_files=[data_obj])
+        handler.panel.controller.get_loaded_data_list.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_label_real_study_refuses_controller_target_fallback(
+        self,
+        mock_mb,
+        handler,
+    ):
+        from PyQt6.QtWidgets import QTableWidgetItem
+
+        from XBrainLab.backend.study import Study
+
+        idx = MagicMock()
+        idx.row.return_value = 0
+        item = QTableWidgetItem("sub-01_task-mi_raw.fif")
+        handler.panel.study = Study()
+        handler.panel.table.rowCount.return_value = 1
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.table.item.return_value = item
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.get_loaded_data_list.side_effect = AssertionError(
+            "stale loaded list should not be read",
+        )
+
+        result = handler._get_target_files_for_import()
+
+        assert result == []
+        handler.panel.controller.get_loaded_data_list.assert_not_called()
+        mock_mb.warning.assert_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
@@ -279,6 +1641,77 @@ class TestDatasetActionHandler:
         handler.import_label()
         handler.panel.controller.apply_labels_legacy.assert_called_once()
 
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_refuses_real_study_controller_fallback(
+        self,
+        mock_dlg,
+        mock_mb,
+        handler,
+    ):
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QTableWidgetItem
+
+        from XBrainLab.backend.study import Study
+
+        idx = MagicMock()
+        idx.row.return_value = 0
+        data_obj = MagicMock()
+        data_obj.is_raw.return_value = False
+        item = QTableWidgetItem("sub-01_task-mi_raw.fif")
+        item.setData(Qt.ItemDataRole.UserRole, data_obj)
+
+        study = Study()
+        study.data_manager.loaded_data_list = [data_obj]
+        handler.panel.study = study
+        handler.panel.table.rowCount.return_value = 1
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.table.item.return_value = item
+        handler.panel.controller = MagicMock()
+        mock_dlg.return_value.exec.return_value = True
+        mock_dlg.return_value.get_result.return_value = (
+            {"file1.txt": [0, 1, 0, 1]},
+            "mapping",
+        )
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            return_value=None,
+        ):
+            handler.import_label()
+
+        handler.panel.controller.apply_labels_legacy.assert_not_called()
+        handler.panel.controller.apply_labels_batch.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert mock_mb.warning.call_args.args[1] == "Label Import Blocked"
+        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_warns_when_no_labels_applied(
+        self,
+        mock_dlg,
+        mock_mb,
+        handler,
+    ):
+        idx = MagicMock()
+        idx.row.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.controller = MagicMock()
+        data_obj = MagicMock()
+        data_obj.is_raw.return_value = False
+        handler.panel.controller.get_loaded_data_list.return_value = [data_obj]
+        mock_dlg.return_value.exec.return_value = True
+        mock_dlg.return_value.get_result.return_value = (
+            {"file1.txt": [0, 1, 0, 1]},
+            "mapping",
+        )
+        handler.panel.controller.apply_labels_legacy.return_value = 0
+
+        handler.import_label()
+
+        mock_mb.warning.assert_called()
+
     @patch("XBrainLab.ui.panels.dataset.actions.LabelMappingDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
@@ -304,6 +1737,98 @@ class TestDatasetActionHandler:
         handler.import_label()
         handler.panel.controller.apply_labels_batch.assert_called_once()
 
+    @patch("XBrainLab.ui.panels.dataset.actions.LabelMappingDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_batch_mapping_cancelled(
+        self,
+        mock_dlg,
+        mock_mb,
+        mock_map_dlg,
+        handler,
+    ):
+        idx = MagicMock()
+        idx.row.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.controller = MagicMock()
+        data_obj = MagicMock()
+        data_obj.is_raw.return_value = False
+        data_obj.get_filepath.return_value = "/file1.set"
+        handler.panel.controller.get_loaded_data_list.return_value = [data_obj]
+        mock_dlg.return_value.exec.return_value = True
+        mock_dlg.return_value.get_result.return_value = (
+            {"label1.txt": [0, 1], "label2.txt": [1, 0]},
+            "mapping",
+        )
+        mock_map_dlg.return_value.exec.return_value = False
+
+        handler.import_label()
+
+        handler.panel.controller.apply_labels_batch.assert_not_called()
+        mock_mb.warning.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.LabelMappingDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_batch_inconsistent_sequence_lengths_no_target_hint(
+        self,
+        mock_dlg,
+        mock_mb,
+        mock_map_dlg,
+        handler,
+    ):
+        idx = MagicMock()
+        idx.row.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.controller = MagicMock()
+        data_obj = MagicMock()
+        data_obj.is_raw.return_value = True
+        data_obj.get_filepath.return_value = "/file1.set"
+        handler.panel.controller.get_loaded_data_list.return_value = [data_obj]
+        mock_dlg.return_value.exec.return_value = True
+        mock_dlg.return_value.get_result.return_value = (
+            {"label1.txt": [0, 1], "label2.txt": [1, 0, 1, 0]},
+            "mapping",
+        )
+        mock_map_dlg.return_value.exec.return_value = True
+        mock_map_dlg.return_value.get_mapping.return_value = {
+            "/file1.set": "label1.txt"
+        }
+        handler.panel.controller.apply_labels_batch.return_value = 1
+
+        with patch.object(
+            handler, "_filter_events_for_import", return_value=None
+        ) as mock_filter:
+            handler.import_label()
+
+        mock_filter.assert_called_once_with([data_obj], None)
+        handler.panel.controller.apply_labels_batch.assert_called_once()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_mixed_label_modes_rejected(self, mock_dlg, mock_mb, handler):
+        idx = MagicMock()
+        idx.row.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.controller = MagicMock()
+        data_obj = MagicMock()
+        data_obj.is_raw.return_value = False
+        handler.panel.controller.get_loaded_data_list.return_value = [data_obj]
+        mock_dlg.return_value.exec.return_value = True
+        mock_dlg.return_value.get_result.return_value = (
+            {
+                "labels.txt": [0, 1],
+                "events.csv": [{"onset": 0.0, "duration": 1.0, "label": "A"}],
+            },
+            "mapping",
+        )
+
+        handler.import_label()
+
+        handler.panel.controller.apply_labels_batch.assert_not_called()
+        handler.panel.controller.apply_labels_legacy.assert_not_called()
+        mock_mb.critical.assert_called_once()
+
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_timestamp(self, mock_dlg, mock_mb, handler):
@@ -323,6 +1848,59 @@ class TestDatasetActionHandler:
         handler.panel.controller.apply_labels_batch.return_value = 1
         handler.import_label()
         handler.panel.controller.apply_labels_batch.assert_called_once()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_offers_to_save_updated_recipe(
+        self,
+        mock_dlg,
+        mock_mb,
+        mock_fd,
+        handler,
+    ):
+        from XBrainLab.backend.application import (
+            ImportLabelsCommand,
+            SaveInterpretationRecipeCommand,
+        )
+
+        idx = MagicMock()
+        idx.row.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.controller = MagicMock()
+        data_obj = MagicMock()
+        data_obj.is_raw.return_value = False
+        data_obj.get_filepath.return_value = "/file1.set"
+        handler.panel.controller.get_loaded_data_list.return_value = [data_obj]
+        mock_dlg.return_value.exec.return_value = True
+        mock_dlg.return_value.get_result.return_value = (
+            {"label1.txt": [0, 1]},
+            {0: "left", 1: "right"},
+        )
+        mock_mb.StandardButton.Yes = 1
+        mock_mb.StandardButton.No = 2
+        mock_mb.question.return_value = 1
+        mock_fd.getSaveFileName.return_value = ("/recipes/with_labels.json", "")
+        saved: list[SaveInterpretationRecipeCommand] = []
+
+        def fake_execute(_panel, command):
+            if isinstance(command, ImportLabelsCommand):
+                return _command_result(success_count=1, recipe_updated=True)
+            if isinstance(command, SaveInterpretationRecipeCommand):
+                saved.append(command)
+                return _command_result(import_recipe={"recipe_id": "recipe-1"})
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            side_effect=fake_execute,
+        ):
+            handler.import_label()
+
+        assert saved
+        assert saved[0].recipe_path == "/recipes/with_labels.json"
+        assert "Recipe saved." in mock_mb.information.call_args.args[2]
+        handler.panel.update_panel.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
@@ -364,6 +1942,67 @@ class TestDatasetActionHandler:
         mock_efd.return_value.get_selected_ids.return_value = ["left", "right"]
         result = handler._filter_events_for_import([data], 2)
         assert result == {"left", "right"}
+
+    @patch("XBrainLab.ui.panels.dataset.actions.EventFilterDialog")
+    def test_filter_events_uses_service_suggestions_before_stale_controller(
+        self,
+        mock_efd,
+        handler,
+    ):
+        from XBrainLab.backend.application import QueryStateCommand
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.get_smart_filter_suggestions.side_effect = (
+            AssertionError("stale smart-filter suggestions should not be read")
+        )
+        handler._last_target_file_indices = [2]
+        data = MagicMock()
+        data.is_raw.return_value = True
+        data.has_event.return_value = True
+        data.get_raw_event_list.return_value = ([], {"left": 1, "right": 2})
+        mock_efd.return_value.exec.return_value = True
+        mock_efd.return_value.get_selected_ids.return_value = ["left"]
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            return_value=_command_result(suggestions=[1]),
+        ) as mock_execute:
+            result = handler._filter_events_for_import([data], 2)
+
+        assert result == {"left"}
+        handler.panel.controller.get_smart_filter_suggestions.assert_not_called()
+        command = mock_execute.call_args.args[1]
+        assert isinstance(command, QueryStateCommand)
+        assert command.query == "smart_filter_suggestions"
+        assert command.params == {"target_index": 2, "target_count": 2}
+        mock_efd.return_value.set_selection.assert_called_once_with(["left"])
+
+    @patch("XBrainLab.ui.panels.dataset.actions.EventFilterDialog")
+    def test_filter_events_aggregates_suggestions_from_multiple_files(
+        self, mock_efd, handler
+    ):
+        handler.panel.controller = MagicMock()
+
+        data1 = MagicMock()
+        data1.is_raw.return_value = True
+        data1.has_event.return_value = True
+        data1.get_raw_event_list.return_value = ([], {"left": 1, "right": 2})
+
+        data2 = MagicMock()
+        data2.is_raw.return_value = True
+        data2.has_event.return_value = True
+        data2.get_raw_event_list.return_value = ([], {"foot": 3, "tongue": 4})
+
+        handler.panel.controller.get_smart_filter_suggestions.side_effect = [[1], [4]]
+        mock_efd.return_value.exec.return_value = True
+        mock_efd.return_value.get_selected_ids.return_value = ["left", "tongue"]
+
+        result = handler._filter_events_for_import([data1, data2], 2)
+
+        assert result == {"left", "tongue"}
+        mock_efd.return_value.set_selection.assert_called_once_with(["left", "tongue"])
 
     @patch("XBrainLab.ui.panels.dataset.actions.EventFilterDialog")
     def test_filter_events_cancelled(self, mock_efd, handler):
@@ -446,6 +2085,32 @@ class TestDatasetActionHandler:
             handler.import_label()
         handler.panel.controller.apply_labels_legacy.assert_called_once()
 
+    def test_analyze_label_map_single_sequence(self, handler):
+        is_timestamp, target_count = handler._analyze_label_map(
+            {"file1.txt": np.array([0, 1, 0, 1])}
+        )
+        assert is_timestamp is False
+        assert target_count == 4
+
+    def test_analyze_label_map_inconsistent_sequence_lengths(self, handler):
+        is_timestamp, target_count = handler._analyze_label_map(
+            {"file1.txt": np.array([0, 1]), "file2.txt": np.array([0, 1, 0])}
+        )
+        assert is_timestamp is False
+        assert target_count is None
+
+    def test_analyze_label_map_mixed_modes_raises(self, handler):
+        with pytest.raises(
+            ValueError,
+            match="Cannot mix timestamp-style and sequence-style label files",
+        ):
+            handler._analyze_label_map(
+                {
+                    "file1.txt": np.array([0, 1]),
+                    "events.csv": [{"onset": 0.0, "duration": 1.0, "label": "A"}],
+                }
+            )
+
 
 # ====================================================================
 # ImportLabelDialog
@@ -454,7 +2119,7 @@ class TestDatasetActionHandler:
 
 class TestImportLabelDialog:
     @pytest.fixture
-    def dlg(self, qtbot):
+    def dlg(self, qtbot) -> Any:
         from XBrainLab.ui.dialogs.dataset.import_label_dialog import ImportLabelDialog
 
         d = ImportLabelDialog(parent=None)
@@ -462,8 +2127,8 @@ class TestImportLabelDialog:
         return d
 
     def test_creates(self, dlg):
-        assert isinstance(dlg, QDialog)
         assert dlg.label_data_map == {}
+        assert isinstance(dlg, QDialog)
 
     def test_remove_files_empty(self, dlg):
         dlg.remove_files()  # no items, should not crash
@@ -520,7 +2185,7 @@ class TestImportLabelDialog:
     def test_load_file(self, mock_load, dlg):
         mock_load.return_value = np.array([1, 2, 3])
         dlg.load_file("/path/labels.txt")
-        assert "labels.txt" in dlg.label_data_map
+        assert "/path/labels.txt" in dlg.label_data_map
 
     def test_browse_files(self, dlg):
         # Manually simulate what browse_files does after file dialog
@@ -586,8 +2251,10 @@ class TestAgentManagerDeep:
 
     def test_set_model(self, mgr):
         mgr.agent_controller = MagicMock()
+        mgr.vram_checker = MagicMock()
         mgr.set_model("Gemini")
-        mgr.agent_controller.set_model.assert_called_with("Gemini")
+        mgr.agent_controller.set_model.assert_called_with("local")
+        mgr.vram_checker.check.assert_called_once_with(switching_to_local=True)
 
     def test_on_processing_state_changed(self, mgr):
         mgr.chat_panel = MagicMock()
@@ -674,15 +2341,18 @@ class TestAgentManagerDeep:
         worker = MagicMock()
         mgr.agent_controller.worker = worker
         worker.engine.config.active_mode = "local"
-        assert mgr.prepare_model_deletion("model") is True
-        mgr.agent_controller.set_model.assert_called_with("Gemini")
+        with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
+            assert mgr.prepare_model_deletion("model") is False
+        mgr.agent_controller.set_model.assert_not_called()
 
     def test_prepare_model_deletion_gemini(self, mgr):
         mgr.agent_controller = MagicMock()
         worker = MagicMock()
         mgr.agent_controller.worker = worker
         worker.engine.config.active_mode = "gemini"
-        assert mgr.prepare_model_deletion("model") is True
+        with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
+            assert mgr.prepare_model_deletion("model") is False
+        mgr.agent_controller.set_model.assert_not_called()
 
     def test_check_vram_not_local(self, mgr):
         mgr.agent_controller = None
@@ -719,7 +2389,7 @@ class TestAgentManagerDeep:
         dlg = MagicMock()
         mock_dlg_cls.return_value = dlg
         dlg.exec.return_value = True
-        dlg.get_result.return_value = (["C3", "C4"], [[0, 0], [1, 0]])
+        dlg.get_result.return_value = (["C3", "C4"], [[0, 0, 0], [1, 0, 0]])
         mgr.chat_panel = MagicMock()
         mgr.chat_panel.debug_mode = False
         mgr.agent_controller = MagicMock()

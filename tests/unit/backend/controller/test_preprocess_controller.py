@@ -144,3 +144,38 @@ def test_get_unique_events(controller, mock_study):
 
     events = controller.get_unique_events()
     assert events == ["EventA", "EventB", "EventC"]
+
+
+def test_get_runtime_diagnostics(controller, mock_study):
+    d1 = MagicMock()
+    d1.get_runtime_signals.return_value = ["duplicate channels", "note one"]
+    d1.get_gdf_duplicate_channel_detail.return_value = {
+        "kind": "gdf_duplicate_channel_names",
+        "generated_bases": ["EEG"],
+        "generated_channels": ["EEG-0", "EEG-1"],
+        "message": "detail one",
+    }
+    d1.get_filename.return_value = "A01T.gdf"
+
+    d2 = MagicMock()
+    d2.get_runtime_signals.return_value = ["note one", "note two"]
+    d2.get_gdf_duplicate_channel_detail.return_value = None
+
+    mock_study.preprocessed_data_list = [d1, d2]
+
+    diagnostics = controller.get_runtime_diagnostics()
+
+    assert diagnostics["runtime_signals"] == [
+        "duplicate channels",
+        "note one",
+        "note two",
+    ]
+    assert diagnostics["gdf_duplicate_channel_files"] == ["A01T.gdf"]
+    assert diagnostics["gdf_duplicate_channel_details"] == [
+        {
+            "file": "A01T.gdf",
+            "generated_bases": ["EEG"],
+            "generated_channels": ["EEG-0", "EEG-1"],
+            "message": "detail one",
+        },
+    ]

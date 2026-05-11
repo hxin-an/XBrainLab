@@ -1,3 +1,4 @@
+from math import ceil
 from unittest.mock import patch
 
 from PyQt6.QtCore import Qt, QUrl
@@ -14,10 +15,12 @@ class TestMessageBubble:
         # Check raw text
         assert bubble.get_text() == text
         # Check rendered markdown (rough check)
-        assert bubble.text_edit.toPlainText() == "Hello World"
+        text_edit = bubble.text_edit
+        assert text_edit is not None
+        assert text_edit.toPlainText() == "Hello World"
 
         # Check interaction flags
-        flags = bubble.text_edit.textInteractionFlags()
+        flags = text_edit.textInteractionFlags()
         assert flags & Qt.TextInteractionFlag.LinksAccessibleByMouse
 
     def test_adjust_width(self, qtbot):
@@ -27,10 +30,17 @@ class TestMessageBubble:
         container_width = 500
         bubble.adjust_width(container_width)
 
-        # Max width should be ~80% of 500 = 400
-        assert bubble.bubble_frame.maximumWidth() == 400
+        bubble_frame = bubble.bubble_frame
+        text_edit = bubble.text_edit
+        assert bubble_frame is not None
+        assert text_edit is not None
+
+        # Max width should be ~88% of 500 = 440
+        assert bubble_frame.maximumWidth() == 440
         # Text width should be set
-        assert bubble.text_edit.document().textWidth() == 370  # 400 - 30 margin
+        document = text_edit.document()
+        assert document is not None
+        assert document.textWidth() == 404  # 440 - margins - guard
 
     def test_link_handling(self, qtbot):
         bubble = MessageBubble("[Link](https://example.com)", is_user=False)
@@ -63,12 +73,59 @@ class TestMessageBubble:
 
         # Initial Width: 500
         bubble.adjust_width(500)
-        assert bubble.bubble_frame.maximumWidth() == 400  # 80% of 500
+        bubble_frame = bubble.bubble_frame
+        assert bubble_frame is not None
+        assert bubble_frame.maximumWidth() == 440  # 88% of 500
 
         # Resize Larger: 1000
         bubble.adjust_width(1000)
-        assert bubble.bubble_frame.maximumWidth() == 800  # 80% of 1000
+        assert bubble_frame.maximumWidth() == 880  # 88% of 1000
 
         # Resize Smaller: 200
         bubble.adjust_width(200)
-        assert bubble.bubble_frame.maximumWidth() == 160  # 80% of 200
+        assert bubble_frame.maximumWidth() == 176  # 88% of 200
+
+    def test_short_user_message_has_minimum_text_column(self, qtbot):
+        bubble = MessageBubble("hello", is_user=True)
+        qtbot.addWidget(bubble)
+
+        bubble.adjust_width(380)
+
+        bubble_frame = bubble.bubble_frame
+        text_edit = bubble.text_edit
+        assert bubble_frame is not None
+        assert text_edit is not None
+
+        assert 72 <= bubble_frame.width() <= 110
+        document = text_edit.document()
+        assert document is not None
+        assert document.textWidth() >= 48
+
+    def test_short_assistant_message_does_not_use_large_minimum_width(self, qtbot):
+        bubble = MessageBubble("Done.", is_user=False)
+        qtbot.addWidget(bubble)
+
+        bubble.adjust_width(380)
+
+        bubble_frame = bubble.bubble_frame
+        assert bubble_frame is not None
+
+        assert 84 <= bubble_frame.width() <= 122
+
+    def test_wrapped_message_keeps_descenders_visible(self, qtbot):
+        bubble = MessageBubble(
+            "The dataset and training settings are ready; evaluation needs "
+            "a completed run.",
+            is_user=False,
+        )
+        qtbot.addWidget(bubble)
+
+        bubble.adjust_width(260)
+
+        text_edit = bubble.text_edit
+        assert text_edit is not None
+        document = text_edit.document()
+        assert document is not None
+        layout = document.documentLayout()
+        assert layout is not None
+        assert text_edit.height() >= ceil(layout.documentSize().height()) + 8

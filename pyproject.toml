@@ -3,7 +3,7 @@ name = "xbrainlab"
 version = "0.5.6"
 description = "XBrainLab: EEG Analysis Platform with AI Agent"
 authors = ["XBrainLab Team"]
-readme = "docs/index.md"
+readme = "README.md"
 packages = [{include = "XBrainLab"}]
 
 [tool.poetry.dependencies]
@@ -21,9 +21,9 @@ mne = "^1.6.0"
 pymatreader = "^1.0.0"
 
 # Deep Learning Core (Required for Backend & LLM)
-torch = "^2.3.0"
-torchvision = "^0.18.0"
-torchaudio = "^2.3.0"
+torch = "^2.11.0"
+torchvision = "^0.26.0"
+torchaudio = "^2.11.0"
 captum = "^0.7.0"
 
 # Utilities
@@ -42,12 +42,17 @@ pyvista = ">=0.43.0,<0.45.0"
 pyvistaqt = ">=0.11.0,<0.12.0"
 
 # LLM / Agent
-openai = "^2.15.0"
-google-genai = "^1.59.0"
 langchain = "^0.2.0"
 langchain-community = "^0.2.0"
 qdrant-client = "^1.9.0"
 sentence-transformers = "^2.2.2"
+
+[tool.poetry.group.legacy-remote-llm]
+optional = true
+
+[tool.poetry.group.legacy-remote-llm.dependencies]
+openai = "^2.15.0"
+google-genai = "^1.59.0"
 
 [tool.poetry.group.llm]
 optional = true
@@ -66,6 +71,7 @@ mypy = "^1.19.1"
 types-requests = "^2.32.4.20260107"
 types-pyyaml = "^6.0.12.20250915"
 commitizen = "^4.11.6"
+basedpyright = "^1.39.2"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.0.0"
@@ -73,6 +79,15 @@ pytest-cov = "^4.1.0"
 pytest-qt = "^4.2.0"
 coverage = "^7.0"
 pytest-forked = "^1.6.0"
+
+[tool.poetry.group.docs]
+optional = true
+
+[tool.poetry.group.docs.dependencies]
+mkdocs = "^1.6.1"
+mkdocs-material = "^9.6.0"
+mkdocstrings = "^0.29.0"
+mkdocstrings-python = "^1.16.0"
 
 [build-system]
 requires = ["poetry-core"]
@@ -144,9 +159,20 @@ exclude = [
     "scripts"
 ]
 
+[tool.basedpyright]
+include = ["XBrainLab"]
+exclude = [
+    "XBrainLab/llm/core/models",
+    "XBrainLab/llm/rag",
+]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+reportMissingImports = "none"
+reportMissingTypeStubs = "none"
+
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "-ra -q -v"
+addopts = "-ra -q -v --capture=sys"
 pythonpath = "."
 testpaths = ["tests"]
 norecursedirs = ["XBrainLab", ".git", "__pycache__", "*.egg-info"]
@@ -200,6 +226,8 @@ benchmark-llm = "scripts.agent.benchmarks.simple_bench:main"
 # Development
 verify = "python scripts/dev/verify_real_tools.py"
 run = "python run.py"
+quality-dashboard = "python scripts/dev/update_quality_dashboard.py"
+quality-dashboard-full = "python scripts/dev/update_quality_dashboard.py --include-slow-checks"
 
 # Testing
 test-unit = "pytest tests/unit -v"
@@ -215,13 +243,12 @@ test-cov = "pytest --cov=XBrainLab --cov-report=html --cov-report=term-missing"
 lint = "ruff check ."
 lint-fix = "ruff check . --fix"
 format = "ruff format ."
+typecheck-fast = "basedpyright"
 mypy = "mypy XBrainLab/"
+mypy-daemon = "dmypy run -- --config-file pyproject.toml XBrainLab/"
 check-architecture = "python tests/architecture_compliance.py"
-check = ["lint", "mypy", "test-unit", "check-architecture"]
-
-# LLM Tools
-verify-gemini = "python scripts/dev/verify_gemini_llm.py"
-list-models = "python scripts/dev/list_gemini_models.py"
+check = ["lint", "typecheck-fast", "test-unit", "check-architecture"]
+check-full = ["lint", "typecheck-fast", "mypy", "test-unit", "check-architecture"]
 
 # Utilities
 clean = { cmd = "rm -rf output __pycache__ .pytest_cache .ruff_cache .mypy_cache htmlcov .coverage", help = "Remove temporary files" }

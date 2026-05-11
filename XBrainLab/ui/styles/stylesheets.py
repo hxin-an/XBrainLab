@@ -421,21 +421,25 @@ class Stylesheets:
     """
 
     # --- Agent Assistant Panel ---
-    AGENT_TITLE_BAR = "background: #2d2d2d; padding: 2px;"
+    AGENT_TITLE_BAR = """
+        background: #1b2025;
+        border-bottom: 1px solid #303840;
+        padding: 2px;
+    """
 
-    AGENT_TITLE_LABEL = "color: #cccccc; font-weight: bold;"
+    AGENT_TITLE_LABEL = "color: #d7e0ea; font-weight: bold;"
 
     AGENT_TITLE_BTN = """
         QPushButton {
             background: transparent;
-            color: #bbbbbb;
+            color: #b9c4ce;
             border: none;
             font-size: 14px;
             font-weight: bold;
         }
         QPushButton:hover {
             color: #ffffff;
-            background-color: #3d3d3d;
+            background-color: #26313a;
             border-radius: 3px;
         }
     """
@@ -443,7 +447,7 @@ class Stylesheets:
     AGENT_NEW_CONV_BTN = """
         QPushButton {
             background: transparent;
-            color: #aaaaaa;
+            color: #b9c4ce;
             border: none;
             font-size: 16px;
             font-weight: bold;

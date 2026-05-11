@@ -6,6 +6,7 @@ with dynamic width adjustment, link handling, and sender-based styling.
 
 import platform
 import subprocess
+from math import ceil
 
 from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtGui import QDesktopServices, QTextOption
@@ -69,7 +70,7 @@ class MessageBubble(QWidget):
         """
         # Main horizontal layout for this row
         row_layout = QHBoxLayout(self)
-        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setContentsMargins(2, 0, 2, 0)
         row_layout.setSpacing(0)
 
         # Create the bubble frame
@@ -106,8 +107,9 @@ class MessageBubble(QWidget):
         self.text_edit.anchorClicked.connect(self._on_link_clicked)
 
         if self.text_edit:
-            # Use WordWrap to break at word boundaries, not in the middle of words
-            self.text_edit.setWordWrapMode(QTextOption.WrapMode.WordWrap)
+            self.text_edit.setWordWrapMode(
+                QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere
+            )
             doc = self.text_edit.document()
             if doc:
                 doc.setDocumentMargin(0)  # Remove internal document margin
@@ -125,6 +127,7 @@ class MessageBubble(QWidget):
             self.bubble_frame.setStyleSheet(USER_BUBBLE_FRAME_STYLE)
             self.text_edit.setStyleSheet(USER_BUBBLE_TEXT_STYLE)
 
+            row_layout.addStretch(1)
             row_layout.addWidget(self.bubble_frame)
             row_layout.setAlignment(self.bubble_frame, Qt.AlignmentFlag.AlignRight)
         else:
@@ -132,6 +135,7 @@ class MessageBubble(QWidget):
             self.text_edit.setStyleSheet(AGENT_BUBBLE_TEXT_STYLE)
 
             row_layout.addWidget(self.bubble_frame)
+            row_layout.addStretch(1)
             row_layout.setAlignment(self.bubble_frame, Qt.AlignmentFlag.AlignLeft)
 
     def _on_link_clicked(self, url: QUrl):
@@ -176,7 +180,8 @@ class MessageBubble(QWidget):
         if container_width <= 0:
             return
 
-        max_bubble_width = int(container_width * 0.80)
+        max_bubble_width = int(container_width * 0.88)
+        min_bubble_width = 84 if self.is_user else 96
 
         # Margins: 15+15=30 horizontal, 10+10=20 vertical
         layout_h_margins = 30
@@ -193,14 +198,16 @@ class MessageBubble(QWidget):
         doc.setTextWidth(-1)
         natural_width = doc.idealWidth() + layout_h_margins
 
-        # 2. Determine actual width: min(natural, max_allowed)
-        actual_width = min(natural_width, max_bubble_width)
-        # Ensure a minimum reasonable width (e.g. 50px)
+        # 2. Determine actual width. Keep a modest minimum text column so short
+        # words remain readable without turning tiny messages into large boxes.
+        actual_width = max(natural_width, min_bubble_width)
+        actual_width = min(actual_width, max_bubble_width)
         actual_width = max(actual_width, 50)
 
         # 3. Apply width constraint
         self.bubble_frame.setFixedWidth(int(actual_width))
-        doc.setTextWidth(actual_width - layout_h_margins)
+        text_width = max(actual_width - layout_h_margins - 6, 1)
+        doc.setTextWidth(text_width)
 
         # 4. Calculate Height based on wrapped text
         # Use documentLayout for precise height calculation
@@ -211,11 +218,12 @@ class MessageBubble(QWidget):
 
         # Enforce minimum height
         desc_height = max(desc_height, 20)
-        final_height = int(desc_height) + layout_v_margins
+        text_height = ceil(desc_height) + 8
+        final_height = text_height + layout_v_margins + 4
 
         # 5. Apply Height
         if self.text_edit:
-            self.text_edit.setFixedHeight(int(desc_height))
+            self.text_edit.setFixedHeight(text_height)
         self.bubble_frame.setFixedHeight(final_height)
         self.setFixedHeight(final_height)
 

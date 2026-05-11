@@ -1,5 +1,8 @@
 """Sidebar widget for the preprocessing panel with operations and execution controls."""
 
+from collections.abc import Callable
+from typing import Any
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
@@ -10,7 +13,23 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application import (
+    CommandName,
+    CreateEpochCommand,
+    PreprocessCommand,
+    PreprocessOperation,
+    QueryStateCommand,
+    ResetPreprocessCommand,
+)
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.ui.application_capabilities import (
+    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+    LegacyControllerFallbackUnavailableError,
+    blocked_reason,
+    execute_application_command,
+    get_command_capability,
+    run_legacy_controller_fallback,
+)
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.dialogs.preprocess import (
     EpochingDialog,
@@ -19,6 +38,7 @@ from XBrainLab.ui.dialogs.preprocess import (
     RereferenceDialog,
     ResampleDialog,
 )
+from XBrainLab.ui.refresh_coordinator import refresh_shared_status
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
@@ -154,15 +174,67 @@ class PreprocessSidebar(QWidget):
         # 1. Update Info Panel
         # Handled by InfoPanelService
 
-        # 2. Update Button States & Lock Status
-        data_list = self.controller.get_preprocessed_data_list()
         is_epoched = False
-
-        if data_list:
-            first_data = data_list[0]
-            is_epoched = not first_data.is_raw()
+        preprocess_capability = get_command_capability(self, CommandName.PREPROCESS)
+        epoch_capability = get_command_capability(self, CommandName.CREATE_EPOCH)
+        if preprocess_capability is None and epoch_capability is None:
+            data_list = self._legacy_preprocessed_data_list_for_render()
+            if data_list:
+                first_data = data_list[0]
+                is_epoched = not first_data.is_raw()
 
         self._update_button_states(is_epoched)
+
+    def _legacy_preprocessed_data_list_for_render(self) -> list[Any]:
+        """Return legacy render data only for mock / legacy UI contexts."""
+        try:
+            data_list = run_legacy_controller_fallback(
+                self,
+                self.controller.get_preprocessed_data_list,
+            )
+        except LegacyControllerFallbackUnavailableError:
+            return []
+        return list(data_list) if isinstance(data_list, list) else []
+
+    def _preprocessed_data_list_for_epoching(
+        self,
+        epoch_capability,
+    ) -> list[Any] | None:
+        return self._preprocessed_data_list_for_dialog(
+            epoch_capability,
+            "Epoching Blocked",
+        )
+
+    def _preprocessed_data_list_for_dialog(
+        self,
+        command_capability,
+        failure_title: str,
+    ) -> list[Any] | None:
+        result = execute_application_command(
+            self,
+            QueryStateCommand(query="data_lists", include_objects=True),
+            refresh=False,
+        )
+        if result is None:
+            if command_capability is None:
+                try:
+                    return run_legacy_controller_fallback(
+                        self,
+                        self.controller.get_preprocessed_data_list,
+                    )
+                except LegacyControllerFallbackUnavailableError:
+                    QMessageBox.warning(
+                        self,
+                        failure_title,
+                        LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                    )
+                    return None
+            return []
+        if result.failed:
+            self._show_command_failure(failure_title, result.message)
+            return None
+        data_list = result.diagnostics.get("preprocessed_data_list")
+        return list(data_list) if isinstance(data_list, list) else []
 
     def _update_button_states(self, is_epoched):
         """Update button tooltips based on the epoched state.
@@ -172,44 +244,68 @@ class PreprocessSidebar(QWidget):
                 preprocessing is locked.
 
         """
-        # Filter
-        if is_epoched:
-            self.btn_filter.setToolTip(
-                "Preprocessing is locked (Data Epoched). Click to see details.",
+        preprocess_capability = get_command_capability(self, CommandName.PREPROCESS)
+        epoch_capability = get_command_capability(self, CommandName.CREATE_EPOCH)
+        preprocess_enabled = (
+            preprocess_capability.enabled if preprocess_capability is not None else True
+        )
+        epoch_enabled = (
+            epoch_capability.enabled if epoch_capability is not None else True
+        )
+        preprocess_reason = blocked_reason(
+            preprocess_capability,
+            "Preprocessing is not available.",
+        )
+        epoch_reason = blocked_reason(
+            epoch_capability,
+            "Epoching is not available.",
+        )
+        if preprocess_capability is None and is_epoched:
+            preprocess_reason = (
+                "Preprocessing is locked (Data Epoched). Click to see details."
             )
+        if epoch_capability is None and is_epoched:
+            epoch_reason = (
+                "Preprocessing is locked (Data Epoched). Click to see details."
+            )
+
+        for button in (
+            self.btn_filter,
+            self.btn_resample,
+            self.btn_rereference,
+            self.btn_normalize,
+        ):
+            button.setEnabled(preprocess_enabled)
+        self.btn_epoch.setEnabled(epoch_enabled)
+
+        # Filter
+        if not preprocess_enabled or (preprocess_capability is None and is_epoched):
+            self.btn_filter.setToolTip(preprocess_reason)
         else:
             self.btn_filter.setToolTip("Apply bandpass/notch filters")
 
         # Resample
-        if is_epoched:
-            self.btn_resample.setToolTip(
-                "Preprocessing is locked (Data Epoched). Click to see details.",
-            )
+        if not preprocess_enabled or (preprocess_capability is None and is_epoched):
+            self.btn_resample.setToolTip(preprocess_reason)
         else:
             self.btn_resample.setToolTip("Change sampling rate")
 
         # Re-reference
-        if is_epoched:
-            self.btn_rereference.setToolTip(
-                "Preprocessing is locked (Data Epoched). Click to see details.",
-            )
+        if not preprocess_enabled or (preprocess_capability is None and is_epoched):
+            self.btn_rereference.setToolTip(preprocess_reason)
         else:
             self.btn_rereference.setToolTip("Change reference")
 
         # Normalize
-        if is_epoched:
-            self.btn_normalize.setToolTip(
-                "Preprocessing is locked (Data Epoched). Click to see details.",
-            )
+        if not preprocess_enabled or (preprocess_capability is None and is_epoched):
+            self.btn_normalize.setToolTip(preprocess_reason)
         else:
             self.btn_normalize.setToolTip("Apply Z-Score or Min-Max normalization")
 
         # Epoch Button
-        if is_epoched:
-            self.btn_epoch.setText("Epoched (Locked)")
-            self.btn_epoch.setToolTip(
-                "Preprocessing is locked (Data Epoched). Click to see details.",
-            )
+        if not epoch_enabled or (epoch_capability is None and is_epoched):
+            self.btn_epoch.setText("Epoched (Locked)" if is_epoched else "Epoching")
+            self.btn_epoch.setToolTip(epoch_reason)
         else:
             self.btn_epoch.setText("Epoching")
             self.btn_epoch.setToolTip("Segment data into epochs")
@@ -227,14 +323,32 @@ class PreprocessSidebar(QWidget):
         """
         if not self.controller:
             return False
-        if self.controller.is_epoched():
+        preprocess_capability = get_command_capability(self, CommandName.PREPROCESS)
+        if preprocess_capability is not None and not preprocess_capability.enabled:
             QMessageBox.warning(
                 self,
                 "Action Blocked",
-                "Preprocessing is locked because data has been Epoched.\n"
-                "Please 'Reset All Preprocessing' to make changes.",
+                blocked_reason(
+                    preprocess_capability,
+                    "Preprocessing is not available.",
+                ),
             )
             return True
+        if preprocess_capability is None:
+            fallback_ok, is_epoched = self._run_legacy_preprocess_fallback(
+                "Action Blocked",
+                self.controller.is_epoched,
+            )
+            if not fallback_ok:
+                return True
+            if is_epoched:
+                QMessageBox.warning(
+                    self,
+                    "Action Blocked",
+                    "Preprocessing is locked because data has been Epoched.\n"
+                    "Please 'Reset All Preprocessing' to make changes.",
+                )
+                return True
         return False
 
     def check_data_loaded(self):
@@ -246,19 +360,66 @@ class PreprocessSidebar(QWidget):
             bool: ``True`` if data is loaded, ``False`` otherwise.
 
         """
-        if not self.controller or not self.controller.has_data():
+        preprocess_capability = get_command_capability(self, CommandName.PREPROCESS)
+        if preprocess_capability is not None and not preprocess_capability.enabled:
             QMessageBox.warning(
                 self,
                 "Warning",
-                "No data loaded. Please import data first.",
+                blocked_reason(
+                    preprocess_capability,
+                    "No data loaded. Please import data first.",
+                ),
             )
             return False
+        if preprocess_capability is None:
+            if not self.controller:
+                QMessageBox.warning(
+                    self,
+                    "Warning",
+                    "No data loaded. Please import data first.",
+                )
+                return False
+            fallback_ok, has_data = self._run_legacy_preprocess_fallback(
+                "Warning",
+                self.controller.has_data,
+            )
+            if not fallback_ok:
+                return False
+            if not has_data:
+                QMessageBox.warning(
+                    self,
+                    "Warning",
+                    "No data loaded. Please import data first.",
+                )
+                return False
         return True
 
     def notify_update(self):
         """Notify parent panel to update itself (plots etc)."""
         if self.panel and hasattr(self.panel, "update_panel"):
             self.panel.update_panel()
+
+    def _notify_update_after_legacy_result(self, result) -> None:
+        if result is None:
+            self.notify_update()
+
+    def _refresh_shared_status_after_legacy_result(self, result) -> None:
+        if result is None:
+            refresh_shared_status(self)
+
+    def _show_command_failure(self, title: str, message: str) -> None:
+        QMessageBox.critical(self, title, message)
+
+    def _run_legacy_preprocess_fallback(
+        self,
+        blocked_title: str,
+        fallback: Callable[[], Any],
+    ) -> tuple[bool, Any]:
+        try:
+            return True, run_legacy_controller_fallback(self, fallback)
+        except LegacyControllerFallbackUnavailableError as exc:
+            QMessageBox.warning(self, blocked_title, str(exc))
+            return False, None
 
     def open_filtering(self):
         """Open the filtering dialog and apply bandpass/notch filters."""
@@ -271,8 +432,40 @@ class PreprocessSidebar(QWidget):
             if params:
                 l_freq, h_freq, notch_freqs = params
                 try:
-                    self.controller.apply_filter(l_freq, h_freq, notch_freqs)
-                    self.notify_update()
+                    result = None
+                    if l_freq is not None and h_freq is not None:
+                        result = execute_application_command(
+                            self,
+                            PreprocessCommand(
+                                operation=PreprocessOperation.BANDPASS,
+                                low_freq=l_freq,
+                                high_freq=h_freq,
+                                notch_freq=notch_freqs,
+                            ),
+                        )
+                    elif notch_freqs is not None:
+                        result = execute_application_command(
+                            self,
+                            PreprocessCommand(
+                                operation=PreprocessOperation.NOTCH,
+                                notch_freq=notch_freqs,
+                            ),
+                        )
+                    if result is None:
+                        fallback_ok, _ = self._run_legacy_preprocess_fallback(
+                            "Filtering Blocked",
+                            lambda: self.controller.apply_filter(
+                                l_freq,
+                                h_freq,
+                                notch_freqs,
+                            ),
+                        )
+                        if not fallback_ok:
+                            return
+                    elif result.failed:
+                        self._show_command_failure("Error", result.message)
+                        return
+                    self._notify_update_after_legacy_result(result)
                     QMessageBox.information(self, "Success", "Filtering applied.")
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"Filtering failed: {e}")
@@ -286,9 +479,26 @@ class PreprocessSidebar(QWidget):
         if dialog.exec():
             sfreq = dialog.get_params()
             if sfreq:
+                rate = int(sfreq)
                 try:
-                    self.controller.apply_resample(sfreq)
-                    self.notify_update()
+                    result = execute_application_command(
+                        self,
+                        PreprocessCommand(
+                            operation=PreprocessOperation.RESAMPLE,
+                            rate=rate,
+                        ),
+                    )
+                    if result is None:
+                        fallback_ok, _ = self._run_legacy_preprocess_fallback(
+                            "Resampling Blocked",
+                            lambda: self.controller.apply_resample(rate),
+                        )
+                        if not fallback_ok:
+                            return
+                    elif result.failed:
+                        self._show_command_failure("Error", result.message)
+                        return
+                    self._notify_update_after_legacy_result(result)
                     QMessageBox.information(self, "Success", "Resampling applied.")
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"Resample failed: {e}")
@@ -298,14 +508,41 @@ class PreprocessSidebar(QWidget):
         if self.check_lock() or not self.check_data_loaded():
             return
 
-        data_list = self.controller.get_preprocessed_data_list()
+        preprocess_capability = get_command_capability(self, CommandName.PREPROCESS)
+        data_list = self._preprocessed_data_list_for_dialog(
+            preprocess_capability,
+            "Re-reference Blocked",
+        )
+        if data_list is None:
+            return
         dialog = RereferenceDialog(self, data_list)
         if dialog.exec():
             ref_channels = dialog.get_params()
             if ref_channels:
                 try:
-                    self.controller.apply_rereference(ref_channels)
-                    self.notify_update()
+                    result = execute_application_command(
+                        self,
+                        PreprocessCommand(
+                            operation=PreprocessOperation.REREFERENCE,
+                            method=ref_channels
+                            if isinstance(ref_channels, str)
+                            else None,
+                            channels=ref_channels
+                            if isinstance(ref_channels, list)
+                            else None,
+                        ),
+                    )
+                    if result is None:
+                        fallback_ok, _ = self._run_legacy_preprocess_fallback(
+                            "Re-reference Blocked",
+                            lambda: self.controller.apply_rereference(ref_channels),
+                        )
+                        if not fallback_ok:
+                            return
+                    elif result.failed:
+                        self._show_command_failure("Error", result.message)
+                        return
+                    self._notify_update_after_legacy_result(result)
                     QMessageBox.information(self, "Success", "Re-reference applied.")
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"Re-reference failed: {e}")
@@ -320,37 +557,84 @@ class PreprocessSidebar(QWidget):
             method = dialog.get_params()
             if method:
                 try:
-                    self.controller.apply_normalization(method)
-                    self.notify_update()
+                    result = execute_application_command(
+                        self,
+                        PreprocessCommand(
+                            operation=PreprocessOperation.NORMALIZE,
+                            method=method,
+                        ),
+                    )
+                    if result is None:
+                        fallback_ok, _ = self._run_legacy_preprocess_fallback(
+                            "Normalization Blocked",
+                            lambda: self.controller.apply_normalization(method),
+                        )
+                        if not fallback_ok:
+                            return
+                    elif result.failed:
+                        self._show_command_failure("Error", result.message)
+                        return
+                    self._notify_update_after_legacy_result(result)
                     QMessageBox.information(self, "Success", "Normalization applied.")
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"Normalization failed: {e}")
 
     def open_epoching(self):
         """Open the epoching dialog and segment the continuous data into epochs."""
-        if self.check_lock() or not self.check_data_loaded():
+        epoch_capability = get_command_capability(self, CommandName.CREATE_EPOCH)
+        if epoch_capability is not None and not epoch_capability.enabled:
+            QMessageBox.warning(
+                self,
+                "Epoching Blocked",
+                blocked_reason(epoch_capability, "Epoching is not available."),
+            )
             return
 
-        data_list = self.controller.get_preprocessed_data_list()
+        if epoch_capability is None and (
+            self.check_lock() or not self.check_data_loaded()
+        ):
+            return
+
+        data_list = self._preprocessed_data_list_for_epoching(epoch_capability)
+        if data_list is None:
+            return
         dialog = EpochingDialog(self, data_list)
         if dialog.exec():
             params = dialog.get_params()
             if params:
                 baseline, selected_events, tmin, tmax = params
                 try:
-                    if self.controller.apply_epoching(
-                        baseline,
-                        selected_events,
-                        tmin,
-                        tmax,
-                    ):
-                        self.notify_update()
-                        # Update main window info if needed (legacy)
-                        if self.main_window and hasattr(
-                            self.main_window,
-                            "update_info_panel",
-                        ):
-                            self.main_window.update_info_panel()
+                    result = execute_application_command(
+                        self,
+                        CreateEpochCommand(
+                            t_min=tmin,
+                            t_max=tmax,
+                            baseline=baseline,
+                            event_ids=selected_events,
+                        ),
+                    )
+                    applied = True
+                    if result is None:
+                        fallback_ok, legacy_applied = (
+                            self._run_legacy_preprocess_fallback(
+                                "Epoching Blocked",
+                                lambda: self.controller.apply_epoching(
+                                    baseline,
+                                    selected_events,
+                                    tmin,
+                                    tmax,
+                                ),
+                            )
+                        )
+                        if not fallback_ok:
+                            return
+                        applied = bool(legacy_applied)
+                    elif result.failed:
+                        self._show_command_failure("Error", result.message)
+                        return
+                    if applied:
+                        self._notify_update_after_legacy_result(result)
+                        self._refresh_shared_status_after_legacy_result(result)
 
                         QMessageBox.information(
                             self,
@@ -362,23 +646,55 @@ class PreprocessSidebar(QWidget):
 
     def reset_preprocess(self):
         """Prompt the user and reset all preprocessing steps to the original data."""
-        if not self.check_data_loaded():
+        reset_capability = get_command_capability(self, CommandName.RESET_PREPROCESS)
+        if reset_capability is not None and not reset_capability.enabled:
+            QMessageBox.warning(
+                self,
+                "Reset Blocked",
+                blocked_reason(
+                    reset_capability,
+                    "Load raw data before resetting preprocessing.",
+                ),
+            )
             return
 
-        reply = QMessageBox.question(
-            self,
-            "Confirm Reset",
-            "Are you sure you want to reset all preprocessing steps?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
+        if reset_capability is None and not self.check_data_loaded():
+            return
 
-        if reply == QMessageBox.StandardButton.Yes:
-            try:
-                self.controller.reset_preprocess()
-                self.notify_update()
-                if self.main_window and hasattr(self.main_window, "update_info_panel"):
-                    self.main_window.update_info_panel()
-                QMessageBox.information(self, "Success", "Preprocessing reset.")
-            except Exception as e:
-                logger.error("Reset failed: %s", e)
-                QMessageBox.critical(self, "Error", f"Reset failed: {e}")
+        needs_confirmation = reset_capability is None or (
+            reset_capability.confirmation_required
+            or reset_capability.requires_confirmation
+        )
+        if needs_confirmation:
+            reply = QMessageBox.question(
+                self,
+                "Confirm Reset",
+                "Are you sure you want to reset all preprocessing steps?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+        try:
+            result = execute_application_command(
+                self,
+                ResetPreprocessCommand(confirmed=True),
+            )
+            if result is None:
+                try:
+                    run_legacy_controller_fallback(
+                        self,
+                        self.controller.reset_preprocess,
+                    )
+                except LegacyControllerFallbackUnavailableError as exc:
+                    QMessageBox.warning(self, "Reset Blocked", str(exc))
+                    return
+            elif result.failed:
+                self._show_command_failure("Error", result.message)
+                return
+            self._notify_update_after_legacy_result(result)
+            self._refresh_shared_status_after_legacy_result(result)
+            QMessageBox.information(self, "Success", "Preprocessing reset.")
+        except Exception as e:
+            logger.error("Reset failed: %s", e)
+            QMessageBox.critical(self, "Error", f"Reset failed: {e}")

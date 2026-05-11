@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -347,8 +348,9 @@ class TestDataSplittingPreviewDialogSplitters:
 
     def test_creates_with_option_splitters(self, dlg):
         assert isinstance(dlg, QDialog)
-        assert len(dlg.val_widgets) >= 1
-        assert len(dlg.test_widgets) >= 1
+        dialog = cast(Any, dlg)
+        assert len(dialog.val_widgets) >= 1
+        assert len(dialog.test_widgets) >= 1
 
     def test_on_split_type_change(self, dlg):
         splitter = dlg.val_splitter_list[0]
@@ -443,6 +445,37 @@ class TestDataSplittingPreviewDialogSplitters:
             dlg.confirm()
 
     def test_close_stops_timer_and_generator(self, dlg):
+        from PyQt6.QtGui import QCloseEvent
+
         dlg.timer = MagicMock()
         dlg.dataset_generator = MagicMock()
-        dlg.close()
+        dlg.preview_worker = MagicMock()
+        dlg.preview_worker.is_alive.return_value = True
+        dlg.closeEvent(QCloseEvent())
+        dlg.timer.stop.assert_called_once()
+        dlg.dataset_generator.set_interrupt.assert_called_once()
+        dlg.preview_worker.join.assert_called_once()
+
+    def test_preview_interrupts_and_joins_previous_worker(self, dlg):
+        old_generator = MagicMock()
+        old_worker = MagicMock()
+        old_worker.is_alive.return_value = True
+        new_worker = MagicMock()
+        dlg.dataset_generator = old_generator
+        dlg.preview_worker = old_worker
+
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator"
+            ) as mock_generator,
+            patch(
+                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.threading.Thread",
+                return_value=new_worker,
+            ),
+        ):
+            mock_generator.return_value.preview_failed = None
+            dlg.preview()
+
+        old_generator.set_interrupt.assert_called_once()
+        old_worker.join.assert_called_once()
+        new_worker.start.assert_called_once()

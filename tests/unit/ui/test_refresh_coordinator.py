@@ -1,0 +1,474 @@
+"""Tests for command-result-driven UI refresh coordination."""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+from XBrainLab.backend.application import ChangedState, CommandResult
+from XBrainLab.ui.refresh_coordinator import (
+    refresh_after_command,
+    refresh_after_navigation,
+    refresh_after_observer,
+    refresh_panel,
+)
+
+
+class _PanelSpy:
+    def __init__(self) -> None:
+        self.update_calls = 0
+
+    def update_panel(self) -> None:
+        self.update_calls += 1
+
+
+class _InfoSpy:
+    def __init__(self) -> None:
+        self.update_calls = 0
+
+    def update_info_panel(self) -> None:
+        self.update_calls += 1
+
+
+class _AgentSpy:
+    def __init__(self) -> None:
+        self.refresh_calls = 0
+
+    def refresh_backend_status(self) -> None:
+        self.refresh_calls += 1
+
+
+def _result(changed_state: ChangedState) -> CommandResult:
+    return CommandResult.success_result(
+        command_name="test",
+        message="ok",
+        state=None,
+        changed_state=changed_state,
+    )
+
+
+def _main_window() -> SimpleNamespace:
+    return SimpleNamespace(
+        dataset_panel=_PanelSpy(),
+        preprocess_panel=_PanelSpy(),
+        training_panel=_PanelSpy(),
+        evaluation_panel=_PanelSpy(),
+        visualization_panel=_PanelSpy(),
+        agent_manager=_AgentSpy(),
+        update_info_calls=0,
+        update_info_panel=lambda: None,
+    )
+
+
+def _attach_info_spy(main_window: SimpleNamespace) -> _InfoSpy:
+    info = _InfoSpy()
+    main_window.update_info_panel = info.update_info_panel
+    return info
+
+
+def test_raw_change_refreshes_workflow_panels_and_assistant_status():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    context = SimpleNamespace(main_window=main_window)
+
+    refreshed = refresh_after_command(
+        context,
+        _result(ChangedState(raw_changed=True)),
+    )
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 1
+    assert main_window.preprocess_panel.update_calls == 1
+    assert main_window.training_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
+def test_analysis_changes_refresh_only_analysis_panels_and_shared_status():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    context = SimpleNamespace(main_window=main_window)
+
+    refreshed = refresh_after_command(
+        context,
+        _result(
+            ChangedState(
+                evaluation_changed=True,
+                visualization_changed=True,
+            )
+        ),
+    )
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert main_window.evaluation_panel.update_calls == 1
+    assert main_window.visualization_panel.update_calls == 1
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
+def test_training_change_refreshes_downstream_analysis_readiness():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    context = SimpleNamespace(main_window=main_window)
+
+    refreshed = refresh_after_command(
+        context,
+        _result(ChangedState(training_changed=True)),
+    )
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 1
+    assert main_window.visualization_panel.update_calls == 1
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
+def test_epoch_change_refreshes_visualization_readiness():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    context = SimpleNamespace(main_window=main_window)
+
+    refreshed = refresh_after_command(
+        context,
+        _result(ChangedState(epoch_changed=True)),
+    )
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 1
+    assert main_window.training_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 1
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
+def test_evaluation_change_refreshes_visualization_readiness():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    context = SimpleNamespace(main_window=main_window)
+
+    refreshed = refresh_after_command(
+        context,
+        _result(ChangedState(evaluation_changed=True)),
+    )
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert main_window.evaluation_panel.update_calls == 1
+    assert main_window.visualization_panel.update_calls == 1
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
+def test_no_state_change_does_not_refresh_ui():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    context = SimpleNamespace(main_window=main_window)
+
+    refreshed = refresh_after_command(context, _result(ChangedState()))
+
+    assert refreshed is False
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 0
+    assert main_window.agent_manager.refresh_calls == 0
+
+
+def test_refresh_is_not_reentrant_for_same_main_window():
+    main_window = _main_window()
+    context = SimpleNamespace(main_window=main_window)
+    nested_results = []
+
+    class _RecursivePanel:
+        update_calls = 0
+
+        def update_panel(self) -> None:
+            self.update_calls += 1
+            nested_results.append(
+                refresh_after_command(context, _result(ChangedState(raw_changed=True))),
+            )
+
+    main_window.dataset_panel = _RecursivePanel()
+
+    refreshed = refresh_after_command(context, _result(ChangedState(raw_changed=True)))
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 1
+    assert nested_results == [False]
+
+
+def test_navigation_refreshes_selected_panel_and_shared_status():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+
+    refreshed = refresh_after_navigation(main_window, 2)
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
+def test_navigation_refresh_is_not_reentrant_for_same_main_window():
+    main_window = _main_window()
+    nested_results = []
+
+    class _RecursivePanel:
+        def __init__(self) -> None:
+            self.update_calls = 0
+
+        def update_panel(self) -> None:
+            self.update_calls += 1
+            if self.update_calls == 1:
+                nested_results.append(refresh_after_navigation(main_window, 2))
+
+    panel = _RecursivePanel()
+    main_window.training_panel = panel
+
+    refreshed = refresh_after_navigation(main_window, 2)
+
+    assert refreshed is True
+    assert panel.update_calls == 1
+    assert nested_results == [False]
+
+
+def test_navigation_refresh_ignores_unknown_panel_index():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+
+    refreshed = refresh_after_navigation(main_window, 99)
+
+    assert refreshed is False
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 0
+    assert main_window.agent_manager.refresh_calls == 0
+
+
+def test_observer_refreshes_source_panel_and_shared_status():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    panel = main_window.dataset_panel
+    panel.main_window = main_window
+
+    refreshed = refresh_after_observer(panel)
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 1
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
+def test_data_changed_observer_uses_central_refresh_scope():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    panel = main_window.dataset_panel
+    panel.main_window = main_window
+
+    refreshed = refresh_after_observer(panel, event_name="data_changed")
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 1
+    assert main_window.preprocess_panel.update_calls == 1
+    assert main_window.training_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
+def test_secondary_data_changed_observer_does_not_duplicate_central_scope():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    panel = main_window.preprocess_panel
+    panel.main_window = main_window
+
+    refreshed = refresh_after_observer(panel, event_name="data_changed")
+
+    assert refreshed is False
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 0
+    assert main_window.agent_manager.refresh_calls == 0
+
+
+def test_preprocess_changed_observer_uses_central_refresh_scope():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    panel = main_window.preprocess_panel
+    panel.main_window = main_window
+
+    refreshed = refresh_after_observer(panel, event_name="preprocess_changed")
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 1
+    assert main_window.training_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 1
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
+def test_secondary_preprocess_changed_observer_does_not_duplicate_central_scope():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    panel = main_window.training_panel
+    panel.main_window = main_window
+
+    refreshed = refresh_after_observer(panel, event_name="preprocess_changed")
+
+    assert refreshed is False
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 0
+    assert main_window.agent_manager.refresh_calls == 0
+
+
+def test_training_lifecycle_observer_uses_training_owner_scope():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    panel = main_window.training_panel
+    panel.main_window = main_window
+
+    refreshed = refresh_after_observer(panel, event_name="training_stopped")
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 1
+    assert main_window.visualization_panel.update_calls == 1
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
+def test_training_updated_observer_uses_training_owner_scope():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    panel = main_window.training_panel
+    panel.main_window = main_window
+
+    refreshed = refresh_after_observer(panel, event_name="training_updated")
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 1
+    assert main_window.visualization_panel.update_calls == 1
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
+def test_secondary_training_lifecycle_observer_does_not_duplicate_central_scope():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    panel = main_window.evaluation_panel
+    panel.main_window = main_window
+
+    refreshed = refresh_after_observer(panel, event_name="training_stopped")
+
+    assert refreshed is False
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 0
+    assert main_window.agent_manager.refresh_calls == 0
+
+
+def test_visualization_observer_uses_visualization_scope_from_helper_context():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    context = SimpleNamespace(
+        main_window=main_window,
+        panel=main_window.visualization_panel,
+    )
+
+    refreshed = refresh_after_observer(context, event_name="saliency_changed")
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 1
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
+def test_secondary_visualization_observer_does_not_duplicate_central_scope():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    panel = main_window.evaluation_panel
+    panel.main_window = main_window
+
+    refreshed = refresh_after_observer(panel, event_name="montage_changed")
+
+    assert refreshed is False
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 0
+    assert main_window.agent_manager.refresh_calls == 0
+
+
+def test_unknown_observer_event_keeps_source_panel_scope():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    panel = main_window.dataset_panel
+    panel.main_window = main_window
+
+    refreshed = refresh_after_observer(panel, event_name="custom_event")
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 1
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
+def test_refresh_panel_uses_safe_noarg_update_call():
+    panel = _PanelSpy()
+
+    refreshed = refresh_panel(panel)
+
+    assert refreshed is True
+    assert panel.update_calls == 1

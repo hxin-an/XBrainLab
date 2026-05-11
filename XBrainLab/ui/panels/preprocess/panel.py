@@ -1,8 +1,16 @@
 """Preprocessing panel for signal filtering, resampling, and epoching."""
 
+from typing import Any
+
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
+from XBrainLab.ui.application_capabilities import (
+    LegacyControllerFallbackUnavailableError,
+    get_legacy_controller_from_study,
+    run_legacy_controller_fallback,
+)
 from XBrainLab.ui.core.base_panel import BasePanel
+from XBrainLab.ui.panels.preprocess.data_query import query_preprocess_render_lists
 from XBrainLab.ui.panels.preprocess.history_widget import HistoryWidget
 from XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter import PreprocessPlotter
 from XBrainLab.ui.panels.preprocess.preview_widget import PreviewWidget
@@ -29,9 +37,17 @@ class PreprocessPanel(BasePanel):
         """
         # 1. Controller Resolution
         if controller is None and parent and hasattr(parent, "study"):
-            controller = parent.study.get_controller("preprocess")
+            controller = get_legacy_controller_from_study(
+                parent,
+                parent.study,
+                "preprocess",
+            )
         if dataset_controller is None and parent and hasattr(parent, "study"):
-            dataset_controller = parent.study.get_controller("dataset")
+            dataset_controller = get_legacy_controller_from_study(
+                parent,
+                parent.study,
+                "dataset",
+            )
 
         # 2. Base Init
         super().__init__(parent=parent, controller=controller)
@@ -47,7 +63,7 @@ class PreprocessPanel(BasePanel):
         self.plotter = PreprocessPlotter(self.preview_widget, self.controller)
 
         # 5. Connect Component Signals
-        self.preview_widget.request_plot_update.connect(self.plotter.plot_sample_data)
+        self.preview_widget.request_plot_update.connect(self.update_plot_only)
 
         # 6. Setup Bridges & UI
         self._setup_bridges()
@@ -56,23 +72,10 @@ class PreprocessPanel(BasePanel):
     def _setup_bridges(self):
         """Register Qt observer bridges for preprocess and dataset events."""
         if self.controller:
-            self._create_bridge(
-                self.controller,
-                "preprocess_changed",
-                self.update_panel,
-            )
+            self._create_refresh_bridge(self.controller, "preprocess_changed")
 
             if self.dataset_controller:
-                self._create_bridge(
-                    self.dataset_controller,
-                    "data_changed",
-                    self.update_panel,
-                )
-                self._create_bridge(
-                    self.dataset_controller,
-                    "import_finished",
-                    self.update_panel,
-                )
+                self._create_refresh_bridge(self.dataset_controller, "data_changed")
 
     def init_ui(self):
         """Build the panel layout with preview, history, and sidebar widgets."""
@@ -100,7 +103,17 @@ class PreprocessPanel(BasePanel):
             self.sidebar.update_sidebar()
 
         # Update History
-        data_list = self.controller.get_preprocessed_data_list()
+        queried_lists = self._query_data_lists_for_render()
+        original_data_list: list[Any] = []
+        controller = self.controller
+        if controller is None:
+            data_list = []
+        elif queried_lists is None:
+            data_list, original_data_list = self._legacy_data_lists_for_render(
+                controller
+            )
+        else:
+            data_list, original_data_list = queried_lists
         is_epoched = False
         if data_list:
             first_data = data_list[0]
@@ -143,10 +156,38 @@ class PreprocessPanel(BasePanel):
             self.preview_widget.time_spin.setRange(0, duration)
             self.preview_widget.time_slider.setRange(0, int(duration * 10))
 
-            self.plotter.plot_sample_data()
+            self.plotter.plot_sample_data(
+                data_list=data_list,
+                original_data_list=original_data_list,
+            )
         else:
             self.preview_widget.reset_view()
 
     def update_plot_only(self):
         """Trigger a plot refresh without updating the sidebar or history."""
-        self.plotter.plot_sample_data()
+        queried_lists = self._query_data_lists_for_render()
+        if queried_lists is None:
+            self.plotter.plot_sample_data()
+            return
+        data_list, original_data_list = queried_lists
+        self.plotter.plot_sample_data(
+            data_list=data_list,
+            original_data_list=original_data_list,
+        )
+
+    def _query_data_lists_for_render(self) -> tuple[list[Any], list[Any]] | None:
+        return query_preprocess_render_lists(self)
+
+    def _legacy_data_lists_for_render(self, controller) -> tuple[list[Any], list[Any]]:
+        def fallback() -> tuple[list[Any], list[Any]]:
+            data_list = controller.get_preprocessed_data_list()
+            study = getattr(controller, "study", None)
+            original_data_list: list[Any] = []
+            if study is not None:
+                original_data_list = list(getattr(study, "loaded_data_list", []))
+            return data_list, original_data_list
+
+        try:
+            return run_legacy_controller_fallback(self, fallback)
+        except LegacyControllerFallbackUnavailableError:
+            return [], []

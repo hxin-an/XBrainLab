@@ -56,6 +56,7 @@ class RealConfigureTrainingTool(BaseConfigureTrainingTool):
         device: str = "cpu",
         optimizer: str = "adam",
         save_checkpoints_every: int = 0,
+        output_dir: str = "./output",
         **kwargs,
     ) -> str:
         """Configure training hyperparameters via the backend.
@@ -69,6 +70,7 @@ class RealConfigureTrainingTool(BaseConfigureTrainingTool):
             device: Compute device (``'cpu'`` or ``'cuda'``).
             optimizer: Optimiser name (``'adam'``, ``'sgd'``, ``'adamw'``).
             save_checkpoints_every: Checkpoint save interval (0 = disabled).
+            output_dir: Directory for saving training outputs.
             **kwargs: Additional keyword arguments.
 
         Returns:
@@ -86,6 +88,7 @@ class RealConfigureTrainingTool(BaseConfigureTrainingTool):
                 device=device,
                 optimizer=optimizer,
                 save_checkpoints_every=save_checkpoints_every,
+                output_dir=output_dir,
             )
         except Exception as e:
             return f"Failed to configure training: {e!s}"
@@ -119,7 +122,7 @@ class RealStartTrainingTool(BaseStartTrainingTool):
         facade = BackendFacade(study)
 
         try:
-            facade.run_training()
+            facade.run_training(confirmed=bool(kwargs.get("confirmed", False)))
         except Exception as e:
             return f"Failed to start training: {e!s}"
         else:

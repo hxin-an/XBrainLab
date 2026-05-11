@@ -1,15 +1,18 @@
 """Service for coordinating AggregateInfoPanel updates across the application."""
 
 import weakref
-from typing import TYPE_CHECKING
+from unittest.mock import Mock
 
 from PyQt6.QtCore import QObject
 
+from XBrainLab.backend.application import QueryStateCommand
+from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.ui.application_capabilities import (
+    execute_application_command,
+    get_legacy_controller_from_study,
+)
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge
-
-if TYPE_CHECKING:
-    from XBrainLab.backend.study import Study
 
 
 class InfoPanelService(QObject):
@@ -24,41 +27,57 @@ class InfoPanelService(QObject):
 
     """
 
-    def __init__(self, study: "Study"):
+    def __init__(
+        self,
+        study: "Study",
+        *,
+        observe_controller_events: bool = True,
+    ):
         """Initialize the service and connect to backend controllers.
 
         Args:
             study: The application ``Study`` instance.
+            observe_controller_events: Whether this service should subscribe
+                directly to controller observer events. MainWindow product
+                runtime delegates aggregate refresh to the UI refresh
+                coordinator; standalone / legacy contexts can keep direct
+                observation enabled.
 
         """
         super().__init__()
         self.study = study
         self._listeners: weakref.WeakSet = weakref.WeakSet()
-        self._setup_bridges()
+        self._observes_controller_events = observe_controller_events
+        if observe_controller_events:
+            self._setup_bridges()
 
     def _setup_bridges(self):
         """Connect observer bridges to dataset and preprocess controllers."""
-        self.dataset_bridge = QtObserverBridge(
-            self.study.get_controller("dataset"),
-            "data_changed",
+        dataset_controller = get_legacy_controller_from_study(
             self,
+            self.study,
+            "dataset",
         )
-        self.dataset_bridge.connect_to(self.notify_all)
+        if dataset_controller is not None:
+            self.dataset_bridge = QtObserverBridge(
+                dataset_controller,
+                "data_changed",
+                self,
+            )
+            self.dataset_bridge.connect_to(self.notify_all)
 
-        self.preprocess_bridge = QtObserverBridge(
-            self.study.get_controller("preprocess"),
-            "preprocess_changed",
+        preprocess_controller = get_legacy_controller_from_study(
             self,
+            self.study,
+            "preprocess",
         )
-        self.preprocess_bridge.connect_to(self.notify_all)
-
-        # also listen to import finished
-        self.import_bridge = QtObserverBridge(
-            self.study.get_controller("dataset"),
-            "import_finished",
-            self,
-        )
-        self.import_bridge.connect_to(self.notify_all)
+        if preprocess_controller is not None:
+            self.preprocess_bridge = QtObserverBridge(
+                preprocess_controller,
+                "preprocess_changed",
+                self,
+            )
+            self.preprocess_bridge.connect_to(self.notify_all)
 
     def register(self, panel):
         """Register an info panel to receive automatic updates.
@@ -87,16 +106,7 @@ class InfoPanelService(QObject):
 
     def notify_all(self, *args, **kwargs):
         """Fetch current data and update all registered panels."""
-        # Fetch current state
-        loaded = []
-        if self.study.get_controller("dataset"):
-            loaded = self.study.get_controller("dataset").get_loaded_data_list()
-
-        preprocessed = []
-        if self.study.get_controller("preprocess"):
-            preprocessed = self.study.get_controller(
-                "preprocess",
-            ).get_preprocessed_data_list()
+        loaded, preprocessed = self._query_data_lists()
 
         # Notify listeners
         for panel in self._listeners:
@@ -130,14 +140,51 @@ class InfoPanelService(QObject):
             panel: The info panel to update.
 
         """
-        loaded = []
-        if self.study.get_controller("dataset"):
-            loaded = self.study.get_controller("dataset").get_loaded_data_list()
-
-        preprocessed = []
-        if self.study.get_controller("preprocess"):
-            preprocessed = self.study.get_controller(
-                "preprocess",
-            ).get_preprocessed_data_list()
+        loaded, preprocessed = self._query_data_lists()
 
         panel.update_info(loaded_data_list=loaded, preprocessed_data_list=preprocessed)
+
+    def _query_data_lists(self):
+        """Return raw/preprocessed lists through ApplicationService when possible."""
+        if isinstance(self.study, Study) and not isinstance(self.study, Mock):
+            try:
+                result = execute_application_command(
+                    self,
+                    QueryStateCommand(query="data_lists", include_objects=True),
+                    refresh=False,
+                )
+            except Exception as exc:
+                logger.error("Info panel state query failed: %s", exc)
+                return [], []
+            if result is None:
+                logger.debug(
+                    "Info panel state query unavailable for real Study context",
+                )
+                return [], []
+            if result.ok:
+                return (
+                    list(result.diagnostics.get("loaded_data_list", [])),
+                    list(result.diagnostics.get("preprocessed_data_list", [])),
+                )
+            logger.debug("Info panel state query failed: %s", result.message)
+            return [], []
+
+        loaded = []
+        dataset_controller = get_legacy_controller_from_study(
+            self,
+            self.study,
+            "dataset",
+        )
+        if dataset_controller is not None:
+            loaded = dataset_controller.get_loaded_data_list()
+
+        preprocessed = []
+        preprocess_controller = get_legacy_controller_from_study(
+            self,
+            self.study,
+            "preprocess",
+        )
+        if preprocess_controller is not None:
+            preprocessed = preprocess_controller.get_preprocessed_data_list()
+
+        return loaded, preprocessed

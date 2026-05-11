@@ -4,13 +4,24 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from XBrainLab.llm.tools.mock.analysis_mock import (
+    MockEvaluateTool,
+    MockSaliencyTool,
+    MockVisualizeTool,
+)
 from XBrainLab.llm.tools.mock.dataset_mock import (
+    MockApplyInterpretationTool,
     MockAttachLabelsTool,
     MockClearDatasetTool,
     MockGenerateDatasetTool,
     MockGetDatasetInfoTool,
     MockListFilesTool,
     MockLoadDataTool,
+    MockPreviewInterpretationTool,
+    MockReloadInterpretationRecipeTool,
+    MockSaveInterpretationRecipeTool,
+    MockScanSourceTool,
+    MockValidateInterpretationTool,
 )
 from XBrainLab.llm.tools.mock.preprocess_mock import (
     MockBandPassFilterTool,
@@ -45,6 +56,26 @@ class TestDatasetMocks:
     def test_load_data(self, study):
         result = MockLoadDataTool().execute(study, paths=["/data/f.gdf"])
         assert "loaded" in result.lower() or "success" in result.lower()
+
+    def test_data_interpretation_tools(self, study):
+        assert "Scanned" in MockScanSourceTool().execute(
+            study,
+            source_path="/data",
+        )
+        assert "preview" in MockPreviewInterpretationTool().execute(study).lower()
+        assert "validation" in MockValidateInterpretationTool().execute(study).lower()
+        assert "Applied" in MockApplyInterpretationTool().execute(
+            study,
+            confirmed=True,
+        )
+        assert "recipe saved" in MockSaveInterpretationRecipeTool().execute(
+            study,
+            recipe_path="/tmp/import.json",
+        )
+        assert "reloaded" in MockReloadInterpretationRecipeTool().execute(
+            study,
+            recipe_path="/tmp/import.json",
+        )
 
     def test_attach_labels(self, study):
         result = MockAttachLabelsTool().execute(
@@ -119,6 +150,22 @@ class TestTrainingMocks:
     def test_start_training(self, study):
         result = MockStartTrainingTool().execute(study)
         assert isinstance(result, str)
+
+
+class TestAnalysisMocks:
+    def test_evaluate(self, study):
+        result = MockEvaluateTool().execute(study)
+        assert "Evaluation" in result
+
+    def test_visualize(self, study):
+        result = MockVisualizeTool().execute(study, view="summary")
+        assert "Visualization" in result
+        assert "summary" in result
+
+    def test_saliency(self, study):
+        result = MockSaliencyTool().execute(study, method="Gradient")
+        assert "Saliency" in result
+        assert "Gradient" in result
 
 
 class TestUIControlMock:

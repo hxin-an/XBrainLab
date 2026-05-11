@@ -14,7 +14,14 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application import EvaluateCommand
 from XBrainLab.backend.training.record.wrappers import PooledRecordWrapper
+from XBrainLab.ui.application_capabilities import (
+    LegacyControllerFallbackUnavailableError,
+    execute_application_command,
+    get_legacy_controller_from_study,
+    run_legacy_controller_fallback,
+)
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.panels.evaluation.confusion_matrix import ConfusionMatrixWidget
@@ -34,6 +41,8 @@ class EvaluationPanel(BasePanel):
     Attributes:
         training_controller: Injected ``TrainingController`` for event
             subscription.
+        preprocess_controller: Injected ``PreprocessController`` for
+            preprocess-state invalidation events.
         model_combo: ``QComboBox`` for selecting a training fold/plan.
         run_combo: ``QComboBox`` for selecting an individual run or
             average.
@@ -46,7 +55,13 @@ class EvaluationPanel(BasePanel):
 
     """
 
-    def __init__(self, controller=None, training_controller=None, parent=None):
+    def __init__(
+        self,
+        controller=None,
+        training_controller=None,
+        parent=None,
+        preprocess_controller=None,
+    ):
         """Initialize the evaluation panel.
 
         Args:
@@ -54,15 +69,29 @@ class EvaluationPanel(BasePanel):
                 the parent study if not provided.
             training_controller: Optional ``TrainingController`` for
                 subscribing to training-stopped events.
+            preprocess_controller: Optional ``PreprocessController`` for
+                subscribing to preprocess invalidation events.
             parent: Parent widget (typically the main window).
 
         """
         # 1. Controller Resolution
         if controller is None and parent and hasattr(parent, "study"):
-            controller = parent.study.get_controller("evaluation")
+            controller = get_legacy_controller_from_study(
+                parent,
+                parent.study,
+                "evaluation",
+            )
+        if preprocess_controller is None and parent and hasattr(parent, "study"):
+            preprocess_controller = get_legacy_controller_from_study(
+                parent,
+                parent.study,
+                "preprocess",
+            )
 
         # Store injected training controller
         self.training_controller = training_controller
+        self.preprocess_controller = preprocess_controller
+        self.last_application_query = None
 
         # 2. Base Init
         super().__init__(parent=parent, controller=controller)
@@ -73,53 +102,149 @@ class EvaluationPanel(BasePanel):
 
     def _setup_bridges(self):
         """Listen to TrainingController to update when training finishes."""
-        # Use injected controller if available, fallback to legacy
-        training_ctrl = self.training_controller
-        if not training_ctrl and self.controller and hasattr(self.controller, "study"):
-            training_ctrl = self.controller.study.get_controller("training")
+        training_ctrl = (
+            self.training_controller or self._legacy_training_controller_for_bridges()
+        )
 
         if training_ctrl:
-            self._create_bridge(
-                training_ctrl,
-                "training_stopped",
-                self.update_panel,
+            self._create_refresh_bridge(training_ctrl, "training_stopped")
+            self._create_refresh_bridge(training_ctrl, "history_cleared")
+            self._create_refresh_bridge(training_ctrl, "config_changed")
+        if self.preprocess_controller:
+            self._create_refresh_bridge(
+                self.preprocess_controller,
+                "preprocess_changed",
             )
+
+    def _legacy_training_controller_for_bridges(self):
+        study = getattr(self.controller, "study", None)
+        if study is None:
+            return None
+        try:
+            return run_legacy_controller_fallback(
+                self,
+                lambda: study.get_controller("training"),
+            )
+        except LegacyControllerFallbackUnavailableError:
+            return None
 
     def update_panel(self):
         """Update panel content when switched to."""
         if hasattr(self, "info_panel"):
             pass  # Handled by InfoPanelService
 
+        self.last_application_query = execute_application_command(
+            self,
+            EvaluateCommand(include_objects=True),
+            refresh=False,
+        )
+        if self._application_query_blocks_display():
+            self._show_no_data_available()
+            return
+
+        previous_plan = (
+            self.model_combo.currentData() if hasattr(self, "model_combo") else None
+        )
+        previous_plan_text = (
+            self.model_combo.currentText() if hasattr(self, "model_combo") else ""
+        )
+        previous_run = (
+            self.run_combo.currentData() if hasattr(self, "run_combo") else None
+        )
+        previous_run_text = (
+            self.run_combo.currentText() if hasattr(self, "run_combo") else ""
+        )
+
         # Update Model Combo
         self.model_combo.blockSignals(True)
         self.model_combo.clear()
 
-        plans = self.controller.get_plans()
+        plans = self._plans_from_application_query()
+        if plans is None:
+            plans = self._legacy_plans_for_render()
         if plans:
             for i, plan in enumerate(plans):
                 self.model_combo.addItem(f"Fold {i + 1}: {plan.get_name()}", plan)
 
             if self.model_combo.count() > 0:
-                self.model_combo.setCurrentIndex(0)
-                self.on_model_changed(0)  # Manually trigger update for runs
+                selected_index = 0
+                for i in range(self.model_combo.count()):
+                    if self.model_combo.itemData(i) is previous_plan:
+                        selected_index = i
+                        break
+                    if (
+                        previous_plan_text
+                        and self.model_combo.itemText(i) == previous_plan_text
+                    ):
+                        selected_index = i
+                        break
+
+                self.model_combo.setCurrentIndex(selected_index)
+                self.on_model_changed(
+                    selected_index,
+                    preferred_run=previous_run,
+                    preferred_run_text=previous_run_text,
+                )
                 # Show Charts
                 self.plot_stack.setCurrentIndex(0)
             else:
                 # No models found despite plans? unlikely but possible
                 self.plot_stack.setCurrentIndex(1)
         else:
-            self.model_combo.addItem("No Data Available")
-            self.run_combo.clear()
-            self.matrix_widget.update_plot(None)  # Clear plot
-            self.bar_chart.update_plot({})  # Clear bar chart
-            self.metrics_table.update_data({})
-            self.summary_text.clear()
-            # Show No Data Label
-            self.plot_stack.setCurrentIndex(1)
+            self._show_no_data_available()
 
         self.model_combo.blockSignals(False)
 
-    def on_model_changed(self, index):
+    def _application_query_blocks_display(self) -> bool:
+        """Return whether ApplicationService says evaluation is not displayable."""
+        result = self.last_application_query
+        if result is None:
+            return False
+        if result.failed:
+            return True
+        diagnostics = getattr(result, "diagnostics", {}) or {}
+        return (
+            diagnostics.get("payload_type") == "evaluation_summary"
+            and diagnostics.get("available") is False
+        )
+
+    def _evaluation_query_payload(self) -> dict | None:
+        """Return the current service-backed evaluation payload, if available."""
+        result = getattr(self, "last_application_query", None)
+        if result is None or result.failed:
+            return None
+        diagnostics = getattr(result, "diagnostics", {}) or {}
+        if diagnostics.get("payload_type") != "evaluation_summary":
+            return None
+        return diagnostics
+
+    def _plans_from_application_query(self):
+        payload = self._evaluation_query_payload()
+        if payload is None:
+            return None
+        return list(payload.get("plan_objects") or [])
+
+    def _legacy_plans_for_render(self):
+        if self.controller is None:
+            return []
+        try:
+            return run_legacy_controller_fallback(self, self.controller.get_plans)
+        except LegacyControllerFallbackUnavailableError:
+            return []
+
+    def _show_no_data_available(self) -> None:
+        self.model_combo.blockSignals(True)
+        self.model_combo.clear()
+        self.model_combo.addItem("No Data Available")
+        self.model_combo.blockSignals(False)
+        self.run_combo.clear()
+        self.matrix_widget.update_plot(None)
+        self.bar_chart.update_plot({})
+        self.metrics_table.update_data({})
+        self.summary_text.clear()
+        self.plot_stack.setCurrentIndex(1)
+
+    def on_model_changed(self, index, preferred_run=None, preferred_run_text=""):
         """Handle model selection change."""
         if index < 0:
             return
@@ -145,7 +270,18 @@ class EvaluationPanel(BasePanel):
             self.run_combo.addItem("Average (Finished Runs)", "average")
 
         if self.run_combo.count() > 0:
-            self.run_combo.setCurrentIndex(0)
+            selected_index = 0
+            for i in range(self.run_combo.count()):
+                if self.run_combo.itemData(i) is preferred_run:
+                    selected_index = i
+                    break
+                if (
+                    preferred_run_text
+                    and self.run_combo.itemText(i) == preferred_run_text
+                ):
+                    selected_index = i
+                    break
+            self.run_combo.setCurrentIndex(selected_index)
 
         self.run_combo.blockSignals(False)
         self.update_views()
@@ -163,11 +299,14 @@ class EvaluationPanel(BasePanel):
             if not plan:
                 return
 
-            (
-                pooled_labels,
-                pooled_outputs,
-                metrics,
-            ) = self.controller.get_pooled_eval_result(plan)
+            pooled_result = self._pooled_result_from_application_query(plan)
+            if pooled_result is None:
+                if self._evaluation_query_payload() is not None:
+                    return
+                pooled_result = self._legacy_pooled_result_for_render(plan)
+                if pooled_result is None:
+                    return
+            pooled_labels, pooled_outputs, metrics = pooled_result
 
             if pooled_labels is None:
                 return
@@ -223,8 +362,78 @@ class EvaluationPanel(BasePanel):
 
     def update_model_summary(self, plan, record=None):
         """Generate and display model summary."""
-        summary_str = self.controller.get_model_summary_str(plan, record)
+        summary_str = self._summary_from_application_query(plan, record)
+        if summary_str is None:
+            summary_str = self._legacy_summary_for_render(plan, record)
         self.summary_text.setText(summary_str)
+
+    def _legacy_pooled_result_for_render(self, plan):
+        controller = self.controller
+        if controller is None:
+            return None
+        try:
+            return run_legacy_controller_fallback(
+                self,
+                lambda: controller.get_pooled_eval_result(plan),
+            )
+        except LegacyControllerFallbackUnavailableError:
+            return None
+
+    def _legacy_summary_for_render(self, plan, record=None) -> str:
+        controller = self.controller
+        if controller is None:
+            return ""
+        try:
+            return run_legacy_controller_fallback(
+                self,
+                lambda: controller.get_model_summary_str(plan, record),
+            )
+        except LegacyControllerFallbackUnavailableError:
+            return ""
+
+    def _pooled_result_from_application_query(self, plan):
+        payload = self._evaluation_query_payload()
+        if payload is None:
+            return None
+        plan_index = self._current_plan_index(plan)
+        results = payload.get("pooled_eval_results") or []
+        if plan_index < 0 or plan_index >= len(results):
+            return None
+        return results[plan_index]
+
+    def _summary_from_application_query(self, plan, record=None) -> str | None:
+        payload = self._evaluation_query_payload()
+        if payload is None:
+            return None
+        plan_index = self._current_plan_index(plan)
+        summaries = payload.get("model_summaries") or []
+        if plan_index < 0 or plan_index >= len(summaries):
+            return ""
+        summary = summaries[plan_index] or {}
+        if record is None:
+            return str(summary.get("plan") or "")
+        run_index = self._plan_run_index(plan, record)
+        run_summaries = summary.get("runs") or []
+        if 0 <= run_index < len(run_summaries):
+            return str(run_summaries[run_index] or "")
+        return str(summary.get("plan") or "")
+
+    def _current_plan_index(self, plan) -> int:
+        for index in range(self.model_combo.count()):
+            if self.model_combo.itemData(index) is plan:
+                return index
+        return -1
+
+    @staticmethod
+    def _plan_run_index(plan, record) -> int:
+        try:
+            records = list(plan.get_plans())
+        except Exception:
+            return -1
+        for index, item in enumerate(records):
+            if item is record:
+                return index
+        return -1
 
     def update_info(self):
         """Update the aggregate info panel."""
@@ -276,27 +485,30 @@ class EvaluationPanel(BasePanel):
         # Toolbar (Below Charts)
         toolbar_layout = QHBoxLayout()
         toolbar_layout.setContentsMargins(0, 10, 0, 0)
+        toolbar_layout.setSpacing(8)
 
         # Model Selection
         toolbar_layout.addWidget(QLabel("Model:"))
         self.model_combo = QComboBox()
-        self.model_combo.setMinimumWidth(150)
+        self.model_combo.setMinimumWidth(96)
+        self.model_combo.setMaximumWidth(180)
         self.model_combo.currentIndexChanged.connect(self.on_model_changed)
         toolbar_layout.addWidget(self.model_combo)
 
-        toolbar_layout.addSpacing(15)
+        toolbar_layout.addSpacing(4)
 
         # Run Selection
         toolbar_layout.addWidget(QLabel("Run:"))
         self.run_combo = QComboBox()
-        self.run_combo.setMinimumWidth(150)
+        self.run_combo.setMinimumWidth(96)
+        self.run_combo.setMaximumWidth(180)
         self.run_combo.currentIndexChanged.connect(self.update_views)
         toolbar_layout.addWidget(self.run_combo)
 
-        toolbar_layout.addSpacing(15)
+        toolbar_layout.addSpacing(4)
 
         # Options
-        self.chk_percentage = QCheckBox("Show Percentage")
+        self.chk_percentage = QCheckBox("Percent")
         self.chk_percentage.toggled.connect(self.update_views)
         toolbar_layout.addWidget(self.chk_percentage)
 

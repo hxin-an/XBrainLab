@@ -1,6 +1,3 @@
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.visualization import VisualizerType
 from XBrainLab.ui.styles.theme import Theme
@@ -16,6 +13,8 @@ class SaliencyTopographicMapWidget(BaseSaliencyView):
     def init_ui(self):
         super().init_ui()
         # Add initial text to the default canvas
+        if self.fig is None:
+            raise RuntimeError("Base saliency view figure was not initialized")
         self.ax = self.fig.add_subplot(111)
         Theme.apply_matplotlib_dark_theme(self.fig, ax=self.ax)
         self.ax.text(
@@ -30,7 +29,8 @@ class SaliencyTopographicMapWidget(BaseSaliencyView):
 
     def show_warning(self, msg):
         """Show a warning message (yellow/orange)."""
-        self.canvas.hide()
+        if self.canvas is not None:
+            self.canvas.hide()
         self.error_label.setText(msg)
         self.error_label.setStyleSheet(
             f"color: {Theme.WARNING}; font-size: 16px; font-weight: bold;",
@@ -57,23 +57,11 @@ class SaliencyTopographicMapWidget(BaseSaliencyView):
                 )
                 return
 
-            # Close only our own figure, not all figures in the application
-            if self.fig is not None:
-                plt.close(self.fig)
-
             visualizer = VisualizerType.SaliencyTopoMap.value(eval_record, epoch_data)
             new_fig = visualizer.get_plt(method=method, absolute=absolute)
 
             if new_fig:
-                # Replace Figure
-                self.main_layout.removeWidget(self.canvas)
-                self.canvas.close()
-
-                self.fig = new_fig
-                Theme.apply_matplotlib_dark_theme(self.fig)
-
-                self.canvas = FigureCanvas(self.fig)
-                self.main_layout.insertWidget(0, self.canvas)
+                self._replace_figure(new_fig)
             else:
                 self.show_error("No Data Available")
 

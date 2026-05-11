@@ -2,6 +2,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from XBrainLab.llm.tools.real.analysis_real import (
+    RealEvaluateTool,
+    RealSaliencyTool,
+    RealVisualizeTool,
+)
 from XBrainLab.llm.tools.real.dataset_real import (
     RealAttachLabelsTool,
     RealClearDatasetTool,
@@ -76,6 +81,7 @@ class TestRealTrainingTools:
                 learning_rate=0.001,
                 optimizer="sgd",
                 save_checkpoints_every=5,
+                output_dir="/tmp/xbrainlab-training-output",
             )
             assert "Training configured" in res1
             # Verify passed params
@@ -83,11 +89,39 @@ class TestRealTrainingTools:
             call_args = mock_facade.configure_training.call_args[1]
             assert call_args["optimizer"] == "sgd"
             assert call_args["save_checkpoints_every"] == 5
+            assert call_args["output_dir"] == "/tmp/xbrainlab-training-output"
 
             # Start
             res2 = start_tool.execute(mock_study)
             assert "started successfully" in res2
             mock_facade.run_training.assert_called()
+
+
+class TestRealAnalysisTools:
+    def test_evaluate_visualize_and_saliency_route_to_service(self, mock_study):
+        evaluate = RealEvaluateTool()
+        visualize = RealVisualizeTool()
+        saliency = RealSaliencyTool()
+
+        with patch("XBrainLab.llm.tools.real.analysis_real.BackendFacade") as facade:
+            service = facade.return_value.service
+            service.evaluate.return_value.message = "Evaluation summary ready."
+            service.visualize.return_value.message = "Visualization summary ready."
+            service.saliency.return_value.message = "Saliency summary ready."
+
+            assert "Evaluation" in evaluate.execute(mock_study, target="latest")
+            assert "Visualization" in visualize.execute(mock_study, view="summary")
+            assert "Saliency" in saliency.execute(
+                mock_study,
+                method="Gradient",
+                params={"absolute": True},
+            )
+
+            assert service.evaluate.call_args.args[0].target == "latest"
+            assert service.visualize.call_args.args[0].view == "summary"
+            saliency_command = service.saliency.call_args.args[0]
+            assert saliency_command.method == "Gradient"
+            assert saliency_command.params == {"absolute": True}
 
 
 class TestRealDatasetTools:
@@ -142,11 +176,21 @@ class TestRealDatasetTools:
                 "total": 100,
                 "unique_count": 2,
                 "unique_labels": ["769", "770"],
+                "gdf_duplicate_channel_details": [
+                    {
+                        "file": "A.gdf",
+                        "generated_bases": ["EEG"],
+                        "generated_channels": ["EEG-0", "EEG-1"],
+                        "message": "detail message",
+                    },
+                ],
             }
 
             res = tool.execute(mock_study)
             assert "Loaded 1 files" in res
             assert "Events: 100" in res
+            assert "Diagnostics:" in res
+            assert "GDF duplicate-channel ambiguity: A.gdf (bases: EEG)" in res
 
     def test_generate_dataset(self, mock_study):
         tool = RealGenerateDatasetTool()
@@ -223,6 +267,7 @@ class TestRealPreprocessTools:
             "XBrainLab.llm.tools.real.preprocess_real.BackendFacade"
         ) as MockFacade:
             mock_facade = MockFacade.return_value
+            mock_facade.get_preprocess_diagnostics.return_value = {}
             res = tool.execute(mock_study, method="CAR")
             assert "Applied reference" in res
             mock_facade.set_reference.assert_called_once_with("CAR")
@@ -233,9 +278,31 @@ class TestRealPreprocessTools:
             "XBrainLab.llm.tools.real.preprocess_real.BackendFacade"
         ) as MockFacade:
             mock_facade = MockFacade.return_value
+            mock_facade.get_preprocess_diagnostics.return_value = {}
             res = tool.execute(mock_study, channels=["C3", "C4"])
             assert "Selected 2 channels" in res
             mock_facade.select_channels.assert_called_once_with(["C3", "C4"])
+
+    def test_channel_selection_surfaces_gdf_ambiguity(self, mock_study):
+        tool = RealChannelSelectionTool()
+        with patch(
+            "XBrainLab.llm.tools.real.preprocess_real.BackendFacade"
+        ) as MockFacade:
+            mock_facade = MockFacade.return_value
+            mock_facade.get_preprocess_diagnostics.return_value = {
+                "gdf_duplicate_channel_details": [
+                    {
+                        "file": "A01T.gdf",
+                        "generated_bases": ["EEG"],
+                        "generated_channels": ["EEG-0", "EEG-1"],
+                    },
+                ],
+            }
+
+            res = tool.execute(mock_study, channels=["C3", "C4"])
+
+            assert "Selected 2 channels" in res
+            assert "GDF duplicate-channel ambiguity remains for A01T.gdf" in res
 
     def test_epoch_data(self, mock_study):
         tool = RealEpochDataTool()
@@ -252,10 +319,34 @@ class TestRealPreprocessTools:
         # Note: RealSetMontageTool now returns a confirmation request (human-in-the-loop)
         # instead of auto-applying
 
-        res = tool.execute(mock_study, montage_name="standard_1020")
+        with patch(
+            "XBrainLab.llm.tools.real.preprocess_real.BackendFacade"
+        ) as MockFacade:
+            MockFacade.return_value.get_preprocess_diagnostics.return_value = {}
+            res = tool.execute(mock_study, montage_name="standard_1020")
 
         # Verify the confirmation request format
         assert "confirm_montage 'standard_1020'" in res
+
+    def test_set_montage_surfaces_gdf_ambiguity(self, mock_study):
+        tool = RealSetMontageTool()
+        with patch(
+            "XBrainLab.llm.tools.real.preprocess_real.BackendFacade"
+        ) as MockFacade:
+            MockFacade.return_value.get_preprocess_diagnostics.return_value = {
+                "gdf_duplicate_channel_details": [
+                    {
+                        "file": "A01T.gdf",
+                        "generated_bases": ["EEG"],
+                        "generated_channels": ["EEG-0", "EEG-1"],
+                    },
+                ],
+            }
+
+            res = tool.execute(mock_study, montage_name="standard_1020")
+
+            assert "confirm_montage 'standard_1020'" in res
+            assert "GDF duplicate-channel ambiguity remains for A01T.gdf" in res
 
 
 class TestRealUIControlTools:

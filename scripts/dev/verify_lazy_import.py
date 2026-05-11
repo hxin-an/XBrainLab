@@ -22,34 +22,34 @@ if "torch" in sys.modules:
     # It might be loaded by other things in environment, but ideally should not be.
     # But let's check strict separation.
 
-# Initialize API Engine
-conf = LLMConfig(inference_mode="api", api_key="dummy")
-try:
-    engine = LLMEngine(conf)
-    print("DEBUG: Initialized API Engine")
-except Exception as e:
-    # Might fail if APIBackend tries to validate something, but that's fine for import check
-    print(f"DEBUG: Engine init failed logic but import check proceeds: {e}")
+# Initialize engine with a legacy remote request. Product config should migrate
+# the request to local without importing the local backend until load_model().
+conf = LLMConfig(inference_mode="api")
+engine = LLMEngine(conf)
+print("DEBUG: Initialized local-only engine from legacy remote request")
 
 if "XBrainLab.llm.core.backends.local" in sys.modules:
-    print("FAILURE: LocalBackend was imported after API init!")
+    print("FAILURE: LocalBackend was imported during engine init!")
     sys.exit(1)
-else:
-    print("SUCCESS: LocalBackend NOT imported after API init.")
 
-# Initialize Local Engine
+if engine.config.inference_mode != "local":
+    print("FAILURE: Legacy remote runtime request was not migrated to local!")
+    sys.exit(1)
+
+print("SUCCESS: Legacy remote runtime request migrated without eager local import.")
+
+# Initialize Local Engine without loading weights.
 print("DEBUG: Initializing Local Engine...")
 conf_local = LLMConfig(inference_mode="local")
 try:
-    engine_local = LLMEngine(conf_local)
+    _engine_local = LLMEngine(conf_local)
     print("DEBUG: Initialized Local Engine")
 except Exception:
     pass  # Expected as model not found etc.
 
 if "XBrainLab.llm.core.backends.local" in sys.modules:
-    print("SUCCESS: LocalBackend imported when requested.")
-else:
-    print("FAILURE: LocalBackend NOT imported when requested!")
+    print("FAILURE: LocalBackend was imported during lazy local engine init!")
     sys.exit(1)
 
+print("SUCCESS: LocalBackend remains lazy until load_model().")
 sys.exit(0)

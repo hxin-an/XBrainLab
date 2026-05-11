@@ -1,0 +1,44 @@
+{
+  "date": "2026-05-05",
+  "gate_type": "release/thesis local tool-call evidence",
+  "command": "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 poetry run python scripts/agent/evals/run_local_tool_call_eval.py --model-role fallback --repeat-count 3 --output-dir artifacts/agent_evals/local_fallback",
+  "model_id": "microsoft/Phi-3.5-mini-instruct",
+  "result": {
+    "total_cases": 121,
+    "passed_cases": 121,
+    "failed_cases": 0,
+    "repeat_count": 3,
+    "artifact_path": "artifacts/agent_evals/local_fallback/local_microsoft_phi_3.5_mini_instruct.json"
+  },
+  "preflight": {
+    "models_cached": true,
+    "estimated_download_gb": 0.0,
+    "cache_usage": "15.34 GB",
+    "max_total_cache_gb": 20.0,
+    "free_disk_approx": "158.36 GB"
+  },
+  "observed_resource_pressure": {
+    "gpu": "NVIDIA GeForce RTX 5070 Ti",
+    "memory_total_mib": 16303,
+    "memory_used_mib": 15764,
+    "memory_free_mib": 232,
+    "gpu_utilization_percent": 99,
+    "temperature_c": 51,
+    "power_draw_w": 95.04,
+    "process_elapsed": "38:40",
+    "process_rss_kb": 2330376,
+    "sample_time": "2026-05-05 22:10:33 CST",
+    "approx_wall_time": "about 41 min",
+    "pressure_level": "high"
+  },
+  "post_run": {
+    "memory_used_mib": 1026,
+    "memory_free_mib": 14970,
+    "gpu_utilization_percent": 8
+  },
+  "gate_policy": {
+    "fast_dev_gate": "deterministic eval, changed or failed cases only, repeat 1, no fallback model",
+    "candidate_gate": "primary model, affected case families, repeat 1 or 2",
+    "release_thesis_gate": "deterministic full suite, primary full suite x3, fallback full suite x3, dashboard refresh, resource pressure recorded"
+  }
+}

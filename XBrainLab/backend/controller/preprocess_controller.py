@@ -1,12 +1,16 @@
 """Preprocessing controller for EEG signal processing operations.
 
 Provides a high-level interface for filtering, resampling,
-re-referencing, normalisation, epoching, and montage configuration.
+re-referencing, normalisation, epoching, montage configuration, and
+preprocess-stage diagnostics.
 """
+
+from typing import Any
 
 from XBrainLab.backend import preprocessor
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.utils.observer import Observable
+from XBrainLab.backend.utils.runtime_diagnostics import collect_runtime_diagnostics
 
 
 class PreprocessController(Observable):
@@ -95,6 +99,10 @@ class PreprocessController(Observable):
         if self.study.preprocessed_data_list:
             return self.study.preprocessed_data_list[0]
         return None
+
+    def get_runtime_diagnostics(self) -> dict[str, Any]:
+        """Return aggregated runtime diagnostics for preprocessed data."""
+        return collect_runtime_diagnostics(self.study.preprocessed_data_list)
 
     def _apply_processor(self, processor_class, *args, **kwargs):
         """Apply a preprocessing processor and update the study.

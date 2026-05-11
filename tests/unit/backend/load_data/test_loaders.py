@@ -56,9 +56,11 @@ class TestLoaders(unittest.TestCase):
         self.assertIsInstance(result, Raw)
         mock_read.assert_called_with("test.vhdr", preload=False)
 
+    @patch("mne.read_epochs")
     @patch("mne.io.read_raw_fif")
-    def test_load_fif_failure(self, mock_read):
+    def test_load_fif_failure(self, mock_read, mock_read_epochs):
         mock_read.side_effect = Exception("Load failed")
+        mock_read_epochs.side_effect = Exception("Epoch load failed")
 
         with self.assertRaises(FileCorruptedError):
             load_fif_file("test.fif")

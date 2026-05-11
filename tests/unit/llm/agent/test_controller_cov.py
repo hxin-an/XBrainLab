@@ -103,7 +103,7 @@ class TestHandleUserInput:
 
     def test_exception_emits_error(self, ctrl):
         ctrl.rag_retriever.get_similar_examples.side_effect = RuntimeError("boom")
-        ctrl.handle_user_input("hi")
+        ctrl.handle_user_input("run analysis")
         ctrl.error_occurred.emit.assert_called()
         assert not ctrl.is_processing
 
@@ -281,8 +281,10 @@ class TestProcessToolCalls:
             is_valid=False, error_message="bad call"
         )
         ctrl._generate_response = MagicMock()
+        ctrl._handle_verification_failure = MagicMock()
         ctrl._process_tool_calls([("cmd", {})], "json")
-        ctrl._generate_response.assert_called_once()
+        ctrl._handle_verification_failure.assert_called_once_with("cmd", "bad call")
+        ctrl._generate_response.assert_not_called()
 
 
 # --- close ---
@@ -314,7 +316,7 @@ class TestStopGeneration:
 class TestSetModel:
     def test_emits_reinit(self, ctrl):
         ctrl.set_model("Gemini")
-        ctrl.sig_reinit.emit.assert_called_once_with("Gemini")
+        ctrl.sig_reinit.emit.assert_called_once_with("local")
 
 
 # --- reset_conversation ---

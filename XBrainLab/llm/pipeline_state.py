@@ -108,10 +108,25 @@ _PREPROCESS_TOOLS: list[str] = [
     "epoch_data",
 ]
 
+_DATA_INTERPRETATION_TOOLS: list[str] = [
+    "scan_source",
+    "preview_interpretation",
+    "validate_interpretation",
+    "apply_interpretation",
+    "save_interpretation_recipe",
+    "reload_interpretation_recipe",
+]
+
 _TRAINING_TOOLS: list[str] = [
     "set_model",
     "configure_training",
     "start_training",
+]
+
+_ANALYSIS_TOOLS: list[str] = [
+    "evaluate",
+    "visualize",
+    "saliency",
 ]
 
 
@@ -123,7 +138,7 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     PipelineStage.EMPTY: {
         "tools": [
             "list_files",
-            "load_data",
+            *_DATA_INTERPRETATION_TOOLS,
             "switch_panel",
         ],
         "system_prompt": (
@@ -131,16 +146,19 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             "\n"
             "## Current Stage: Empty (No Data)\n"
             "The user has just opened the application and no data has been "
-            "loaded yet. Your primary goal is to help them locate and load "
-            "their EEG data files.\n"
+            "loaded yet. Your primary goal is to help them locate EEG data "
+            "and start the Data Interpretation workflow.\n"
             "\n"
             "### What you should do\n"
             "- Ask the user where their EEG files (.gdf / .edf / .set) are "
             "located.\n"
             "- Use 'list_files' to browse the file system and show available "
             "files.\n"
-            "- Use 'load_data' once the user has confirmed which files to "
-            "load.\n"
+            "- Use 'scan_source' once the user has provided a source path, "
+            "then preview, validate, and apply the interpretation before "
+            "preprocessing.\n"
+            "- Use 'reload_interpretation_recipe' when the user provides a "
+            "saved import recipe, then review the preview before apply.\n"
             "- If the user seems unfamiliar, briefly explain what EEG file "
             "formats XBrainLab supports.\n"
             "\n"
@@ -152,8 +170,8 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     },
     PipelineStage.DATA_LOADED: {
         "tools": [
+            *_DATA_INTERPRETATION_TOOLS,
             *_PREPROCESS_TOOLS,
-            "attach_labels",
             "get_dataset_info",
             "clear_dataset",
             "switch_panel",
@@ -172,8 +190,9 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             "→ notch filter → set reference → resample → normalize → select "
             "channels → set montage → epoch.\n"
             "- Use 'get_dataset_info' to show the current data summary.\n"
-            "- If labels are needed, use 'attach_labels' to map label files "
-            "to data files.\n"
+            "- If labels or events are needed, use Data Interpretation tools "
+            "to scan, preview, validate, and apply label/event carriers with "
+            "reviewable metadata and recipe trace.\n"
             "- If the user wants to start over, use 'clear_dataset'.\n"
             "\n"
             "### What you should NOT do\n"
@@ -184,8 +203,8 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     },
     PipelineStage.PREPROCESSED: {
         "tools": [
+            *_DATA_INTERPRETATION_TOOLS,
             *_PREPROCESS_TOOLS,
-            "attach_labels",
             "generate_dataset",
             "get_dataset_info",
             "clear_dataset",
@@ -206,7 +225,9 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             "- If the user wants to adjust preprocessing, they can still "
             "re-run individual preprocessing steps (e.g. change filter "
             "parameters).\n"
-            "- If labels are still missing, use 'attach_labels'.\n"
+            "- If labels are still missing, use Data Interpretation preview "
+            "and validation so label/event semantics stay tied to the import "
+            "recipe.\n"
             "\n"
             "### What you should NOT do\n"
             "- Do NOT suggest model selection or training — the dataset has "
@@ -216,7 +237,9 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     },
     PipelineStage.DATASET_READY: {
         "tools": [
+            *_DATA_INTERPRETATION_TOOLS,
             *_TRAINING_TOOLS,
+            *_ANALYSIS_TOOLS,
             "get_dataset_info",
             "clear_dataset",
             "switch_panel",
@@ -269,7 +292,9 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     },
     PipelineStage.TRAINED: {
         "tools": [
+            *_DATA_INTERPRETATION_TOOLS,
             *_TRAINING_TOOLS,
+            *_ANALYSIS_TOOLS,
             "get_dataset_info",
             "clear_dataset",
             "switch_panel",
@@ -284,10 +309,11 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             "different parameters.\n"
             "\n"
             "### What you should do\n"
-            "- Suggest 'switch_panel' to the Evaluation panel to view "
-            "accuracy, confusion matrix, and metrics.\n"
-            "- Suggest 'switch_panel' to the Visualization panel to view "
-            "saliency maps (gradient-based feature attribution).\n"
+            "- Use 'evaluate' to summarize evaluation readiness, completed "
+            "runs, and metrics before opening result views.\n"
+            "- Use 'visualize' to summarize available visualization views.\n"
+            "- Use 'saliency' to query or configure saliency readiness before "
+            "opening saliency maps.\n"
             "- If the user wants to re-train with different settings, "
             "use 'set_model' / 'configure_training' / 'start_training'.\n"
             "- If the user wants to start completely over, use "

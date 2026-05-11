@@ -7,6 +7,10 @@ parameters.  Concrete (mock or real) implementations must override
 
 from typing import Any
 
+from XBrainLab.backend.application.data_interpretation_choice_schema import (
+    data_interpretation_choices_schema,
+)
+
 from ..base import BaseTool
 
 
@@ -45,6 +49,200 @@ class BaseListFilesTool(BaseTool):
         raise NotImplementedError
 
 
+class BaseScanSourceTool(BaseTool):
+    """Scan a data source before importing it into the active session."""
+
+    @property
+    def name(self) -> str:
+        return "scan_source"
+
+    @property
+    def description(self) -> str:
+        return "Scan an EEG file, folder, BIDS root, or import recipe."
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "source_path": {
+                    "type": "string",
+                    "description": "Absolute path to the EEG source or recipe.",
+                },
+                "source_hint": {
+                    "type": "string",
+                    "enum": [
+                        "auto",
+                        "file",
+                        "folder",
+                        "bids",
+                        "device_export",
+                        "recipe",
+                    ],
+                    "default": "auto",
+                    "description": "Optional source type hint.",
+                },
+            },
+            "required": ["source_path"],
+        }
+
+    def execute(self, study: Any, **kwargs) -> str:
+        raise NotImplementedError
+
+
+class BasePreviewInterpretationTool(BaseTool):
+    """Preview a candidate interpretation from the latest source scan."""
+
+    @property
+    def name(self) -> str:
+        return "preview_interpretation"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Preview file, label/event, class-map, anchor, and subject/session/"
+            "task/run metadata choices before import."
+        )
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "scan_id": {
+                    "type": "string",
+                    "description": "Optional scan id. Defaults to the latest scan.",
+                },
+                "choices": {
+                    **data_interpretation_choices_schema(),
+                },
+            },
+        }
+
+    def execute(self, study: Any, **kwargs) -> str:
+        raise NotImplementedError
+
+
+class BaseValidateInterpretationTool(BaseTool):
+    """Validate a candidate interpretation before apply."""
+
+    @property
+    def name(self) -> str:
+        return "validate_interpretation"
+
+    @property
+    def description(self) -> str:
+        return "Validate whether an interpretation is safe, blocked, or needs review."
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "candidate_id": {
+                    "type": "string",
+                    "description": (
+                        "Optional candidate id. Defaults to the latest candidate."
+                    ),
+                },
+            },
+        }
+
+    def execute(self, study: Any, **kwargs) -> str:
+        raise NotImplementedError
+
+
+class BaseApplyInterpretationTool(BaseTool):
+    """Apply a validated interpretation to the active backend session."""
+
+    @property
+    def name(self) -> str:
+        return "apply_interpretation"
+
+    @property
+    def description(self) -> str:
+        return "Apply a validated data interpretation and load selected EEG files."
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "candidate_id": {
+                    "type": "string",
+                    "description": (
+                        "Optional candidate id. Defaults to the latest candidate."
+                    ),
+                },
+                "confirmed": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "True only after the user confirms reviewable semantics."
+                    ),
+                },
+            },
+        }
+
+    def execute(self, study: Any, **kwargs) -> str:
+        raise NotImplementedError
+
+
+class BaseSaveInterpretationRecipeTool(BaseTool):
+    """Save the applied interpretation as a replayable import recipe."""
+
+    @property
+    def name(self) -> str:
+        return "save_interpretation_recipe"
+
+    @property
+    def description(self) -> str:
+        return "Save the current applied interpretation as an import recipe."
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "recipe_path": {
+                    "type": "string",
+                    "description": "Optional absolute path for the recipe JSON file.",
+                },
+            },
+        }
+
+    def execute(self, study: Any, **kwargs) -> str:
+        raise NotImplementedError
+
+
+class BaseReloadInterpretationRecipeTool(BaseTool):
+    """Reload an import recipe for preview and validation without auto-apply."""
+
+    @property
+    def name(self) -> str:
+        return "reload_interpretation_recipe"
+
+    @property
+    def description(self) -> str:
+        return "Reload an import recipe and preview the replayed interpretation."
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "recipe_path": {
+                    "type": "string",
+                    "description": "Absolute path to a saved import recipe JSON file.",
+                },
+            },
+            "required": ["recipe_path"],
+        }
+
+    def execute(self, study: Any, **kwargs) -> str:
+        raise NotImplementedError
+
+
 class BaseLoadDataTool(BaseTool):
     """Load raw EEG/GDF data files into the Study.
 
@@ -58,7 +256,10 @@ class BaseLoadDataTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Load raw EEG/GDF data from files or directories into the Study."
+        return (
+            "Legacy compatibility: directly load raw EEG files. Prefer Data "
+            "Interpretation scan/preview/validate/apply for new imports."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -92,7 +293,10 @@ class BaseAttachLabelsTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Attach label files to loaded data files."
+        return (
+            "Legacy compatibility: attach label files to already-loaded data. "
+            "Prefer Data Interpretation preview choices for labels/events."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -158,6 +362,43 @@ class BaseGetDatasetInfoTool(BaseTool):
         raise NotImplementedError
 
 
+class BaseQueryStateTool(BaseTool):
+    """Query the typed ApplicationService state snapshot."""
+
+    @property
+    def name(self) -> str:
+        return "query_state"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Get the current typed workflow state, capabilities, or data summary "
+            "through ApplicationService."
+        )
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "enum": [
+                        "state",
+                        "data_lists",
+                        "data_summary",
+                        "preprocess_diagnostics",
+                        "smart_filter_suggestions",
+                    ],
+                    "default": "state",
+                }
+            },
+        }
+
+    def execute(self, study: Any, **kwargs) -> str:
+        raise NotImplementedError
+
+
 class BaseGenerateDatasetTool(BaseTool):
     """Generate a training/validation/test dataset from epoched data.
 
@@ -183,8 +424,16 @@ class BaseGenerateDatasetTool(BaseTool):
                 "split_strategy": {
                     "type": "string",
                     "enum": ["trial", "session", "subject"],
+                    "description": (
+                        "How to split examples: trial, session, or subject. "
+                        "Do not use individual or group here."
+                    ),
                 },
-                "training_mode": {"type": "string", "enum": ["individual", "group"]},
+                "training_mode": {
+                    "type": "string",
+                    "enum": ["individual", "group"],
+                    "description": "Training mode: individual or group.",
+                },
             },
             "required": ["split_strategy", "training_mode"],
         }

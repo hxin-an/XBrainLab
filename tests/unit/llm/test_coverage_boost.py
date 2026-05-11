@@ -141,7 +141,7 @@ class TestDownloadWorkerRun:
         w = DownloadWorker.__new__(DownloadWorker)
         w.repo_id = "test/repo"
         w.cache_dir = "/tmp"
-        w.download_complete = MagicMock()
+        w.download_finished = MagicMock()
         w.download_failed = MagicMock()
         w.download_progress = MagicMock()
         w._is_cancelled = True
@@ -163,7 +163,7 @@ class TestDownloadWorkerRun:
         w = DownloadWorker.__new__(DownloadWorker)
         w.repo_id = "test/repo"
         w.cache_dir = "/tmp"
-        w.download_complete = MagicMock()
+        w.download_finished = MagicMock()
         w.download_failed = MagicMock()
         w.download_progress = MagicMock()
         w._is_cancelled = False
@@ -191,7 +191,7 @@ class TestDownloadWorkerRun:
         w = DownloadWorker.__new__(DownloadWorker)
         w.repo_id = "test/repo"
         w.cache_dir = "/tmp"
-        w.download_complete = MagicMock()
+        w.download_finished = MagicMock()
         w.download_failed = MagicMock()
         w.download_progress = MagicMock()
         w._is_cancelled = False
@@ -200,15 +200,24 @@ class TestDownloadWorkerRun:
         # First check: alive. Second check (after queue): not alive.
         mock_proc.is_alive.side_effect = [True, False]
 
+        import queue as stdlib_queue
+
         mock_q = MagicMock()
-        mock_q.get_nowait.return_value = {"status": "complete", "path": "/model"}
+        items = [("finished", "/model")]
+
+        def side_effect():
+            if items:
+                return items.pop(0)
+            raise stdlib_queue.Empty
+
+        mock_q.get_nowait.side_effect = side_effect
 
         with (
             patch("multiprocessing.Process", return_value=mock_proc),
             patch("multiprocessing.Queue", return_value=mock_q),
         ):
             w.run()
-        w.download_complete.emit.assert_called()
+        w.download_finished.emit.assert_called_once_with("/model")
 
 
 # ── controller.py remaining lines ───────────────────────────
@@ -245,7 +254,8 @@ def _make_ctrl():
     ctrl._tool_failure_count = 0
     ctrl._max_tool_failures = 3
     ctrl._successful_tool_count = 0
-    ctrl._max_successful_calls = 5
+    ctrl._max_successful_tools = 5
+    ctrl._execution_mode = ctrl.MODE_SINGLE
     ctrl._recent_tool_calls = deque(maxlen=10)
     ctrl._pending_confirmation = None
     ctrl._loop_break_count = 0
@@ -258,23 +268,34 @@ def _make_ctrl():
 
 
 class TestControllerResponseComplete:
-    """Cover _process_response_complete L349-359."""
+    """Cover generation completion paths."""
 
     def test_tool_calls_path(self):
-        """L349-351: command_result triggers _process_tool_calls."""
+        """Parsed tool calls trigger _process_tool_calls."""
         ctrl = _make_ctrl()
         commands = [("load_data", {"paths": ["/a"]})]
-        with patch.object(ctrl, "_process_tool_calls") as mock_ptc:
-            ctrl._process_response_complete("```json\n{}\n```", commands)
+        ctrl.current_response = "```json\n{}\n```"
+        with (
+            patch(
+                "XBrainLab.llm.agent.controller.CommandParser.parse",
+                return_value=commands,
+            ),
+            patch.object(ctrl, "_process_tool_calls") as mock_ptc,
+        ):
+            ctrl._on_generation_finished()
         mock_ptc.assert_called_once()
         assert ctrl._retry_count == 0
 
     def test_plain_text_path(self):
-        """L352-359: no tool calls → emit remaining and finalize."""
+        """No tool calls emit remaining text and finalize."""
         ctrl = _make_ctrl()
         ctrl.current_response = "Hello world"
         ctrl._emitted_len = 5
-        ctrl._process_response_complete("Hello world", None)
+        with patch(
+            "XBrainLab.llm.agent.controller.CommandParser.parse",
+            return_value=None,
+        ):
+            ctrl._on_generation_finished()
         ctrl.chunk_received.emit.assert_called()
         assert ctrl.is_processing is False
 
@@ -286,14 +307,21 @@ class TestControllerResponseComplete:
         assert result is False
 
     def test_non_serializable_params(self):
-        """L445-448: non-serializable params fallback."""
+        """Non-serializable params fall back to str() in loop detection."""
         ctrl = _make_ctrl()
-        # Create an object that fails json.dumps
         bad_params = {"key": object()}
-        sig = ("load_data", str(bad_params))
-        # Just test that _get_tool_call_signature handles non-serializable
-        result = ctrl._get_tool_call_signature("load_data", bad_params)
-        assert result[0] == "load_data"
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl._check_tool_availability = MagicMock(return_value=None)
+        ctrl._detect_loop = MagicMock(return_value=False)
+        ctrl.registry.get_tool.return_value = MagicMock(requires_confirmation=False)
+        ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "ok"))
+        ctrl._handle_tool_result_logic = MagicMock()
+        ctrl._finalize_turn_after_tool = MagicMock()
+
+        ctrl._process_tool_calls([("load_data", bad_params)], "tool response")
+
+        assert ctrl._recent_tool_calls[-1][0] == "load_data"
+        assert ctrl._recent_tool_calls[-1][1] == str(bad_params)
 
     def test_on_worker_error(self):
         """L823-827: _on_worker_error emits signals."""
@@ -315,19 +343,22 @@ class TestWorkerEdgeCases:
         """L49-50: interruption check in GenerationThread.run()."""
         from XBrainLab.llm.agent.worker import GenerationThread
 
-        t = GenerationThread.__new__(GenerationThread)
-        t.engine = MagicMock()
-        t.messages = [{"role": "user", "content": "hi"}]
-        t.chunk_received = MagicMock()
-        t.finished = MagicMock()
-        t.error = MagicMock()
+        engine = MagicMock()
+        t = GenerationThread(engine, [{"role": "user", "content": "hi"}])
+        chunk_received = MagicMock()
+        finished_generation = MagicMock()
+        error_occurred = MagicMock()
+        t.chunk_received.connect(chunk_received)
+        t.finished_generation.connect(finished_generation)
+        t.error_occurred.connect(error_occurred)
 
         # Simulate interruption on first isInterruptionRequested check
         with patch.object(t, "isInterruptionRequested", return_value=True):
-            t.engine.generate_stream.return_value = iter(["chunk1"])
+            engine.generate_stream.return_value = iter(["chunk1"])
             t.run()
-        # Should have returned early — finished may or may not be called
-        # but chunk_received should not have been called for "chunk1"
+        chunk_received.assert_not_called()
+        finished_generation.assert_called_once()
+        error_occurred.assert_not_called()
 
     def test_cleanup_already_disconnected(self):
         """L129-130: cleanup when signal already disconnected."""
@@ -413,17 +444,16 @@ class TestLLMConfig:
 class TestLLMEngine:
     """Cover engine.py gaps."""
 
-    def test_get_current_model_id_gemini(self):
-        """L61: returns gemini model name."""
+    def test_get_current_model_id_legacy_request_uses_local_model(self):
+        """Legacy remote model ID lookup returns the local product model."""
         from XBrainLab.llm.core.engine import LLMEngine
 
         e = LLMEngine.__new__(LLMEngine)
         e.config = MagicMock()
-        e.config.inference_mode = "gemini"
-        e.config.gemini_model_name = "gemini-pro"
+        e.config.model_name = "microsoft/Phi-4-mini-instruct"
         e.backends = {}
         result = e._get_current_model_id("gemini")
-        assert result == "gemini-pro"
+        assert result == "microsoft/Phi-4-mini-instruct"
 
     def test_stale_backend_reloads(self):
         """L83, L94: stale backend deleted and reloaded."""
@@ -431,17 +461,20 @@ class TestLLMEngine:
 
         e = LLMEngine.__new__(LLMEngine)
         e.config = MagicMock()
-        e.config.inference_mode = "gemini"
-        e.config.gemini_model_name = "gemini-2.0"
+        e.config.inference_mode = "local"
+        e.config.model_name = "microsoft/Phi-3.5-mini-instruct"
         mock_backend = MagicMock()
-        mock_backend.model_id = "gemini-1.5"
-        e.backends = {"gemini": mock_backend}
+        e.backends = {"local": mock_backend}
+        e._backend_model_ids = {"local": "microsoft/Phi-4-mini-instruct"}
+        e.active_backend = mock_backend
 
         new_backend = MagicMock()
-        with patch.object(e, "_create_backend", return_value=new_backend):
-            result = e.get_backend()
-        assert result is new_backend
-        assert "gemini" not in e.backends or e.backends["gemini"] is new_backend
+        with patch("XBrainLab.llm.core.backends.local.LocalBackend") as mock_local:
+            mock_local.return_value = new_backend
+            e.switch_backend("local")
+        assert e.active_backend is new_backend
+        assert e.backends["local"] is new_backend
+        assert e._backend_model_ids["local"] == "microsoft/Phi-3.5-mini-instruct"
 
     def test_generate_stream_no_backend(self):
         """L135: raise RuntimeError if no backend."""
@@ -452,86 +485,23 @@ class TestLLMEngine:
         e.config.inference_mode = "local"
         e.config.local_model_path = ""
         e.backends = {}
+        e.active_backend = None
 
-        with (
-            patch.object(e, "get_backend", return_value=None),
-            pytest.raises(RuntimeError, match="No active backend"),
-        ):
+        with pytest.raises(RuntimeError, match="No active backend"):
             list(e.generate_stream([]))
 
 
-# ── backends: api.py, gemini.py, local.py ───────────────────
+# ── backends: local.py only ─────────────────────────────────
 
 
-class TestAPIBackend:
-    """Cover api.py gaps."""
+class TestRemovedRemoteBackends:
+    """Guard remote backend modules stay out of product code."""
 
-    def test_load_missing_openai(self):
-        """L59: ImportError when OpenAI not installed."""
-        from XBrainLab.llm.core.backends.api import APIBackend
+    def test_remote_backend_modules_are_absent(self):
+        import importlib.util
 
-        b = APIBackend.__new__(APIBackend)
-        b.config = MagicMock()
-        b.config.api_key = ""
-        with (
-            patch("XBrainLab.llm.core.backends.api.OpenAI", None),
-            pytest.raises(ImportError),
-        ):
-            b.load()
-
-    def test_load_env_fallback(self):
-        """L67, L70: env var fallback and no-key warning."""
-        from XBrainLab.llm.core.backends.api import APIBackend
-
-        b = APIBackend.__new__(APIBackend)
-        b.config = MagicMock()
-        b.config.api_key = ""
-        b.config.api_model_name = "gpt-4"
-        mock_openai = MagicMock()
-        with (
-            patch("XBrainLab.llm.core.backends.api.OpenAI", mock_openai),
-            patch.dict("os.environ", {"OPENAI_API_KEY": ""}, clear=False),
-        ):
-            b.load()  # should warn but not crash
-
-    def test_generate_stream_yields(self):
-        """L106: generates content chunks."""
-        from XBrainLab.llm.core.backends.api import APIBackend
-
-        b = APIBackend.__new__(APIBackend)
-        b.client = MagicMock()
-        b.model_name = "gpt-4"
-
-        chunk = MagicMock()
-        chunk.choices = [MagicMock()]
-        chunk.choices[0].delta.content = "Hello"
-        b.client.chat.completions.create.return_value = iter([chunk])
-
-        result = list(b.generate_stream([{"role": "user", "content": "hi"}]))
-        assert "Hello" in result
-
-
-class TestGeminiBackendExtra:
-    """Cover gemini.py L107-108: system message extraction."""
-
-    def test_system_message_extracted(self):
-        """L107-108: system parts extracted from messages."""
-        from XBrainLab.llm.core.backends.gemini import GeminiBackend
-
-        b = GeminiBackend.__new__(GeminiBackend)
-        b.model = MagicMock()
-        mock_chat = MagicMock()
-        mock_resp = MagicMock()
-        mock_resp.text = "response"
-        mock_chat.send_message_stream.return_value = iter([mock_resp])
-        b.model.start_chat.return_value = mock_chat
-
-        msgs = [
-            {"role": "system", "content": "You are helpful"},
-            {"role": "user", "content": "hello"},
-        ]
-        result = list(b.generate_stream(msgs))
-        assert len(result) > 0
+        assert importlib.util.find_spec("XBrainLab.llm.core.backends.api") is None
+        assert importlib.util.find_spec("XBrainLab.llm.core.backends.gemini") is None
 
 
 class TestLocalBackendExtra:
@@ -543,24 +513,40 @@ class TestLocalBackendExtra:
 
         b = LocalBackend.__new__(LocalBackend)
         b.config = MagicMock()
-        b.config.local_model_path = "/model"
-        b.config.use_quantization = True
+        b.config.model_name = "microsoft/Phi-4-mini-instruct"
+        b.config.cache_dir = "/tmp/models"
+        b.config.load_in_4bit = True
         b.config.device = "cuda"
+        b.config.max_new_tokens = 128
+        b.config.temperature = 0.7
+        b.config.top_p = 0.9
+        b.config.do_sample = True
         b.model = None
         b.tokenizer = None
+        b.is_loaded = False
 
-        with (
-            patch("XBrainLab.llm.core.backends.local.AutoTokenizer") as mock_tok,
-            patch("XBrainLab.llm.core.backends.local.AutoModelForCausalLM") as mock_mdl,
+        mock_torch = MagicMock()
+        mock_torch.cuda.is_available.return_value = True
+        mock_torch.zeros.return_value = MagicMock()
+        mock_bnb_config = MagicMock(return_value=object())
+        mock_mdl = MagicMock(from_pretrained=MagicMock(return_value=MagicMock()))
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "torch": mock_torch,
+                "transformers": MagicMock(
+                    BitsAndBytesConfig=mock_bnb_config,
+                    AutoTokenizer=MagicMock(
+                        from_pretrained=MagicMock(return_value=MagicMock())
+                    ),
+                    AutoModelForCausalLM=mock_mdl,
+                ),
+            },
         ):
-            mock_tok.from_pretrained.return_value = MagicMock()
-            mock_mdl.from_pretrained.return_value = MagicMock()
             b.load()
-        # Verify quantization was passed
-        call_kwargs = mock_mdl.from_pretrained.call_args
-        assert call_kwargs[1].get("load_in_4bit") is True or "load_in_4bit" in str(
-            call_kwargs
-        )
+        mock_bnb_config.assert_called_once_with(load_in_4bit=True)
+        assert "quantization_config" in mock_mdl.from_pretrained.call_args.kwargs
 
     def test_generate_stream_no_model(self):
         """L206: raises RuntimeError when model not loaded."""
@@ -569,8 +555,11 @@ class TestLocalBackendExtra:
         b = LocalBackend.__new__(LocalBackend)
         b.model = None
         b.tokenizer = None
+        b.is_loaded = False
+        b.load = MagicMock(side_effect=RuntimeError("model not loaded"))
         with pytest.raises(RuntimeError, match="not loaded"):
             list(b.generate_stream([{"role": "user", "content": "hi"}]))
+        b.load.assert_called_once()
 
 
 # ── indexer.py remaining ────────────────────────────────────
@@ -600,7 +589,7 @@ class TestMockPreprocessErrors:
     @pytest.mark.parametrize(
         "cls_name,params",
         [
-            ("MockBandpassFilterTool", {}),
+            ("MockBandPassFilterTool", {}),
             ("MockNotchFilterTool", {}),
             ("MockResampleTool", {}),
             ("MockNormalizeTool", {}),
@@ -614,7 +603,7 @@ class TestMockPreprocessErrors:
 
         cls = getattr(mod, cls_name)
         tool = cls()
-        result = tool.execute(params)
+        result = tool.execute(MagicMock(), **params)
         assert "Error" in result or "error" in result.lower()
 
 
@@ -632,10 +621,10 @@ class TestRealTrainingTools:
         mock_facade = MagicMock()
         mock_facade.set_model.return_value = None  # no error
         with patch(
-            "XBrainLab.llm.tools.real.training_real.get_backend_facade",
+            "XBrainLab.llm.tools.real.training_real.BackendFacade",
             return_value=mock_facade,
         ):
-            result = tool.execute({"model_name": "EEGNet"})
+            result = tool.execute(MagicMock(), model_name="EEGNet")
         assert "successfully" in result.lower() or "EEGNet" in result
 
     def test_configure_training_exception(self):
@@ -646,10 +635,10 @@ class TestRealTrainingTools:
         mock_facade = MagicMock()
         mock_facade.configure_training.side_effect = Exception("bad config")
         with patch(
-            "XBrainLab.llm.tools.real.training_real.get_backend_facade",
+            "XBrainLab.llm.tools.real.training_real.BackendFacade",
             return_value=mock_facade,
         ):
-            result = tool.execute({"learning_rate": 0.001})
+            result = tool.execute(MagicMock(), learning_rate=0.001)
         assert "Failed" in result or "bad config" in result
 
     def test_start_training_exception(self):
@@ -658,10 +647,10 @@ class TestRealTrainingTools:
 
         tool = RealStartTrainingTool()
         mock_facade = MagicMock()
-        mock_facade.start_training.side_effect = Exception("GPU OOM")
+        mock_facade.run_training.side_effect = Exception("GPU OOM")
         with patch(
-            "XBrainLab.llm.tools.real.training_real.get_backend_facade",
+            "XBrainLab.llm.tools.real.training_real.BackendFacade",
             return_value=mock_facade,
         ):
-            result = tool.execute({})
+            result = tool.execute(MagicMock())
         assert "Failed" in result or "GPU OOM" in result

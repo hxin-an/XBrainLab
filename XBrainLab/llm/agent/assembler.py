@@ -9,6 +9,13 @@ import json
 from typing import Any
 
 from ..pipeline_state import STAGE_CONFIG, PipelineStage, compute_pipeline_stage
+from ..tools.application_surface import (
+    READ_ONLY_TOOLS,
+    TOOL_TO_COMMAND,
+    blocked_tool_reasons,
+    enabled_tool_names,
+)
+from ..tools.schema_contract import tool_contract_for_llm
 from ..tools.tool_registry import ToolRegistry
 
 
@@ -32,22 +39,45 @@ class ContextAssembler:
 Available Tools:
 {tools_str}
 
-To use a tool, you MUST output a JSON object in the following format:
-```json
-{{
-    "tool_name": "tool_name",
-    "parameters": {{
-        "param_name": "value"
-    }}
-}}
-```
+Blocked Commands:
+{blocked_str}
+
+To use a tool, output exactly one compact JSON object in this format:
+{{"tool_name":"tool_name","parameters":{{"param_name":"value"}}}}
 
 Rules:
-1. If you need to use a tool, output ONLY the JSON block.
+1. If you need to use a tool, output ONLY the JSON object.
 2. Do NOT output any introductory text (like 'Sure', 'I will') before the JSON.
 3. Do NOT output the JSON block if you are not using a tool.
 4. If no tool is needed, just reply normally.
 5. You can ONLY use the tools listed above. Do NOT attempt to call unlisted tools.
+6. Never invent placeholder paths, recipe paths, ids, labels, or file names.
+   If a required value is missing, ask for it in one concise sentence.
+7. If the user asks for a blocked workflow command, do not call a different tool
+   to prepare or substitute for it. Explain the blocked reason in user-facing
+   language.
+8. The latest user message is the next requested action. Earlier messages are
+   context; do not repeat an earlier tool step unless the latest message asks
+   for it.
+9. Use at most one tool call per assistant turn.
+10. If the user asks a concept question, asks why a step is blocked, asks what
+    a term means, or is only discussing the workflow, do not call a mutating
+    tool. Answer in user-facing language.
+
+Workflow tool choices:
+- The current application state is authoritative. If the state already has a
+  scan, preview, validation, or applied interpretation, continue from that
+  state instead of repeating an earlier scan/load step from the chat history.
+- Data Interpretation is the primary data entry workflow. Prefer
+  scan_source -> preview_interpretation -> validate_interpretation ->
+  apply_interpretation for new file, folder, BIDS, recipe, and label/event
+  imports. Direct-load and label-attach paths are legacy compatibility only.
+- Use apply_standard_preprocess for "standard preprocessing" or general
+  preprocess requests, even when the user includes bandpass frequencies. Use
+  the single bandpass filter tool only when it is listed and the user asks for a
+  bandpass-only operation.
+- For generate_dataset, split_strategy must be trial, session, or subject.
+  individual and group are training_mode values, not split_strategy values.
 """
 
     def __init__(self, tool_registry: ToolRegistry, study_state: Any):
@@ -94,17 +124,49 @@ Rules:
 
         tool_descs = []
         for tool in active_tools:
-            tool_def = {
-                "name": tool.name,
-                "description": tool.description,
-                "parameters": tool.parameters,
-            }
+            tool_def = tool_contract_for_llm(tool)
             tool_descs.append(json.dumps(tool_def, indent=2))
 
         if not tool_descs:
             return "No tools currently available."
 
         return "\n".join(tool_descs)
+
+    def _application_allowed_tools(self, fallback: list[str]) -> list[str]:
+        """Return tool names allowed by ApplicationService capability policy."""
+        registered_names = {tool.name for tool in self.registry.get_all_tools()}
+        stage_names = set(fallback)
+        try:
+            app_allowed = set(enabled_tool_names(self.study_state))
+        except Exception:
+            return fallback
+        policy_allowed = {
+            name
+            for name in app_allowed
+            if name in stage_names and name in registered_names
+        }
+        non_policy_stage_tools = {
+            name
+            for name in fallback
+            if name in registered_names
+            and name not in TOOL_TO_COMMAND
+            and name not in READ_ONLY_TOOLS
+        }
+        return sorted(policy_allowed | non_policy_stage_tools)
+
+    def _format_blocked_tools(self) -> str:
+        """Format blocked tools and reasons from the ApplicationService policy."""
+        try:
+            blocked = blocked_tool_reasons(self.study_state)
+        except Exception:
+            return "Unavailable: backend capability policy could not be read."
+
+        lines = [
+            f"- {tool_name}: {reason}"
+            for tool_name, reason in sorted(blocked.items())
+            if reason
+        ]
+        return "\n".join(lines) if lines else "None."
 
     def build_system_prompt(self) -> str:
         """Constructs the full system prompt with stage-filtered tools.
@@ -119,10 +181,15 @@ Rules:
 
         """
         _stage, config = self._get_stage_config()
-        tools_str = self._format_tools(config["tools"])
+        allowed_tools = self._application_allowed_tools(config["tools"])
+        tools_str = self._format_tools(allowed_tools)
+        blocked_str = self._format_blocked_tools()
 
         prompt = config["system_prompt"]
-        prompt += self._TOOL_BLOCK_TEMPLATE.format(tools_str=tools_str)
+        prompt += self._TOOL_BLOCK_TEMPLATE.format(
+            tools_str=tools_str,
+            blocked_str=blocked_str,
+        )
 
         if self.context_notes:
             prompt += "\nAdditional Context:\n" + "\n".join(self.context_notes)

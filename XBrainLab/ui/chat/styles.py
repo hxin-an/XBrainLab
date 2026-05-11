@@ -1,61 +1,236 @@
 """Centralized stylesheet constants for the Chat Panel.
 
 Defines all Qt stylesheet strings used by chat components including
-bubble frames, scroll areas, control panels, and input fields.
+bubble frames, scroll areas, status chips, control panels, and input fields.
 """
 
 from ..styles.theme import Theme
 
+ASSISTANT_PANEL_STYLE = """
+    QWidget#AssistantPanel {
+        background-color: #1e1e1e;
+    }
+"""
+
+HEADER_STYLE = """
+    QWidget#AssistantHeader {
+        background-color: #252526;
+        border-bottom: 1px solid #3e3e3e;
+    }
+"""
+
+HEADER_TITLE_STYLE = """
+    QLabel#AssistantTitle {
+        color: #f3f7fb;
+        background: transparent;
+        border: none;
+        font-size: 15px;
+        font-weight: 700;
+    }
+"""
+
+HEADER_SUBTITLE_STYLE = """
+    QLabel#AssistantSubtitle {
+        color: #9aa8b5;
+        background: transparent;
+        border: none;
+        font-size: 12px;
+    }
+"""
+
+GUIDANCE_PANEL_STYLE = """
+    QWidget#WorkflowGuidance {
+        background-color: #1e1e1e;
+        border-bottom: 1px solid #3e3e3e;
+    }
+"""
+
+GUIDANCE_STAGE_STYLE = """
+    QLabel#WorkflowStage {
+        color: #f3f7fb;
+        background: transparent;
+        border: none;
+        font-size: 13px;
+        font-weight: 700;
+    }
+"""
+
+GUIDANCE_TEXT_STYLE = """
+    QLabel#WorkflowGuidanceText {
+        color: #aebbc6;
+        background: transparent;
+        border: none;
+        font-size: 12px;
+    }
+"""
+
+STATUS_CHIP_STYLE = """
+    QLabel {
+        color: #d7e0ea;
+        background-color: #2d2d2d;
+        border: 1px solid #3e3e3e;
+        border-radius: 7px;
+        padding: 4px 8px;
+        font-size: 12px;
+    }
+"""
+
+STATUS_CHIP_WARNING_STYLE = """
+    QLabel {
+        color: #ffdca8;
+        background-color: #3a2f1f;
+        border: 1px solid #6b5429;
+        border-radius: 7px;
+        padding: 4px 8px;
+        font-size: 12px;
+    }
+"""
+
+EMPTY_STATE_STYLE = """
+    QFrame#AssistantEmptyState {
+        background-color: #1e1e1e;
+        border: none;
+        border-radius: 0px;
+    }
+"""
+
+EMPTY_STATE_TITLE_STYLE = """
+    QLabel#AssistantEmptyTitle {
+        color: #f3f7fb;
+        background: transparent;
+        border: none;
+        font-size: 17px;
+        font-weight: 700;
+    }
+"""
+
+EMPTY_STATE_TEXT_STYLE = """
+    QLabel {
+        color: #b7c4cf;
+        background: transparent;
+        border: none;
+        font-size: 13px;
+        line-height: 1.35;
+    }
+"""
+
 # Scroll Area Styles
-SCROLL_AREA_STYLE = f"""
-    QScrollArea {{
-        background-color: {Theme.BACKGROUND_DARK};
+SCROLL_AREA_STYLE = """
+    QScrollArea {
+        background-color: #1e1e1e;
         border: none;
-    }}
-    QScrollBar:vertical {{
+    }
+    QScrollBar:vertical {
         border: none;
-        background: {Theme.BACKGROUND_DARK};
+        background: #1e1e1e;
         width: 14px;
         margin: 0px;
-    }}
-    QScrollBar::handle:vertical {{
-        background: #424242;
+    }
+    QScrollBar::handle:vertical {
+        background: #4f4f4f;
         min-height: 20px;
         border-radius: 7px;
         margin: 2px;
-    }}
-    QScrollBar::handle:vertical:hover {{
-        background: #555555;
-    }}
-    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+    }
+    QScrollBar::handle:vertical:hover {
+        background: #5f5f5f;
+    }
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
         height: 0px;
-    }}
-    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
+    }
+    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
         background: none;
-    }}
+    }
 """
 
 # Control Panel Styles
-CONTROL_PANEL_STYLE = f"""
-    QWidget#ControlPanel {{
+CONTROL_PANEL_STYLE = """
+    QWidget#ControlPanel {
         background-color: #252526;
-        border-top: {Theme.BORDER_LIGHT};
-        min-height: 50px;
-    }}
+        border-top: 1px solid #3e3e3e;
+        min-height: 56px;
+    }
 """
 
 # Toolbar Button Styles
-TOOLBAR_BUTTON_STYLE = f"""
-    QPushButton {{
-        background: transparent;
-        border: none;
-        color: {Theme.TEXT_SECONDARY};
-        padding: 5px;
+TOOLBAR_BUTTON_STYLE = """
+    QPushButton {
+        background-color: #242b32;
+        border: 1px solid #35404a;
+        border-radius: 7px;
+        color: #d5dee7;
+        padding: 5px 9px;
         font-size: 13px;
         text-align: left;
-    }}
-    QPushButton:hover {{ color: {Theme.TEXT_MUTED}; }}
-    QPushButton::menu-indicator {{ image: none; }}
+    }
+    QPushButton:hover {
+        background-color: #2d3740;
+        color: #ffffff;
+    }
+    QPushButton:disabled {
+        color: #717c86;
+        background-color: #1f252b;
+        border: 1px solid #2c343c;
+    }
+    QPushButton::menu-indicator { image: none; }
+    QToolButton {
+        background-color: transparent;
+        border: 1px solid transparent;
+        border-radius: 7px;
+        color: #d5dee7;
+        padding: 3px 6px;
+        font-size: 15px;
+        font-weight: 700;
+    }
+    QToolButton:hover {
+        background-color: #2d2d2d;
+        border: 1px solid #3e3e3e;
+        color: #ffffff;
+    }
+    QToolButton:disabled {
+        color: #717c86;
+        background-color: #1f252b;
+        border: 1px solid #2c343c;
+    }
+"""
+
+FOOTER_BUTTON_STYLE = """
+    QToolButton {
+        background-color: transparent;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        color: #b9c4ce;
+        padding: 3px 7px;
+        font-size: 12px;
+    }
+    QToolButton:hover {
+        background-color: #2d2d2d;
+        border: 1px solid #3e3e3e;
+        color: #f2f6fa;
+    }
+    QToolButton:disabled {
+        color: #626d76;
+        background-color: transparent;
+        border: 1px solid transparent;
+    }
+"""
+
+NOTICE_LABEL_STYLE = """
+    QLabel#AssistantNotice {
+        color: #d6b36b;
+        background: transparent;
+        border: none;
+        font-size: 12px;
+    }
+"""
+
+FOOTER_STATUS_STYLE = """
+    QLabel#AssistantFooterStatus {
+        color: #aebbc6;
+        background: transparent;
+        border: none;
+        font-size: 12px;
+    }
 """
 
 # Dropdown Menu Styles
@@ -70,73 +245,83 @@ DROPDOWN_MENU_STYLE = f"""
 """
 
 # Input Field Styles
-INPUT_FIELD_STYLE = f"""
-    QLineEdit {{
-        background-color: {Theme.BACKGROUND_LIGHT};
-        color: {Theme.TEXT_PRIMARY};
-        border: 1px solid #454545;
-        border-radius: 6px;
-        padding: 8px;
+INPUT_FIELD_STYLE = """
+    QLineEdit {
+        background-color: #1e1e1e;
+        color: #f1f5f9;
+        border: 1px solid #4a4a4a;
+        border-radius: 8px;
+        padding: 9px 11px;
         font-size: 15px;
-    }}
-    QLineEdit:focus {{
-        border: 1px solid {Theme.ACCENT_PRIMARY};
-    }}
+    }
+    QLineEdit:focus {
+        border: 1px solid #5B7DB1;
+    }
+    QLineEdit:disabled {
+        color: #7c8792;
+        background-color: #1b2025;
+    }
 """
 
 # Send Button Styles
-SEND_BUTTON_STYLE = f"""
-    QToolButton {{
-        background-color: {Theme.ACCENT_PRIMARY};
+SEND_BUTTON_STYLE = """
+    QToolButton {
+        background-color: #3f6f9f;
         color: white;
         border-radius: 8px;
-        font-size: 16px;
+        font-size: 13px;
+        font-weight: 700;
         border: none;
-    }}
-    QToolButton:hover {{ background-color: {Theme.ACCENT_HOVER}; }}
-    QToolButton:pressed {{ background-color: #5b6eae; }}
+    }
+    QToolButton:hover { background-color: #4d84bb; }
+    QToolButton:pressed { background-color: #315b84; }
+    QToolButton:disabled {
+        color: #87919b;
+        background-color: #2b333b;
+    }
 """
 
-SEND_BUTTON_PROCESSING_STYLE = f"""
-    QToolButton {{
-        background-color: {Theme.ACCENT_ERROR};
+SEND_BUTTON_PROCESSING_STYLE = """
+    QToolButton {
+        background-color: #9b3f3f;
         color: white;
         border-radius: 8px;
         border: none;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: bold;
-    }}
-    QToolButton:hover {{ background-color: #ff6b6b; }}
+    }
+    QToolButton:hover { background-color: #b54c4c; }
 """
 
 # Message Bubble Styles
-USER_BUBBLE_FRAME_STYLE = f"""
-    QFrame#BubbleFrame {{
-        background-color: {Theme.CHAT_USER_BUBBLE};
-        border-radius: 12px;
-        border-bottom-right-radius: 2px;  /* Small tail effect */
-    }}
+USER_BUBBLE_FRAME_STYLE = """
+    QFrame#BubbleFrame {
+        background-color: #263f39;
+        border: 1px solid #3b5f56;
+        border-radius: 8px;
+    }
 """
 
 USER_BUBBLE_TEXT_STYLE = f"""
     QTextBrowser {{
         color: {Theme.TEXT_PRIMARY};
-        font-size: 16px;
+        font-size: 14px;
         background: transparent;
     }}
 """
 
-AGENT_BUBBLE_FRAME_STYLE = f"""
-    QFrame#BubbleFrame {{
-        background-color: {Theme.CHAT_AI_BUBBLE};
-        border-radius: 12px;
-    }}
+AGENT_BUBBLE_FRAME_STYLE = """
+    QFrame#BubbleFrame {
+        background-color: #2d2d2d;
+        border: 1px solid #3e3e3e;
+        border-radius: 8px;
+    }
 """
 
 AGENT_BUBBLE_TEXT_STYLE = f"""
     QTextBrowser {{
         color: {Theme.TEXT_PRIMARY};
-        font-size: 16px;
+        font-size: 14px;
         background: transparent;
     }}
 """

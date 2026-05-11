@@ -1,5 +1,8 @@
 """Sidebar widget for the training panel with configuration and execution controls."""
 
+from collections.abc import Callable
+from typing import Any
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
@@ -10,6 +13,24 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application import (
+    ClearDatasetsCommand,
+    ClearTrainingHistoryCommand,
+    CommandName,
+    ConfigureTrainingCommand,
+    GenerateDatasetCommand,
+    QueryStateCommand,
+    StopTrainingCommand,
+    TrainCommand,
+)
+from XBrainLab.ui.application_capabilities import (
+    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+    LegacyControllerFallbackUnavailableError,
+    blocked_reason,
+    execute_application_command,
+    get_command_capability,
+    run_legacy_controller_fallback,
+)
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 
 # Dialog imports will be local to avoid circular deps if needed,
@@ -19,6 +40,11 @@ from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.dialogs.dataset import DataSplittingDialog
 from XBrainLab.ui.dialogs.training import ModelSelectionDialog, TrainingSettingDialog
 from XBrainLab.ui.styles.stylesheets import Stylesheets
+
+_DATASET_REPLACEMENT_REASON = (
+    "Reset the session or start a new session before generating a new "
+    "dataset from an existing active dataset."
+)
 
 
 class TrainingSidebar(QWidget):
@@ -150,22 +176,68 @@ class TrainingSidebar(QWidget):
         # Initial check
         self.check_ready_to_train()
 
+    def _legacy_controller_value(
+        self,
+        fallback: Callable[[], Any],
+        *,
+        blocked_title: str | None = None,
+    ) -> tuple[bool, Any]:
+        """Read legacy controller state only for mock / legacy UI contexts."""
+        try:
+            return True, run_legacy_controller_fallback(self, fallback)
+        except LegacyControllerFallbackUnavailableError as exc:
+            if blocked_title is not None:
+                QMessageBox.warning(self, blocked_title, str(exc))
+            return False, None
+
     def check_ready_to_train(self, *args):
         """Check if all configurations are set and enable/disable start button."""
-        ready = self.controller.validate_ready()
+        train_capability = get_command_capability(self, CommandName.TRAIN)
+        if train_capability is None:
+            available, ready_value = self._legacy_controller_value(
+                self.controller.validate_ready,
+            )
+            if not available:
+                self.btn_start.setEnabled(False)
+                self.btn_start.setToolTip(
+                    "Training state is unavailable right now.",
+                )
+                return
+            ready = bool(ready_value)
+        else:
+            ready = train_capability.enabled
         self.btn_start.setEnabled(ready)
 
         if not ready:
-            missing = []
-            if not self.controller.has_datasets():
-                missing.append("Data Splitting")
-            if not self.controller.has_model():
-                missing.append("Model Selection")
-            if not self.controller.has_training_option():
-                missing.append("Training Settings")
-            self.btn_start.setToolTip(f"Please configure: {', '.join(missing)}")
+            if train_capability is None:
+                available, missing = self._legacy_controller_value(
+                    self._legacy_missing_training_config,
+                )
+                if not available:
+                    self.btn_start.setToolTip(
+                        "Training state is unavailable right now.",
+                    )
+                    return
+                self.btn_start.setToolTip(f"Please configure: {', '.join(missing)}")
+            else:
+                self.btn_start.setToolTip(
+                    blocked_reason(
+                        train_capability,
+                        "Training is not ready. Check dataset, model, and settings.",
+                    )
+                )
         else:
             self.btn_start.setToolTip("Start Training")
+
+    def _legacy_missing_training_config(self) -> list[str]:
+        missing = []
+        if not self.controller.has_datasets():
+            missing.append("Data Splitting")
+        if not self.controller.has_model():
+            missing.append("Model Selection")
+        if not self.controller.has_training_option():
+            missing.append("Training Settings")
+        return missing
 
     def update_info(self):
         """Refresh the aggregate info panel (delegated to InfoPanelService)."""
@@ -176,39 +248,62 @@ class TrainingSidebar(QWidget):
 
     # --- Actions ---
 
+    def _configuration_blocked(self, fallback_message: str) -> bool:
+        """Return whether training configuration edits should be blocked."""
+        configure_capability = get_command_capability(
+            self,
+            CommandName.CONFIGURE_TRAINING,
+        )
+        if configure_capability is not None and not configure_capability.enabled:
+            QMessageBox.warning(
+                self,
+                "Training Configuration Blocked",
+                blocked_reason(configure_capability, fallback_message),
+            )
+            return True
+        if configure_capability is None:
+            available, is_training = self._legacy_controller_value(
+                self.controller.is_training,
+                blocked_title="Training Configuration Blocked",
+            )
+            if not available:
+                return True
+            if not is_training:
+                return False
+            QMessageBox.warning(
+                self,
+                "Training Running",
+                fallback_message,
+            )
+            return True
+        return False
+
     def split_data(self):
         """Open the data-splitting dialog and apply the configuration.
 
         Validates that epoched data exists and training is not running.
         Warns if existing datasets/history will be cleared.
         """
-        if not self.controller.get_loaded_data_list():
-            QMessageBox.warning(
-                self,
-                "No Data",
-                "Please load and preprocess data first.",
-            )
+        if self._data_splitting_blocked():
             return
 
-        if self.controller.get_epoch_data() is None:
-            QMessageBox.warning(
-                self,
-                "No Epoched Data",
-                "Please perform epoching in the Preprocess panel first.",
-            )
+        generate_capability = get_command_capability(
+            self,
+            CommandName.GENERATE_DATASET,
+        )
+        if (
+            generate_capability is None
+            and self._legacy_data_splitting_preflight_blocked()
+        ):
             return
 
-        if self.controller.is_training():
-            QMessageBox.warning(
-                self,
-                "Training Running",
-                "Cannot change data splitting while training is running.",
-            )
+        dialog_context = self._data_splitting_dialog_context()
+        if dialog_context is None:
             return
 
-        win = DataSplittingDialog(self, self.controller)
+        win = DataSplittingDialog(self, self.controller, **dialog_context)
         if win.exec():
-            if self.controller.has_datasets() or self.controller.get_trainer():
+            if self._should_clear_datasets_before_split():
                 reply = QMessageBox.question(
                     self,
                     "Reset Training Data",
@@ -219,16 +314,186 @@ class TrainingSidebar(QWidget):
                 )
                 if reply == QMessageBox.StandardButton.No:
                     return
-                self.controller.clean_datasets(force_update=True)
+                clear_result = execute_application_command(
+                    self,
+                    ClearDatasetsCommand(confirmed=True),
+                )
+                if clear_result is None:
+                    try:
+                        run_legacy_controller_fallback(
+                            self,
+                            lambda: self.controller.clean_datasets(force_update=True),
+                        )
+                    except LegacyControllerFallbackUnavailableError as exc:
+                        QMessageBox.warning(
+                            self,
+                            "Data Splitting Blocked",
+                            str(exc),
+                        )
+                        return
+                elif clear_result.failed:
+                    QMessageBox.critical(
+                        self,
+                        "Reset Training Data Failed",
+                        clear_result.message,
+                    )
+                    return
 
             generator = win.get_result()
             if generator:
-                self.controller.apply_data_splitting(generator)
+                result = execute_application_command(
+                    self,
+                    GenerateDatasetCommand(generator=generator),
+                )
+                if result is None:
+                    try:
+                        run_legacy_controller_fallback(
+                            self,
+                            lambda: self.controller.apply_data_splitting(generator),
+                        )
+                    except LegacyControllerFallbackUnavailableError as exc:
+                        QMessageBox.warning(
+                            self,
+                            "Data Splitting Blocked",
+                            str(exc),
+                        )
+                        return
+                elif result.failed:
+                    QMessageBox.critical(
+                        self,
+                        "Data Splitting Failed",
+                        result.message,
+                    )
+                    return
             QMessageBox.information(
                 self,
                 "Success",
                 "Data splitting configuration saved.",
             )
+            if generator:
+                self._check_ready_after_legacy_result(result)
+
+    def _legacy_data_splitting_preflight_blocked(self) -> bool:
+        available, data_list = self._legacy_controller_value(
+            self.controller.get_loaded_data_list,
+            blocked_title="Data Splitting Blocked",
+        )
+        if not available:
+            return True
+        if not data_list:
+            QMessageBox.warning(
+                self,
+                "No Data",
+                "Please load and preprocess data first.",
+            )
+            return True
+
+        available, epoch_data = self._legacy_controller_value(
+            self.controller.get_epoch_data,
+            blocked_title="Data Splitting Blocked",
+        )
+        if not available:
+            return True
+        if epoch_data is None:
+            QMessageBox.warning(
+                self,
+                "No Epoched Data",
+                "Please perform epoching in the Preprocess panel first.",
+            )
+            return True
+
+        available, is_training = self._legacy_controller_value(
+            self.controller.is_training,
+            blocked_title="Data Splitting Blocked",
+        )
+        if not available:
+            return True
+        if is_training:
+            QMessageBox.warning(
+                self,
+                "Training Running",
+                "Cannot change data splitting while training is running.",
+            )
+            return True
+        return False
+
+    def _data_splitting_blocked(self) -> bool:
+        generate_capability = get_command_capability(
+            self,
+            CommandName.GENERATE_DATASET,
+        )
+        if generate_capability is None or generate_capability.enabled:
+            return False
+
+        if self._can_replace_existing_dataset(generate_capability.reasons):
+            return False
+
+        QMessageBox.warning(
+            self,
+            "Data Splitting Blocked",
+            blocked_reason(
+                generate_capability,
+                "Create epochs before generating datasets.",
+            ),
+        )
+        return True
+
+    def _can_replace_existing_dataset(self, generate_reasons: list[str]) -> bool:
+        clear_capability = get_command_capability(self, CommandName.CLEAR_DATASETS)
+        return (
+            generate_reasons == [_DATASET_REPLACEMENT_REASON]
+            and clear_capability is not None
+            and clear_capability.enabled
+        )
+
+    def _data_splitting_dialog_context(self) -> dict | None:
+        result = execute_application_command(
+            self,
+            QueryStateCommand(
+                query="dataset_generation_context",
+                include_objects=True,
+            ),
+            refresh=False,
+        )
+        if result is None:
+            if get_command_capability(self, CommandName.GENERATE_DATASET) is not None:
+                QMessageBox.warning(
+                    self,
+                    "Data Splitting Blocked",
+                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                )
+                return None
+            return {}
+        if result.failed:
+            QMessageBox.warning(
+                self,
+                "Data Splitting Blocked",
+                result.message,
+            )
+            return None
+        diagnostics = getattr(result, "diagnostics", {}) or {}
+        if diagnostics.get("payload_type") != "dataset_generation_context":
+            return {}
+        return {
+            "epoch_data": diagnostics.get("epoch_data"),
+            "dataset_generator": diagnostics.get("dataset_generator"),
+        }
+
+    def _should_clear_datasets_before_split(self) -> bool:
+        """Return whether applying a new split must clear existing training data."""
+        generate_capability = get_command_capability(
+            self,
+            CommandName.GENERATE_DATASET,
+        )
+        if generate_capability is None:
+            available, should_clear = self._legacy_controller_value(
+                lambda: self.controller.has_datasets() or self.controller.get_trainer(),
+            )
+            return bool(should_clear) if available else False
+        return self._can_replace_existing_dataset(generate_capability.reasons)
+
+    def _check_ready_after_legacy_result(self, result) -> None:
+        if result is None:
             self.check_ready_to_train()
 
     def select_model(self):
@@ -236,43 +501,145 @@ class TrainingSidebar(QWidget):
 
         Blocked while training is running.
         """
-        if self.controller.is_training():
-            QMessageBox.warning(
-                self,
-                "Training Running",
-                "Cannot change model while training is running.",
-            )
+        if self._configuration_blocked(
+            "Cannot change model while training is running.",
+        ):
             return
 
         win = ModelSelectionDialog(self, self.controller)
         if win.exec():
-            self.controller.set_model_holder(win.get_result())
-            model_holder = self.controller.get_model_holder()
-            model_name = model_holder.target_model.__name__
-            QMessageBox.information(self, "Success", f"Model selected: {model_name}")
-            self.check_ready_to_train()
+            model_holder = win.get_result()
+            if model_holder is None:
+                QMessageBox.warning(self, "Model Selection", "No model was selected.")
+                return
+            selected_model_name = model_holder.target_model.__name__
+            result = execute_application_command(
+                self,
+                ConfigureTrainingCommand(
+                    model_name=selected_model_name,
+                    model_params=dict(model_holder.model_params_map),
+                    pretrained_weight_path=model_holder.pretrained_weight_path,
+                ),
+            )
+            if result is None:
+                try:
+                    run_legacy_controller_fallback(
+                        self,
+                        lambda: self.controller.set_model_holder(model_holder),
+                    )
+                except LegacyControllerFallbackUnavailableError as exc:
+                    QMessageBox.warning(
+                        self,
+                        "Model Selection Blocked",
+                        str(exc),
+                    )
+                    return
+                model_holder = self.controller.get_model_holder()
+                if model_holder is None:
+                    QMessageBox.critical(
+                        self,
+                        "Model Selection Failed",
+                        "The selected model was not applied.",
+                    )
+                    return
+                selected_model_name = model_holder.target_model.__name__
+            elif result.failed:
+                QMessageBox.critical(self, "Model Selection Failed", result.message)
+                return
+            QMessageBox.information(
+                self,
+                "Success",
+                f"Model selected: {selected_model_name}",
+            )
+            self._check_ready_after_legacy_result(result)
 
     def training_setting(self):
         """Open the training-settings dialog and store the configuration.
 
         Blocked while training is running.
         """
-        if self.controller.is_training():
-            QMessageBox.warning(
-                self,
-                "Training Running",
-                "Cannot change training settings while training is running.",
-            )
+        if self._configuration_blocked(
+            "Cannot change training settings while training is running.",
+        ):
             return
 
-        win = TrainingSettingDialog(self, self.controller)
+        win = TrainingSettingDialog(
+            self,
+            self.controller,
+            initial_option=self._training_option_snapshot(),
+        )
         if win.exec():
-            self.controller.set_training_option(win.get_result())
+            option = win.get_result()
+            optimizer_name = getattr(getattr(option, "optim", None), "__name__", "adam")
+            use_cpu = bool(getattr(option, "use_cpu", True))
+            gpu_idx = getattr(option, "gpu_idx", None)
+            result = execute_application_command(
+                self,
+                ConfigureTrainingCommand(
+                    epoch=getattr(option, "epoch", None),
+                    batch_size=getattr(option, "bs", None),
+                    learning_rate=getattr(option, "lr", None),
+                    repeat=getattr(option, "repeat_num", 1),
+                    device=("cpu" if use_cpu else f"cuda:{gpu_idx or 0}"),
+                    optimizer=optimizer_name,
+                    optimizer_params=dict(getattr(option, "optim_params", {}) or {}),
+                    save_checkpoints_every=getattr(option, "checkpoint_epoch", 0),
+                    output_dir=getattr(option, "output_dir", "./output"),
+                    evaluation_option=getattr(
+                        getattr(option, "evaluation_option", None),
+                        "value",
+                        None,
+                    ),
+                ),
+            )
+            if result is None:
+                try:
+                    run_legacy_controller_fallback(
+                        self,
+                        lambda: self.controller.set_training_option(option),
+                    )
+                except LegacyControllerFallbackUnavailableError as exc:
+                    QMessageBox.warning(
+                        self,
+                        "Training Settings Blocked",
+                        str(exc),
+                    )
+                    return
+            elif result.failed:
+                QMessageBox.critical(
+                    self,
+                    "Training Settings Failed",
+                    result.message,
+                )
+                return
             QMessageBox.information(self, "Success", "Training settings saved.")
-            self.check_ready_to_train()
+            self._check_ready_after_legacy_result(result)
+
+    def _training_option_snapshot(self) -> dict | None:
+        result = execute_application_command(
+            self,
+            QueryStateCommand(query="state"),
+            refresh=False,
+        )
+        if result is None:
+            return None
+        if result.failed:
+            QMessageBox.warning(
+                self,
+                "Training Settings Blocked"
+                if result.recoverable
+                else "Training Settings Failed",
+                result.message,
+            )
+            return {}
+        diagnostics = getattr(result, "diagnostics", {}) or {}
+        state = diagnostics.get("state")
+        training = state.get("training") if isinstance(state, dict) else {}
+        option = training.get("training_option") if isinstance(training, dict) else None
+        return dict(option) if isinstance(option, dict) else {}
 
     def start_training_ui_action(self):
-        """Start training via the controller and enable the stop button.
+        """Start training via the application command spine and enable stop.
 
         Raises:
             Exception: Propagated from the controller on failure, shown
@@ -280,21 +647,106 @@ class TrainingSidebar(QWidget):
 
         """
         try:
-            if not self.controller.is_training():
-                self.controller.start_training()
+            train_capability = get_command_capability(self, CommandName.TRAIN)
+            if train_capability is not None and not train_capability.enabled:
+                QMessageBox.warning(
+                    self,
+                    "Training Not Ready",
+                    blocked_reason(
+                        train_capability,
+                        "Training is not ready.",
+                    ),
+                )
+                return
+            if self._should_start_training(train_capability):
+                if train_capability is not None and (
+                    train_capability.requires_confirmation
+                    or train_capability.confirmation_required
+                ):
+                    reply = QMessageBox.question(
+                        self,
+                        "Start Training",
+                        (
+                            "Training can take time and use CPU/GPU resources. "
+                            "Start training now?"
+                        ),
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                        QMessageBox.StandardButton.No,
+                    )
+                    if reply == QMessageBox.StandardButton.No:
+                        return
+                result = execute_application_command(self, TrainCommand(confirmed=True))
+                if result is None:
+                    try:
+                        run_legacy_controller_fallback(
+                            self,
+                            self.controller.start_training,
+                        )
+                    except LegacyControllerFallbackUnavailableError as exc:
+                        QMessageBox.warning(
+                            self,
+                            "Start Training Blocked",
+                            str(exc),
+                        )
+                        return
+                elif result.failed:
+                    QMessageBox.critical(
+                        self,
+                        "Error",
+                        f"Failed to start training: {result.message}",
+                    )
+                    return
                 self.btn_stop.setEnabled(True)
-                self.check_ready_to_train()
+                self._check_ready_after_legacy_result(result)
                 # Panel should know training started to update log?
                 # Observer in Panel handles "training_started" event.
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to start training: {e}")
 
+    def _should_start_training(self, train_capability) -> bool:
+        if train_capability is None:
+            available, is_training = self._legacy_controller_value(
+                self.controller.is_training,
+                blocked_title="Start Training Blocked",
+            )
+            return bool(available and not is_training)
+        return train_capability.enabled
+
     def stop_training(self):
         """Request the controller to stop the current training run."""
-        if self.controller.is_training():
-            self.controller.stop_training()
-            self.btn_stop.setEnabled(False)
-            # Controller will emit stopped event which panel handles
+        stop_capability = get_command_capability(self, CommandName.STOP_TRAINING)
+        if stop_capability is not None and not stop_capability.enabled:
+            QMessageBox.warning(
+                self,
+                "Stop Training Blocked",
+                blocked_reason(stop_capability, "No training run is active."),
+            )
+            return
+
+        if stop_capability is None:
+            available, is_training = self._legacy_controller_value(
+                self.controller.is_training,
+                blocked_title="Stop Training Blocked",
+            )
+            if not available or not is_training:
+                return
+
+        result = execute_application_command(self, StopTrainingCommand())
+        if result is None:
+            try:
+                run_legacy_controller_fallback(self, self.controller.stop_training)
+            except LegacyControllerFallbackUnavailableError as exc:
+                QMessageBox.warning(self, "Stop Training Blocked", str(exc))
+                return
+        elif result.failed:
+            QMessageBox.warning(
+                self,
+                "Warning",
+                f"Failed to stop training: {result.message}",
+            )
+            return
+        self.btn_stop.setEnabled(False)
+        # Controller will emit stopped event which panel handles
 
     def clear_history(self):
         """Clear all training history records.
@@ -302,33 +754,61 @@ class TrainingSidebar(QWidget):
         Blocked while training is running.
         """
         try:
-            if self.controller.is_training():
+            clear_capability = get_command_capability(
+                self,
+                CommandName.CLEAR_TRAINING_HISTORY,
+            )
+            if clear_capability is not None and not clear_capability.enabled:
                 QMessageBox.warning(
                     self,
-                    "Warning",
-                    "Cannot clear history while training is running.",
+                    "Clear History Blocked",
+                    blocked_reason(
+                        clear_capability,
+                        "No training history is available to clear.",
+                    ),
                 )
                 return
-            self.controller.clear_history()
-            # Panel needs to clear table/plots.
-            # Controller emits "training_updated"? Or we should have a
-            # "history_cleared" signal?
-            # Or Panel should have an observer for history clear?
-            # Currently Panel.clear_history calls controller.clear_history
-            # then does UI cleanup.
-            # If Sidebar calls controller.clear_history, Panel needs to know!
-            # The current observer bridge on 'training_updated' might not cover clear.
-            # Panel has:
-            # self.bridge_updated.connect_to(lambda *args, **kwargs: self.update_loop())
-            # If clear_history empties history, update_loop will see 0 rows and sync.
-            # So Panel UI cleanup might be automatic IF update_loop runs.
-            # But we should ensure update_loop runs.
-            # If controller.clear_history() emits 'training_updated', we are good.
-            # If not, we might need manual trigger.
-            # Let's assume for now we might need to notify Panel.
-            # But better design: Controller emits 'history_cleared'.
+            if clear_capability is None:
+                available, is_training = self._legacy_controller_value(
+                    self.controller.is_training,
+                    blocked_title="Clear History Blocked",
+                )
+                if not available:
+                    return
+                if is_training:
+                    QMessageBox.warning(
+                        self,
+                        "Warning",
+                        "Cannot clear history while training is running.",
+                    )
+                    return
+            reply = QMessageBox.question(
+                self,
+                "Clear Training History",
+                "Clear all training history records? This cannot be undone.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply == QMessageBox.StandardButton.No:
+                return
+            result = execute_application_command(
+                self,
+                ClearTrainingHistoryCommand(confirmed=True),
+            )
+            if result is None:
+                try:
+                    run_legacy_controller_fallback(
+                        self,
+                        self.controller.clear_history,
+                    )
+                except LegacyControllerFallbackUnavailableError as exc:
+                    QMessageBox.warning(self, "Clear History Blocked", str(exc))
+                    return
+            elif result.failed:
+                QMessageBox.warning(self, "Warning", result.message)
+                return
 
-            self.check_ready_to_train()
+            self._check_ready_after_legacy_result(result)
         except Exception as e:
             QMessageBox.warning(self, "Warning", f"Error clearing history: {e}")
 

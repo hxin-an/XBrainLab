@@ -4,23 +4,50 @@ Orchestrates the ChatController, LLMController, and ChatPanel dock widget,
 handling initialization, user interaction, model switching, and VRAM checks.
 """
 
-from PyQt6.QtCore import QObject, Qt, pyqtSignal
+from PyQt6.QtCore import QObject, QRect, QSize, Qt, pyqtSignal
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
+    QApplication,
     QDockWidget,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QMessageBox,
     QPushButton,
     QWidget,
 )
 
+from XBrainLab.backend.application import (
+    ApplyMontageCommand,
+    CommandName,
+    QueryStateCommand,
+)
 from XBrainLab.backend.controller.chat_controller import ChatController
+from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.agent.controller import LLMController
+from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.ui.application_capabilities import (
+    LegacyControllerFallbackUnavailableError,
+    blocked_reason,
+    execute_application_command,
+    get_command_capability,
+    get_legacy_controller_from_study,
+    run_legacy_controller_fallback,
+)
 from XBrainLab.ui.chat.panel import ChatPanel
 from XBrainLab.ui.components.vram_checker import VRAMConflictChecker
+from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
+    LocalRuntimeFirstRunDialog,
+)
 from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
 from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import PickMontageDialog
+from XBrainLab.ui.montage_positions import normalize_montage_positions
+from XBrainLab.ui.product_language import (
+    command_labels,
+    tool_action_label,
+    workflow_stage_label,
+)
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 VIZ_TAB_3D_PLOT = 3
@@ -32,6 +59,37 @@ PANEL_PREPROCESS = 1
 PANEL_TRAINING = 2
 PANEL_EVALUATION = 3
 PANEL_VISUALIZATION = 4
+
+
+class AssistantDockTitleBar(QWidget):
+    """Minimal dock title bar that preserves native dock dragging."""
+
+    def __init__(self, on_float_toggle, parent=None):
+        super().__init__(parent)
+        self._on_float_toggle = on_float_toggle
+
+    def mousePressEvent(self, event):  # noqa: N802
+        """Let QDockWidget handle title-bar drags from empty title space."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            event.ignore()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):  # noqa: N802
+        """Let QDockWidget continue native dock drag handling."""
+        event.ignore()
+
+    def mouseReleaseEvent(self, event):  # noqa: N802
+        """Let QDockWidget finish native dock drag handling."""
+        event.ignore()
+
+    def mouseDoubleClickEvent(self, event):  # noqa: N802
+        """Mirror native title-bar double-click float/dock behavior."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._on_float_toggle()
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
 
 
 class AgentManager(QObject):
@@ -66,6 +124,7 @@ class AgentManager(QObject):
         super().__init__(main_window)
         self.main_window = main_window
         self.study = study
+        self.backend_facade = BackendFacade(study)
 
         self.chat_panel = None
         self.chat_dock = None
@@ -75,10 +134,16 @@ class AgentManager(QObject):
         self.chat_controller.processing_state_changed.connect(
             self.on_processing_state_changed,
         )
-        self.preprocess_controller = study.get_controller("preprocess")  # M3.6
+        self.preprocess_controller = get_legacy_controller_from_study(
+            self,
+            study,
+            "preprocess",
+        )
         self.agent_controller = None
 
         self.agent_initialized = False
+        self._last_user_input: str | None = None
+        self._runtime_unavailable_notice: str | None = None
 
         # M3.4 VRAM Monitoring — delegated to VRAMConflictChecker
         self.vram_checker = VRAMConflictChecker(
@@ -107,26 +172,43 @@ class AgentManager(QObject):
         self.chat_panel.stop_generation.connect(self.stop_generation)
         self.chat_panel.model_changed.connect(self.set_model)
         self.chat_panel.execution_mode_changed.connect(self._on_execution_mode_changed)
+        self.chat_panel.settings_requested.connect(self.open_settings_dialog)
         self.chat_panel.new_conversation_requested.connect(self.start_new_conversation)
+        self.chat_panel.retry_requested.connect(self.retry_last_user_input)
 
-        self.chat_dock = QDockWidget("AI Assistant", self.main_window)
+        self.chat_dock = QDockWidget("XBrainLab", self.main_window)
         self.chat_dock.setWidget(self.chat_panel)
         self.chat_dock.setAllowedAreas(
             Qt.DockWidgetArea.RightDockWidgetArea
             | Qt.DockWidgetArea.LeftDockWidgetArea,
         )
+        self.chat_dock.setFeatures(
+            QDockWidget.DockWidgetFeature.DockWidgetClosable
+            | QDockWidget.DockWidgetFeature.DockWidgetMovable
+            | QDockWidget.DockWidgetFeature.DockWidgetFloatable,
+        )
+        self.chat_dock.setMinimumWidth(320)
 
-        # Custom Title Bar with Float + New Conversation Buttons
-        title_bar = QWidget()
+        # Custom title bar with conversation controls and native dock dragging.
+        title_bar = AssistantDockTitleBar(self._toggle_float, self.chat_dock)
         title_bar.setStyleSheet(Stylesheets.AGENT_TITLE_BAR)
         title_layout = QHBoxLayout(title_bar)
         title_layout.setContentsMargins(8, 2, 4, 2)
         title_layout.setSpacing(4)
 
-        title_label = QLabel("AI Assistant")
+        title_label = QLabel("XBrainLab")
         title_label.setStyleSheet(Stylesheets.AGENT_TITLE_LABEL)
+        title_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         title_layout.addWidget(title_label)
         title_layout.addStretch()
+
+        self.retry_title_btn = QPushButton("↻")
+        self.retry_title_btn.setFixedSize(20, 20)
+        self.retry_title_btn.setToolTip("Send a request before retrying.")
+        self.retry_title_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
+        self.retry_title_btn.setEnabled(False)
+        self.retry_title_btn.clicked.connect(self.retry_last_user_input)
+        title_layout.addWidget(self.retry_title_btn)
 
         # New Conversation Button (+ icon)
         self.new_conv_title_btn = QPushButton("+")
@@ -136,12 +218,27 @@ class AgentManager(QObject):
         self.new_conv_title_btn.clicked.connect(self.start_new_conversation)
         title_layout.addWidget(self.new_conv_title_btn)
 
-        # Settings Button (≡ icon)
-        self.settings_btn = QPushButton("≡")
-        self.settings_btn.setFixedSize(20, 20)
-        self.settings_btn.setToolTip("Settings")
+        # Options menu. Keep it to real, implemented actions.
+        self.settings_btn = QPushButton("...")
+        self.settings_btn.setFixedSize(26, 20)
+        self.settings_btn.setToolTip("Options")
         self.settings_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
-        self.settings_btn.clicked.connect(self.open_settings_dialog)
+        self.settings_menu = QMenu(self.settings_btn)
+        settings_action = QAction("Assistant settings", self.settings_btn)
+        settings_action.triggered.connect(
+            lambda _checked=False: self.open_settings_dialog()
+        )
+        self.settings_menu.addAction(settings_action)
+        self.clear_conversation_title_action = QAction(
+            "Clear conversation",
+            self.settings_btn,
+        )
+        self.clear_conversation_title_action.setEnabled(False)
+        self.clear_conversation_title_action.triggered.connect(
+            lambda _checked=False: self.start_new_conversation()
+        )
+        self.settings_menu.addAction(self.clear_conversation_title_action)
+        self.settings_btn.setMenu(self.settings_menu)
         title_layout.addWidget(self.settings_btn)
 
         # Float Button (❐ icon) - allows undocking
@@ -153,6 +250,7 @@ class AgentManager(QObject):
         title_layout.addWidget(self.float_btn)
 
         self.chat_dock.setTitleBarWidget(title_bar)
+        self.chat_dock.topLevelChanged.connect(self._on_dock_top_level_changed)
 
         self.main_window.addDockWidget(
             Qt.DockWidgetArea.RightDockWidgetArea,
@@ -161,6 +259,7 @@ class AgentManager(QObject):
 
         self.chat_dock.visibilityChanged.connect(self.update_ai_btn_state)
         self.chat_dock.hide()
+        self.refresh_backend_status()
 
     def update_ai_btn_state(self, visible):
         """Sync the AI toggle button checked state with dock visibility.
@@ -177,34 +276,208 @@ class AgentManager(QObject):
     def _toggle_float(self):
         """Toggle floating/docked state of the chat dock."""
         if self.chat_dock:
-            self.chat_dock.setFloating(not self.chat_dock.isFloating())
+            should_float = not self.chat_dock.isFloating()
+            self.chat_dock.setFloating(should_float)
+            if should_float:
+                self._place_floating_dock()
+
+    def _on_dock_top_level_changed(self, floating: bool) -> None:
+        """Keep the assistant dock usable when it becomes a floating window."""
+        if floating:
+            self._place_floating_dock()
+
+    def _place_floating_dock(self) -> None:
+        """Size and clamp the floating assistant dock within the active screen."""
+        if not self.chat_dock:
+            return
+
+        available = self._available_screen_geometry()
+        main_frame = self.main_window.frameGeometry()
+        dock_width = min(max(self.chat_dock.width(), 420), available.width())
+        dock_height = min(
+            max(self.chat_dock.height(), min(self.main_window.height(), 720)),
+            available.height(),
+        )
+
+        x = main_frame.right() - dock_width
+        y = main_frame.top() + 48
+        x = min(max(x, available.left()), available.right() - dock_width + 1)
+        y = min(max(y, available.top()), available.bottom() - dock_height + 1)
+
+        self.chat_dock.setMinimumSize(QSize(320, 520))
+        self.chat_dock.setGeometry(QRect(x, y, dock_width, dock_height))
+
+    def _available_screen_geometry(self) -> QRect:
+        """Return the usable screen area for the main window or primary screen."""
+        screen = self.main_window.screen() or QApplication.primaryScreen()
+        if screen is not None:
+            return screen.availableGeometry()
+        return QRect(0, 0, 1280, 800)
 
     def toggle(self):
-        """Toggle the Agent dock visibility, initializing on first open.
+        """Toggle the Agent dock visibility, initializing on first open."""
+        if (
+            not self.agent_initialized
+            and self.chat_dock
+            and self.chat_dock.isVisible() is True
+        ):
+            self.chat_dock.close()
+            return
 
-        On first invocation, shows the ``ModelSettingsDialog`` to
-        configure the LLM backend before starting the agent system.
-        """
         if not self.agent_initialized:
-            # Show Model Settings Dialog instead of Warning
-            dialog = ModelSettingsDialog(self.main_window)
-
-            if dialog.exec():
-                # User set up config and clicked Activate
-                self.start_system()
-                if self.chat_dock:
-                    self.chat_dock.show()
-                if hasattr(self.main_window, "ai_btn"):
-                    self.main_window.ai_btn.setChecked(True)
-            else:
-                # User cancelled
+            if not self.chat_panel or not self.chat_dock:
+                logger.warning("Agent dock requested before init_ui completed")
                 if hasattr(self.main_window, "ai_btn"):
                     self.main_window.ai_btn.setChecked(False)
                 return
+
+            self.chat_dock.show()
+            if hasattr(self.main_window, "ai_btn"):
+                self.main_window.ai_btn.setChecked(True)
+
+            config = self._load_runtime_config()
+            if self._needs_local_runtime_first_run(config):
+                choice = self._show_local_runtime_first_run_dialog(config)
+                if not self._handle_local_runtime_first_run_choice(config, choice):
+                    return
+                config = self._load_runtime_config()
+
+            ready, message = self._assistant_runtime_start_status(config)
+            self.refresh_backend_status()
+            if ready:
+                self.start_system()
+                self._runtime_unavailable_notice = None
+            else:
+                self._show_runtime_unavailable(message)
         elif self.chat_dock and self.chat_dock.isVisible():
             self.chat_dock.close()
         elif self.chat_dock:
             self.chat_dock.show()
+
+    @staticmethod
+    def _needs_local_runtime_first_run(config: LLMConfig) -> bool:
+        """Return whether local runtime consent should be shown before startup."""
+        if not hasattr(config, "model_name"):
+            return False
+        selection = LLMConfig.assistant_runtime_selection_from(config)
+        return (
+            selection.backend_mode == "local"
+            and bool(getattr(config, "local_model_enabled", True))
+            and not bool(
+                getattr(config, "local_runtime_notice_acknowledged", False),
+            )
+        )
+
+    def _show_local_runtime_first_run_dialog(self, config: LLMConfig) -> str:
+        """Show the local-runtime consent dialog and return the selected choice."""
+        dialog = LocalRuntimeFirstRunDialog(self.main_window, config)
+        if dialog.exec():
+            return dialog.choice
+        return LocalRuntimeFirstRunDialog.LATER
+
+    def _handle_local_runtime_first_run_choice(
+        self,
+        config: LLMConfig,
+        choice: str,
+    ) -> bool:
+        """Apply a first-run runtime choice.
+
+        Returns ``True`` when startup may continue immediately, otherwise the
+        assistant dock remains open with a visible status message.
+        """
+        if choice in {
+            LocalRuntimeFirstRunDialog.ENABLE,
+            LocalRuntimeFirstRunDialog.USE_CACHE,
+        }:
+            config.local_model_enabled = True
+            config.local_runtime_notice_acknowledged = True
+            config.save_to_file()
+            return True
+
+        if choice == LocalRuntimeFirstRunDialog.DOWNLOAD:
+            config.local_runtime_notice_acknowledged = True
+            config.save_to_file()
+            self.open_settings_dialog()
+            updated_config = self._load_runtime_config()
+            ready, message = self._assistant_runtime_start_status(updated_config)
+            self.refresh_backend_status()
+            if ready:
+                return True
+            self._show_runtime_unavailable(message)
+            return False
+
+        if choice == LocalRuntimeFirstRunDialog.DISABLE:
+            config.local_model_enabled = False
+            config.local_runtime_notice_acknowledged = True
+            config.save_to_file()
+            self.refresh_backend_status()
+            self.chat_controller.add_agent_message(
+                "Assistant is disabled. Open assistant settings when you want "
+                "to enable it."
+            )
+            return False
+
+        self.chat_controller.add_agent_message(
+            "Assistant setup was deferred. Open assistant settings when you are "
+            "ready to continue."
+        )
+        return False
+
+    @staticmethod
+    def _load_runtime_config() -> LLMConfig:
+        """Load persisted assistant runtime config with a safe fallback."""
+        return LLMConfig.load_from_file() or LLMConfig()
+
+    @staticmethod
+    def _assistant_runtime_start_status(config: LLMConfig) -> tuple[bool, str]:
+        """Return whether the assistant runtime can start and why."""
+        selection = LLMConfig.assistant_runtime_selection_from(config)
+
+        if selection.backend_mode == "local":
+            if not config.local_model_enabled:
+                return (
+                    False,
+                    "Local assistant runtime is disabled. Enable it in assistant "
+                    "settings when you want to use the local model.",
+                )
+            model_id, message = config.available_local_model_id(selection.model_id)
+            return model_id is not None, message
+
+        return (
+            False,
+            "Assistant runtime is local-only. Open assistant settings to select "
+            "an approved local model.",
+        )
+
+    def _show_runtime_unavailable(self, message: str) -> None:
+        """Surface assistant startup blockers in the chat panel."""
+        if self._runtime_unavailable_notice == message:
+            return
+
+        self._runtime_unavailable_notice = message
+        logger.info("Assistant runtime unavailable: %s", message)
+        self.chat_controller.add_agent_message(
+            self._runtime_unavailable_message(message),
+        )
+
+    @staticmethod
+    def _runtime_unavailable_message(message: str) -> str:
+        """Return a concise, user-facing assistant startup blocker."""
+        reason = " ".join(str(message or "").split())
+        lowered = reason.lower()
+        if "disabled" in lowered:
+            return (
+                "**Assistant unavailable**: Assistant is disabled. Open assistant "
+                "settings to enable it."
+            )
+        if "unavailable" in lowered or "not found" in lowered or "missing" in lowered:
+            return (
+                "**Assistant unavailable**: Required assistant files are unavailable. "
+                "Open assistant settings to finish setup."
+            )
+        if reason:
+            return f"**Assistant unavailable**: {reason}"
+        return "**Assistant unavailable**: Open assistant settings to finish setup."
 
     def open_settings_dialog(self):
         """Open the model settings dialog and refresh the UI on accept."""
@@ -213,12 +486,14 @@ class AgentManager(QObject):
         if dialog.exec() and self.chat_panel:
             # Refresh UI based on new settings (e.g. enable/disable Local mode)
             self.chat_panel.update_model_menu()
+            self.refresh_backend_status()
 
     def prepare_model_deletion(self, model_name: str):
         """Prepare for model file deletion by switching away if active.
 
         Called by ``ModelSettingsDialog`` before deleting a model. If the
-        model is currently loaded in local mode, switches to Gemini.
+        model is currently loaded in local mode, block deletion until the
+        assistant is switched away from that active local backend.
 
         Args:
             model_name: The name of the model being deleted.
@@ -236,7 +511,7 @@ class AgentManager(QObject):
 
         # Check if active
         config = worker.engine.config
-        current_mode = config.active_mode  # "local", "gemini"
+        current_mode = LLMConfig.assistant_runtime_selection_from(config).backend_mode
 
         # Heuristic: If we are in local mode, and the model name matches (roughly)
         # Detailed check: verify if the deleting model is the one loaded.
@@ -244,16 +519,15 @@ class AgentManager(QObject):
         # to release locks if the user is deleting the *local* model.
 
         if current_mode == "local":
-            logger.info("User deleting model while active. Switching to Gemini.")
-            # Switch to Gemini (or Dummy if Gemini not avail? Assuming Gemini is backup)
-            # Use set_model to trigger reinit via controller
-            self.agent_controller.set_model("Gemini")
-            # Wait for switch? it's async signals.
-            # But the interaction is modal dialog.
-            # The switch might take a moment.
-            # We assume effectively immediate config change + backend switch
-            # starts lock release.
-            return True
+            logger.info("Blocking deletion of active local model: %s", model_name)
+            QMessageBox.warning(
+                self.main_window,
+                "Local Model Active",
+                "The AI assistant is currently using the local backend.\n"
+                "Close the assistant or switch it away from Local before deleting "
+                "this model.",
+            )
+            return False
 
         return True
 
@@ -271,9 +545,7 @@ class AgentManager(QObject):
 
         # 1. Response Ready -> Add to ChatController
         # Note: 'sender' argument from LLMController is usually 'Assistant' or 'Tool'
-        self.agent_controller.response_ready.connect(
-            lambda sender, text: self.chat_controller.add_agent_message(text),
-        )
+        self.agent_controller.response_ready.connect(self._handle_agent_response)
 
         # 2. Status Updates -> Update UI Status (Legacy behavior, maybe simplify later)
         self.agent_controller.status_update.connect(self.on_agent_status_update)
@@ -298,10 +570,10 @@ class AgentManager(QObject):
             self.chat_panel.collapse_agent_message,
         )
 
-        # 8. M3.1 Debug Mode: Handled by MainWindow (offline support)
-        # self.chat_panel.debug_tool_requested.connect(
-        #     self.agent_controller.execute_debug_tool
-        # )
+        # 8. M3.1 Debug Mode: direct UI -> agent tool flow for offline testing.
+        self.chat_panel.debug_tool_requested.connect(
+            self.agent_controller.execute_debug_tool,
+        )
 
         # 8. Finished Signal (Robust)
         self.agent_controller.processing_finished.connect(self.on_processing_finished)
@@ -313,6 +585,7 @@ class AgentManager(QObject):
 
         self.agent_controller.initialize()
         self.agent_initialized = True
+        self.refresh_backend_status()
 
     def handle_user_input(self, text):
         """Handle text input from ChatPanel.
@@ -324,12 +597,90 @@ class AgentManager(QObject):
             text: The user's message text.
 
         """
+        text = text.strip()
+        if not text:
+            return
+
+        if (
+            self.agent_controller
+            and getattr(
+                self.agent_controller,
+                "is_processing",
+                False,
+            )
+            is True
+        ):
+            self.chat_controller.add_agent_message(
+                "The assistant is still processing the previous request. "
+                "Use Stop or wait for the current response before sending again.",
+            )
+            return
+
         # 1. Add to ChatController (Update History)
         self.chat_controller.add_user_message(text)
+        self._last_user_input = text
+        self._set_retry_available(True)
 
         # 2. Forward to Agent
         if self.agent_controller:
             self.agent_controller.handle_user_input(text)
+        else:
+            config = self._load_runtime_config()
+            _ready, message = self._assistant_runtime_start_status(config)
+            logger.info("Assistant unavailable on user request: %s", message)
+            self.chat_controller.add_agent_message(
+                self._runtime_unavailable_message(message),
+            )
+
+    def _handle_agent_response(self, sender: str, text: str) -> None:
+        """Add assistant responses while keeping internal tool output out of chat."""
+        if self._looks_like_internal_tool_output(sender, text):
+            self._show_low_priority_notice(self._tool_output_notice(text))
+            return
+        self.chat_controller.add_agent_message(text)
+
+    @staticmethod
+    def _looks_like_internal_tool_output(sender: str, text: str) -> bool:
+        """Return whether a response is an implementation detail, not chat copy."""
+        sender_key = str(sender or "").strip().lower()
+        if sender_key == "debug":
+            return True
+
+        normalized = " ".join(str(text or "").split()).lower()
+        internal_markers = (
+            "tool output:",
+            "tool call:",
+            "tool ",
+            "request:",
+            "```json",
+            '{"',
+            "[{",
+            "applicationservice",
+            "backendfacade",
+        )
+        if sender_key == "tool":
+            return normalized.startswith(internal_markers)
+        return normalized.startswith(internal_markers)
+
+    @staticmethod
+    def _tool_output_notice(text: str) -> str:
+        """Translate internal tool diagnostics to a low-noise product notice."""
+        normalized = " ".join(str(text or "").split()).lower()
+        if "error" in normalized or "required" in normalized:
+            return (
+                "The assistant could not complete that action. Check the request "
+                "and try again."
+            )
+        return "The assistant completed a background action."
+
+    def retry_last_user_input(self):
+        """Retry the most recent user request if the assistant is idle."""
+        if self.chat_controller.is_processing:
+            return
+        if not self._last_user_input:
+            self._show_low_priority_notice("Send a request before using Retry.")
+            return
+        self.handle_user_input(self._last_user_input)
 
     def stop_generation(self):
         """Stop the currently running LLM generation."""
@@ -341,16 +692,19 @@ class AgentManager(QObject):
         """Switch the active LLM model and check for VRAM conflicts.
 
         Args:
-            model_name: The model name to switch to (e.g., ``"Gemini"``,
-                ``"Local"``).
+            model_name: Runtime mode key or backend-specific identifier.
 
         """
+        normalized_mode = LLMConfig.normalize_backend_mode(model_name, fallback="")
         if self.agent_controller:
-            self.agent_controller.set_model(model_name)
+            self.agent_controller.set_model(
+                normalized_mode if normalized_mode else model_name
+            )
 
         # VRAM Check on Mode Switch
-        if "local" in model_name.lower():
+        if normalized_mode == "local":
             self.vram_checker.check(switching_to_local=True)
+        self.refresh_backend_status()
 
     def on_viz_tab_changed(self, index):
         """Monitor visualization tab changes for VRAM conflict.
@@ -387,6 +741,32 @@ class AgentManager(QObject):
         """
         if self.chat_panel:
             self.chat_panel.set_processing_state(is_processing)
+        self._update_title_action_buttons()
+
+    def _set_retry_available(self, available: bool) -> None:
+        """Synchronize retry/clear affordances across the dock controls."""
+        if self.chat_panel and hasattr(self.chat_panel, "set_retry_available"):
+            self.chat_panel.set_retry_available(available)
+        self._update_title_action_buttons()
+
+    def _update_title_action_buttons(self) -> None:
+        """Keep title-bar actions enabled only when they can run."""
+        is_processing = bool(
+            self.chat_controller
+            and getattr(self.chat_controller, "is_processing", False)
+        )
+        retry_available = bool(self._last_user_input)
+        enabled = retry_available and not is_processing
+
+        if hasattr(self, "retry_title_btn"):
+            self.retry_title_btn.setEnabled(enabled)
+            self.retry_title_btn.setToolTip(
+                "Retry the last request"
+                if retry_available
+                else "Send a request before retrying."
+            )
+        if hasattr(self, "clear_conversation_title_action"):
+            self.clear_conversation_title_action.setEnabled(enabled)
 
     def _on_execution_mode_changed(self, mode: str):
         """Forward execution mode change from ChatPanel to controller.
@@ -405,9 +785,9 @@ class AgentManager(QObject):
             mode: ``'single'`` or ``'multi'``.
 
         """
+        _ = mode
         if self.chat_panel:
-            label = "Single" if mode == "single" else "Multi"
-            self.chat_panel.mode_btn.setText(f"{label} ▼")
+            self.chat_panel.mode_btn.setText("")
 
     def start_new_conversation(self):
         """Clear the chat UI and reset the agent conversation state."""
@@ -415,6 +795,10 @@ class AgentManager(QObject):
 
         # 1. Clear UI / History
         self.chat_controller.clear_conversation()
+        self._last_user_input = None
+        self._set_retry_available(False)
+        if self.chat_panel and hasattr(self.chat_panel, "show_notice"):
+            self.chat_panel.show_notice("")
 
         # 2. Reset Agent State
         if self.agent_controller:
@@ -423,9 +807,19 @@ class AgentManager(QObject):
 
         # 3. Do not add greeting, keep it empty as requested
         # self.chat_controller.add_agent_message("Conversation cleared.")
+        self.refresh_backend_status()
 
     # Signal to notify Main Window (or other listeners) about status updates
     status_message_received = pyqtSignal(str)
+
+    def _show_low_priority_notice(self, message: str) -> None:
+        """Surface notices in the dock footer/status bar without polluting chat."""
+        if self.chat_panel and hasattr(self.chat_panel, "show_notice"):
+            self.chat_panel.show_notice(message)
+        try:
+            self.status_message_received.emit(message)
+        except RuntimeError:
+            logger.debug("Status notice could not be emitted: %s", message)
 
     def _on_generation_started(self):
         """Handle the start of a new LLM response generation.
@@ -441,6 +835,7 @@ class AgentManager(QObject):
     def on_processing_finished(self):
         """Handle the end of LLM processing by resetting state."""
         self.chat_controller.set_processing(False)
+        self.refresh_backend_status()
 
     def on_agent_status_update(self, msg):
         """Forward agent status messages and handle error states.
@@ -449,12 +844,13 @@ class AgentManager(QObject):
             msg: The status message string from the agent.
 
         """
-        self.status_message_received.emit(msg)
-
-        # Note: We now rely on processing_finished signal for state handling!
-        # Legacy checks can be kept for fallback or removed.
+        logger.debug("Assistant status update: %s", msg)
         if "Error" in msg or "Stopping" in msg:
             self.chat_controller.set_processing(False)
+            if self.chat_panel and hasattr(self.chat_panel, "show_notice"):
+                self.chat_panel.show_notice(
+                    "Assistant needs attention · Check the conversation",
+                )
 
     def handle_agent_error(self, error_msg):
         """Handle an agent error by resetting state and showing the error.
@@ -464,8 +860,130 @@ class AgentManager(QObject):
 
         """
         self.chat_controller.set_processing(False)
-        self.chat_controller.add_agent_message(f"**Error**: {error_msg}")
+        self.chat_controller.add_agent_message(
+            self._user_facing_error_message(error_msg),
+        )
         logger.error("Agent Error: %s", error_msg)
+        self.refresh_backend_status()
+
+    @classmethod
+    def _user_facing_error_message(cls, error_msg: str) -> str:
+        """Return a concise error message without tool/debug internals."""
+        if cls._looks_like_internal_tool_output("", error_msg):
+            return (
+                "**Assistant needs input**: The requested action needs more "
+                "information. Check the request and try again."
+            )
+        reason = " ".join(str(error_msg or "").split())
+        if not reason:
+            return "**Assistant needs input**: Try again with a little more detail."
+        return f"**Error**: {reason}"
+
+    def refresh_backend_status(self):
+        """Refresh the compact backend/model status shown in the chat panel."""
+        if not self.chat_panel or not hasattr(self.chat_panel, "set_status_summary"):
+            return
+
+        try:
+            state = self.backend_facade.get_state()
+            capabilities = self.backend_facade.get_capabilities()
+            enabled = self._product_next_steps(state, capabilities)
+            stage = workflow_stage_label(state)
+            model_config = LLMConfig.load_from_file() or LLMConfig()
+            selection = LLMConfig.assistant_runtime_selection_from(model_config)
+            model_ready = model_config.local_backend_ready(selection.model_id)
+            model_status = "Ready" if model_ready else "Setup needed"
+
+            train_capability = capabilities.get("train")
+            train_reasons = list(getattr(train_capability, "reasons", []) or [])
+            tooltip_lines = [
+                f"Workflow stage: {stage}",
+                "Options hold setup details.",
+                "Suggested next actions: "
+                + (", ".join(command_labels(enabled)) if enabled else "none"),
+            ]
+            if train_reasons:
+                tooltip_lines.append(
+                    "Train blocked: " + "; ".join(train_reasons),
+                )
+            if state.last_error:
+                tooltip_lines.append(f"Last workflow error: {state.last_error.message}")
+
+            blocked_reason = None
+            if train_reasons:
+                blocked_reason = "; ".join(train_reasons)
+
+            if hasattr(self.chat_panel, "set_product_status"):
+                self.chat_panel.set_product_status(
+                    stage=stage,
+                    model_status=model_status,
+                    available_commands=enabled,
+                    tooltip="\n".join(tooltip_lines),
+                    blocked_reason=blocked_reason,
+                )
+            else:
+                self.chat_panel.set_status_summary(stage, "\n".join(tooltip_lines))
+
+            self.status_message_received.emit(
+                self._workflow_footer_hint(stage, enabled, blocked_reason),
+            )
+        except Exception as exc:
+            logger.debug("Failed to refresh backend status", exc_info=True)
+            self.chat_panel.set_status_summary(
+                "Workflow status unavailable",
+                f"Status refresh failed: {exc}",
+            )
+            self.status_message_received.emit(
+                "Workflow status unavailable · Try again",
+            )
+
+    @staticmethod
+    def _workflow_footer_hint(
+        stage: str,
+        command_names: list[str],
+        blocked_reason: str | None = None,
+    ) -> str:
+        """Return a user-facing status-bar hint with no runtime diagnostics."""
+        labels = command_labels(command_names)
+        if labels:
+            if stage == "No data loaded" and labels[0] == "Scan data source":
+                return "No EEG data open · Scan a data source to begin"
+            return f"{stage} · {labels[0]}"
+        if blocked_reason:
+            return f"{stage} · Ask what is blocking training"
+        if stage == "No data loaded":
+            return "No EEG data open · Scan a data source to begin"
+        return f"{stage} · Ask what is ready"
+
+    @staticmethod
+    def _product_next_steps(state, capabilities) -> list[str]:
+        """Return user-facing next-step command IDs, not every enabled command."""
+        active_dataset = state.active_dataset
+        training = state.training
+        evaluation = state.evaluation
+
+        candidates: list[str]
+        if evaluation.finished_runs:
+            candidates = ["evaluate", "visualize", "saliency"]
+        elif active_dataset.has_datasets:
+            if training.has_model and training.has_training_option:
+                candidates = ["train"]
+            else:
+                candidates = ["configure_training"]
+        elif active_dataset.has_epoch_data:
+            candidates = ["generate_dataset"]
+        elif active_dataset.has_preprocessed_data:
+            candidates = ["create_epoch"]
+        elif active_dataset.has_raw_data:
+            candidates = ["preprocess"]
+        else:
+            candidates = ["scan_source"]
+
+        return [
+            command_name
+            for command_name in candidates
+            if getattr(capabilities.get(command_name), "enabled", False)
+        ]
 
     def close(self):
         """Clean up the agent controller resources."""
@@ -546,20 +1064,24 @@ class AgentManager(QObject):
 
         """
         tool_name = params.get("tool_name", "unknown")
+        action_label = tool_action_label(tool_name)
         description = params.get("description", "")
         tool_params = params.get("params", {})
 
         detail = ""
         if tool_params:
-            detail = "\n".join(f"  {k}: {v}" for k, v in tool_params.items())
+            detail = "\n".join(
+                f"  {str(k).replace('_', ' ').title()}: {v}"
+                for k, v in tool_params.items()
+            )
 
         msg = QMessageBox(self.main_window)
         msg.setIcon(QMessageBox.Icon.Warning)
         msg.setWindowTitle("Confirm Action")
         msg.setText(
-            f"The AI assistant wants to execute a potentially dangerous action:\n\n"
-            f"  Tool: {tool_name}\n"
-            f"  Description: {description}"
+            "The assistant wants to run an action that may change your workspace:\n\n"
+            f"  Action: {action_label}\n"
+            f"  Details: {description or action_label}"
         )
         if detail:
             msg.setDetailedText(detail)
@@ -573,11 +1095,11 @@ class AgentManager(QObject):
 
         if approved:
             self.chat_controller.add_agent_message(
-                f"User confirmed: {tool_name}",
+                f"Confirmed: {action_label}.",
             )
         else:
             self.chat_controller.add_agent_message(
-                f"User rejected: {tool_name}",
+                f"Cancelled: {action_label}.",
             )
 
         if self.agent_controller:
@@ -619,8 +1141,9 @@ class AgentManager(QObject):
         """Open the montage picker dialog for channel configuration.
 
         Presents a ``PickMontageDialog`` pre-populated with an optional
-        montage suggestion from the agent. On acceptance, applies the
-        montage via the preprocess controller.
+        montage suggestion from the agent. Real Study-backed paths use the
+        ApplicationService command layer; legacy mock paths may fall back to
+        the preprocess controller for test compatibility.
 
         Args:
             params: Dictionary with optional ``"montage_name"`` key.
@@ -628,20 +1151,80 @@ class AgentManager(QObject):
         """
         montage_name = params.get("montage_name")  # Pre-selected montage from Agent
 
-        if not self.study.epoch_data:
+        capability = get_command_capability(self, CommandName.APPLY_MONTAGE)
+        if capability is not None and not capability.enabled:
             sb = self.main_window.statusBar()
             if sb:
-                sb.showMessage("Error: No epoch data available for montage.")
+                sb.showMessage(
+                    blocked_reason(
+                        capability,
+                        "Create epochs before applying a montage.",
+                    ),
+                )
             return
 
-        chs = self.study.epoch_data.get_mne().info["ch_names"]
+        chs = self._montage_channel_names_for_dialog()
+        if chs is None:
+            return
+        if not chs:
+            sb = self.main_window.statusBar()
+            if sb:
+                sb.showMessage(
+                    "No epoch channel names are available for montage setup."
+                )
+            return
+
         dialog = PickMontageDialog(self.main_window, chs, default_montage=montage_name)
 
         if dialog.exec():
             chs, positions = dialog.get_result()
             if chs and positions is not None:
-                # M3.6 Refactor: Use PreprocessController instead of direct study access
-                self.preprocess_controller.apply_montage(chs, positions)
+                try:
+                    normalized_positions = normalize_montage_positions(chs, positions)
+                except Exception as exc:
+                    sb = self.main_window.statusBar()
+                    if sb:
+                        sb.showMessage(f"Montage setup failed: {exc}")
+                    return
+
+                result = execute_application_command(
+                    self,
+                    ApplyMontageCommand(
+                        channels=list(chs),
+                        positions=normalized_positions,
+                        montage_name=montage_name,
+                    ),
+                )
+                if result is None:
+                    controller = self.preprocess_controller
+                    if controller is None:
+                        sb = self.main_window.statusBar()
+                        if sb:
+                            sb.showMessage(
+                                "Montage setup blocked: legacy controller unavailable.",
+                            )
+                        self.handle_user_input("Montage Selection Failed.")
+                        return
+                    try:
+                        run_legacy_controller_fallback(
+                            self,
+                            lambda: controller.apply_montage(
+                                chs,
+                                positions,
+                            ),
+                        )
+                    except LegacyControllerFallbackUnavailableError as exc:
+                        sb = self.main_window.statusBar()
+                        if sb:
+                            sb.showMessage(f"Montage setup blocked: {exc}")
+                        self.handle_user_input("Montage Selection Failed.")
+                        return
+                elif result.failed:
+                    sb = self.main_window.statusBar()
+                    if sb:
+                        sb.showMessage(f"Error: {result.message}")
+                    self.handle_user_input("Montage Selection Failed.")
+                    return
                 self.chat_controller.add_agent_message("Montage Confirmed.")
 
                 # If in Debug Mode, do NOT trigger LLM generation loop
@@ -668,3 +1251,68 @@ class AgentManager(QObject):
         else:
             self.chat_controller.add_agent_message("Operation Cancelled.")
             self.handle_user_input("Montage Selection Cancelled by User.")
+
+    def _montage_channel_names_for_dialog(self) -> list[str] | None:
+        """Return montage channel names through the command spine when available."""
+        result = execute_application_command(
+            self,
+            QueryStateCommand(query="state"),
+            refresh=False,
+        )
+        if result is None:
+            try:
+                return run_legacy_controller_fallback(
+                    self,
+                    self._legacy_montage_channel_names,
+                )
+            except LegacyControllerFallbackUnavailableError as exc:
+                sb = self.main_window.statusBar()
+                if sb:
+                    sb.showMessage(f"Montage setup blocked: {exc}")
+                self.handle_user_input("Montage Selection Failed.")
+                return None
+        if result.failed:
+            sb = self.main_window.statusBar()
+            if sb:
+                sb.showMessage(f"Montage setup blocked: {result.message}")
+            self.handle_user_input("Montage Selection Failed.")
+            return None
+
+        diagnostics = getattr(result, "diagnostics", {}) or {}
+        state = diagnostics.get("state")
+        epoch = state.get("epoch") if isinstance(state, dict) else {}
+        channel_names = epoch.get("channel_names") if isinstance(epoch, dict) else None
+        if not isinstance(channel_names, list):
+            return []
+        return [str(name) for name in channel_names]
+
+    def _legacy_montage_channel_names(self) -> list[str]:
+        """Read montage channel names only for mock / legacy UI contexts."""
+        epoch_data = self.study.epoch_data
+        if not epoch_data:
+            return []
+
+        getter = getattr(epoch_data, "get_channel_names", None)
+        if callable(getter):
+            try:
+                names = getter()
+                if isinstance(names, list | tuple):
+                    return [str(name) for name in names]
+            except Exception:
+                logger.debug("Legacy montage channel-name getter failed", exc_info=True)
+
+        try:
+            mne_obj = epoch_data.get_mne()
+        except Exception:
+            return []
+
+        names = getattr(mne_obj, "ch_names", None)
+        if isinstance(names, list | tuple):
+            return [str(name) for name in names]
+
+        info = getattr(mne_obj, "info", None)
+        if isinstance(info, dict):
+            info_names = info.get("ch_names")
+            if isinstance(info_names, list | tuple):
+                return [str(name) for name in info_names]
+        return []

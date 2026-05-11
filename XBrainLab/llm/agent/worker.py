@@ -5,12 +5,16 @@ thread, with streaming output, timeout handling, and hot-swap model
 switching.
 """
 
+import contextlib
+
 from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QApplication
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.engine import LLMEngine
+
+GENERATION_THREAD_SHUTDOWN_WAIT_MS = 1500
 
 
 class GenerationThread(QThread):
@@ -55,6 +59,9 @@ class GenerationThread(QThread):
             self.error_occurred.emit(str(e))
 
 
+ACTIVE_GENERATION_THREADS: set[GenerationThread] = set()
+
+
 class AgentWorker(QObject):
     """Worker managing LLM initialization, generation, and model switching.
 
@@ -79,9 +86,59 @@ class AgentWorker(QObject):
     def __init__(self):
         """Initializes the AgentWorker with no engine loaded."""
         super().__init__()
-        self.engine = None
-        self.generation_thread = None
-        self.timeout_timer = None
+        self.engine: LLMEngine | None = None
+        self.generation_thread: GenerationThread | None = None
+        self.timeout_timer: QTimer | None = None
+
+    @staticmethod
+    def _load_runtime_config(fallback: LLMConfig | None = None):
+        """Load the current persisted config and apply transient CLI overrides."""
+        config = LLMConfig.load_from_file() or fallback or LLMConfig()
+
+        app = QApplication.instance()
+        if app:
+            override = app.property("model_override")
+            if override:
+                override_value = str(override)
+                if override_value in LLMConfig.allowed_local_model_ids():
+                    config.apply_runtime_selection(
+                        "local",
+                        model_id=override_value,
+                        ui_active_mode="local",
+                    )
+                else:
+                    config.apply_runtime_selection("local", ui_active_mode="local")
+
+        return config
+
+    @staticmethod
+    def _resolve_local_runtime(config: LLMConfig):
+        """Apply the local fallback model policy to a runtime config."""
+        selection = LLMConfig.assistant_runtime_selection_from(config)
+
+        try:
+            fallback_result = config.available_local_model_id(selection.model_id)
+        except AttributeError:
+            return selection, None, True
+        if not isinstance(fallback_result, tuple) or len(fallback_result) != 2:
+            # Tests and some legacy callers pass config-like mocks. If they do
+            # not implement the product fallback contract, keep old behavior
+            # instead of failing config sync before generation starts.
+            return selection, None, True
+
+        model_id, message = fallback_result
+        if model_id is None:
+            return selection, message, False
+
+        if model_id != selection.model_id:
+            config.apply_runtime_selection(
+                "local",
+                model_id=model_id,
+                ui_active_mode="local",
+            )
+            selection = LLMConfig.assistant_runtime_selection_from(config)
+
+        return selection, message, True
 
     def initialize_agent(self):
         """Initializes the LLM engine and loads the model.
@@ -97,40 +154,79 @@ class AgentWorker(QObject):
         if self.engine:
             return  # Already initialized
 
+        config = self._load_runtime_config()
+        selection, readiness_message, runtime_ready = self._resolve_local_runtime(
+            config
+        )
+        if selection.backend_mode == "local" and not runtime_ready:
+            message = readiness_message or config.local_backend_status_message(
+                selection.model_id
+            )
+            logger.warning("Local backend not ready during initialization: %s", message)
+            self.error.emit(f"Model Load Error: {message}")
+            return
+        if selection.backend_mode == "local":
+            message = readiness_message or config.local_backend_status_message(
+                selection.model_id
+            )
+            if message != "Local runtime ready.":
+                logger.warning(
+                    "Local backend will continue with adjusted runtime: %s",
+                    message,
+                )
+                self.log.emit(message)
+
         try:
             logger.info("Initializing LLM Engine...")
             self.log.emit("Loading AI Model...")
 
-            config = LLMConfig()
             self.engine = LLMEngine(config)
             self.engine.load_model()
 
-            self.log.emit(f"AI Model Loaded: {config.model_name}")
+            self.log.emit(f"AI Model Loaded: {selection.model_id}")
             logger.info("Local Agent initialized successfully")
         except Exception as e:
             logger.error("Failed to initialize Agent", exc_info=True)
             self.error.emit(f"Model Load Error: {e!s}")
 
-    def _cleanup_generation_thread(self):
+    def _track_generation_thread(self, thread: GenerationThread) -> None:
+        """Keep running generation threads alive until Qt reports finished."""
+        ACTIVE_GENERATION_THREADS.add(thread)
+        thread.finished.connect(lambda: ACTIVE_GENERATION_THREADS.discard(thread))
+        thread.finished.connect(thread.deleteLater)
+
+    @staticmethod
+    def _disconnect_generation_thread(thread: GenerationThread) -> None:
+        """Disconnect generation callbacks if they are still connected."""
+        with contextlib.suppress(TypeError, RuntimeError):
+            thread.chunk_received.disconnect()
+        with contextlib.suppress(TypeError, RuntimeError):
+            thread.finished_generation.disconnect()
+        with contextlib.suppress(TypeError, RuntimeError):
+            thread.error_occurred.disconnect()
+
+    def _cleanup_generation_thread(self, wait_ms: int = 0):
         """Disconnect and request interruption of any running generation thread.
 
         Prevents double callbacks and interleaved chunks when a new
         generation is started before a previous one finishes.
         """
-        if self.generation_thread is not None:
-            try:
-                self.generation_thread.chunk_received.disconnect(self.chunk_received)
-                self.generation_thread.finished_generation.disconnect(
-                    self._on_generation_finished,
-                )
-                self.generation_thread.error_occurred.disconnect(
-                    self._on_generation_error,
-                )
-            except (TypeError, RuntimeError):
-                pass  # Already disconnected
-            if self.generation_thread.isRunning():
-                self.generation_thread.requestInterruption()
-            self.generation_thread = None
+        thread = self.generation_thread
+        if thread is None:
+            return
+
+        self._disconnect_generation_thread(thread)
+        running = False
+        with contextlib.suppress(RuntimeError):
+            running = thread.isRunning()
+        if running:
+            thread.requestInterruption()
+            if wait_ms > 0:
+                thread.wait(max(0, int(wait_ms)))
+        with contextlib.suppress(RuntimeError):
+            if not thread.isRunning():
+                ACTIVE_GENERATION_THREADS.discard(thread)
+        self.generation_thread = None
 
     def generate_from_messages(self, messages):
         """Runs LLM generation using a full message history.
@@ -165,25 +261,62 @@ class AgentWorker(QObject):
 
         # SYNC CONFIG: Reload from file to avoid "Split Brain" with UI Settings
         # This ensures change in Temperature/API Key are picked up immediately.
+        previous_config = self.engine.config
         try:
-            fresh_config = LLMConfig.load_from_file()
+            fresh_config = self._load_runtime_config(previous_config)
             if fresh_config:
-                # Apply CLI --model override (transient, not persisted)
-                app = QApplication.instance()
-                if app:
-                    override = app.property("model_override")
-                    if override:
-                        fresh_config.active_mode = override
-                        fresh_config.inference_mode = override
+                previous_selection = LLMConfig.assistant_runtime_selection_from(
+                    previous_config
+                )
+                fresh_selection = LLMConfig.assistant_runtime_selection_from(
+                    fresh_config
+                )
 
-                old_mode = self.engine.config.inference_mode
+                readiness_message = None
+                runtime_ready = True
+                if fresh_selection.backend_mode == "local":
+                    (
+                        fresh_selection,
+                        readiness_message,
+                        runtime_ready,
+                    ) = self._resolve_local_runtime(fresh_config)
+
+                if fresh_selection.backend_mode == "local" and not runtime_ready:
+                    message = (
+                        readiness_message
+                        or fresh_config.local_backend_status_message(
+                            fresh_selection.model_id
+                        )
+                    )
+                    logger.warning(
+                        "Local backend not ready during config sync: %s",
+                        message,
+                    )
+                    self.error.emit(f"Config Sync Failed: {message}")
+                    self.finished.emit([])
+                    return
+                if (
+                    fresh_selection.backend_mode == "local"
+                    and readiness_message
+                    and readiness_message != "Local runtime ready."
+                ):
+                    self.log.emit(readiness_message)
+
                 self.engine.config = fresh_config
 
-                # Only switch backend if inference mode actually changed
-                if fresh_config.inference_mode != old_mode:
-                    self.engine.switch_backend(fresh_config.inference_mode)
+                # Reload when the backend mode changes or the selected model ID
+                # inside the same backend has drifted from the active backend.
+                if (
+                    fresh_selection.backend_mode != previous_selection.backend_mode
+                    or fresh_selection.model_id != previous_selection.model_id
+                ):
+                    self.engine.switch_backend(fresh_selection.backend_mode)
         except Exception as e:
+            self.engine.config = previous_config
             logger.error("Failed to sync config: %s", e)
+            self.error.emit(f"Config Sync Failed: {e}")
+            self.finished.emit([])
+            return
 
         # Start Generation Thread — clean up any previous thread first
         self._cleanup_generation_thread()
@@ -192,6 +325,7 @@ class AgentWorker(QObject):
         self.generation_thread.chunk_received.connect(self.chunk_received)
         self.generation_thread.finished_generation.connect(self._on_generation_finished)
         self.generation_thread.error_occurred.connect(self._on_generation_error)
+        self._track_generation_thread(self.generation_thread)
 
         # Timeout timer (thread-safe UI timer) — reuse existing or create once
         self._is_timed_out = False
@@ -220,21 +354,7 @@ class AgentWorker(QObject):
 
             # We can't safely kill the thread in Python, but we can ignore its
             # future output and signal the UI to proceed.
-            try:
-                self.generation_thread.requestInterruption()  # Request stop
-                self.generation_thread.chunk_received.disconnect(self.chunk_received)
-                self.generation_thread.finished_generation.disconnect(
-                    self._on_generation_finished,
-                )
-                self.generation_thread.error_occurred.disconnect(
-                    self._on_generation_error,
-                )
-                # self.generation_thread.terminate() # Dangerous, avoid unless necessary
-            except Exception:
-                logger.debug(
-                    "Signal disconnect failed (already disconnected)",
-                    exc_info=True,
-                )
+            self._cleanup_generation_thread()
 
             self.error.emit("Error: Generation timed out (Local LLM is too slow).")
             self.finished.emit([])  # Unblock the UI
@@ -243,7 +363,8 @@ class AgentWorker(QObject):
         """Handles successful completion of the generation thread."""
         if self._is_timed_out:
             return
-        self.timeout_timer.stop()
+        if self.timeout_timer is not None:
+            self.timeout_timer.stop()
         self.finished.emit([])
         self.log.emit("Generation completed.")
 
@@ -256,59 +377,80 @@ class AgentWorker(QObject):
         """
         if self._is_timed_out:
             return
-        self.timeout_timer.stop()
+        if self.timeout_timer is not None:
+            self.timeout_timer.stop()
         self.error.emit(err_msg)
+
+    @staticmethod
+    def _unsupported_local_model_message(allowed_models: list[str]) -> str:
+        """Build a fail-closed message for non-catalog model switches."""
+        supported = ", ".join(allowed_models)
+        return (
+            "Only approved local assistant models can be selected. "
+            f"Supported models: {supported}."
+        )
 
     def reinitialize_agent(self, model_id: str):
         """Re-initializes the engine with a new model configuration.
 
-        Supports hot-swap between local, API, and Gemini backends based
-        on the provided ``model_id``.
+        Supports hot-swap between the approved local product models.
 
         Args:
-            model_id: Identifier or display name of the target model.
-                May contain hints like ``'gemini'`` or ``'local'`` for
-                backend routing.
+            model_id: Identifier or display name of the target local model.
 
         """
         logger.info("Worker switching model to: %s", model_id)
         self.log.emit(f"Switching to {model_id}...")
 
+        engine = self.engine
+        if engine is None:
+            logger.warning("Engine not initialized in switch_model")
+            return
+
+        old_inference_mode = engine.config.inference_mode
+        old_active_mode = engine.config.active_mode
+
         try:
-            # 1. Determine Inference Mode
-            if not self.engine:
-                logger.warning("Engine not initialized in switch_model")
+            allowed_models = LLMConfig.allowed_local_model_ids()
+            model_id_clean = str(model_id or "").strip()
+            if model_id_clean.lower() == "local":
+                new_model_id = engine.config.model_name
+                if new_model_id not in allowed_models:
+                    new_model_id = LLMConfig.default_local_model_id()
+            elif model_id_clean in allowed_models:
+                new_model_id = model_id_clean
+            else:
+                message = self._unsupported_local_model_message(allowed_models)
+                logger.warning("Rejected assistant model switch: %s", message)
+                self.error.emit(f"Switch Failed: {message}")
                 return
 
-            model_id_lower = model_id.lower()
-
-            if "gemini" in model_id_lower:
-                new_mode = "gemini"
-                # FIX: Only update model name if not generic mode switch "Gemini"
-                if model_id_lower != "gemini":
-                    self.engine.config.gemini_model_name = model_id
-
-            elif "local" in model_id_lower:
-                new_mode = "local"
-                # FIX: Only update model name if not generic mode switch "Local"
-                # Usually local models don't contain "local" in repo ID.
-                if model_id_lower != "local":
-                    # Note: LocalBackend uses config.model_name
-                    self.engine.config.model_name = model_id
-            else:
-                new_mode = "api"
-                self.engine.config.api_model_name = model_id
-
-            # 2. Update config and switch backend
-            self.engine.config.inference_mode = new_mode
-            self.engine.switch_backend(new_mode)
+            engine.config.apply_runtime_selection(
+                "local",
+                model_id=new_model_id,
+                ui_active_mode="local",
+            )
+            engine.switch_backend("local")
 
             # Persist change so Settings Dialog sees it
-            self.engine.config.save_to_file()
+            engine.config.save_to_file()
 
-            self.log.emit(f"Switched to {new_mode.capitalize()}")
-            logger.info("Model switch successful to %s", new_mode)
+            self.log.emit(f"Switched to local model: {new_model_id}")
+            logger.info("Model switch successful to local model %s", new_model_id)
 
         except Exception as e:
+            engine.config.inference_mode = old_inference_mode
+            engine.config.active_mode = old_active_mode
             logger.error("Failed to switch model: %s", e, exc_info=True)
             self.error.emit(f"Switch Failed: {e}")
+
+    def shutdown(self, wait_ms: int = GENERATION_THREAD_SHUTDOWN_WAIT_MS) -> None:
+        """Stop generation work and release the loaded local model backend."""
+        if self.timeout_timer is not None:
+            self.timeout_timer.stop()
+        self._cleanup_generation_thread(wait_ms=wait_ms)
+        if self.engine is not None:
+            close = getattr(self.engine, "close", None)
+            if callable(close):
+                close()
+            self.engine = None

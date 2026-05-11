@@ -53,6 +53,65 @@ def test_event_loader_raw_mismatch_truncates():
     assert new_events[1, -1] == 2
 
 
+def test_event_loader_empty_labels_raises():
+    """Empty labels should fail clearly instead of producing empty events."""
+    raw_mne = _generate_mne_raw()
+    raw = Raw("test.fif", raw_mne)
+    raw.set_event(np.array([[10, 0, 1]]), {"A": 1})
+
+    loader = EventLoader(raw)
+    loader.label_list = []
+
+    with pytest.raises(ValueError, match="Loaded labels are empty"):
+        loader.create_event({1: "A"})
+
+
+def test_event_loader_filtered_events_empty_raises():
+    """A selected event filter with no matches should fail clearly."""
+    raw_mne = _generate_mne_raw()
+    raw = Raw("test.fif", raw_mne)
+    raw.set_event(np.array([[10, 0, 1], [20, 0, 1]]), {"A": 1})
+
+    loader = EventLoader(raw)
+    loader.label_list = [1, 2]
+
+    with pytest.raises(
+        ValueError,
+        match="No EEG events matched the selected event filter",
+    ):
+        loader.create_event({1: "A", 2: "B"}, selected_event_ids=[999])
+
+
+def test_event_loader_string_labels_assign_sequential_event_ids():
+    """Categorical string labels should map to stable integer event IDs."""
+    raw_mne = _generate_mne_raw()
+    raw = Raw("test.fif", raw_mne)
+    raw.set_event(np.array([[10, 0, 1], [20, 0, 1], [30, 0, 1]]), {"A": 1})
+
+    loader = EventLoader(raw)
+    loader.label_list = ["left", "right", "left"]
+
+    events, event_id = loader.create_event({"left": "Left", "right": "Right"})
+
+    assert events[:, -1].tolist() == [1, 2, 1]
+    assert event_id == {"Left": 1, "Right": 2}
+
+
+def test_event_loader_numeric_string_labels_preserve_numeric_codes():
+    """Quoted numeric labels should still preserve their original codes."""
+    raw_mne = _generate_mne_raw()
+    raw = Raw("test.fif", raw_mne)
+    raw.set_event(np.array([[10, 0, 1], [20, 0, 1]]), {"A": 1})
+
+    loader = EventLoader(raw)
+    loader.label_list = ["769", "770"]
+
+    events, event_id = loader.create_event({"769": "Left", "770": "Right"})
+
+    assert events[:, -1].tolist() == [769, 770]
+    assert event_id == {"Left": 769, "Right": 770}
+
+
 def test_event_loader_epochs_fallback_ok():
     """Test that Epochs data still allows artificial timestamps (indices)."""
     raw_mne = _generate_mne_raw()

@@ -7,12 +7,19 @@ backend, enabling offline agent testing and development.
 from typing import Any
 
 from ..definitions.dataset_def import (
+    BaseApplyInterpretationTool,
     BaseAttachLabelsTool,
     BaseClearDatasetTool,
     BaseGenerateDatasetTool,
     BaseGetDatasetInfoTool,
     BaseListFilesTool,
     BaseLoadDataTool,
+    BasePreviewInterpretationTool,
+    BaseQueryStateTool,
+    BaseReloadInterpretationRecipeTool,
+    BaseSaveInterpretationRecipeTool,
+    BaseScanSourceTool,
+    BaseValidateInterpretationTool,
 )
 
 
@@ -61,6 +68,90 @@ class MockLoadDataTool(BaseLoadDataTool):
         if paths is None:
             return "Error: paths list is required"
         return f"Successfully loaded data from {len(paths)} sources: {paths}"
+
+
+class MockScanSourceTool(BaseScanSourceTool):
+    """Mock implementation of :class:`BaseScanSourceTool`."""
+
+    def execute(
+        self,
+        study: Any,
+        source_path: str | None = None,
+        source_hint: str = "auto",
+        **kwargs,
+    ) -> str:
+        if not source_path:
+            return "Error: source_path is required"
+        return f"Scanned {source_path} as {source_hint}; found 1 EEG file."
+
+
+class MockPreviewInterpretationTool(BasePreviewInterpretationTool):
+    """Mock implementation of :class:`BasePreviewInterpretationTool`."""
+
+    def execute(
+        self,
+        study: Any,
+        scan_id: str | None = None,
+        choices: dict[str, Any] | None = None,
+        **kwargs,
+    ) -> str:
+        target = scan_id or "latest scan"
+        return f"Interpretation preview ready for {target}."
+
+
+class MockValidateInterpretationTool(BaseValidateInterpretationTool):
+    """Mock implementation of :class:`BaseValidateInterpretationTool`."""
+
+    def execute(
+        self,
+        study: Any,
+        candidate_id: str | None = None,
+        **kwargs,
+    ) -> str:
+        target = candidate_id or "latest candidate"
+        return f"Interpretation validation for {target}: safe."
+
+
+class MockApplyInterpretationTool(BaseApplyInterpretationTool):
+    """Mock implementation of :class:`BaseApplyInterpretationTool`."""
+
+    def execute(
+        self,
+        study: Any,
+        candidate_id: str | None = None,
+        confirmed: bool = False,
+        **kwargs,
+    ) -> str:
+        target = candidate_id or "latest candidate"
+        marker = " with confirmation" if confirmed else ""
+        return f"Applied interpretation for {target}{marker}."
+
+
+class MockSaveInterpretationRecipeTool(BaseSaveInterpretationRecipeTool):
+    """Mock implementation of :class:`BaseSaveInterpretationRecipeTool`."""
+
+    def execute(
+        self,
+        study: Any,
+        recipe_path: str | None = None,
+        **kwargs,
+    ) -> str:
+        target = recipe_path or "default recipe path"
+        return f"Interpretation recipe saved to {target}."
+
+
+class MockReloadInterpretationRecipeTool(BaseReloadInterpretationRecipeTool):
+    """Mock implementation of :class:`BaseReloadInterpretationRecipeTool`."""
+
+    def execute(
+        self,
+        study: Any,
+        recipe_path: str | None = None,
+        **kwargs,
+    ) -> str:
+        if not recipe_path:
+            return "Error: recipe_path is required"
+        return f"Interpretation recipe reloaded from {recipe_path}."
 
 
 class MockAttachLabelsTool(BaseAttachLabelsTool):
@@ -122,6 +213,13 @@ class MockGetDatasetInfoTool(BaseGetDatasetInfoTool):
 
         """
         return "Dataset Info: 2 files loaded, 250Hz, 22 channels."
+
+
+class MockQueryStateTool(BaseQueryStateTool):
+    """Mock implementation of :class:`BaseQueryStateTool`."""
+
+    def execute(self, study: Any, **kwargs) -> str:
+        return "Application state snapshot ready."
 
 
 class MockGenerateDatasetTool(BaseGenerateDatasetTool):

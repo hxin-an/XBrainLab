@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMenu,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
 )
@@ -60,6 +61,7 @@ class EventFilterDialog(BaseDialog):
         last_selected = self.settings.value("last_selected_events", [], type=list)
         # Ensure it's a list of strings (QSettings might return list of QVariant)
         last_selected = [str(x) for x in last_selected]
+        has_overlap = any(str(name) in last_selected for name in self.event_names)
 
         self.list_widget = QListWidget()
         self.list_widget.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
@@ -70,8 +72,9 @@ class EventFilterDialog(BaseDialog):
             item = QListWidgetItem(str(name))
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
 
-            # Check if it was selected last time OR if no history (default all checked)
-            if not last_selected or str(name) in last_selected:
+            # Default to all checked when there is no history or the saved
+            # history does not overlap this dataset's event names.
+            if not last_selected or not has_overlap or str(name) in last_selected:
                 item.setCheckState(Qt.CheckState.Checked)
             else:
                 item.setCheckState(Qt.CheckState.Unchecked)
@@ -186,6 +189,14 @@ class EventFilterDialog(BaseDialog):
                 item = self.list_widget.item(i)
                 if item and item.checkState() == Qt.CheckState.Checked:
                     self.selected_names.append(item.text())
+
+            if not self.selected_names:
+                QMessageBox.warning(
+                    self,
+                    "No Events Selected",
+                    "Select at least one event to keep for synchronization.",
+                )
+                return
 
             # Save to settings
             self.settings.setValue("last_selected_events", self.selected_names)

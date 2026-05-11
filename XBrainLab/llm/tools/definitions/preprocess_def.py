@@ -25,7 +25,9 @@ class BaseStandardPreprocessTool(BaseTool):
     def description(self) -> str:
         return (
             "Apply standard EEG preprocessing pipeline (Bandpass, Notch, Resample, "
-            "Rereference, Normalize)."
+            "Rereference, Normalize). Use this for standard preprocessing or "
+            "general preprocess requests, even when bandpass frequencies are "
+            "specified."
         )
 
     @property
@@ -55,7 +57,7 @@ class BaseBandPassFilterTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Apply bandpass filter to the data."
+        return "Apply only a single bandpass filter to the data."
 
     @property
     def parameters(self) -> dict[str, Any]:

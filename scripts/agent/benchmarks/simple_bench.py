@@ -14,15 +14,13 @@ Modes:
                             validation)
 
 Usage:
-    poetry run benchmark-llm --model gemini
-    poetry run benchmark-llm --model gemini --mode all-visible
-    poetry run benchmark-llm --model qwen --dataset test.json
+    poetry run benchmark-llm --model phi --dataset test.json
+    poetry run benchmark-llm --model phi_fallback --mode all-visible
 """
 
 import argparse
 import csv
 import json
-import os
 import shutil
 import sys
 import tempfile
@@ -50,6 +48,10 @@ from XBrainLab.llm.agent.assembler import ContextAssembler
 from XBrainLab.llm.agent.parser import CommandParser
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.engine import LLMEngine
+from XBrainLab.llm.core.model_catalog import (
+    FALLBACK_LOCAL_MODEL_ID,
+    PRIMARY_LOCAL_MODEL_ID,
+)
 from XBrainLab.llm.pipeline_state import STAGE_CONFIG, PipelineStage
 from XBrainLab.llm.rag.config import RAGConfig
 from XBrainLab.llm.tools import AVAILABLE_TOOLS
@@ -512,23 +514,16 @@ def run_benchmark(
             sets; ``"all-visible"`` shows all 19 tools (legacy).
     """
 
-    # Model configs
+    # Model configs. Local entries must stay inside the product allow-list;
+    # Chinese model providers are blocked by policy.
     MODEL_CONFIGS = {
-        "qwen": {"model_name": "Qwen/Qwen2.5-7B-Instruct", "inference_mode": "local"},
-        "gemma": {"model_name": "google/gemma-2-2b-it", "inference_mode": "local"},
         "phi": {
-            "model_name": "microsoft/Phi-3.5-mini-instruct",
+            "model_name": PRIMARY_LOCAL_MODEL_ID,
             "inference_mode": "local",
         },
-        "mistral": {
-            "model_name": "mistralai/Mistral-Nemo-Instruct-2407",
+        "phi_fallback": {
+            "model_name": FALLBACK_LOCAL_MODEL_ID,
             "inference_mode": "local",
-        },
-        "gemini": {
-            "inference_mode": "gemini",
-            "gemini_model_name": os.environ.get(
-                "GEMINI_MODEL_NAME", "gemini-2.0-flash"
-            ),
         },
     }
 

@@ -7,6 +7,17 @@ Provides functions referenced in pyproject.toml for running specific subsets of 
 import os
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
+
+
+def configure_headless_ui_env():
+    """Set deterministic env vars for unattended/headless Qt test runs."""
+    matplotlib_cache_dir = Path(tempfile.gettempdir()) / "matplotlib-codex"
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    os.environ.setdefault("MPLBACKEND", "Agg")
+    os.environ.setdefault("MPLCONFIGDIR", str(matplotlib_cache_dir))
+    matplotlib_cache_dir.mkdir(parents=True, exist_ok=True)
 
 
 def run_pytest(args):
@@ -29,7 +40,8 @@ def backend():
 def ui():
     """Run UI unit tests."""
     print("Running UI Tests...")
-    run_pytest(["tests/unit/ui"])
+    configure_headless_ui_env()
+    run_pytest(["--capture=sys", "tests/unit/ui"])
 
 
 def run_llm_tests():

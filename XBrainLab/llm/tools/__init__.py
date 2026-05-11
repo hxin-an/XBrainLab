@@ -9,15 +9,27 @@ avoid pulling in heavy backend dependencies at package import time.
 """
 
 from .base import BaseTool
+from .mock.analysis_mock import (
+    MockEvaluateTool,
+    MockSaliencyTool,
+    MockVisualizeTool,
+)
 
 # Mock tools are lightweight — import eagerly for type checking
 from .mock.dataset_mock import (
+    MockApplyInterpretationTool,
     MockAttachLabelsTool,
     MockClearDatasetTool,
     MockGenerateDatasetTool,
     MockGetDatasetInfoTool,
     MockListFilesTool,
     MockLoadDataTool,
+    MockPreviewInterpretationTool,
+    MockQueryStateTool,
+    MockReloadInterpretationRecipeTool,
+    MockSaveInterpretationRecipeTool,
+    MockScanSourceTool,
+    MockValidateInterpretationTool,
 )
 from .mock.preprocess_mock import (
     MockBandPassFilterTool,
@@ -40,13 +52,25 @@ from .mock.ui_control_mock import MockSwitchPanelTool
 
 def _build_real_tools() -> list[BaseTool]:
     """Lazily import and instantiate real tool classes."""
+    from .real.analysis_real import (
+        RealEvaluateTool,
+        RealSaliencyTool,
+        RealVisualizeTool,
+    )
     from .real.dataset_real import (
+        RealApplyInterpretationTool,
         RealAttachLabelsTool,
         RealClearDatasetTool,
         RealGenerateDatasetTool,
         RealGetDatasetInfoTool,
         RealListFilesTool,
         RealLoadDataTool,
+        RealPreviewInterpretationTool,
+        RealQueryStateTool,
+        RealReloadInterpretationRecipeTool,
+        RealSaveInterpretationRecipeTool,
+        RealScanSourceTool,
+        RealValidateInterpretationTool,
     )
     from .real.preprocess_real import (
         RealBandPassFilterTool,
@@ -69,11 +93,22 @@ def _build_real_tools() -> list[BaseTool]:
     return [
         # Dataset
         RealListFilesTool(),
+        RealScanSourceTool(),
+        RealPreviewInterpretationTool(),
+        RealValidateInterpretationTool(),
+        RealApplyInterpretationTool(),
+        RealSaveInterpretationRecipeTool(),
+        RealReloadInterpretationRecipeTool(),
         RealLoadDataTool(),
         RealAttachLabelsTool(),
         RealClearDatasetTool(),
+        RealQueryStateTool(),
         RealGetDatasetInfoTool(),
         RealGenerateDatasetTool(),
+        # Analysis
+        RealEvaluateTool(),
+        RealVisualizeTool(),
+        RealSaliencyTool(),
         # Preprocess
         RealStandardPreprocessTool(),
         RealBandPassFilterTool(),
@@ -112,11 +147,22 @@ def get_all_tools(mode: str = "mock") -> list[BaseTool]:
         return [
             # Dataset
             MockListFilesTool(),
+            MockScanSourceTool(),
+            MockPreviewInterpretationTool(),
+            MockValidateInterpretationTool(),
+            MockApplyInterpretationTool(),
+            MockSaveInterpretationRecipeTool(),
+            MockReloadInterpretationRecipeTool(),
             MockLoadDataTool(),
             MockAttachLabelsTool(),
             MockClearDatasetTool(),
+            MockQueryStateTool(),
             MockGetDatasetInfoTool(),
             MockGenerateDatasetTool(),
+            # Analysis
+            MockEvaluateTool(),
+            MockVisualizeTool(),
+            MockSaliencyTool(),
             # Preprocess
             MockStandardPreprocessTool(),
             MockBandPassFilterTool(),

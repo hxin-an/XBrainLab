@@ -61,10 +61,17 @@ class TestStageBasedFiltering:
     def test_empty_stage_only_shows_allowed_tools(self):
         prompt = self._build(
             PipelineStage.EMPTY,
-            ["list_files", "load_data", "switch_panel", "apply_bandpass_filter"],
+            [
+                "list_files",
+                "load_data",
+                "scan_source",
+                "switch_panel",
+                "apply_bandpass_filter",
+            ],
         )
         assert "list_files" in prompt
-        assert "load_data" in prompt
+        assert "scan_source" in prompt
+        assert "load_data" not in prompt
         assert "switch_panel" in prompt
         assert "apply_bandpass_filter" not in prompt
 
@@ -102,14 +109,76 @@ class TestStageBasedFiltering:
     def test_trained_allows_retraining(self):
         prompt = self._build(
             PipelineStage.TRAINED,
-            ["set_model", "configure_training", "start_training", "switch_panel"],
+            [
+                "set_model",
+                "configure_training",
+                "start_training",
+                "evaluate",
+                "visualize",
+                "saliency",
+                "switch_panel",
+            ],
         )
         assert "set_model" in prompt
         assert "start_training" in prompt
+        assert "evaluate" in prompt
+        assert "visualize" in prompt
+        assert "saliency" in prompt
 
     def test_no_tools_registered_shows_fallback(self):
         prompt = self._build(PipelineStage.EMPTY, [])
         assert "No tools currently available" in prompt
+
+    def test_prompt_blocks_placeholder_paths_and_tool_substitution(self):
+        prompt = self._build(
+            PipelineStage.EMPTY,
+            ["scan_source", "preview_interpretation", "set_model"],
+        )
+        assert "Never invent placeholder paths" in prompt
+        assert "do not call a different tool" in prompt
+        assert "apply_standard_preprocess for" in prompt
+        assert "individual and group are training_mode" in prompt
+
+    def test_stage_filter_keeps_legacy_tools_out_of_primary_prompt(self):
+        prompt = self._build(
+            PipelineStage.DATA_LOADED,
+            [
+                "scan_source",
+                "preview_interpretation",
+                "attach_labels",
+                "apply_standard_preprocess",
+            ],
+        )
+        assert "scan_source" in prompt
+        assert "preview_interpretation" in prompt
+        assert "apply_standard_preprocess" in prompt
+        assert "attach_labels" not in prompt
+
+    def test_backend_policy_cannot_reintroduce_stage_filtered_legacy_tool(self):
+        registry = ToolRegistry()
+        for name in ("load_data", "scan_source", "switch_panel"):
+            registry.register(_FakeTool(name))
+        study = MagicMock()
+
+        with (
+            patch(
+                "XBrainLab.llm.agent.assembler.compute_pipeline_stage",
+                return_value=PipelineStage.EMPTY,
+            ),
+            patch(
+                "XBrainLab.llm.agent.assembler.enabled_tool_names",
+                return_value=["load_data", "scan_source", "switch_panel"],
+            ),
+            patch(
+                "XBrainLab.llm.agent.assembler.blocked_tool_reasons",
+                return_value={},
+            ),
+        ):
+            prompt = ContextAssembler(registry, study).build_system_prompt()
+
+        assert "scan_source" in prompt
+        assert "switch_panel" in prompt
+        assert "load_data" not in prompt
 
 
 class TestPromptContent:

@@ -1,4 +1,6 @@
 import contextlib
+import os
+import sys
 
 import pyvistaqt
 from PyQt6.QtCore import Qt, QTimer
@@ -57,6 +59,8 @@ class Saliency3DPlotWidget(QWidget):
         self.plot_layout.addWidget(lbl)
 
     def clear_plot(self):
+        plotter = self.plotter_widget
+
         # Remove existing widgets
         for i in reversed(range(self.plot_layout.count())):
             item = self.plot_layout.itemAt(i)
@@ -64,11 +68,18 @@ class Saliency3DPlotWidget(QWidget):
                 w = item.widget()
                 if w:
                     w.setParent(None)
+                    if w is not plotter:
+                        w.deleteLater()
 
         # Clean up plotter if exists
-        if self.plotter_widget:
-            with contextlib.suppress(Exception):
-                self.plotter_widget.close()
+        if plotter:
+            close_plotter = getattr(plotter, "close", None)
+            if callable(close_plotter):
+                with contextlib.suppress(Exception):
+                    close_plotter()
+            delete_later = getattr(plotter, "deleteLater", None)
+            if callable(delete_later):
+                delete_later()
             self.plotter_widget = None
 
     def update_plot(self, plan, trainer, method, absolute, eval_record):
@@ -101,6 +112,11 @@ class Saliency3DPlotWidget(QWidget):
                 self.show_error("No events found in dataset.")
                 return
             selected_event = events[0]
+
+            available, reason = self._interactive_3d_runtime_available()
+            if not available:
+                self.show_message(reason)
+                return
 
             # Instantiate QtInteractor for 3D plotting.
             self.plotter_widget = pyvistaqt.QtInteractor(self.plot_container)
@@ -140,3 +156,27 @@ class Saliency3DPlotWidget(QWidget):
             # or try to show error if widget is still valid
             if self.isVisible():
                 self.show_error(f"Error during plotting: {e}")
+
+    @staticmethod
+    def _interactive_3d_runtime_available() -> tuple[bool, str]:
+        """Return whether an interactive OpenGL Qt runtime is available."""
+        qt_platform = os.environ.get("QT_QPA_PLATFORM", "").strip().lower()
+        pyvista_offscreen = os.environ.get("PYVISTA_OFF_SCREEN", "").strip().lower()
+        if qt_platform in {"offscreen", "minimal"} or pyvista_offscreen in {
+            "1",
+            "true",
+            "yes",
+        }:
+            return (
+                False,
+                "3D rendering requires an interactive OpenGL desktop session. "
+                "Use the desktop launcher, or switch to Saliency Map, Spectrogram, "
+                "or Topographic Map in this headless environment.",
+            )
+        if sys.platform.startswith("linux") and not os.environ.get("DISPLAY"):
+            return (
+                False,
+                "3D rendering requires an interactive Linux display with OpenGL. "
+                "Use WSLg or a desktop session, or switch to a 2D saliency view.",
+            )
+        return True, ""

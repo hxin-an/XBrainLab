@@ -5,9 +5,9 @@ AI assistant integration, and debug tool execution.
 """
 
 import sys
-from typing import Any
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6 import sip
+from PyQt6.QtCore import QRect, QSettings, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication,
     QFrame,
@@ -33,7 +33,20 @@ from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
 from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
 from XBrainLab.ui.panels.training.panel import TrainingPanel
 from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
+from XBrainLab.ui.refresh_coordinator import refresh_after_navigation
 from XBrainLab.ui.styles.stylesheets import Stylesheets
+from XBrainLab.ui.window_placement import (
+    bounded_window_position,
+    choose_screen_for_rect,
+    default_window_size_for_available,
+    frame_extents_for,
+    is_window_geometry_usable,
+    screen_geometry_for,
+    startup_geometry_diagnostics_enabled,
+    startup_screen_hint,
+    usable_window_position_bounds,
+    widget_geometry_diagnostic_line,
+)
 
 
 class MainWindow(QMainWindow):
@@ -62,6 +75,11 @@ class MainWindow(QMainWindow):
     # Signals to control the worker
     sig_init_agent = pyqtSignal()
     sig_generate = pyqtSignal(str, str)
+    DEFAULT_WINDOW_SIZE = QSize(1280, 800)
+    MIN_WINDOW_SIZE = QSize(760, 520)
+    WINDOW_EDGE_MARGIN = 24
+    WINDOW_TOP_DRAG_MARGIN = 72
+    WINDOW_BOTTOM_MARGIN = 48
 
     def __init__(self, study):
         """Initialize the main window.
@@ -74,7 +92,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.study = study
         self.setWindowTitle("XBrainLab")
-        self.resize(1280, 800)
+        self.setMinimumSize(self.MIN_WINDOW_SIZE)
+        self._post_show_geometry_recovery_scheduled = False
+        self._restore_or_place_window()
 
         self.agent_initialized = False  # Flag for lazy loading
 
@@ -122,7 +142,10 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.top_bar)
 
         # 2. Services (Must be before panels to allow registration)
-        self.info_service = InfoPanelService(self.study)
+        self.info_service = InfoPanelService(
+            self.study,
+            observe_controller_events=False,
+        )
 
         # 3. Stacked Widget (Content Area)
         self.stack = QStackedWidget()
@@ -135,6 +158,222 @@ class MainWindow(QMainWindow):
         self.init_agent()
 
         logger.info("MainWindow initialized")
+
+    def _restore_or_place_window(self) -> None:
+        """Restore healthy saved geometry or recover to a draggable placement."""
+        settings = self._window_settings()
+        saved_geometry = settings.value("main_window/geometry", None)
+        self._log_startup_geometry_message(
+            "restore start saved_geometry=%s",
+            "yes" if saved_geometry is not None else "no",
+        )
+        restored = False
+        if saved_geometry is not None:
+            try:
+                restored = bool(self.restoreGeometry(saved_geometry))
+            except TypeError:
+                logger.debug("Ignoring invalid saved main-window geometry")
+        self._log_startup_geometry_message("restoreGeometry result=%s", restored)
+
+        target_screen = self._target_screen_for_window()
+        if restored and self._is_current_window_geometry_usable(target_screen):
+            self._log_startup_geometry("main_window.after_restore_healthy")
+            return
+
+        if saved_geometry is not None:
+            logger.info("Resetting unusable saved main-window geometry")
+            settings.remove("main_window/geometry")
+            self._log_startup_geometry_message("removed unusable saved geometry")
+
+        self._place_maximized_fallback(target_screen)
+        self._log_startup_geometry("main_window.after_maximized_fallback")
+
+    def _place_default_window(self, screen=None) -> None:
+        """Place a default-size window where the native title bar is reachable."""
+        target_screen = screen or self._target_screen_for_window()
+        self.resize(self._default_window_size_for_screen(target_screen))
+        self._center_window_on_available_screen(target_screen)
+
+    def _place_maximized_fallback(self, screen=None) -> None:
+        """Place the window on a valid screen, then start maximized."""
+        self.setWindowState(Qt.WindowState.WindowNoState)
+        self._place_default_window(screen)
+        self.setWindowState(Qt.WindowState.WindowMaximized)
+
+    @staticmethod
+    def _window_settings() -> QSettings:
+        """Return persistent UI shell settings."""
+        return QSettings("XBrainLab", "XBrainLab")
+
+    def _default_window_size_for_screen(self, screen=None) -> QSize:
+        """Scale the initial size down while leaving room to drag the title bar."""
+        return default_window_size_for_available(
+            self.DEFAULT_WINDOW_SIZE,
+            self.MIN_WINDOW_SIZE,
+            self._available_screen_geometry(screen),
+            edge_margin=self.WINDOW_EDGE_MARGIN,
+            top_drag_margin=self.WINDOW_TOP_DRAG_MARGIN,
+            bottom_margin=self.WINDOW_BOTTOM_MARGIN,
+        )
+
+    def _available_screen_geometry(self, screen=None) -> QRect:
+        """Return the usable geometry for a selected screen."""
+        target_screen = screen or self._target_screen_for_window()
+        return screen_geometry_for(target_screen, self.DEFAULT_WINDOW_SIZE).available
+
+    def _screen_geometry(self, screen=None) -> QRect:
+        """Return full screen geometry for frame-aware placement."""
+        target_screen = screen or self._target_screen_for_window()
+        return screen_geometry_for(target_screen, self.DEFAULT_WINDOW_SIZE).full
+
+    def _target_screen_for_window(self):
+        """Choose a target screen from frame/client geometry, startup hint, cursor."""
+        candidate = self._window_rect_for_screen_choice()
+        startup_hint = startup_screen_hint()
+        if not self.isVisible() and self._is_unshown_default_rect(candidate):
+            candidate = None
+        return choose_screen_for_rect(candidate, preferred_screen=startup_hint)
+
+    def _window_rect_for_screen_choice(self) -> QRect | None:
+        """Return the best current rectangle for screen selection."""
+        frame = self.frameGeometry()
+        if frame.isValid():
+            return frame
+        current = self.geometry()
+        if current.isValid():
+            return current
+        return None
+
+    def _is_unshown_default_rect(self, candidate: QRect | None) -> bool:
+        """Return whether a hidden widget rect is only Qt's default origin."""
+        if candidate is None or not candidate.isValid():
+            return False
+        return candidate.x() == 0 and candidate.y() == 0
+
+    def _center_window_on_available_screen(self, screen=None) -> None:
+        """Center the current window rectangle on the available screen."""
+        target_screen = screen or self._target_screen_for_window()
+        available = self._available_screen_geometry(target_screen)
+        screen_geometry = self._screen_geometry(target_screen)
+        width = min(self.width(), available.width())
+        height = min(self.height(), available.height())
+        x = available.left() + max((available.width() - width) // 2, 0)
+        y = available.top() + max((available.height() - height) // 2, 0)
+        x, y = self._bounded_window_position(
+            available,
+            width,
+            height,
+            x,
+            y,
+            screen_geometry=screen_geometry,
+        )
+        self.setGeometry(QRect(x, y, width, height))
+
+    def _clamp_window_to_available_screen(self) -> None:
+        """Move/resize the window into the usable screen title-bar bounds."""
+        if self.isMaximized() or self.isFullScreen():
+            return
+
+        target_screen = self._target_screen_for_window()
+        available = self._available_screen_geometry(target_screen)
+        screen_geometry = self._screen_geometry(target_screen)
+        current = self.geometry()
+        width = min(
+            max(current.width(), self.MIN_WINDOW_SIZE.width()),
+            available.width(),
+        )
+        height = min(
+            max(current.height(), self.MIN_WINDOW_SIZE.height()),
+            available.height(),
+        )
+        x, y = self._bounded_window_position(
+            available,
+            width,
+            height,
+            current.x(),
+            current.y(),
+            screen_geometry=screen_geometry,
+        )
+        self.setGeometry(QRect(x, y, width, height))
+
+    def _is_current_window_geometry_usable(self, screen=None) -> bool:
+        """Return whether current geometry is safe to restore or persist."""
+        if self.isFullScreen():
+            return False
+        if self.isMaximized():
+            return True
+
+        target_screen = screen or self._target_screen_for_window()
+        available = self._available_screen_geometry(target_screen)
+        screen_geometry = self._screen_geometry(target_screen)
+        current = self.geometry()
+        frame = self.frameGeometry()
+        return is_window_geometry_usable(
+            current,
+            available_geometry=available,
+            screen_geometry=screen_geometry,
+            frame_geometry=frame,
+            min_size=self.MIN_WINDOW_SIZE,
+            edge_margin=self.WINDOW_EDGE_MARGIN,
+            top_drag_margin=self.WINDOW_TOP_DRAG_MARGIN,
+            bottom_margin=self.WINDOW_BOTTOM_MARGIN,
+        )
+
+    def _bounded_window_position(
+        self,
+        available: QRect,
+        width: int,
+        height: int,
+        preferred_x: int,
+        preferred_y: int,
+        *,
+        screen_geometry: QRect | None = None,
+    ) -> tuple[int, int]:
+        """Clamp a window position while preserving drag-safe top margins."""
+        frame_extents = frame_extents_for(self.geometry(), self.frameGeometry())
+        return bounded_window_position(
+            available,
+            width,
+            height,
+            preferred_x,
+            preferred_y,
+            edge_margin=self.WINDOW_EDGE_MARGIN,
+            top_drag_margin=self.WINDOW_TOP_DRAG_MARGIN,
+            bottom_margin=self.WINDOW_BOTTOM_MARGIN,
+            screen_geometry=screen_geometry,
+            frame_extents=frame_extents,
+        )
+
+    def _usable_window_position_bounds(
+        self,
+        available: QRect,
+        width: int,
+        height: int,
+        *,
+        screen_geometry: QRect | None = None,
+    ) -> tuple[int, int, int, int]:
+        """Return screen bounds that leave room for native window dragging."""
+        frame_extents = frame_extents_for(self.geometry(), self.frameGeometry())
+        return usable_window_position_bounds(
+            available,
+            width,
+            height,
+            edge_margin=self.WINDOW_EDGE_MARGIN,
+            top_drag_margin=self.WINDOW_TOP_DRAG_MARGIN,
+            bottom_margin=self.WINDOW_BOTTOM_MARGIN,
+            screen_geometry=screen_geometry,
+            frame_extents=frame_extents,
+        )
+
+    def _log_startup_geometry(self, label: str) -> None:
+        """Log current geometry only when startup diagnostics are enabled."""
+        if startup_geometry_diagnostics_enabled():
+            logger.info(widget_geometry_diagnostic_line(label, self))
+
+    def _log_startup_geometry_message(self, message: str, *args: object) -> None:
+        """Log a startup diagnostic message without affecting normal UI."""
+        if startup_geometry_diagnostics_enabled():
+            logger.info("startup geometry: " + message, *args)
 
     def apply_vscode_theme(self):
         """Apply the VS Code dark theme stylesheet to the main window."""
@@ -165,8 +404,8 @@ class MainWindow(QMainWindow):
     def switch_page(self, index):
         """Switch the active panel in the stacked widget.
 
-        Updates button check states and calls ``update_panel()`` on the
-        target panel if available.
+        Updates button check states and delegates target-panel refresh to the
+        UI refresh coordinator.
 
         Args:
             index: Zero-based index of the panel to display.
@@ -176,21 +415,7 @@ class MainWindow(QMainWindow):
         for i, btn in enumerate(self.nav_btns):
             btn.setChecked(i == index)
 
-        # Unified Update Logic: Always call update_panel() on result
-        target_panel: Any = None
-        if index == 0 and hasattr(self, "dataset_panel"):
-            target_panel = self.dataset_panel
-        elif index == 1 and hasattr(self, "preprocess_panel"):
-            target_panel = self.preprocess_panel
-        elif index == 2 and hasattr(self, "training_panel"):
-            target_panel = self.training_panel
-        elif index == 3 and hasattr(self, "evaluation_panel"):
-            target_panel = self.evaluation_panel
-        elif index == 4 and hasattr(self, "visualization_panel"):
-            target_panel = self.visualization_panel
-
-        if target_panel and hasattr(target_panel, "update_panel"):
-            target_panel.update_panel()
+        refresh_after_navigation(self, index)
 
     def init_panels(self):
         """Initializes and adds all main functional panels to the stacked widget.
@@ -271,7 +496,7 @@ class MainWindow(QMainWindow):
             # Ideally via chat_controller but for Direct UI debug feedback:
             self.agent_manager.chat_panel.append_message(
                 "System",
-                f"Tool '{tool_name}' executed.\nResult: {result}",
+                "Diagnostic action completed. Details were saved to logs.",
             )
             # Ensure we scroll to bottom
             self.agent_manager.chat_panel._scroll_to_bottom()
@@ -292,8 +517,55 @@ class MainWindow(QMainWindow):
 
     def update_info_panel(self):
         """Refresh the aggregate info panel if it exists."""
+        info_service = getattr(self, "info_service", None)
+        notify_all = getattr(info_service, "notify_all", None)
+        if callable(notify_all):
+            notify_all()
+            return
+
         if hasattr(self, "info_panel"):
             self.info_panel.update_info()
+
+    def showEvent(self, event):  # noqa: N802
+        """Clamp restored geometry once the window has a native frame."""
+        super().showEvent(event)
+        if not self._post_show_geometry_recovery_scheduled:
+            self._post_show_geometry_recovery_scheduled = True
+            self._log_startup_geometry("main_window.show_event")
+            QTimer.singleShot(
+                0,
+                lambda: self._recover_unusable_window_geometry_if_alive(
+                    "post_show_0ms"
+                ),
+            )
+            QTimer.singleShot(
+                250,
+                lambda: self._recover_unusable_window_geometry_if_alive(
+                    "post_show_250ms"
+                ),
+            )
+
+    def _recover_unusable_window_geometry_if_alive(self, recovery_label: str) -> None:
+        """Run delayed recovery only while the underlying Qt window still exists."""
+        if sip.isdeleted(self):
+            return
+        self._recover_unusable_window_geometry(recovery_label)
+
+    def _recover_unusable_window_geometry(
+        self,
+        recovery_label: str = "post_show",
+    ) -> None:
+        """Recenter after show if the window manager produced bad geometry."""
+        self._log_startup_geometry(f"main_window.{recovery_label}.before")
+        if self._is_current_window_geometry_usable():
+            self._log_startup_geometry_message("%s usable=True", recovery_label)
+            return
+        logger.info(
+            "Recovering unusable main-window geometry after show (%s)",
+            recovery_label,
+        )
+        self._place_maximized_fallback()
+        self._log_startup_geometry(f"main_window.{recovery_label}.after")
 
     def closeEvent(self, event):  # noqa: N802
         """Handle application close by cleaning up the agent manager.
@@ -303,6 +575,16 @@ class MainWindow(QMainWindow):
 
         """
         logger.info("Closing application...")
+        if not self.isMaximized() and not self.isFullScreen():
+            settings = self._window_settings()
+            if self._is_current_window_geometry_usable():
+                settings.setValue(
+                    "main_window/geometry",
+                    self.saveGeometry(),
+                )
+            else:
+                logger.info("Discarding unusable main-window geometry on close")
+                settings.remove("main_window/geometry")
         if hasattr(self, "agent_manager"):
             self.agent_manager.close()
         super().closeEvent(event)

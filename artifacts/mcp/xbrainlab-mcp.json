@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "default-server": {
+      "type": "stdio",
+      "command": "bash",
+      "args": [
+        "scripts/dev/run_mcp_server_for_client.sh"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
+    "xbrainlab-windows-wsl": {
+      "type": "stdio",
+      "command": "wsl.exe",
+      "args": [
+        "bash",
+        "scripts/dev/run_mcp_server_for_client.sh"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  }
+}

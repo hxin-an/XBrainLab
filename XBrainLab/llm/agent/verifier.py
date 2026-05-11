@@ -158,17 +158,214 @@ class TrainingParamValidator(ValidatorStrategy):
         return VerificationResult(is_valid=True)
 
 
+class ToolSchemaValidator(ValidatorStrategy):
+    """Validate tool parameters against the registered JSON-like schema."""
+
+    def __init__(self, tool_schemas: dict[str, dict[str, Any]]):
+        self.tool_schemas = tool_schemas
+
+    def validate(self, name: str, params: dict[str, Any]) -> VerificationResult:
+        schema = self.tool_schemas.get(name)
+        if schema is None:
+            return VerificationResult(
+                is_valid=False,
+                error_message=f"Tool is not registered: {name}",
+            )
+
+        missing_result = self._validate_required(name, params, schema)
+        if not missing_result.is_valid:
+            return missing_result
+
+        properties = schema.get("properties", {})
+        if not isinstance(properties, dict):
+            return VerificationResult(is_valid=True)
+
+        for param_name, value in params.items():
+            property_schema = properties.get(param_name)
+            if not isinstance(property_schema, dict):
+                if not self._additional_properties_allowed(schema):
+                    return VerificationResult(
+                        is_valid=False,
+                        error_message=(f"Unknown parameter for {name}: {param_name}"),
+                    )
+                continue
+
+            result = self._validate_value(param_name, value, property_schema)
+            if not result.is_valid:
+                return result
+
+        return VerificationResult(is_valid=True)
+
+    @staticmethod
+    def _validate_required(
+        name: str,
+        params: dict[str, Any],
+        schema: dict[str, Any],
+    ) -> VerificationResult:
+        required = schema.get("required", [])
+        if not isinstance(required, list):
+            return VerificationResult(is_valid=True)
+        missing = [field for field in required if field not in params]
+        if missing:
+            return VerificationResult(
+                is_valid=False,
+                error_message=(
+                    f"Missing required parameter(s) for {name}: "
+                    f"{', '.join(str(field) for field in missing)}"
+                ),
+            )
+        return VerificationResult(is_valid=True)
+
+    @classmethod
+    def _validate_value(
+        cls,
+        param_name: str,
+        value: Any,
+        property_schema: dict[str, Any],
+    ) -> VerificationResult:
+        enum_values = property_schema.get("enum")
+        if isinstance(enum_values, list) and not _json_enum_matches(
+            value,
+            enum_values,
+        ):
+            return VerificationResult(
+                is_valid=False,
+                error_message=(
+                    f"{param_name} must be one of {enum_values}, got {value!r}"
+                ),
+            )
+
+        expected_type = property_schema.get("type")
+        type_result = cls._validate_type(param_name, value, expected_type)
+        if not type_result.is_valid:
+            return type_result
+
+        if isinstance(value, dict):
+            nested_result = cls._validate_object(param_name, value, property_schema)
+            if not nested_result.is_valid:
+                return nested_result
+
+        if isinstance(value, list):
+            item_schema = property_schema.get("items")
+            if isinstance(item_schema, dict):
+                for index, item in enumerate(value):
+                    item_result = cls._validate_value(
+                        f"{param_name}[{index}]",
+                        item,
+                        item_schema,
+                    )
+                    if not item_result.is_valid:
+                        return item_result
+
+        return VerificationResult(is_valid=True)
+
+    @classmethod
+    def _validate_object(
+        cls,
+        param_name: str,
+        value: dict[str, Any],
+        property_schema: dict[str, Any],
+    ) -> VerificationResult:
+        required = property_schema.get("required", [])
+        if isinstance(required, list):
+            missing = [field for field in required if field not in value]
+            if missing:
+                return VerificationResult(
+                    is_valid=False,
+                    error_message=(
+                        f"Missing required parameter(s) for {param_name}: "
+                        f"{', '.join(str(field) for field in missing)}"
+                    ),
+                )
+
+        nested_properties = property_schema.get("properties", {})
+        if not isinstance(nested_properties, dict):
+            return VerificationResult(is_valid=True)
+
+        for key, nested_value in value.items():
+            nested_schema = nested_properties.get(key)
+            if not isinstance(nested_schema, dict):
+                additional = property_schema.get("additionalProperties")
+                if isinstance(additional, dict):
+                    extra_result = cls._validate_value(
+                        f"{param_name}.{key}",
+                        nested_value,
+                        additional,
+                    )
+                    if not extra_result.is_valid:
+                        return extra_result
+                    continue
+                if not cls._additional_properties_allowed(property_schema):
+                    return VerificationResult(
+                        is_valid=False,
+                        error_message=(f"Unknown parameter for {param_name}: {key}"),
+                    )
+                continue
+            result = cls._validate_value(
+                f"{param_name}.{key}",
+                nested_value,
+                nested_schema,
+            )
+            if not result.is_valid:
+                return result
+        return VerificationResult(is_valid=True)
+
+    @staticmethod
+    def _additional_properties_allowed(schema: dict[str, Any]) -> bool:
+        additional = schema.get("additionalProperties")
+        if isinstance(additional, bool):
+            return additional
+        if isinstance(additional, dict):
+            return True
+        return not isinstance(schema.get("properties"), dict)
+
+    @staticmethod
+    def _validate_type(
+        param_name: str,
+        value: Any,
+        expected_type: Any,
+    ) -> VerificationResult:
+        if expected_type is None:
+            return VerificationResult(is_valid=True)
+
+        expected = (
+            [str(item) for item in expected_type]
+            if isinstance(expected_type, list)
+            else [str(expected_type)]
+        )
+        if any(_json_type_matches(value, item) for item in expected):
+            return VerificationResult(is_valid=True)
+        return VerificationResult(
+            is_valid=False,
+            error_message=(
+                f"{param_name} must be {', '.join(expected)}, "
+                f"got {type(value).__name__}"
+            ),
+        )
+
+
 class PathExistsValidator(ValidatorStrategy):
     """Reject file/directory tool calls where path does not exist."""
 
-    TOOLS: ClassVar[set[str]] = {"load_data", "list_files"}
+    TOOLS: ClassVar[set[str]] = {
+        "load_data",
+        "list_files",
+        "scan_source",
+        "reload_interpretation_recipe",
+    }
 
     def validate(self, name: str, params: dict[str, Any]) -> VerificationResult:
         if name not in self.TOOLS:
             return VerificationResult(is_valid=True)
 
         # Try common parameter names for paths
-        path = params.get("file_path") or params.get("directory") or params.get("path")
+        path = (
+            params.get("file_path")
+            or params.get("directory")
+            or params.get("path")
+            or params.get("source_path")
+            or params.get("recipe_path")
+        )
         if path and isinstance(path, str) and not os.path.exists(path):
             return VerificationResult(
                 is_valid=False,
@@ -177,12 +374,215 @@ class PathExistsValidator(ValidatorStrategy):
         return VerificationResult(is_valid=True)
 
 
+class PlaceholderArgumentValidator(ValidatorStrategy):
+    """Reject tool calls where the model invented a placeholder path."""
+
+    PATH_KEYS: ClassVar[set[str]] = {
+        "directory",
+        "file_path",
+        "path",
+        "paths",
+        "recipe_path",
+        "source_path",
+    }
+    PATH_TOOLS: ClassVar[set[str]] = {
+        "attach_labels",
+        "list_files",
+        "load_data",
+        "reload_interpretation_recipe",
+        "scan_source",
+    }
+    PLACEHOLDER_MARKERS: ClassVar[tuple[str, ...]] = (
+        "/path/to/",
+        "path_to_",
+        "<path",
+        "{path",
+        "your/eeg",
+        "your_eeg",
+        "please provide",
+        "provide the absolute path",
+        "path/to/your",
+        "your/recipe",
+        "placeholder",
+        "replace_with",
+        "replace/",
+        "missing saved",
+        "current replacement",
+        "replacement eeg file path",
+        "replacement label",
+        "path/name",
+    )
+    PLACEHOLDER_EXACT: ClassVar[set[str]] = {
+        "",
+        "empty",
+        "path",
+        "path_to_dataset",
+        "path_to_eeg_dataset",
+        "path_to_recipe.json",
+    }
+
+    def validate(self, name: str, params: dict[str, Any]) -> VerificationResult:
+        if name == "preview_interpretation":
+            placeholder = self._first_preview_remap_placeholder(params)
+            if placeholder is not None:
+                return VerificationResult(
+                    is_valid=False,
+                    error_message=(
+                        "Required remap target is missing. Provide the saved "
+                        "recipe item and current replacement remap target, got "
+                        f"placeholder {placeholder!r}."
+                    ),
+                )
+        if name not in self.PATH_TOOLS:
+            return VerificationResult(is_valid=True)
+
+        for param_name, value in params.items():
+            if param_name in self.PATH_KEYS:
+                placeholder = self._first_placeholder(value)
+                if placeholder is not None:
+                    label = self._path_label(param_name)
+                    return VerificationResult(
+                        is_valid=False,
+                        error_message=(
+                            f"Required {label} must be an actual path provided "
+                            f"by the user, got placeholder {placeholder!r}."
+                        ),
+                    )
+                relative_path = self._first_relative_required_path(param_name, value)
+                if relative_path:
+                    label = self._path_label(param_name)
+                    return VerificationResult(
+                        is_valid=False,
+                        error_message=(
+                            f"Required {label} must be an actual absolute path "
+                            f"provided by the user, got relative path "
+                            f"{relative_path!r}."
+                        ),
+                    )
+            elif name == "attach_labels" and param_name == "mapping":
+                placeholder = self._first_placeholder(value)
+                if placeholder is not None:
+                    return VerificationResult(
+                        is_valid=False,
+                        error_message=(
+                            "Label mapping must use actual paths provided by "
+                            f"the user, got placeholder {placeholder!r}."
+                        ),
+                    )
+
+        return VerificationResult(is_valid=True)
+
+    @classmethod
+    def _first_preview_remap_placeholder(cls, params: dict[str, Any]) -> str | None:
+        choices = params.get("choices")
+        if not isinstance(choices, dict):
+            return None
+        for key in ("eeg_file_remap", "label_carrier_remap"):
+            remap = choices.get(key)
+            if not isinstance(remap, dict):
+                continue
+            placeholder = cls._first_placeholder(remap)
+            if placeholder is not None:
+                return placeholder
+        return None
+
+    @classmethod
+    def _first_placeholder(cls, value: Any) -> str | None:
+        if isinstance(value, str):
+            return value if cls._looks_like_placeholder_path(value) else None
+        if isinstance(value, list):
+            for item in value:
+                found = cls._first_placeholder(item)
+                if found:
+                    return found
+        if isinstance(value, dict):
+            for item in value.values():
+                found = cls._first_placeholder(item)
+                if found:
+                    return found
+        return None
+
+    @classmethod
+    def _looks_like_placeholder_path(cls, value: str) -> bool:
+        text = value.strip().strip("\"'").lower()
+        if text in cls.PLACEHOLDER_EXACT:
+            return True
+        return any(marker in text for marker in cls.PLACEHOLDER_MARKERS)
+
+    @classmethod
+    def _first_relative_required_path(
+        cls,
+        param_name: str,
+        value: Any,
+    ) -> str | None:
+        if param_name not in {"recipe_path", "source_path"}:
+            return None
+        if isinstance(value, str):
+            text = value.strip().strip("\"'")
+            if text and not cls._is_absolute_user_path(text):
+                return text
+            return None
+        if isinstance(value, list):
+            for item in value:
+                found = cls._first_relative_required_path(param_name, item)
+                if found:
+                    return found
+        return None
+
+    @staticmethod
+    def _is_absolute_user_path(value: str) -> bool:
+        return os.path.isabs(value) or (
+            len(value) >= 3
+            and value[1] == ":"
+            and value[2] in {"\\", "/"}
+            and value[0].isalpha()
+        )
+
+    @staticmethod
+    def _path_label(param_name: str) -> str:
+        if param_name == "paths":
+            return "file path"
+        return param_name.replace("_", " ")
+
+
 # Default validators applied to every tool call
 DEFAULT_VALIDATORS: list[ValidatorStrategy] = [
     FrequencyRangeValidator(),
     TrainingParamValidator(),
+    PlaceholderArgumentValidator(),
     PathExistsValidator(),
 ]
+
+
+def _json_type_matches(value: Any, expected_type: str) -> bool:
+    """Return whether a Python value matches a JSON-schema primitive type."""
+    if expected_type == "string":
+        return isinstance(value, str)
+    if expected_type == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if expected_type == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected_type == "boolean":
+        return isinstance(value, bool)
+    if expected_type == "array":
+        return isinstance(value, list)
+    if expected_type == "object":
+        return isinstance(value, dict)
+    if expected_type == "null":
+        return value is None
+    return True
+
+
+def _json_enum_matches(value: Any, enum_values: list[Any]) -> bool:
+    """Return whether a value matches an enum, accepting case variants."""
+    if value in enum_values:
+        return True
+    if isinstance(value, str):
+        lowered = value.lower()
+        return any(
+            isinstance(item, str) and item.lower() == lowered for item in enum_values
+        )
+    return False
 
 
 class VerificationLayer:
@@ -204,6 +604,7 @@ class VerificationLayer:
         self,
         confidence_threshold: float = 0.5,
         validators: list[ValidatorStrategy] | None = None,
+        tool_schemas: dict[str, dict[str, Any]] | None = None,
     ):
         """Initializes the VerificationLayer.
 
@@ -212,10 +613,16 @@ class VerificationLayer:
                 tool call to be considered valid. Defaults to ``0.5``.
             validators: Optional list of ``ValidatorStrategy``
                 instances.  Defaults to :data:`DEFAULT_VALIDATORS`.
+            tool_schemas: Optional registered tool schemas used to validate
+                required fields, JSON-like parameter types, enums, and
+                unknown tool names before execution.
 
         """
         self.confidence_threshold = confidence_threshold
-        self.validators = (
+        self.validators = []
+        if tool_schemas is not None:
+            self.validators.append(ToolSchemaValidator(tool_schemas))
+        self.validators.extend(
             validators if validators is not None else list(DEFAULT_VALIDATORS)
         )
 

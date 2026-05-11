@@ -66,6 +66,27 @@ class TestAgentWorkerCleanup:
         mock_thread.requestInterruption.assert_called_once()
         assert worker.generation_thread is None
 
+    def test_shutdown_waits_for_generation_and_closes_engine(self):
+        from XBrainLab.llm.agent.worker import AgentWorker
+
+        worker = AgentWorker()
+        engine = MagicMock()
+        worker.engine = engine
+        worker.timeout_timer = MagicMock()
+        mock_thread = MagicMock()
+        mock_thread.isRunning.return_value = True
+        mock_thread.wait.return_value = True
+        worker.generation_thread = mock_thread
+
+        worker.shutdown(wait_ms=250)
+
+        worker.timeout_timer.stop.assert_called_once()
+        mock_thread.requestInterruption.assert_called_once()
+        mock_thread.wait.assert_called_once_with(250)
+        engine.close.assert_called_once()
+        assert worker.engine is None
+        assert worker.generation_thread is None
+
 
 class TestAgentWorkerGenerate:
     """Cover generate_from_messages paths."""
@@ -96,7 +117,7 @@ class TestAgentWorkerGenerate:
         worker = AgentWorker()
         worker.engine = MagicMock()
         worker.engine.config = MagicMock()
-        worker.engine.config.inference_mode = "gemini"
+        worker.engine.config.inference_mode = "local"
         worker.engine.config.timeout = 60
         worker.log = MagicMock()
         worker.chunk_received = MagicMock()
@@ -120,7 +141,7 @@ class TestAgentWorkerGenerate:
 
         worker = AgentWorker()
         worker.engine = MagicMock()
-        worker.engine.config.inference_mode = "gemini"
+        worker.engine.config.inference_mode = "local"
         worker.engine.config.timeout = 60
         worker.log = MagicMock()
         worker.chunk_received = MagicMock()
@@ -128,8 +149,8 @@ class TestAgentWorkerGenerate:
         worker.error = MagicMock()
 
         fresh = MagicMock()
-        fresh.inference_mode = "gemini"
-        fresh.active_mode = "gemini"
+        fresh.inference_mode = "local"
+        fresh.active_mode = "local"
         mock_config.load_from_file.return_value = fresh
 
         mock_gt_cls.return_value = MagicMock()
@@ -181,28 +202,34 @@ class TestAgentWorkerReinitialize:
         worker.reinitialize_agent("gemini")
         # Should not crash, just log warning and return
 
-    def test_gemini_model_switch(self):
+    def test_local_catalog_model_switch(self):
         from XBrainLab.llm.agent.worker import AgentWorker
+        from XBrainLab.llm.core.config import LLMConfig
 
         worker = AgentWorker()
         worker.engine = MagicMock()
-        worker.engine.config = MagicMock()
+        worker.engine.config = LLMConfig()
+        worker.engine.config.save_to_file = MagicMock()
         worker.log = MagicMock()
         worker.error = MagicMock()
 
-        worker.reinitialize_agent("gemini-2.0-flash")
-        worker.engine.switch_backend.assert_called_with("gemini")
-        assert worker.engine.config.gemini_model_name == "gemini-2.0-flash"
+        target = LLMConfig.fallback_local_model_id()
+        worker.reinitialize_agent(target)
+        worker.engine.switch_backend.assert_called_with("local")
+        assert worker.engine.config.model_name == target
 
-    def test_gemini_generic_switch(self):
+    def test_legacy_remote_switch_is_rejected(self):
         from XBrainLab.llm.agent.worker import AgentWorker
+        from XBrainLab.llm.core.config import LLMConfig
 
         worker = AgentWorker()
         worker.engine = MagicMock()
-        worker.engine.config = MagicMock()
+        worker.engine.config = LLMConfig()
+        worker.engine.config.save_to_file = MagicMock()
         worker.log = MagicMock()
         worker.error = MagicMock()
 
-        # generic "gemini" should NOT set gemini_model_name
         worker.reinitialize_agent("gemini")
-        worker.engine.switch_backend.assert_called_with("gemini")
+        worker.engine.switch_backend.assert_not_called()
+        worker.engine.config.save_to_file.assert_not_called()
+        worker.error.emit.assert_called_once()

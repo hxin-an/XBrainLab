@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -10,12 +11,6 @@ import pytest
 # ============ Saliency3DEngine ============
 
 
-@pytest.mark.skipif(
-    True,
-    reason="Ordering-dependent: passes in isolation but VTK/Qt global state from "
-    "prior tests causes segfault-like import failures. Run separately with "
-    "pytest tests/unit/ui/test_visualization.py::TestSaliency3DEngine",
-)
 class TestSaliency3DEngine:
     def test_creates(self):
         """Engine creates with default scale and begins async model loading."""
@@ -108,6 +103,48 @@ class TestSaliencyMapWidget:
             pytest.fail("update_plot raised unexpected error")
         except Exception:
             pass  # matplotlib rendering backend errors are acceptable
+
+    def test_close_releases_figure_and_canvas(self, qtbot):
+        from PyQt6.QtGui import QCloseEvent
+
+        from XBrainLab.ui.panels.visualization.saliency_views import base_saliency_view
+        from XBrainLab.ui.panels.visualization.saliency_views.map_view import (
+            SaliencyMapWidget,
+        )
+
+        w = SaliencyMapWidget()
+        qtbot.addWidget(w)
+        fig = w.fig
+
+        with patch.object(base_saliency_view.plt, "close") as close_figure:
+            w.closeEvent(QCloseEvent())
+
+        close_figure.assert_called_once_with(fig)
+        assert w.fig is None
+        assert w.canvas is None
+
+    def test_replace_figure_releases_previous_canvas(self, qtbot):
+        from matplotlib.figure import Figure
+
+        from XBrainLab.ui.panels.visualization.saliency_views import base_saliency_view
+        from XBrainLab.ui.panels.visualization.saliency_views.map_view import (
+            SaliencyMapWidget,
+        )
+
+        w = SaliencyMapWidget()
+        qtbot.addWidget(w)
+        old_fig = w.fig
+        old_canvas = w.canvas
+        assert old_canvas is not None
+        new_fig = Figure(figsize=(5, 4), dpi=100)
+
+        with patch.object(base_saliency_view.plt, "close") as close_figure:
+            w._replace_figure(new_fig)
+
+        close_figure.assert_called_once_with(old_fig)
+        assert w.fig is new_fig
+        assert w.canvas is not old_canvas
+        assert old_canvas.parent() is None
 
 
 # ============ SaliencySpectrogramWidget ============
@@ -213,3 +250,81 @@ class TestSaliency3DPlotWidget:
             w.clear_plot()
             # Calling twice should be fine
             w.clear_plot()
+
+    def test_clear_plot_schedules_child_widgets_for_deletion(self, qtbot):
+        with patch(
+            "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
+        ):
+            from PyQt6.QtWidgets import QLabel, QWidget
+
+            from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view import (
+                Saliency3DPlotWidget,
+            )
+
+            class CleanupLabel(QLabel):
+                deleted = False
+
+                def deleteLater(self):
+                    self.deleted = True
+                    super().deleteLater()
+
+            class CleanupPlotter(QWidget):
+                closed = False
+                deleted = False
+
+                def close(self):
+                    self.closed = True
+                    return super().close()
+
+                def deleteLater(self):
+                    self.deleted = True
+                    super().deleteLater()
+
+            w = Saliency3DPlotWidget(parent=None)
+            qtbot.addWidget(w)
+            label = CleanupLabel("temporary")
+            plotter = CleanupPlotter()
+            w.plot_layout.addWidget(label)
+            w.plot_layout.addWidget(plotter)
+            cast(Any, w).plotter_widget = plotter
+
+            w.clear_plot()
+
+            assert label.deleted is True
+            assert plotter.closed is True
+            assert plotter.deleted is True
+            assert w.plotter_widget is None
+
+    def test_update_plot_blocks_offscreen_before_qtinteractor(self, qtbot):
+        with patch(
+            "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
+        ) as pyvistaqt:
+            from PyQt6.QtWidgets import QLabel
+
+            from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view import (
+                Saliency3DPlotWidget,
+            )
+
+            w = Saliency3DPlotWidget(parent=None)
+            qtbot.addWidget(w)
+
+            eval_record = MagicMock()
+            plan = MagicMock()
+            plan.get_eval_record.return_value = eval_record
+            epoch = MagicMock()
+            epoch.get_montage_position.return_value = [(0.0, 0.0, 0.0)]
+            epoch.event_id = {"left": 0}
+            trainer = MagicMock()
+            trainer.get_dataset.return_value.get_epoch_data.return_value = epoch
+
+            w.update_plot(plan, trainer, "Gradient", False, eval_record)
+
+            pyvistaqt.QtInteractor.assert_not_called()
+            visible_labels = [
+                label.text()
+                for label in w.findChildren(QLabel)
+                if not label.isHidden() and label.text()
+            ]
+            assert any(
+                "interactive OpenGL desktop session" in text for text in visible_labels
+            )

@@ -73,95 +73,17 @@ class TestVersionFallback:
         assert isinstance(XBrainLab.__version__, str)
 
 
-# ── Gemini Backend ──────────────────────────────────────────
+# ── Removed remote backend modules ──────────────────────────
 
 
-class TestGeminiBackendCoverage:
-    """Cover optional import, load(), and generate_stream guards."""
+class TestRemovedRemoteBackends:
+    """Guard that product backend package stays local-only."""
 
-    @patch.dict("sys.modules", {"google": None, "google.genai": None})
-    def test_import_guard(self):
-        """When google-genai is not installed, genai should be None."""
-        # This tests the except ImportError path (lines 17-18)
-        # We can't easily force re-import, but we can test load() behavior
-        # The import guard is tested by test_gemini_missing below
+    def test_remote_backend_modules_are_absent(self):
+        import importlib.util
 
-    @patch("XBrainLab.llm.core.backends.gemini.genai", None)
-    def test_load_raises_without_genai(self):
-        from XBrainLab.llm.core.backends.gemini import GeminiBackend
-
-        config = MagicMock()
-        backend = GeminiBackend(config)
-        with contextlib.suppress(ImportError, TypeError, AttributeError):
-            backend.load()
-            # Expected - genai is None
-
-    @patch("XBrainLab.llm.core.backends.gemini.genai")
-    def test_load_with_env_api_key(self, mock_genai):
-        from XBrainLab.llm.core.backends.gemini import GeminiBackend
-
-        config = MagicMock()
-        config.api_key = ""  # empty, should fallback to env
-        backend = GeminiBackend(config)
-
-        with patch(
-            "XBrainLab.llm.core.backends.gemini.os.getenv", return_value="test-key"
-        ):
-            backend.load()
-
-    @patch("XBrainLab.llm.core.backends.gemini.genai")
-    def test_load_no_api_key_warns(self, mock_genai):
-        from XBrainLab.llm.core.backends.gemini import GeminiBackend
-
-        config = MagicMock()
-        config.api_key = ""
-        backend = GeminiBackend(config)
-
-        with patch("XBrainLab.llm.core.backends.gemini.os.getenv", return_value=None):
-            backend.load()
-            # Should still proceed but with warning
-
-    @patch("XBrainLab.llm.core.backends.gemini.genai")
-    def test_generate_stream_with_system_instruction(self, mock_genai):
-        from XBrainLab.llm.core.backends.gemini import GeminiBackend
-
-        config = MagicMock()
-        config.api_key = "test"
-        config.gemini_model_name = "gemini-2.0-flash"
-        backend = GeminiBackend(config)
-        backend.client = MagicMock()
-
-        mock_chat = MagicMock()
-        mock_chunk = MagicMock()
-        mock_chunk.text = "response"
-        mock_chat.send_message_stream.return_value = [mock_chunk]
-        backend.client.chats.create.return_value = mock_chat
-
-        messages = [
-            {"role": "system", "content": "You are helpful"},
-            {"role": "user", "content": "Hello"},
-        ]
-        result = list(backend.generate_stream(messages))
-        assert result == ["response"]
-        # Verify system_instruction was passed
-        call_kwargs = backend.client.chats.create.call_args[1]
-        assert "config" in call_kwargs
-
-    @patch("XBrainLab.llm.core.backends.gemini.genai")
-    def test_generate_stream_empty_message_guard(self, mock_genai):
-        from XBrainLab.llm.core.backends.gemini import GeminiBackend
-
-        config = MagicMock()
-        config.api_key = "test"
-        config.gemini_model_name = "gemini-2.0-flash"
-        backend = GeminiBackend(config)
-        backend.client = MagicMock()
-
-        # No user message => empty guard should trigger
-        messages = [{"role": "system", "content": "sys"}]
-        result = list(backend.generate_stream(messages))
-        assert len(result) == 1
-        assert "need a question" in result[0].lower()
+        assert importlib.util.find_spec("XBrainLab.llm.core.backends.api") is None
+        assert importlib.util.find_spec("XBrainLab.llm.core.backends.gemini") is None
 
 
 # ── Model Downloader ────────────────────────────────────────

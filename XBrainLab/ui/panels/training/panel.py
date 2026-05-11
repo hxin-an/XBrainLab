@@ -10,9 +10,17 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application import QueryStateCommand
 from XBrainLab.backend.training.record.key import RecordKey, TrainRecordKey
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.ui.application_capabilities import (
+    LegacyControllerFallbackUnavailableError,
+    execute_application_command,
+    get_legacy_controller_from_study,
+    run_legacy_controller_fallback,
+)
 from XBrainLab.ui.core.base_panel import BasePanel
+from XBrainLab.ui.refresh_coordinator import refresh_after_observer
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
 
@@ -31,6 +39,8 @@ class TrainingPanel(BasePanel):
     Attributes:
         dataset_controller: Injected ``DatasetController`` for data-change
             events.
+        preprocess_controller: Injected ``PreprocessController`` for
+            preprocess-state change events.
         current_plotting_record: The ``TrainRecord`` currently displayed
             in the metric plots.
         tabs: ``QTabWidget`` holding accuracy, loss, and log tabs.
@@ -42,7 +52,13 @@ class TrainingPanel(BasePanel):
 
     """
 
-    def __init__(self, controller=None, dataset_controller=None, parent=None):
+    def __init__(
+        self,
+        controller=None,
+        dataset_controller=None,
+        parent=None,
+        preprocess_controller=None,
+    ):
         """Initialize the training panel.
 
         Args:
@@ -50,22 +66,40 @@ class TrainingPanel(BasePanel):
                 the parent study if not provided.
             dataset_controller: Optional ``DatasetController`` for
                 data-change event subscription.
+            preprocess_controller: Optional ``PreprocessController`` for
+                preprocess-state change subscription.
             parent: Parent widget (typically the main window).
 
         """
         # 1. Controller Resolution
         if controller is None and parent and hasattr(parent, "study"):
-            controller = parent.study.get_controller("training")
+            controller = get_legacy_controller_from_study(
+                parent,
+                parent.study,
+                "training",
+            )
         if dataset_controller is None and parent and hasattr(parent, "study"):
-            dataset_controller = parent.study.get_controller("dataset")
+            dataset_controller = get_legacy_controller_from_study(
+                parent,
+                parent.study,
+                "dataset",
+            )
+        if preprocess_controller is None and parent and hasattr(parent, "study"):
+            preprocess_controller = get_legacy_controller_from_study(
+                parent,
+                parent.study,
+                "preprocess",
+            )
 
         # 2. Base Init
         super().__init__(parent=parent, controller=controller)
 
         self.dataset_controller = dataset_controller
+        self.preprocess_controller = preprocess_controller
 
         self.current_plotting_record = None
         self._last_epoch_count: int = -1
+        self._selection_pinned_by_user = False
         self.plan_items = {}
         self.run_items = {}
 
@@ -99,7 +133,7 @@ class TrainingPanel(BasePanel):
         self._create_bridge(
             self.controller,
             "training_updated",
-            lambda *args, **kwargs: self.update_loop(),
+            self._on_training_updated,
         )
         self._create_bridge(
             self.controller,
@@ -109,15 +143,11 @@ class TrainingPanel(BasePanel):
 
         # Connect to Dataset events (Updates info panel and check readiness)
         if self.dataset_controller:
-            self._create_bridge(
-                self.dataset_controller,
-                "data_changed",
-                self.update_panel,
-            )
-            self._create_bridge(
-                self.dataset_controller,
-                "import_finished",
-                self.update_panel,
+            self._create_refresh_bridge(self.dataset_controller, "data_changed")
+        if self.preprocess_controller:
+            self._create_refresh_bridge(
+                self.preprocess_controller,
+                "preprocess_changed",
             )
 
         # Event-driven update: 'training_updated' signal triggers update_loop
@@ -195,8 +225,11 @@ class TrainingPanel(BasePanel):
 
     def _on_config_changed(self):
         """Re-evaluate the ready-to-train state when configuration changes."""
+        self.log_text.clear()
         if hasattr(self, "sidebar"):
             self.sidebar.check_ready_to_train()
+        self.update_loop()
+        refresh_after_observer(self, event_name="config_changed")
 
     def _on_training_started(self):
         """Event handler: Training has started."""
@@ -204,6 +237,8 @@ class TrainingPanel(BasePanel):
         self.training_completed_shown = False
         if hasattr(self, "sidebar"):
             self.sidebar.on_training_started()
+        self.update_loop(force_active=True)
+        refresh_after_observer(self, event_name="training_started")
 
     def _on_training_stopped(self):
         """Event handler: Training has stopped."""
@@ -213,13 +248,63 @@ class TrainingPanel(BasePanel):
         self.update_loop()
         if hasattr(self, "sidebar"):
             self.sidebar.on_training_stopped()
+        refresh_after_observer(self, event_name="training_stopped")
+
+    def _on_training_updated(self):
+        """Refresh live training progress and shared observer status."""
+        self.update_loop()
+        refresh_after_observer(self, event_name="training_updated")
 
     def _on_history_cleared(self):
         """Event handler: History cleared."""
+        self.log_text.clear()
+        self._clear_training_display()
+        self.update_loop()  # Will clear table if history is empty
+        refresh_after_observer(self, event_name="history_cleared")
+
+    def _clear_training_display(self):
+        """Clear plot selection state when no valid training history remains."""
         self.tab_acc.clear()
         self.tab_loss.clear()
         self.current_plotting_record = None
-        self.update_loop()  # Will clear table if history is empty
+        self._last_epoch_count = -1
+        self._selection_pinned_by_user = False
+        self.history_table.clear_history()
+
+    def _select_preferred_plot_record(self, plans, force_active=False):
+        """Choose which record the training plots should track.
+
+        Args:
+            plans: Formatted history rows from the controller.
+            force_active: When ``True``, prefer the currently running record
+                even if an older record is still selected.
+
+        Returns:
+            The selected ``TrainRecord`` or ``None`` when no plans exist.
+
+        """
+        if not plans:
+            return None
+
+        if (
+            not force_active
+            and self._selection_pinned_by_user
+            and self.current_plotting_record is not None
+        ):
+            for plan_info in plans:
+                if plan_info["record"] is self.current_plotting_record:
+                    return self.current_plotting_record
+
+        for plan_info in plans:
+            if plan_info.get("is_current_run"):
+                return plan_info["record"]
+
+        if not force_active and self.current_plotting_record is not None:
+            for plan_info in plans:
+                if plan_info["record"] is self.current_plotting_record:
+                    return self.current_plotting_record
+
+        return plans[-1]["record"]
 
     # Clear history method moved to Sidebar
 
@@ -232,7 +317,10 @@ class TrainingPanel(BasePanel):
         """
         self.current_plotting_record = record
         if record:
+            self._selection_pinned_by_user = True
             self.refresh_plot(record)
+        else:
+            self._selection_pinned_by_user = False
 
     def refresh_plot(self, record):
         """Re-draw the accuracy and loss plots with the full history of a record.
@@ -289,23 +377,26 @@ class TrainingPanel(BasePanel):
         if hasattr(self, "sidebar"):
             self.sidebar.check_ready_to_train()
 
-    def update_loop(self):
+    def update_loop(self, force_active=False):
         """Handle real-time training updates."""
         # 1. Update History Table
-        if self.controller:
-            plans = self.controller.get_formatted_history()
-            self.history_table.update_table(plans)
+        plans = self._history_from_application_query()
+        if plans is None:
+            plans = self._legacy_history_for_render()
+        if plans is not None:
+            if not plans:
+                self._clear_training_display()
+                return
 
-            # 2. Auto-select a record if none is selected
-            if not self.current_plotting_record and plans:
-                # Prefer the currently running record, else the last one
-                for p in plans:
-                    if p.get("is_current_run"):
-                        self.current_plotting_record = p["record"]
-                        break
-                else:
-                    # No active run, select the last record
-                    self.current_plotting_record = plans[-1]["record"]
+            self.history_table.update_table(plans)
+            preferred_record = self._select_preferred_plot_record(
+                plans,
+                force_active=force_active,
+            )
+            if preferred_record is not self.current_plotting_record:
+                self.current_plotting_record = preferred_record
+                self._last_epoch_count = -1
+                self._selection_pinned_by_user = False
 
         # 3. Update Plots if the current record is active and has new data
         if self.current_plotting_record:
@@ -324,6 +415,31 @@ class TrainingPanel(BasePanel):
                     exc_info=True,
                 )
                 self.refresh_plot(self.current_plotting_record)
+
+    def _history_from_application_query(self):
+        result = execute_application_command(
+            self,
+            QueryStateCommand(query="training_history", include_objects=True),
+            refresh=False,
+        )
+        if result is None or result.failed:
+            return None
+        diagnostics = getattr(result, "diagnostics", {}) or {}
+        if diagnostics.get("payload_type") != "training_history":
+            return None
+        rows = diagnostics.get("rows")
+        return list(rows) if isinstance(rows, list) else []
+
+    def _legacy_history_for_render(self):
+        if self.controller is None:
+            return []
+        try:
+            return run_legacy_controller_fallback(
+                self,
+                self.controller.get_formatted_history,
+            )
+        except LegacyControllerFallbackUnavailableError:
+            return []
 
     # check_ready_to_train moved to Sidebar
 

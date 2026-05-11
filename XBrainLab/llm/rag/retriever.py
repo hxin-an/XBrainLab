@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 from .bm25 import BM25Index
 from .config import RAGConfig
+from .example_policy import is_primary_workflow_example
 
 logger = logging.getLogger(__name__)
 
@@ -256,6 +257,11 @@ class RAGRetriever:
                     "dense_score": norm_dense,
                     "bm25_score": 0.0,
                 }
+            candidates = {
+                doc_id: candidate
+                for doc_id, candidate in candidates.items()
+                if is_primary_workflow_example(candidate.get("metadata", {}))
+            }
 
             # ── 3. BM25 sparse scoring (if available) ──
             if self.bm25_index is not None:
@@ -284,10 +290,14 @@ class RAGRetriever:
             alpha = self.hybrid_alpha
             ranked: list[tuple[float, str, dict]] = []
             for c in candidates.values():
+                if not is_primary_workflow_example(c.get("metadata", {})):
+                    continue
                 hybrid = alpha * c["dense_score"] + (1 - alpha) * c["bm25_score"]
                 ranked.append((hybrid, c["content"], c["metadata"]))
 
             ranked.sort(key=lambda x: x[0], reverse=True)
+            if not ranked:
+                return ""
 
             # ── 5. Format top-k ──
             result_str = "\n### Similar Examples:\n"

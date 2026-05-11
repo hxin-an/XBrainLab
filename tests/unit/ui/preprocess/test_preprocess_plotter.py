@@ -110,6 +110,39 @@ def test_plot_sample_data_async_psd(mock_widget, mock_controller):
         plotter.threadpool.start.assert_called_once()
 
 
+def test_stale_psd_result_does_not_update_latest_plot(mock_widget, mock_controller):
+    plotter = PreprocessPlotter(mock_widget, mock_controller)
+    plotter.threadpool = MagicMock()
+    handlers = []
+
+    class _Signal:
+        def connect(self, callback):
+            handlers.append(callback)
+
+    class _Signals:
+        result = _Signal()
+
+    class _Worker:
+        signals = _Signals()
+
+    with patch(
+        "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.Worker",
+        side_effect=lambda *_, **__: _Worker(),
+    ):
+        plotter.plot_sample_data()
+        plotter.plot_sample_data()
+
+    assert len(handlers) == 2
+    psd_result = (np.array([1.0]), np.array([1.0]), None, None)
+
+    handlers[0](psd_result)
+    mock_widget.plot_freq.plot.assert_not_called()
+
+    handlers[1](psd_result)
+    mock_widget.plot_freq.plot.assert_called_once()
+    mock_widget.plot_freq.setTitle.assert_called_with("ch1 (PSD)")
+
+
 def test_plot_no_data(mock_widget, mock_controller):
     mock_controller.has_data.return_value = False
     plotter = PreprocessPlotter(mock_widget, mock_controller)
@@ -119,6 +152,89 @@ def test_plot_no_data(mock_widget, mock_controller):
     # Should clear but not plot
     mock_widget.plot_time.clear.assert_called_once()
     mock_widget.plot_time.plot.assert_not_called()
+
+
+def test_plot_sample_data_uses_service_query_before_controller(
+    mock_widget,
+    mock_controller,
+):
+    """Service-backed render data should win over potentially stale controller reads."""
+    raw_obj = mock_controller.get_preprocessed_data_list()[0]
+    mock_controller.has_data.side_effect = AssertionError("stale controller read")
+    mock_controller.get_preprocessed_data_list.side_effect = AssertionError(
+        "stale controller read"
+    )
+    plotter = PreprocessPlotter(mock_widget, mock_controller)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.query_preprocess_render_lists",
+            return_value=([raw_obj], []),
+        ) as execute,
+        patch("XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.Worker"),
+    ):
+        plotter.plot_sample_data()
+
+    execute.assert_called_once_with(plotter)
+    mock_controller.has_data.assert_not_called()
+    mock_widget.plot_time.plot.assert_called()
+
+
+def test_plot_sample_data_refuses_real_study_query_none_controller_fallback(
+    mock_widget,
+    mock_controller,
+):
+    from XBrainLab.backend.study import Study
+
+    mock_controller.study = Study()
+    mock_controller.has_data.side_effect = AssertionError(
+        "stale controller readiness should not be read",
+    )
+    mock_controller.get_preprocessed_data_list.side_effect = AssertionError(
+        "stale controller list should not be read",
+    )
+    plotter = PreprocessPlotter(mock_widget, mock_controller)
+
+    with patch(
+        "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.query_preprocess_render_lists",
+        return_value=None,
+    ) as query:
+        plotter.plot_sample_data()
+
+    query.assert_called_once_with(plotter)
+    mock_controller.has_data.assert_not_called()
+    mock_controller.get_preprocessed_data_list.assert_not_called()
+    mock_widget.plot_time.plot.assert_not_called()
+
+
+def test_plot_sample_data_with_supplied_data_uses_query_for_original_overlay(
+    mock_widget,
+    mock_controller,
+):
+    """Supplied current data should still get original overlay from query truth."""
+    from XBrainLab.backend.study import Study
+
+    current = mock_controller.get_preprocessed_data_list()[0]
+    stale_original = MagicMock()
+    stale_original.get_sfreq.side_effect = AssertionError(
+        "stale Study loaded_data_list should not be read",
+    )
+    mock_controller.study = Study()
+    mock_controller.study.loaded_data_list = [stale_original]
+    plotter = PreprocessPlotter(mock_widget, mock_controller)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.query_preprocess_render_lists",
+            return_value=([current], [current]),
+        ) as query,
+        patch("XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.Worker"),
+    ):
+        plotter.plot_sample_data(data_list=[current])
+
+    query.assert_called_once_with(plotter)
+    stale_original.get_sfreq.assert_not_called()
+    mock_widget.plot_time.plot.assert_called()
 
 
 class TestGetChanData:
@@ -137,6 +253,7 @@ class TestGetChanData:
 
         x, y = plotter._get_chan_data(raw_obj, ch_idx=0, start_time=0, duration=5)
         assert x is not None
+        assert y is not None
         assert len(y) == 500
 
     def test_raw_start_beyond_data(self, mock_widget, mock_controller):
@@ -183,6 +300,7 @@ class TestGetChanData:
 
         x, y = plotter._get_chan_data(epoch_obj, ch_idx=0, start_time=1)
         assert x is not None
+        assert y is not None
         assert len(y) == 200
 
     def test_epochs_bad_ndim(self, mock_widget, mock_controller):

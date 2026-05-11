@@ -28,6 +28,11 @@ class TestThemeConstants:
         assert Theme.METRICS_TABLE_BG
         assert Theme.METRICS_TABLE_GRID
 
+    def test_disabled_action_buttons_use_neutral_tokens(self):
+        assert Theme.BTN_SUCCESS_DISABLED_BG == Theme.BTN_DISABLED_BG
+        assert Theme.BTN_DANGER_DISABLED_BG == Theme.BTN_DISABLED_BG
+        assert Theme.BTN_WARNING_DISABLED_BG == Theme.BTN_DISABLED_BG
+
 
 class TestApplyMatplotlibDarkTheme:
     """apply_matplotlib_dark_theme should style a matplotlib figure."""

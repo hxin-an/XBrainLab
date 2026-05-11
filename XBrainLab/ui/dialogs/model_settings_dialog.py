@@ -1,16 +1,11 @@
-"""AI model settings dialog for configuring local and Gemini API backends.
+"""AI assistant settings dialog for the local-only runtime.
 
-Provides a unified dialog for managing local model downloads and Gemini API
-key verification, allowing users to switch between inference backends.
+Provides UI for managing approved local model downloads and generation
+parameters. Remote assistant runtimes are not part of the product path.
 """
 
 import os
 
-try:
-    from google import genai
-except ImportError:
-    genai = None  # type: ignore[assignment]
-from PyQt6.QtCore import QObject, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -19,7 +14,6 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QMessageBox,
     QPushButton,
     QSpinBox,
@@ -28,18 +22,23 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.downloader import ModelDownloader
+from XBrainLab.llm.core.model_catalog import (
+    format_bytes,
+    plan_model_download,
+)
+
+DOWNLOAD_TEARDOWN_WAIT_MS = 2000
 
 
 class ModelSettingsDialog(QDialog):
-    """Dialog for configuring AI model settings (Local vs Gemini).
+    """Dialog for configuring the local AI assistant runtime.
 
-    Provides UI for selecting and downloading local models, entering and
-    verifying Gemini API keys, and activating the chosen backend.
+    Provides UI for selecting, installing, deleting, and activating approved
+    local models.
 
     Attributes:
         agent_manager: Reference to AgentManager for safe backend switching.
         config: The current LLM configuration.
-        gemini_enabled: Whether the Gemini backend is enabled and verified.
         local_downloaded: Whether the selected local model is downloaded.
         downloader: ModelDownloader instance for managing model downloads.
         is_downloading: Whether a download is currently in progress.
@@ -54,7 +53,7 @@ class ModelSettingsDialog(QDialog):
     ):
         super().__init__(parent)
         self.setWindowTitle("AI Assistant Settings")
-        self.setFixedSize(500, 600)
+        self.setFixedSize(500, 480)
 
         # Reference to AgentManager for safe deletion (switching backend)
         self.agent_manager = agent_manager
@@ -62,8 +61,7 @@ class ModelSettingsDialog(QDialog):
         # Load config or create default
         saved_config = LLMConfig.load_from_file()
         self.config = saved_config if saved_config else (config or LLMConfig())
-
-        self.gemini_enabled = self.config.gemini_enabled
+        self.config._force_local_runtime_selection()
         self.local_downloaded = False
 
         # Downloader
@@ -72,12 +70,13 @@ class ModelSettingsDialog(QDialog):
         self.downloader.finished.connect(self.on_download_finished)
         self.downloader.failed.connect(self.on_download_failed)
         self.is_downloading = False
+        self._download_teardown_in_progress = False
 
         self.init_ui()
         self.load_state()
 
     def init_ui(self):
-        """Initialize the dialog UI with local model and Gemini API sections."""
+        """Initialize the dialog UI with local model settings."""
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
 
@@ -87,14 +86,7 @@ class ModelSettingsDialog(QDialog):
 
         # Model Dropdown
         self.local_model_combo = QComboBox()
-        self.local_model_combo.addItems(
-            [
-                "Qwen/Qwen2.5-7B-Instruct",
-                "google/gemma-2b-it",
-                "microsoft/Phi-3.5-mini-instruct",
-                "meta-llama/Llama-3.1-8B-Instruct",
-            ],
-        )
+        self.local_model_combo.addItems(LLMConfig.allowed_local_model_ids())
         self.local_model_combo.currentTextChanged.connect(self.check_local_model_status)
         local_layout.addWidget(QLabel("Select Model:"))
         local_layout.addWidget(self.local_model_combo)
@@ -111,6 +103,14 @@ class ModelSettingsDialog(QDialog):
         status_layout.addWidget(self.local_action_btn)
         local_layout.addLayout(status_layout)
 
+        self.local_runtime_label = QLabel("Runtime: Checking...")
+        self.local_runtime_label.setWordWrap(True)
+        local_layout.addWidget(self.local_runtime_label)
+
+        self.local_resource_label = QLabel("")
+        self.local_resource_label.setWordWrap(True)
+        local_layout.addWidget(self.local_resource_label)
+
         # Enable Checkbox (Moved to bottom)
         self.local_enable_chk = QCheckBox("ACTIVATE LOCAL MODEL")
         self.local_enable_chk.toggled.connect(self._on_local_enable_toggled)
@@ -118,50 +118,6 @@ class ModelSettingsDialog(QDialog):
 
         local_group.setLayout(local_layout)
         layout.addWidget(local_group)
-
-        # --- Gemini API Section ---
-        gemini_group = QGroupBox("Gemini API")
-        gemini_layout = QVBoxLayout()
-
-        # API Key Input
-        key_layout = QHBoxLayout()
-        key_layout.addWidget(QLabel("API Key:"))
-        self.api_key_input = QLineEdit()
-        self.api_key_input.setPlaceholderText("Enter Gemini API Key (AIza...)")
-        self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        key_layout.addWidget(self.api_key_input)
-        gemini_layout.addLayout(key_layout)
-
-        # Status & Test Button (Mirrors Local Model layout)
-        status_layout = QHBoxLayout()
-        self.gemini_status_label = QLabel("Status: Not Verified")
-        status_layout.addWidget(self.gemini_status_label)
-        status_layout.addStretch()
-
-        self.test_conn_btn = QPushButton("Test Key")
-        self.test_conn_btn.setFixedWidth(80)
-        self.test_conn_btn.clicked.connect(self.on_test_connection_clicked)
-        status_layout.addWidget(self.test_conn_btn)
-        gemini_layout.addLayout(status_layout)
-
-        gemini_group.setLayout(gemini_layout)
-        layout.addWidget(gemini_group)
-
-        # Gemini Model Dropdown (Restored)
-        gemini_layout.addWidget(QLabel("Model:"))
-        self.gemini_model_combo = QComboBox()
-        self.gemini_model_combo.addItems(
-            [
-                "gemini-3.0-pro",
-                "gemini-3.0-flash",
-                "gemini-2.0-flash",
-                "gemini-2.0-flash-thinking-exp",
-                "gemini-1.5-pro",
-                "gemini-1.5-flash",
-                "gemini-1.5-flash-8b",
-            ],
-        )
-        gemini_layout.addWidget(self.gemini_model_combo)
 
         # --- Generation Parameters Section ---
         gen_group = QGroupBox("Generation Parameters")
@@ -241,41 +197,54 @@ class ModelSettingsDialog(QDialog):
 
     def load_state(self):
         """Load UI state from config."""
+        selection = self.config.assistant_runtime_selection()
+
         # Local
         index = self.local_model_combo.findText(self.config.model_name)
         if index >= 0:
             self.local_model_combo.setCurrentIndex(index)
 
-        # Gemini
-        if self.config.gemini_api_key:
-            self.api_key_input.setText(self.config.gemini_api_key)
-
-        if self.config.gemini_enabled:
-            self.gemini_status_label.setText("Verified")
-            self.gemini_status_label.setStyleSheet("color: #4caf50;")
-
-        index = self.gemini_model_combo.findText(self.config.gemini_model_name)
-        if index >= 0:
-            self.gemini_model_combo.setCurrentIndex(index)
-
         # Set Enable Checkbox state and trigger update
         self.local_enable_chk.setChecked(self.config.local_model_enabled)
         self._on_local_enable_toggled(self.config.local_model_enabled)
+        self.config.active_mode = selection.ui_active_mode
+        self.config.inference_mode = selection.backend_mode
 
         self.check_local_model_status()
         self.update_validation_state()
 
+    def _refresh_local_runtime_status(self):
+        """Reflect local-runtime readiness without trying to load the model."""
+        model_name = self.local_model_combo.currentText()
+        preflight = plan_model_download(model_name, self.config.cache_dir)
+        self.local_resource_label.setText(
+            "Local runtime uses this computer's GPU or CPU only after activation. "
+            f"Estimated download: {format_bytes(preflight.estimated_download_bytes)}; "
+            f"current cache: {format_bytes(preflight.current_cache_bytes)}; "
+            f"projected cache: {format_bytes(preflight.projected_cache_bytes)}."
+        )
+        message = self.config.local_backend_status_message(model_name=model_name)
+        if self.config.local_backend_ready(model_name=model_name):
+            detail = message.removeprefix("Local runtime ready.").strip()
+            if not detail:
+                self.local_runtime_label.setText("Runtime: Ready")
+                self.local_runtime_label.setStyleSheet("color: #4caf50;")
+            else:
+                self.local_runtime_label.setText(f"Runtime: {detail}")
+                self.local_runtime_label.setStyleSheet("color: #ff9800;")
+            return
+
+        detail = message.removeprefix("Local runtime unavailable. ")
+        self.local_runtime_label.setText(f"Runtime: {detail}")
+        if "Missing optional packages" in message:
+            self.local_runtime_label.setStyleSheet("color: #f44336;")
+        else:
+            self.local_runtime_label.setStyleSheet("color: #ff9800;")
+
     def check_local_model_status(self):
         """Check if selected model exists in cache."""
         model_name = self.local_model_combo.currentText()
-        repo_id = model_name  # In our list, text is repo_id
-
-        # Expected path (simplified logic matching downloader)
-        safe_name = repo_id.replace("/", "_")
-        cache_dir = self.config.cache_dir
-        model_path = os.path.join(cache_dir, safe_name)
-
-        if os.path.exists(model_path) and os.listdir(model_path):
+        if self.config.has_local_model_cache(model_name):
             self.local_downloaded = True
             self.local_status_label.setText("[+] Downloaded")
             self.local_status_label.setStyleSheet("color: #4caf50;")
@@ -288,6 +257,7 @@ class ModelSettingsDialog(QDialog):
             self.local_action_btn.setText("Install Model")
             self.local_action_btn.setEnabled(True)
 
+        self._refresh_local_runtime_status()
         self.update_validation_state()
 
     def on_local_action_clicked(self):
@@ -309,10 +279,36 @@ class ModelSettingsDialog(QDialog):
         self.local_model_combo.setEnabled(checked)
         self.local_action_btn.setEnabled(checked)
         self.check_local_model_status()
+        self._refresh_local_runtime_status()
 
     def _start_download(self):
         """Begin downloading the selected local model."""
         model_name = self.local_model_combo.currentText()
+        preflight = plan_model_download(model_name, self.config.cache_dir)
+        if not preflight.ok:
+            cleanup = ""
+            if preflight.cleanup_candidates:
+                cleanup = "\n\nCleanup candidates:\n" + "\n".join(
+                    f"- {path}" for path in preflight.cleanup_candidates
+                )
+            QMessageBox.warning(
+                self,
+                "Model Download Blocked",
+                (
+                    f"{preflight.message}\n\n"
+                    f"Current cache: {format_bytes(preflight.current_cache_bytes)}\n"
+                    f"Estimated download: "
+                    f"{format_bytes(preflight.estimated_download_bytes)}\n"
+                    f"Available disk: "
+                    f"{format_bytes(preflight.available_disk_bytes)}\n"
+                    f"Projected cache: "
+                    f"{format_bytes(preflight.projected_cache_bytes)}\n"
+                    f"Cache directory: {preflight.cache_dir}"
+                    f"{cleanup}"
+                ),
+            )
+            self.check_local_model_status()
+            return
 
         self.is_downloading = True
         self.local_action_btn.setText("Cancel")
@@ -332,15 +328,27 @@ class ModelSettingsDialog(QDialog):
         )
         if reply == QMessageBox.StandardButton.Yes:
             # SAFETY: Switch backend if this model is active
-            if self.agent_manager:
-                self.agent_manager.prepare_model_deletion(repo_id)
+            if self.agent_manager and not self.agent_manager.prepare_model_deletion(
+                repo_id
+            ):
+                return
 
             import shutil
 
-            safe_name = repo_id.replace("/", "_")
-            path = os.path.join(self.config.cache_dir, safe_name)
             try:
-                shutil.rmtree(path)
+                removed_any = False
+                for path in self.config.local_cache_candidates(repo_id):
+                    if not os.path.exists(path):
+                        continue
+                    shutil.rmtree(path)
+                    removed_any = True
+                if not removed_any:
+                    QMessageBox.critical(
+                        self,
+                        "Error",
+                        f"Failed to delete: {repo_id}",
+                    )
+                    return
                 self.check_local_model_status()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to delete: {e}")
@@ -381,112 +389,48 @@ class ModelSettingsDialog(QDialog):
         # Special handling for Cancellation Cleanup (User Request)
         if "Cancelled by user" in error:
             # User requested auto-cleanup without asking
-            self._cleanup_partial_files()
+            if self._download_teardown_in_progress:
+                self._cleanup_partial_files(show_message=False)
+            else:
+                self._cleanup_partial_files()
             return
 
         QMessageBox.critical(self, "Download Failed", error)
 
-    def _cleanup_partial_files(self):
+    def _cleanup_partial_files(self, show_message=True):
         """Best-effort cleanup of partial download files."""
         try:
             import shutil
 
             repo_id = self.local_model_combo.currentText()
-            safe_name = repo_id.replace("/", "_")
-            path = os.path.join(self.config.cache_dir, safe_name)
-
-            if os.path.exists(path):
+            removed_any = False
+            for path in self.config.local_cache_candidates(repo_id):
+                if not os.path.exists(path):
+                    continue
                 shutil.rmtree(path)
+                removed_any = True
+
+            if removed_any:
                 self.check_local_model_status()  # Update UI state
-                QMessageBox.information(self, "Cleanup", "Partial files removed.")
+                if show_message:
+                    QMessageBox.information(self, "Cleanup", "Partial files removed.")
         except Exception as e:
-            QMessageBox.warning(
-                self,
-                "Cleanup Error",
-                f"Failed to cleanup partials directly: {e}",
-            )
-
-    def on_test_connection_clicked(self):
-        """Validate and test the entered Gemini API key."""
-        api_key = self.api_key_input.text().strip()
-
-        # 1. Format Validation
-        if not api_key.startswith("AIza"):
-            QMessageBox.warning(self, "Invalid Key", "API Key must start with 'AIza'")
-            return
-
-        if genai is None:
-            self.gemini_enabled = False
-            self.gemini_status_label.setText("[x] Missing Lib")
-            self.gemini_status_label.setStyleSheet("color: #f44336;")
-            QMessageBox.critical(
-                self,
-                "Dependency Error",
-                "Please install google-genai library:\npoetry add google-genai",
-            )
-            return
-
-        # 2. Connection Test (Threaded)
-        self.test_conn_btn.setEnabled(False)
-        self.gemini_status_label.setText("Status: Testing...")
-
-        self.conn_thread = QThread()
-        self.conn_worker = ConnectionTestWorker(api_key)
-        self.conn_worker.moveToThread(self.conn_thread)
-
-        self.conn_thread.started.connect(self.conn_worker.run)
-        self.conn_worker.finished.connect(self._on_conn_test_success)
-        self.conn_worker.error.connect(self._on_conn_test_error)
-
-        # Cleanup
-        self.conn_worker.finished.connect(self.conn_thread.quit)
-        self.conn_worker.error.connect(self.conn_thread.quit)
-        self.conn_worker.finished.connect(self.conn_worker.deleteLater)
-        self.conn_worker.error.connect(self.conn_worker.deleteLater)
-        self.conn_thread.finished.connect(self.conn_thread.deleteLater)
-
-        self.conn_thread.start()
-
-    def _on_conn_test_success(self, api_key):
-        """Handle successful Gemini API connection test.
-
-        Args:
-            api_key: The verified API key.
-
-        """
-        self.gemini_enabled = True
-        self.gemini_status_label.setText("Status: Verified")
-        self.gemini_status_label.setStyleSheet("color: #4caf50;")
-
-        # Update config
-        os.environ["GEMINI_API_KEY"] = api_key
-        self.config.gemini_api_key = api_key
-
-        self.test_conn_btn.setEnabled(True)
-        self.update_validation_state()
-
-    def _on_conn_test_error(self, error_msg):
-        """Handle failed Gemini API connection test.
-
-        Args:
-            error_msg: Error message from the connection attempt.
-
-        """
-        self.gemini_enabled = False
-        self.gemini_status_label.setText("Status: Failed")
-        self.gemini_status_label.setStyleSheet("color: #f44336;")
-
-        QMessageBox.critical(self, "Connection Failed", error_msg)
-        self.test_conn_btn.setEnabled(True)
-        self.update_validation_state()
+            if show_message:
+                QMessageBox.warning(
+                    self,
+                    "Cleanup Error",
+                    f"Failed to cleanup partials directly: {e}",
+                )
 
     def update_validation_state(self):
         """Enable Activate button if conditions met."""
-        # Core Condition: Local Downloaded OR Gemini Verified
-        # Also disable if currently downloading
-        is_ready = (
-            self.local_downloaded or self.gemini_enabled
-        ) and not self.is_downloading
+        model_name = self.local_model_combo.currentText()
+        local_ready = (
+            self.local_enable_chk.isChecked()
+            and self.local_downloaded
+            and self.config.local_backend_ready(model_name=model_name)
+        )
+        is_ready = local_ready and not self.is_downloading
 
         self.btn_activate.setEnabled(is_ready)
 
@@ -494,82 +438,59 @@ class ModelSettingsDialog(QDialog):
         """Save settings, persist configuration, and accept the dialog."""
         # Save to config object
         self.config.local_model_enabled = self.local_enable_chk.isChecked()
+        if self.config.local_model_enabled:
+            self.config.local_runtime_notice_acknowledged = True
         self.config.model_name = self.local_model_combo.currentText()
-        self.config.gemini_model_name = self.gemini_model_combo.currentText()
-        self.config.gemini_enabled = self.gemini_enabled
-
         # Generation parameters
         self.config.temperature = self.temperature_spin.value()
         self.config.top_p = self.top_p_spin.value()
         self.config.max_new_tokens = self.max_tokens_spin.value()
 
-        # Determine active mode
-        if self.gemini_enabled and not self.local_downloaded:
-            self.config.active_mode = "gemini"
-        elif self.local_downloaded and not self.gemini_enabled:
-            self.config.active_mode = "local"
-        else:
-            # Both available — preserve whatever mode was previously active
-            # (active_mode was loaded from settings.json or set by user)
-            pass  # config.active_mode already holds the correct value
+        local_ready = (
+            self.config.local_model_enabled
+            and self.local_downloaded
+            and self.config.local_backend_ready()
+        )
+
+        if (
+            self.config.local_model_enabled
+            and self.local_downloaded
+            and not self.config.local_backend_ready()
+        ):
+            QMessageBox.critical(
+                self,
+                "Local Runtime Unavailable",
+                self.config.local_backend_status_message(),
+            )
+            return
+
+        self.config.apply_runtime_selection(
+            "local",
+            model_id=self.config.model_name if local_ready else None,
+            ui_active_mode="local",
+        )
 
         # Persist to JSON
         self.config.save_to_file()
 
-        # Persist API Key to .env (Mock for now, print to console or create .env file)
-        self._save_api_key_to_env()
-
         self.accept()
-
-    def _save_api_key_to_env(self):
-        """Write API Key to .env file preserving other content."""
-        key = self.api_key_input.text().strip()
-        if not key or not key.startswith("AIza"):
-            return
-
-        from XBrainLab.config import AppConfig
-
-        env_path = str(AppConfig.BASE_DIR / ".env")
-        try:
-            # Read existing
-            lines = []
-            if os.path.exists(env_path):
-                with open(env_path, encoding="utf-8") as f:
-                    lines = f.readlines()
-
-            # Update or Append
-            new_lines = []
-            found = False
-            for line in lines:
-                if line.strip().startswith("GEMINI_API_KEY="):
-                    new_lines.append(f"GEMINI_API_KEY={key}\n")
-                    found = True
-                else:
-                    new_lines.append(line)
-
-            if not found:
-                if new_lines and not new_lines[-1].endswith("\n"):
-                    new_lines[-1] += "\n"
-                new_lines.append("GEMINI_API_KEY=" + key + "\n")
-
-            # Write back
-            with open(env_path, "w", encoding="utf-8") as f:
-                f.writelines(new_lines)
-
-        except Exception as e:
-            QMessageBox.warning(self, "Config Error", f"Failed to save .env: {e}")
 
     def reject(self):
         """Cancel any active download and reject the dialog."""
-        if self.is_downloading:
-            self.downloader.cancel_download()
+        self._shutdown_active_download()
         super().reject()
 
     def closeEvent(self, event):  # noqa: N802
         """Ensure threads stop on close."""
-        if self.is_downloading:
-            self.downloader.cancel_download()
+        self._shutdown_active_download()
         super().closeEvent(event)
+
+    def _shutdown_active_download(self):
+        """Cancel in-flight download work before dialog teardown."""
+        if self.is_downloading:
+            self._download_teardown_in_progress = True
+            self.downloader.shutdown(wait_ms=DOWNLOAD_TEARDOWN_WAIT_MS)
+            self.is_downloading = False
 
     def get_config(self):
         """Return the current LLM configuration.
@@ -579,40 +500,3 @@ class ModelSettingsDialog(QDialog):
 
         """
         return self.config
-
-
-class ConnectionTestWorker(QObject):
-    """Background worker for testing Gemini API connectivity.
-
-    Attributes:
-        finished: Signal emitted with the API key on successful connection.
-        error: Signal emitted with an error message on failure.
-
-    """
-
-    finished = pyqtSignal(str)  # api_key
-    error = pyqtSignal(str)
-
-    def __init__(self, api_key):
-        """Initialize the connection test worker.
-
-        Args:
-            api_key: Gemini API key to test.
-
-        """
-        super().__init__()
-        self.api_key = api_key
-
-    def run(self):
-        """Execute the API connection test.
-
-        Emits ``finished`` with the API key on success, or ``error``
-        with an error message on failure.
-        """
-        try:
-            client = genai.Client(api_key=self.api_key)
-            models = client.models.list()
-            _ = next(iter(models))
-            self.finished.emit(self.api_key)
-        except Exception as e:
-            self.error.emit(str(e))

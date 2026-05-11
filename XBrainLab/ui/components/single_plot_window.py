@@ -166,6 +166,33 @@ class SinglePlotWindow(BaseDialog):
 
         self.fig_param = {"fig": figure, "figsize": figsize, "dpi": dpi}
 
+    def _release_canvas_widgets(self) -> None:
+        """Detach and schedule Qt canvas widgets for deletion."""
+        if self.figure_canvas:
+            with contextlib.suppress(Exception):
+                self.main_layout.removeWidget(self.figure_canvas)
+            self.figure_canvas.setParent(None)
+            self.figure_canvas.deleteLater()
+            self.figure_canvas = None
+        if self.toolbar:
+            with contextlib.suppress(Exception):
+                self.main_layout.removeWidget(self.toolbar)
+            self.toolbar.setParent(None)
+            self.toolbar.deleteLater()
+            self.toolbar = None
+
+    def _close_current_figure(self) -> None:
+        """Close the active Matplotlib figure references held by the window."""
+        current_fig = self.fig_param.get("fig")
+        if current_fig is not None:
+            with contextlib.suppress(Exception):
+                plt.close(current_fig)
+        if self.plot_number is not None and plt.fignum_exists(self.plot_number):
+            with contextlib.suppress(Exception):
+                plt.close(self.plot_number)
+        self.plot_number = None
+        self.fig_param = {}
+
     def redraw(self):
         """Apply tight layout and redraw the figure canvas."""
         if self.figure_canvas:
@@ -173,7 +200,7 @@ class SinglePlotWindow(BaseDialog):
             self.figure_canvas.draw()
 
     def closeEvent(self, event):  # noqa: N802
-        """Close the Matplotlib figure to prevent memory leaks."""
-        if self.plot_number is not None and plt.fignum_exists(self.plot_number):
-            plt.close(self.plot_number)
+        """Close the Matplotlib figure and release Qt canvas widgets."""
+        self._close_current_figure()
+        self._release_canvas_widgets()
         super().closeEvent(event)

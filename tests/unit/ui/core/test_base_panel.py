@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtCore import Qt
@@ -19,13 +19,13 @@ class UnimplementedPanel(BasePanel):
 
 
 @pytest.fixture
-def panel(qtbot):
+def panel(qtbot) -> ConcretePanel:
     widget = ConcretePanel()
     qtbot.addWidget(widget)
     return widget
 
 
-def test_init(panel):
+def test_init(panel: ConcretePanel):
     assert isinstance(panel, QWidget)
     assert panel.controller is None
     assert panel.main_window is None
@@ -71,8 +71,20 @@ def test_set_busy(panel, qtbot):
 def test_methods_exist(panel):
     # Ensure optional methods exist and don't raise error
     panel.update_panel()
+    panel.refresh_from_observer()
     panel._setup_bridges()
     panel.cleanup()
+
+
+def test_refresh_from_observer_delegates_to_coordinator(panel):
+    with patch(
+        "XBrainLab.ui.core.base_panel.refresh_after_observer",
+    ) as refresh_after_observer:
+        panel.refresh_from_observer(
+            "event_arg", name="event", event_name="data_changed"
+        )
+
+    refresh_after_observer.assert_called_once_with(panel, event_name="data_changed")
 
 
 class TestCreateBridge:
@@ -95,3 +107,19 @@ class TestCreateBridge:
         panel._create_bridge(mock_ctrl, "event_a", MagicMock())
         panel._create_bridge(mock_ctrl, "event_b", MagicMock())
         assert len(panel._bridges) == 2
+
+    def test_create_refresh_bridge_uses_observer_refresh(self, qtbot):
+        mock_ctrl = MagicMock()
+        panel = ConcretePanel(controller=mock_ctrl)
+        qtbot.addWidget(panel)
+
+        with patch.object(
+            panel, "_create_bridge", wraps=panel._create_bridge
+        ) as create:
+            bridge = panel._create_refresh_bridge(mock_ctrl, "data_changed")
+
+        assert bridge in panel._bridges
+        create.assert_called_once()
+        assert create.call_args.args[:2] == (mock_ctrl, "data_changed")
+        handler = create.call_args.args[2]
+        assert callable(handler)

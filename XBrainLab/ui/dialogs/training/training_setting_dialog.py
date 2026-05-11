@@ -28,6 +28,10 @@ from XBrainLab.backend.training import (
 from XBrainLab.backend.training.utils import (
     get_optimizer_classes,
 )
+from XBrainLab.ui.application_capabilities import (
+    LegacyControllerFallbackUnavailableError,
+    run_legacy_controller_fallback,
+)
 from XBrainLab.ui.core.base_dialog import BaseDialog
 
 from .device_setting_dialog import DeviceSettingDialog
@@ -57,10 +61,11 @@ class TrainingSettingDialog(BaseDialog):
 
     """
 
-    def __init__(self, parent, controller):
+    def __init__(self, parent, controller, initial_option: Any | None = None):
         # self.controller is handled by BaseDialog
 
         self.training_option = None
+        self.initial_option = initial_option
         self.output_dir = "./output"
         self.optim_classes = get_optimizer_classes()
         self.optim = self.optim_classes.get("Adam")
@@ -93,11 +98,22 @@ class TrainingSettingDialog(BaseDialog):
         self.load_settings()
 
     def load_settings(self):
-        """Load previously saved training settings from the controller."""
-        if not self.controller:
-            return
-        opt = self.controller.get_training_option()
+        """Load settings from a service snapshot or explicit legacy fallback."""
+        opt = self.initial_option
+        if opt is None:
+            if not self.controller:
+                return
+            try:
+                opt = run_legacy_controller_fallback(
+                    self,
+                    self.controller.get_training_option,
+                )
+            except LegacyControllerFallbackUnavailableError:
+                return
         if opt:
+            if isinstance(opt, dict):
+                self._load_settings_snapshot(opt)
+                return
             if self.epoch_entry:
                 self.epoch_entry.setText(str(opt.epoch))
             if self.bs_entry:
@@ -129,6 +145,63 @@ class TrainingSettingDialog(BaseDialog):
             # Restore evaluation
             if opt.evaluation_option and self.evaluation_combo:
                 self.evaluation_combo.setCurrentText(opt.evaluation_option.value)
+
+    def _load_settings_snapshot(self, option: dict[str, Any]) -> None:
+        """Load saved settings from an ApplicationService state snapshot."""
+        if self.epoch_entry and option.get("epoch") is not None:
+            self.epoch_entry.setText(str(option["epoch"]))
+        if self.bs_entry and option.get("batch_size") is not None:
+            self.bs_entry.setText(str(option["batch_size"]))
+        if self.lr_entry and option.get("learning_rate") is not None:
+            self.lr_entry.setText(str(option["learning_rate"]))
+        if self.checkpoint_entry and option.get("checkpoint_epoch") is not None:
+            self.checkpoint_entry.setText(str(option["checkpoint_epoch"]))
+        if self.repeat_entry and option.get("repeat") is not None:
+            self.repeat_entry.setText(str(option["repeat"]))
+
+        optimizer_name = option.get("optimizer")
+        if optimizer_name:
+            optimizer_key = str(optimizer_name).lower()
+            self.optim = next(
+                (
+                    klass
+                    for name, klass in self.optim_classes.items()
+                    if name.lower() == optimizer_key
+                ),
+                self.optim,
+            )
+            self.optim_params = dict(option.get("optimizer_params", {}) or {})
+            if self.optim and self.opt_label:
+                self.opt_label.setText(parse_optim_name(self.optim, self.optim_params))
+
+        device = str(option.get("device") or "")
+        if device:
+            self.use_cpu = not device.startswith("cuda")
+            self.gpu_idx = self._gpu_index_from_device(device)
+            if self.dev_label:
+                self.dev_label.setText(parse_device_name(self.use_cpu, self.gpu_idx))
+
+        output_dir = option.get("output_dir")
+        if output_dir:
+            self.output_dir = str(output_dir)
+            if self.output_dir_label:
+                self.output_dir_label.setText(self.output_dir)
+
+        evaluation = option.get("evaluation_option")
+        if evaluation and self.evaluation_combo:
+            self.evaluation_combo.setCurrentText(str(evaluation))
+
+    @staticmethod
+    def _gpu_index_from_device(device: str) -> int | None:
+        if not device.startswith("cuda"):
+            return None
+        _, _, suffix = device.partition(":")
+        if not suffix:
+            return 0
+        try:
+            return int(suffix)
+        except ValueError:
+            return 0
 
     def init_ui(self):
         """Initialize the dialog UI with training parameter controls."""

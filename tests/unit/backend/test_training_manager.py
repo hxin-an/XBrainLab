@@ -1,5 +1,6 @@
 """Tests for TrainingManager extracted from Study."""
 
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -27,20 +28,20 @@ class TestSetTrainingOption:
     def test_rejects_invalid_type(self):
         tm = TrainingManager()
         with pytest.raises(TypeError):
-            tm.set_training_option("not_an_option")
+            tm.set_training_option(cast(Any, "not_an_option"))
 
 
 class TestSetModelHolder:
     def test_sets_valid_holder(self):
         tm = TrainingManager()
-        holder = ModelHolder(int, 0)
+        holder = ModelHolder(int, {})
         tm.set_model_holder(holder)
         assert tm.model_holder == holder
 
     def test_rejects_invalid_type(self):
         tm = TrainingManager()
         with pytest.raises(TypeError):
-            tm.set_model_holder("not_a_holder")
+            tm.set_model_holder(cast(Any, "not_a_holder"))
 
 
 class TestGeneratePlan:
@@ -181,6 +182,17 @@ class TestCleanTrainer:
         tm.trainer = MagicMock()
         tm.clean_trainer(force_update=True)
         assert tm.trainer is None
+
+    def test_force_update_keeps_trainer_when_cleanup_fails(self):
+        tm = TrainingManager()
+        trainer = MagicMock()
+        trainer.clean.side_effect = RuntimeError("Training did not stop")
+        tm.trainer = trainer
+
+        with pytest.raises(RuntimeError, match="did not stop"):
+            tm.clean_trainer(force_update=True)
+
+        assert tm.trainer is trainer
 
     def test_force_update_false_with_trainer_raises(self):
         tm = TrainingManager()

@@ -69,17 +69,15 @@ class TestRetriever:
         assert isinstance(r, RAGRetriever)
 
 
-# ============ Gemini Backend ============
+# ============ Removed Remote Backend Guards ============
 
 
-class TestGeminiBackend:
-    def test_creates(self):
-        from XBrainLab.llm.core.backends.gemini import GeminiBackend
+class TestRemovedRemoteBackends:
+    def test_remote_modules_absent(self):
+        import importlib.util
 
-        config = MagicMock()
-        config.api_key = "fake-key"  # pragma: allowlist secret
-        backend = GeminiBackend(config)
-        assert isinstance(backend, GeminiBackend)
+        assert importlib.util.find_spec("XBrainLab.llm.core.backends.api") is None
+        assert importlib.util.find_spec("XBrainLab.llm.core.backends.gemini") is None
 
 
 # ============ LLM Engine ============

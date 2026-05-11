@@ -23,9 +23,6 @@ def main_window(qapp, qtbot):
     return window
 
 
-@pytest.mark.skip(
-    reason="Segfaults in headless env due to Visualization/Qt interaction"
-)
 def test_full_workflow(main_window, qtbot):
     """
     Simulate a full workflow:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 from PyQt6.QtWidgets import QMainWindow, QWidget
 
@@ -24,6 +25,26 @@ class TestSinglePlotWindow:
         w = SinglePlotWindow(None, title="Test")
         qtbot.addWidget(w)
         assert isinstance(w.figure_canvas, QWidget)
+
+    def test_close_releases_current_figure_and_qt_widgets(self, qtbot):
+        from matplotlib.figure import Figure
+        from PyQt6.QtGui import QCloseEvent
+
+        from XBrainLab.ui.components import single_plot_window
+        from XBrainLab.ui.components.single_plot_window import SinglePlotWindow
+
+        w = SinglePlotWindow(None, title="Test")
+        qtbot.addWidget(w)
+        external_figure = Figure()
+        w.set_figure(external_figure, w.figsize, w.dpi)
+
+        with patch.object(single_plot_window.plt, "close") as close_figure:
+            w.closeEvent(QCloseEvent())
+
+        assert external_figure in [call.args[0] for call in close_figure.call_args_list]
+        assert w.figure_canvas is None
+        assert w.toolbar is None
+        assert w.plot_number is None
 
 
 # ============ MessageBubble ============
@@ -74,6 +95,38 @@ class TestConfusionMatrix:
         qtbot.addWidget(w)
         w.update_plot(None)
 
+    def test_update_none_releases_previous_canvas_and_children(self, qtbot):
+        from PyQt6.QtWidgets import QLabel
+
+        from XBrainLab.ui.panels.evaluation import confusion_matrix
+        from XBrainLab.ui.panels.evaluation.confusion_matrix import (
+            ConfusionMatrixWidget,
+        )
+
+        class CleanupLabel(QLabel):
+            deleted = False
+
+            def deleteLater(self):
+                self.deleted = True
+                super().deleteLater()
+
+        w = ConfusionMatrixWidget()
+        qtbot.addWidget(w)
+        old_fig = w.fig
+        old_canvas = w.canvas
+        assert old_canvas is not None
+        temporary_label = CleanupLabel("temporary")
+        w.plot_layout.addWidget(temporary_label)
+
+        with patch.object(confusion_matrix.plt, "close") as close_figure:
+            w.update_plot(None)
+
+        close_figure.assert_called_once_with(old_fig)
+        assert temporary_label.deleted is True
+        assert old_canvas.parent() is None
+        assert w.fig is None
+        assert w.canvas is None
+
 
 class TestMetricsBarChart:
     def test_creates(self, qtbot):
@@ -93,6 +146,49 @@ class TestMetricsBarChart:
         w = MetricsBarChartWidget()
         qtbot.addWidget(w)
         w.update_plot(None)
+
+    def test_close_releases_figure_and_canvas(self, qtbot):
+        import matplotlib.pyplot as plt
+        from PyQt6.QtGui import QCloseEvent
+
+        from XBrainLab.ui.panels.evaluation.metrics_bar_chart import (
+            MetricsBarChartWidget,
+        )
+
+        w = MetricsBarChartWidget()
+        qtbot.addWidget(w)
+        old_fig = w.fig
+        old_canvas = w.canvas
+        assert old_canvas is not None
+
+        with patch.object(plt, "close") as close_figure:
+            w.closeEvent(QCloseEvent())
+
+        close_figure.assert_called_once_with(old_fig)
+        assert old_canvas.parent() is None
+        assert w.fig is None
+        assert w.canvas is None
+
+    def test_update_plot_layout_failure_is_not_logged_as_error(self, qtbot):
+        from XBrainLab.ui.panels.evaluation import metrics_bar_chart
+        from XBrainLab.ui.panels.evaluation.metrics_bar_chart import (
+            MetricsBarChartWidget,
+        )
+
+        w = MetricsBarChartWidget()
+        qtbot.addWidget(w)
+        assert w.fig is not None
+        w.fig.tight_layout = MagicMock(side_effect=np.linalg.LinAlgError("singular"))
+
+        with patch.object(metrics_bar_chart.logger, "error") as error_logger:
+            w.update_plot(
+                {
+                    0: {"precision": 0.0, "recall": 0.0, "f1-score": 0.0},
+                    1: {"precision": 0.0, "recall": 0.0, "f1-score": 0.0},
+                },
+            )
+
+        error_logger.assert_not_called()
 
 
 # ============ History Table ============

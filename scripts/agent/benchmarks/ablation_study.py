@@ -16,14 +16,13 @@ Ablation Conditions:
 
 Usage:
     poetry run python scripts/agent/benchmarks/ablation_study.py \\
-        --model gemini --dataset test.json --delay 1 --timeout 60
+        --model phi --dataset test.json --delay 1 --timeout 60
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import sys
 import tempfile
@@ -61,6 +60,10 @@ from scripts.agent.benchmarks.simple_bench import (
 from XBrainLab.llm.agent.parser import CommandParser
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.engine import LLMEngine
+from XBrainLab.llm.core.model_catalog import (
+    FALLBACK_LOCAL_MODEL_ID,
+    PRIMARY_LOCAL_MODEL_ID,
+)
 from XBrainLab.llm.pipeline_state import PipelineStage
 from XBrainLab.llm.tools import AVAILABLE_TOOLS
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
@@ -466,13 +469,11 @@ def run_ablation(
     """Run all ablation conditions and produce a comparison report."""
 
     MODEL_CONFIGS = {
-        "gemini": {
-            "inference_mode": "gemini",
-            "gemini_model_name": os.environ.get(
-                "GEMINI_MODEL_NAME", "gemini-2.0-flash"
-            ),
+        "phi": {"model_name": PRIMARY_LOCAL_MODEL_ID, "inference_mode": "local"},
+        "phi_fallback": {
+            "model_name": FALLBACK_LOCAL_MODEL_ID,
+            "inference_mode": "local",
         },
-        "qwen": {"model_name": "Qwen/Qwen2.5-7B-Instruct", "inference_mode": "local"},
     }
 
     if model_name not in MODEL_CONFIGS:

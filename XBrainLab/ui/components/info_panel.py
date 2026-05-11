@@ -15,6 +15,10 @@ from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
 
+INFO_ROW_HEIGHT = 22
+INFO_TABLE_FRAME_BUFFER = 6
+INFO_GROUP_VERTICAL_BUFFER = 42
+
 
 class AggregateInfoPanel(QGroupBox):
     """A grouped information panel displaying aggregate dataset statistics.
@@ -121,21 +125,20 @@ class AggregateInfoPanel(QGroupBox):
 
         main_layout.addWidget(self.table)
 
-        # Set height based on content
         v_header = self.table.verticalHeader()
         if v_header is not None:
-            v_header.setDefaultSectionSize(25)
+            v_header.setDefaultSectionSize(INFO_ROW_HEIGHT)
+            v_header.setMinimumSectionSize(INFO_ROW_HEIGHT)
+            v_header.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
 
-        # Set height based on content
-        # 25px per row + 2px for borders/margins (tight fit)
-        total_height = len(keys) * 25 + 2
-        self.table.setMinimumHeight(150)  # Allow shrinking
-        self.table.setMaximumHeight(total_height + 5)  # Minimal buffer
+        total_height = len(keys) * INFO_ROW_HEIGHT + INFO_TABLE_FRAME_BUFFER
+        self.table.setMinimumHeight(total_height)
+        self.table.setMaximumHeight(total_height)
 
         # Limit the GroupBox height so it doesn't consume extra space when expanded
-        # Table height + padding for GroupBox title (approx 20px) + margins
-        # (approx 10px)
-        self.setMaximumHeight(total_height + 35)
+        # Table height + padding for GroupBox title and margins.
+        self.setMinimumHeight(total_height + INFO_GROUP_VERTICAL_BUFFER)
+        self.setMaximumHeight(total_height + INFO_GROUP_VERTICAL_BUFFER)
 
         self.setMinimumWidth(200)
         # Use Expanding to ensure it takes up available space up to MaximumHeight

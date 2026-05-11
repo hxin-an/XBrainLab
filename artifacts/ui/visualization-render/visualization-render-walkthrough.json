@@ -1,0 +1,1002 @@
+{
+  "status": "passed",
+  "failure_reason": "",
+  "source_path": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+  "training_output_dir": "/tmp/xbrainlab-visualization-render-output",
+  "dataset_preparation": {
+    "ok": true,
+    "commands": [
+      {
+        "command": "scan_source",
+        "ok": true,
+        "message": "Scanned source and found 1 EEG file(s).",
+        "error_type": null,
+        "diagnostics": {
+          "payload_type": "scan_result",
+          "scan_result": {
+            "scan_id": "scan-1",
+            "source_path": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+            "source_hint": "auto",
+            "source_kind": "file",
+            "eeg_files": [
+              "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif"
+            ],
+            "label_carriers": [],
+            "metadata": [
+              {
+                "file": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+                "subject": {
+                  "field": "subject",
+                  "value": null,
+                  "source": "missing",
+                  "decision": "needs_confirmation",
+                  "reason": "subject was not inferred from source path.",
+                  "override": null,
+                  "recipe_trace": []
+                },
+                "session": {
+                  "field": "session",
+                  "value": null,
+                  "source": "missing",
+                  "decision": "needs_confirmation",
+                  "reason": "session was not inferred from source path.",
+                  "override": null,
+                  "recipe_trace": []
+                },
+                "task": {
+                  "field": "task",
+                  "value": null,
+                  "source": "missing",
+                  "decision": "needs_confirmation",
+                  "reason": "task was not inferred from source path.",
+                  "override": null,
+                  "recipe_trace": []
+                },
+                "run": {
+                  "field": "run",
+                  "value": null,
+                  "source": "missing",
+                  "decision": "needs_confirmation",
+                  "reason": "run was not inferred from source path.",
+                  "override": null,
+                  "recipe_trace": []
+                }
+              }
+            ],
+            "bids": {
+              "is_bids": false,
+              "subjects": [],
+              "sessions": [],
+              "tasks": [],
+              "runs": [],
+              "events_files": [],
+              "dataset_description": null
+            },
+            "warnings": [],
+            "blocked_reasons": []
+          }
+        }
+      },
+      {
+        "command": "preview_interpretation",
+        "ok": true,
+        "message": "Interpretation preview ready.",
+        "error_type": null,
+        "diagnostics": {
+          "payload_type": "interpretation_preview",
+          "candidate": {
+            "candidate_id": "candidate-2",
+            "scan_id": "scan-1",
+            "source_path": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+            "source_kind": "file",
+            "selected_eeg_files": [
+              "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif"
+            ],
+            "label_carriers": [],
+            "event_roles": {},
+            "class_map": {},
+            "time_model": "file_native_time",
+            "granularity": "recording",
+            "metadata": [
+              {
+                "file": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+                "subject": {
+                  "field": "subject",
+                  "value": null,
+                  "source": "missing",
+                  "decision": "needs_confirmation",
+                  "reason": "subject was not inferred from source path.",
+                  "override": null,
+                  "recipe_trace": []
+                },
+                "session": {
+                  "field": "session",
+                  "value": null,
+                  "source": "missing",
+                  "decision": "needs_confirmation",
+                  "reason": "session was not inferred from source path.",
+                  "override": null,
+                  "recipe_trace": []
+                },
+                "task": {
+                  "field": "task",
+                  "value": null,
+                  "source": "missing",
+                  "decision": "needs_confirmation",
+                  "reason": "task was not inferred from source path.",
+                  "override": null,
+                  "recipe_trace": []
+                },
+                "run": {
+                  "field": "run",
+                  "value": null,
+                  "source": "missing",
+                  "decision": "needs_confirmation",
+                  "reason": "run was not inferred from source path.",
+                  "override": null,
+                  "recipe_trace": []
+                }
+              }
+            ],
+            "warnings": [],
+            "confirmation_items": [
+              "Confirm run metadata for training_completion_raw.fif.",
+              "Confirm session metadata for training_completion_raw.fif.",
+              "Confirm subject metadata for training_completion_raw.fif.",
+              "Confirm task metadata for training_completion_raw.fif."
+            ],
+            "blocked_reasons": [],
+            "choices": {},
+            "recipe_trace": [
+              "scan:scan-1",
+              "candidate:candidate-2"
+            ]
+          },
+          "preview": {
+            "preview_id": "preview-3",
+            "candidate_id": "candidate-2",
+            "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+            "file_count": 1,
+            "label_carrier_count": 0,
+            "metadata_preview": [
+              {
+                "file": "training_completion_raw.fif",
+                "subject": {
+                  "field": "subject",
+                  "value": null,
+                  "source": "missing",
+                  "decision": "needs_confirmation",
+                  "reason": "subject was not inferred from source path.",
+                  "override": null,
+                  "recipe_trace": []
+                },
+                "session": {
+                  "field": "session",
+                  "value": null,
+                  "source": "missing",
+                  "decision": "needs_confirmation",
+                  "reason": "session was not inferred from source path.",
+                  "override": null,
+                  "recipe_trace": []
+                },
+                "task": {
+                  "field": "task",
+                  "value": null,
+                  "source": "missing",
+                  "decision": "needs_confirmation",
+                  "reason": "task was not inferred from source path.",
+                  "override": null,
+                  "recipe_trace": []
+                },
+                "run": {
+                  "field": "run",
+                  "value": null,
+                  "source": "missing",
+                  "decision": "needs_confirmation",
+                  "reason": "run was not inferred from source path.",
+                  "override": null,
+                  "recipe_trace": []
+                }
+              }
+            ],
+            "warnings": [],
+            "confirmation_items": [
+              "Confirm run metadata for training_completion_raw.fif.",
+              "Confirm session metadata for training_completion_raw.fif.",
+              "Confirm subject metadata for training_completion_raw.fif.",
+              "Confirm task metadata for training_completion_raw.fif."
+            ],
+            "blocked_reasons": [],
+            "downstream_impacts": [
+              "Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session."
+            ],
+            "event_roles": {},
+            "class_map": {}
+          }
+        }
+      },
+      {
+        "command": "validate_interpretation",
+        "ok": true,
+        "message": "Interpretation validation: needs_confirmation.",
+        "error_type": null,
+        "diagnostics": {
+          "payload_type": "validation_decision",
+          "validation_decision": {
+            "candidate_id": "candidate-2",
+            "decision": "needs_confirmation",
+            "reasons": [
+              "Candidate has reviewable semantic choices."
+            ],
+            "warnings": [],
+            "required_confirmations": [
+              "Confirm run metadata for training_completion_raw.fif.",
+              "Confirm session metadata for training_completion_raw.fif.",
+              "Confirm subject metadata for training_completion_raw.fif.",
+              "Confirm task metadata for training_completion_raw.fif."
+            ],
+            "blocked_reasons": [],
+            "downstream_impacts": [
+              "Downstream workflow remains blocked until the interpretation is confirmed and applied."
+            ]
+          }
+        }
+      },
+      {
+        "command": "apply_interpretation",
+        "ok": true,
+        "message": "Applied interpretation and loaded 1 file(s).",
+        "error_type": null,
+        "diagnostics": {
+          "payload_type": "applied_interpretation",
+          "success_count": 1,
+          "errors": [],
+          "applied_interpretation": {
+            "interpretation_id": "interpretation-4",
+            "candidate_id": "candidate-2",
+            "source_path": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+            "source_kind": "file",
+            "loaded_files": [
+              "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif"
+            ],
+            "label_carriers": [],
+            "metadata": [
+              {
+                "file": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+                "subject": {
+                  "field": "subject",
+                  "value": null,
+                  "source": "missing",
+                  "decision": "needs_confirmation",
+                  "reason": "subject was not inferred from source path.",
+                  "override": null,
+                  "recipe_trace": []
+                },
+                "session": {
+                  "field": "session",
+                  "value": null,
+                  "source": "missing",
+                  "decision": "needs_confirmation",
+                  "reason": "session was not inferred from source path.",
+                  "override": null,
+                  "recipe_trace": []
+                },
+                "task": {
+                  "field": "task",
+                  "value": null,
+                  "source": "missing",
+                  "decision": "needs_confirmation",
+                  "reason": "task was not inferred from source path.",
+                  "override": null,
+                  "recipe_trace": []
+                },
+                "run": {
+                  "field": "run",
+                  "value": null,
+                  "source": "missing",
+                  "decision": "needs_confirmation",
+                  "reason": "run was not inferred from source path.",
+                  "override": null,
+                  "recipe_trace": []
+                }
+              }
+            ],
+            "validation_decision": "needs_confirmation",
+            "confirmations": [
+              "Confirm run metadata for training_completion_raw.fif.",
+              "Confirm session metadata for training_completion_raw.fif.",
+              "Confirm subject metadata for training_completion_raw.fif.",
+              "Confirm task metadata for training_completion_raw.fif."
+            ],
+            "event_roles": {},
+            "class_map": {},
+            "label_imports": [],
+            "recipe_trace": [
+              "scan:scan-1",
+              "candidate:candidate-2",
+              "validation:needs_confirmation",
+              "applied:interpretation-4"
+            ]
+          },
+          "label_carriers_pending": []
+        }
+      },
+      {
+        "command": "preprocess",
+        "ok": true,
+        "message": "Standard preprocessing applied.",
+        "error_type": null,
+        "diagnostics": {}
+      },
+      {
+        "command": "create_epoch",
+        "ok": true,
+        "message": "Created epochs from 0.0s to 1.5s.",
+        "error_type": null,
+        "diagnostics": {}
+      },
+      {
+        "command": "generate_dataset",
+        "ok": true,
+        "message": "Generated 1 dataset(s).",
+        "error_type": null,
+        "diagnostics": {
+          "dataset_count": 1,
+          "protocol": "trial-wise",
+          "split_audit": {
+            "ok": true,
+            "dataset_count": 1,
+            "issues": []
+          },
+          "split_summary": {
+            "count": 1,
+            "train_count": 4,
+            "val_count": 1,
+            "test_count": 1,
+            "audit": {
+              "ok": true,
+              "dataset_count": 1,
+              "issues": []
+            }
+          }
+        }
+      }
+    ],
+    "state": {
+      "pipeline_stage": "dataset_ready",
+      "raw": {
+        "loaded": true,
+        "count": 1,
+        "files": [
+          "training_completion_raw.fif"
+        ],
+        "formats": [
+          ".fif"
+        ],
+        "channels": [
+          "C3",
+          "C4",
+          "Cz",
+          "Pz"
+        ],
+        "metadata": [
+          {
+            "index": "0",
+            "file": "training_completion_raw.fif",
+            "subject": "0",
+            "session": "0"
+          }
+        ],
+        "event_total": 6,
+        "unique_events": [
+          "left",
+          "right"
+        ],
+        "locked": true,
+        "diagnostics": {
+          "runtime_signals": [],
+          "gdf_duplicate_channel_files": [],
+          "gdf_duplicate_channel_details": []
+        }
+      },
+      "preprocessed": {
+        "available": true,
+        "count": 1,
+        "files": [
+          "training_completion_raw.fif"
+        ],
+        "is_epoched": true,
+        "channel_names": [
+          "C3",
+          "C4",
+          "Cz",
+          "Pz"
+        ],
+        "operations": [
+          "Filtering 4.0 ~ 40.0 Hz",
+          "z-score normalization",
+          "Epoching 0.0 ~ 1.5 by event (None baseline)"
+        ],
+        "diagnostics": {
+          "runtime_signals": [],
+          "gdf_duplicate_channel_files": [],
+          "gdf_duplicate_channel_details": []
+        }
+      },
+      "epoch": {
+        "available": true,
+        "exists": true,
+        "epoch_count": 6,
+        "n_channels": 4,
+        "n_times": 193,
+        "event_names": [
+          "left",
+          "right"
+        ],
+        "event_ids": {
+          "left": 0,
+          "right": 1
+        },
+        "channel_names": [
+          "C3",
+          "C4",
+          "Cz",
+          "Pz"
+        ]
+      },
+      "dataset": {
+        "available": true,
+        "count": 1,
+        "names": [
+          "Subject-0_0"
+        ],
+        "locked": true,
+        "generator_exists": true,
+        "split_summary": {
+          "count": 1,
+          "train_count": 4,
+          "val_count": 1,
+          "test_count": 1,
+          "audit": {
+            "ok": true,
+            "dataset_count": 1,
+            "issues": []
+          }
+        }
+      },
+      "training": {
+        "has_model": false,
+        "model_name": null,
+        "has_training_option": false,
+        "training_option": {},
+        "has_trainer": false,
+        "is_running": false,
+        "plan_count": 0,
+        "run_count": 0,
+        "finished_run_count": 0,
+        "missing_requirements": [
+          "Model Selection",
+          "Training Settings"
+        ]
+      },
+      "evaluation": {
+        "available": false,
+        "total_plans": 0,
+        "total_runs": 0,
+        "finished_runs": 0,
+        "metrics_available": false
+      },
+      "visualization": {
+        "saliency_configured": false,
+        "saliency_available": false,
+        "montage_available": false,
+        "channel_positions_available": false,
+        "channel_count": 4
+      },
+      "interpretation": {
+        "has_scan_result": true,
+        "has_candidate": true,
+        "has_preview": true,
+        "has_validation_decision": true,
+        "has_applied_interpretation": true,
+        "has_recipe": false,
+        "latest_scan_id": "scan-1",
+        "latest_candidate_id": "candidate-2",
+        "latest_preview_id": "preview-3",
+        "latest_interpretation_id": "interpretation-4",
+        "latest_recipe_id": null,
+        "source_path": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+        "source_kind": "file",
+        "validation_decision": "needs_confirmation",
+        "pending_confirmation": true,
+        "blocked_reasons": [],
+        "warnings": [],
+        "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+        "metadata_preview": [
+          {
+            "file": "training_completion_raw.fif",
+            "subject": {
+              "field": "subject",
+              "value": null,
+              "source": "missing",
+              "decision": "needs_confirmation",
+              "reason": "subject was not inferred from source path.",
+              "override": null,
+              "recipe_trace": []
+            },
+            "session": {
+              "field": "session",
+              "value": null,
+              "source": "missing",
+              "decision": "needs_confirmation",
+              "reason": "session was not inferred from source path.",
+              "override": null,
+              "recipe_trace": []
+            },
+            "task": {
+              "field": "task",
+              "value": null,
+              "source": "missing",
+              "decision": "needs_confirmation",
+              "reason": "task was not inferred from source path.",
+              "override": null,
+              "recipe_trace": []
+            },
+            "run": {
+              "field": "run",
+              "value": null,
+              "source": "missing",
+              "decision": "needs_confirmation",
+              "reason": "run was not inferred from source path.",
+              "override": null,
+              "recipe_trace": []
+            }
+          }
+        ],
+        "label_carriers": [],
+        "label_import_count": 0,
+        "label_imports": [],
+        "recipe_path": null
+      },
+      "active_dataset": {
+        "has_raw_data": true,
+        "has_preprocessed_data": true,
+        "has_epoch_data": true,
+        "has_datasets": true,
+        "is_locked": true
+      },
+      "active_training": {
+        "has_model": false,
+        "has_training_option": false,
+        "has_trainer": false,
+        "is_running": false
+      },
+      "last_error": null
+    }
+  },
+  "training": {
+    "commands": [
+      {
+        "command": "configure_training",
+        "ok": true,
+        "message": "Model configured: EEGNet.",
+        "error_type": null,
+        "diagnostics": {}
+      },
+      {
+        "command": "configure_training",
+        "ok": true,
+        "message": "Training configured.",
+        "error_type": null,
+        "diagnostics": {
+          "training_option": {
+            "epoch": 1,
+            "batch_size": 2,
+            "learning_rate": 0.001,
+            "repeat": 1,
+            "device": "cpu",
+            "optimizer": "Adam",
+            "checkpoint_epoch": 0,
+            "output_dir": "/tmp/xbrainlab-visualization-render-output"
+          }
+        }
+      },
+      {
+        "command": "saliency",
+        "ok": true,
+        "message": "Saliency parameters configured.",
+        "error_type": null,
+        "diagnostics": {
+          "payload_type": "saliency_configuration",
+          "action": "configure",
+          "saliency_configured": true,
+          "saliency_available": false,
+          "requested_method": "Gradient",
+          "params": {
+            "SmoothGrad": {
+              "nt_samples": 2,
+              "nt_samples_batch_size": 1,
+              "stdevs": 1.0
+            },
+            "SmoothGrad_Squared": {
+              "nt_samples": 2,
+              "nt_samples_batch_size": 1,
+              "stdevs": 1.0
+            },
+            "VarGrad": {
+              "nt_samples": 2,
+              "nt_samples_batch_size": 1,
+              "stdevs": 1.0
+            }
+          }
+        }
+      },
+      {
+        "command": "apply_montage",
+        "ok": true,
+        "message": "Applied montage 'synthetic-4ch' to 4 channel(s).",
+        "error_type": null,
+        "diagnostics": {
+          "channel_count": 4,
+          "montage_name": "synthetic-4ch"
+        }
+      },
+      {
+        "command": "train",
+        "ok": true,
+        "message": "Training started.",
+        "error_type": null,
+        "diagnostics": {}
+      }
+    ],
+    "finished_run_count": 1,
+    "metrics_available": true,
+    "saliency_available": true
+  },
+  "application_evaluate": {
+    "command": "evaluate",
+    "ok": true,
+    "message": "Evaluation summary ready.",
+    "error_type": null,
+    "diagnostics": {
+      "payload_type": "evaluation_summary",
+      "available": true,
+      "target": null,
+      "plan_count": 1,
+      "finished_run_count": 1,
+      "plans": [
+        {
+          "index": 0,
+          "name": "Subject-0_0",
+          "run_count": 1,
+          "finished_run_count": 1,
+          "metrics": {
+            "0": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1-score": 1.0,
+              "support": 1
+            },
+            "1": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1-score": 0.0,
+              "support": 0
+            },
+            "macro_avg": {
+              "precision": 0.5,
+              "recall": 0.5,
+              "f1-score": 0.5,
+              "support": 1
+            }
+          }
+        }
+      ]
+    }
+  },
+  "application_visualize": {
+    "command": "visualize",
+    "ok": true,
+    "message": "Visualization summary ready.",
+    "error_type": null,
+    "diagnostics": {
+      "payload_type": "visualization_summary",
+      "available": true,
+      "view": "Saliency Map",
+      "available_views": [
+        "epoch overview",
+        "channel montage",
+        "confusion matrix",
+        "metrics",
+        "saliency setup",
+        "saliency map",
+        "spectrogram",
+        "topographic map",
+        "3D plot"
+      ],
+      "trainer_count": 1,
+      "channel_count": 4,
+      "montage_available": true,
+      "saliency_configured": true,
+      "saliency_available": true
+    }
+  },
+  "renders": [
+    {
+      "tab": "Saliency Map",
+      "screenshot": "artifacts/ui/visualization-render/visualization-render-saliency-map.png",
+      "ok": true,
+      "failure_reason": "",
+      "error_visible": false,
+      "error_text": "Error: Please select a Plan and Run.",
+      "axes_count": 3,
+      "image_count": 3,
+      "canvas_visible": true
+    },
+    {
+      "tab": "Spectrogram",
+      "screenshot": "artifacts/ui/visualization-render/visualization-render-spectrogram.png",
+      "ok": true,
+      "failure_reason": "",
+      "error_visible": false,
+      "error_text": "",
+      "axes_count": 3,
+      "image_count": 3,
+      "canvas_visible": true
+    },
+    {
+      "tab": "Topographic Map",
+      "screenshot": "artifacts/ui/visualization-render/visualization-render-topographic-map.png",
+      "ok": true,
+      "failure_reason": "",
+      "error_visible": false,
+      "error_text": "",
+      "axes_count": 3,
+      "image_count": 4,
+      "canvas_visible": true
+    }
+  ],
+  "blocked_renders": [
+    {
+      "tab": "3D Plot",
+      "screenshot": "artifacts/ui/visualization-render/visualization-render-3d-blocked.png",
+      "ok": true,
+      "failure_reason": "",
+      "blocked_reason": "3D rendering requires an interactive OpenGL desktop session. Use the desktop launcher, or switch to Saliency Map, Spectrogram, or Topographic Map in this headless environment.",
+      "plotter_created": false
+    }
+  ],
+  "dismissed_dialogs": [
+    {
+      "title": "Done",
+      "text": "All training jobs finished."
+    }
+  ],
+  "screenshots": {
+    "ready": "artifacts/ui/visualization-render/visualization-render-ready.png"
+  },
+  "final_state": {
+    "pipeline_stage": "trained",
+    "raw": {
+      "loaded": true,
+      "count": 1,
+      "files": [
+        "training_completion_raw.fif"
+      ],
+      "formats": [
+        ".fif"
+      ],
+      "channels": [
+        "C3",
+        "C4",
+        "Cz",
+        "Pz"
+      ],
+      "metadata": [
+        {
+          "index": "0",
+          "file": "training_completion_raw.fif",
+          "subject": "0",
+          "session": "0"
+        }
+      ],
+      "event_total": 6,
+      "unique_events": [
+        "left",
+        "right"
+      ],
+      "locked": true,
+      "diagnostics": {
+        "runtime_signals": [],
+        "gdf_duplicate_channel_files": [],
+        "gdf_duplicate_channel_details": []
+      }
+    },
+    "preprocessed": {
+      "available": true,
+      "count": 1,
+      "files": [
+        "training_completion_raw.fif"
+      ],
+      "is_epoched": true,
+      "channel_names": [
+        "C3",
+        "C4",
+        "Cz",
+        "Pz"
+      ],
+      "operations": [
+        "Filtering 4.0 ~ 40.0 Hz",
+        "z-score normalization",
+        "Epoching 0.0 ~ 1.5 by event (None baseline)"
+      ],
+      "diagnostics": {
+        "runtime_signals": [],
+        "gdf_duplicate_channel_files": [],
+        "gdf_duplicate_channel_details": []
+      }
+    },
+    "epoch": {
+      "available": true,
+      "exists": true,
+      "epoch_count": 6,
+      "n_channels": 4,
+      "n_times": 193,
+      "event_names": [
+        "left",
+        "right"
+      ],
+      "event_ids": {
+        "left": 0,
+        "right": 1
+      },
+      "channel_names": [
+        "C3",
+        "C4",
+        "Cz",
+        "Pz"
+      ]
+    },
+    "dataset": {
+      "available": true,
+      "count": 1,
+      "names": [
+        "Subject-0_0"
+      ],
+      "locked": true,
+      "generator_exists": true,
+      "split_summary": {
+        "count": 1,
+        "train_count": 4,
+        "val_count": 1,
+        "test_count": 1,
+        "audit": {
+          "ok": true,
+          "dataset_count": 1,
+          "issues": []
+        }
+      }
+    },
+    "training": {
+      "has_model": true,
+      "model_name": "EEGNet",
+      "has_training_option": true,
+      "training_option": {
+        "epoch": 1,
+        "batch_size": 2,
+        "learning_rate": 0.001,
+        "repeat": 1,
+        "device": "cpu",
+        "optimizer": "Adam",
+        "checkpoint_epoch": 0,
+        "output_dir": "/tmp/xbrainlab-visualization-render-output"
+      },
+      "has_trainer": true,
+      "is_running": false,
+      "plan_count": 1,
+      "run_count": 1,
+      "finished_run_count": 1,
+      "missing_requirements": []
+    },
+    "evaluation": {
+      "available": true,
+      "total_plans": 1,
+      "total_runs": 1,
+      "finished_runs": 1,
+      "metrics_available": true
+    },
+    "visualization": {
+      "saliency_configured": true,
+      "saliency_available": true,
+      "montage_available": true,
+      "channel_positions_available": true,
+      "channel_count": 4
+    },
+    "interpretation": {
+      "has_scan_result": true,
+      "has_candidate": true,
+      "has_preview": true,
+      "has_validation_decision": true,
+      "has_applied_interpretation": true,
+      "has_recipe": false,
+      "latest_scan_id": "scan-1",
+      "latest_candidate_id": "candidate-2",
+      "latest_preview_id": "preview-3",
+      "latest_interpretation_id": "interpretation-4",
+      "latest_recipe_id": null,
+      "source_path": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+      "source_kind": "file",
+      "validation_decision": "needs_confirmation",
+      "pending_confirmation": true,
+      "blocked_reasons": [],
+      "warnings": [],
+      "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+      "metadata_preview": [
+        {
+          "file": "training_completion_raw.fif",
+          "subject": {
+            "field": "subject",
+            "value": null,
+            "source": "missing",
+            "decision": "needs_confirmation",
+            "reason": "subject was not inferred from source path.",
+            "override": null,
+            "recipe_trace": []
+          },
+          "session": {
+            "field": "session",
+            "value": null,
+            "source": "missing",
+            "decision": "needs_confirmation",
+            "reason": "session was not inferred from source path.",
+            "override": null,
+            "recipe_trace": []
+          },
+          "task": {
+            "field": "task",
+            "value": null,
+            "source": "missing",
+            "decision": "needs_confirmation",
+            "reason": "task was not inferred from source path.",
+            "override": null,
+            "recipe_trace": []
+          },
+          "run": {
+            "field": "run",
+            "value": null,
+            "source": "missing",
+            "decision": "needs_confirmation",
+            "reason": "run was not inferred from source path.",
+            "override": null,
+            "recipe_trace": []
+          }
+        }
+      ],
+      "label_carriers": [],
+      "label_import_count": 0,
+      "label_imports": [],
+      "recipe_path": null
+    },
+    "active_dataset": {
+      "has_raw_data": true,
+      "has_preprocessed_data": true,
+      "has_epoch_data": true,
+      "has_datasets": true,
+      "is_locked": true
+    },
+    "active_training": {
+      "has_model": true,
+      "has_training_option": true,
+      "has_trainer": true,
+      "is_running": false
+    },
+    "last_error": null
+  },
+  "ui_state": {
+    "current_panel": "Visualization",
+    "plan": "Fold 1 (EEGNet)",
+    "run": "Run 1",
+    "method": "Gradient"
+  },
+  "elapsed_seconds": 7.164
+}

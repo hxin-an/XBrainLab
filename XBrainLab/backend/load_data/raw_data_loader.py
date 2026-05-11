@@ -5,6 +5,9 @@ formats including EEGLAB (.set), BIOSIG (.gdf), MNE (.fif), EDF (.edf),
 BioSemi (.bdf), Neuroscan (.cnt), and BrainVision (.vhdr).
 """
 
+import re
+import warnings
+
 import mne
 
 from XBrainLab.backend.exceptions import FileCorruptedError
@@ -12,6 +15,198 @@ from XBrainLab.backend.load_data.factory import RawDataLoaderFactory
 from XBrainLab.backend.utils.logger import logger
 
 from .raw import Raw
+
+_DUPLICATE_GDF_CHANNEL_WARNING = "Channel names are not unique"
+_RUNNING_NUMBER_SUFFIX = re.compile(r"^(?P<base>.+)-(?P<index>\d+)$")
+_GRAZ_2A_AUTO_RENAMED_CHANNELS = [
+    "EEG-Fz",
+    "EEG-0",
+    "EEG-1",
+    "EEG-2",
+    "EEG-3",
+    "EEG-4",
+    "EEG-5",
+    "EEG-C3",
+    "EEG-6",
+    "EEG-Cz",
+    "EEG-7",
+    "EEG-C4",
+    "EEG-8",
+    "EEG-9",
+    "EEG-10",
+    "EEG-11",
+    "EEG-12",
+    "EEG-13",
+    "EEG-14",
+    "EEG-Pz",
+    "EEG-15",
+    "EEG-16",
+    "EOG-left",
+    "EOG-central",
+    "EOG-right",
+]
+_GRAZ_2A_CANONICAL_CHANNELS = [
+    "EEG-Fz",
+    "EEG-FC3",
+    "EEG-FC1",
+    "EEG-FCz",
+    "EEG-FC2",
+    "EEG-FC4",
+    "EEG-C5",
+    "EEG-C3",
+    "EEG-C1",
+    "EEG-Cz",
+    "EEG-C2",
+    "EEG-C4",
+    "EEG-C6",
+    "EEG-CP3",
+    "EEG-CP1",
+    "EEG-CPz",
+    "EEG-CP2",
+    "EEG-CP4",
+    "EEG-P1",
+    "EEG-Pz",
+    "EEG-P2",
+    "EEG-POz",
+    "EOG-left",
+    "EOG-central",
+    "EOG-right",
+]
+
+
+def _reemit_captured_warnings(
+    caught_warnings,
+    *,
+    suppress_duplicate_channel_warning: bool = False,
+):
+    """Re-emit warnings captured around a loader call.
+
+    This lets the loader inspect runtime warnings for richer repo-specific
+    diagnostics without suppressing the original MNE warning surface.
+    """
+
+    for caught_warning in caught_warnings:
+        if suppress_duplicate_channel_warning and _DUPLICATE_GDF_CHANNEL_WARNING in str(
+            caught_warning.message
+        ):
+            continue
+        warnings.warn_explicit(
+            message=caught_warning.message,
+            category=caught_warning.category,
+            filename=caught_warning.filename,
+            lineno=caught_warning.lineno,
+        )
+
+
+def _normalize_known_graz_2a_channel_names(selected_data):
+    """Normalize the known BCI Competition IV 2a auto-renamed GDF pattern.
+
+    The official Graz 2a description documents a fixed 22-channel montage.
+    In these fixtures MNE receives many generic ``EEG`` labels and auto-renames
+    them to ``EEG-0``, ``EEG-1``, ... . When the resulting full 25-channel
+    pattern matches the published montage order exactly, we can deterministically
+    restore the canonical labels instead of leaving downstream code to reason
+    about generated placeholder names.
+    """
+
+    channel_names = list(selected_data.info.get("ch_names", []))
+    if channel_names != _GRAZ_2A_AUTO_RENAMED_CHANNELS:
+        return None
+
+    rename_map = {
+        original: normalized
+        for original, normalized in zip(
+            _GRAZ_2A_AUTO_RENAMED_CHANNELS,
+            _GRAZ_2A_CANONICAL_CHANNELS,
+            strict=True,
+        )
+        if original != normalized
+    }
+    if not rename_map:
+        return None
+
+    selected_data.rename_channels(rename_map)
+    return {
+        "resolved": True,
+        "normalization_name": "graz_2a_canonical_22",
+        "normalized_channels": [
+            rename_map[original]
+            for original in _GRAZ_2A_AUTO_RENAMED_CHANNELS
+            if original in rename_map
+        ],
+    }
+
+
+def _get_running_number_bases(channel_names: list[str]) -> list[str]:
+    """Return bases that look auto-renamed via ``name-0``, ``name-1`` patterns."""
+
+    suffixes_by_base: dict[str, set[int]] = {}
+    for channel_name in channel_names:
+        match = _RUNNING_NUMBER_SUFFIX.match(channel_name)
+        if not match:
+            continue
+        suffixes_by_base.setdefault(match.group("base"), set()).add(
+            int(match.group("index")),
+        )
+
+    return sorted(
+        base
+        for base, suffixes in suffixes_by_base.items()
+        if len(suffixes) >= 2 and min(suffixes) == 0
+    )
+
+
+def _get_generated_channel_names(
+    channel_names: list[str],
+    generated_bases: list[str],
+) -> list[str]:
+    """Return generated channel names derived from auto-renamed duplicate bases."""
+
+    if not generated_bases:
+        return []
+
+    generated_base_set = set(generated_bases)
+    generated_names = []
+    for channel_name in channel_names:
+        match = _RUNNING_NUMBER_SUFFIX.match(channel_name)
+        if match and match.group("base") in generated_base_set:
+            generated_names.append(channel_name)
+    return generated_names
+
+
+def _build_gdf_channel_name_detail(filepath, selected_data, caught_warnings):
+    """Return repo-specific context when MNE auto-renames duplicate GDF channels."""
+
+    if not any(
+        _DUPLICATE_GDF_CHANNEL_WARNING in str(caught_warning.message)
+        for caught_warning in caught_warnings
+    ):
+        return None
+
+    channel_names = selected_data.info.get("ch_names", [])
+    generated_bases = _get_running_number_bases(channel_names)
+    generated_channels = _get_generated_channel_names(channel_names, generated_bases)
+    if generated_bases:
+        message = (
+            f"GDF import for {filepath} relied on MNE auto-renaming duplicate "
+            f"channel names for base names {generated_bases}; channel-sensitive "
+            "workflows may be unreliable until names are normalized or handled "
+            "explicitly."
+        )
+    else:
+        message = (
+            f"GDF import for {filepath} relied on MNE auto-renaming duplicate "
+            "channel names; channel-sensitive workflows may be unreliable until "
+            "names are normalized or handled explicitly."
+        )
+
+    return {
+        "kind": "gdf_duplicate_channel_names",
+        "filepath": filepath,
+        "generated_bases": generated_bases,
+        "generated_channels": generated_channels,
+        "message": message,
+    }
 
 
 def load_set_file(filepath):
@@ -80,11 +275,47 @@ def load_gdf_file(filepath):
     """
     try:
         # GDF is typically loaded as Raw
-        selected_data = mne.io.read_raw_gdf(filepath, preload=False)
+        with warnings.catch_warnings(record=True) as caught_warnings:
+            warnings.simplefilter("always")
+            selected_data = mne.io.read_raw_gdf(filepath, preload=False)
+
+        channel_name_detail = _build_gdf_channel_name_detail(
+            filepath,
+            selected_data,
+            caught_warnings,
+        )
+        normalized_channel_names = False
+        if channel_name_detail:
+            normalization_detail = _normalize_known_graz_2a_channel_names(selected_data)
+            if normalization_detail:
+                channel_name_detail.update(normalization_detail)
+                channel_name_detail["message"] = (
+                    f"GDF import for {filepath} matched the known Graz 2a "
+                    "duplicate-name pattern; XBrainLab restored canonical EEG "
+                    "channel labels after MNE auto-rename."
+                )
+                normalized_channel_names = True
+
+        _reemit_captured_warnings(
+            caught_warnings,
+            suppress_duplicate_channel_warning=normalized_channel_names,
+        )
+        if channel_name_detail:
+            if normalized_channel_names:
+                logger.info("%s", channel_name_detail["message"])
+            else:
+                logger.warning("%s", channel_name_detail["message"])
 
         if selected_data:
             # Wrap in XBrainLab Raw object
             raw_wrapper = Raw(filepath, selected_data)
+            if channel_name_detail:
+                raw_wrapper.set_runtime_detail(
+                    "gdf_duplicate_channel_names",
+                    channel_name_detail,
+                )
+                if not normalized_channel_names:
+                    raw_wrapper.add_runtime_signal(channel_name_detail["message"])
             return raw_wrapper
 
     except Exception as e:
@@ -97,6 +328,9 @@ def load_gdf_file(filepath):
 def load_fif_file(filepath):
     """Load an MNE-Python native ``.fif`` file and return a Raw wrapper.
 
+    Attempts to load as continuous raw data first, falling back to epochs
+    if the raw loader fails.
+
     Args:
         filepath: Path to the ``.fif`` file.
 
@@ -104,16 +338,35 @@ def load_fif_file(filepath):
         Raw object wrapping the loaded data, or None on failure.
 
     Raises:
-        FileCorruptedError: If loading fails.
+        FileCorruptedError: If loading fails as both raw and epochs.
 
     """
+    selected_data = None
+
     try:
         selected_data = mne.io.read_raw_fif(filepath, preload=False)
-        if selected_data:
-            return Raw(filepath, selected_data)
+    except TypeError:
+        try:
+            selected_data = mne.read_epochs(filepath, preload=False)
+        except Exception as e:
+            logger.warning("Failed to load FIF as Epochs: %s", e)
+            raise FileCorruptedError(
+                filepath,
+                f"Failed to load FIF as Epochs: {e}",
+            ) from e
     except Exception as e:
-        logger.error("Failed to load FIF file %s: %s", filepath, e, exc_info=True)
-        raise FileCorruptedError(filepath, str(e)) from e
+        logger.warning("Failed to load FIF as Raw: %s", e)
+        try:
+            selected_data = mne.read_epochs(filepath, preload=False)
+        except Exception:
+            logger.error("Failed to load FIF file %s: %s", filepath, e, exc_info=True)
+            raise FileCorruptedError(
+                filepath,
+                f"Failed to load FIF as Raw or Epochs: {e}",
+            ) from e
+
+    if selected_data:
+        return Raw(filepath, selected_data)
     return None
 
 
@@ -218,6 +471,7 @@ def load_brainvision_file(filepath):
 RawDataLoaderFactory.register_loader(".set", load_set_file)
 RawDataLoaderFactory.register_loader(".gdf", load_gdf_file)
 RawDataLoaderFactory.register_loader(".fif", load_fif_file)
+RawDataLoaderFactory.register_loader(".fif.gz", load_fif_file)
 RawDataLoaderFactory.register_loader(".edf", load_edf_file)
 RawDataLoaderFactory.register_loader(".bdf", load_bdf_file)
 RawDataLoaderFactory.register_loader(".cnt", load_cnt_file)

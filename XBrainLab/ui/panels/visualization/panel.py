@@ -13,8 +13,15 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application import SaliencyCommand, VisualizeCommand
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.visualization import supported_saliency_methods
+from XBrainLab.ui.application_capabilities import (
+    LegacyControllerFallbackUnavailableError,
+    execute_application_command,
+    get_legacy_controller_from_study,
+    run_legacy_controller_fallback,
+)
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
@@ -24,13 +31,21 @@ from .saliency_views.plot_3d_view import Saliency3DPlotWidget
 from .saliency_views.spectrogram_view import SaliencySpectrogramWidget
 from .saliency_views.topomap_view import SaliencyTopographicMapWidget
 
+_MISSING = object()
+
 
 class VisualizationPanel(BasePanel):
     """Panel for visualizing data and model explanations with unified controls.
     Manages multiple view tabs (Map, Topomap, Spectrogram, 3D) and coordinates updates.
     """
 
-    def __init__(self, controller=None, training_controller=None, parent=None):
+    def __init__(
+        self,
+        controller=None,
+        training_controller=None,
+        parent=None,
+        preprocess_controller=None,
+    ):
         """Initialize the visualization panel.
 
         Args:
@@ -38,15 +53,28 @@ class VisualizationPanel(BasePanel):
                 the parent study if not provided.
             training_controller: Optional ``TrainingController`` for
                 subscribing to training-stopped events.
+            preprocess_controller: Optional ``PreprocessController`` for
+                subscribing to preprocess invalidation events.
             parent: Parent widget (typically the main window).
 
         """
         # 1. Controller Resolution
         if controller is None and parent and hasattr(parent, "study"):
-            controller = parent.study.get_controller("visualization")
+            controller = get_legacy_controller_from_study(
+                parent,
+                parent.study,
+                "visualization",
+            )
+        if preprocess_controller is None and parent and hasattr(parent, "study"):
+            preprocess_controller = get_legacy_controller_from_study(
+                parent,
+                parent.study,
+                "preprocess",
+            )
 
         # Store injected training controller
         self.training_controller = training_controller
+        self.preprocess_controller = preprocess_controller
         self.friendly_map = {}
 
         # 2. Base Init
@@ -58,17 +86,34 @@ class VisualizationPanel(BasePanel):
 
     def _setup_bridges(self):
         """Listen to TrainingController to update when training finishes."""
-        # Use injected controller if available, fallback to legacy
-        training_ctrl = self.training_controller
-        if not training_ctrl and self.controller and hasattr(self.controller, "study"):
-            training_ctrl = self.controller.study.get_controller("training")
+        training_ctrl = (
+            self.training_controller or self._legacy_training_controller_for_bridges()
+        )
 
         if training_ctrl:
-            self._create_bridge(
-                training_ctrl,
-                "training_stopped",
-                self.update_panel,
+            self._create_refresh_bridge(training_ctrl, "training_stopped")
+            self._create_refresh_bridge(training_ctrl, "history_cleared")
+            self._create_refresh_bridge(training_ctrl, "config_changed")
+        if self.controller:
+            self._create_refresh_bridge(self.controller, "montage_changed")
+            self._create_refresh_bridge(self.controller, "saliency_changed")
+        if self.preprocess_controller:
+            self._create_refresh_bridge(
+                self.preprocess_controller,
+                "preprocess_changed",
             )
+
+    def _legacy_training_controller_for_bridges(self):
+        study = getattr(self.controller, "study", None)
+        if study is None:
+            return None
+        try:
+            return run_legacy_controller_fallback(
+                self,
+                lambda: study.get_controller("training"),
+            )
+        except LegacyControllerFallbackUnavailableError:
+            return None
 
     def init_ui(self):
         """Build the panel layout with control bar, tabbed plots, and sidebar."""
@@ -180,50 +225,112 @@ class VisualizationPanel(BasePanel):
             list: Trainer instances available for visualization.
 
         """
-        return self.controller.get_trainers()
+        trainers = self._trainers_from_application_query()
+        if trainers is not None:
+            return trainers
+        if self.last_application_query is not None:
+            return []
+        return self._legacy_trainers_for_render()
+
+    def _legacy_trainers_for_render(self):
+        if self.controller is None:
+            return []
+        try:
+            return run_legacy_controller_fallback(self, self.controller.get_trainers)
+        except LegacyControllerFallbackUnavailableError:
+            return []
 
     def refresh_combos(self):
         """Refresh Plan ComboBox based on current trainers."""
-        trainers = self.get_trainers()
-        if not trainers:
+        self.last_application_query = execute_application_command(
+            self,
+            VisualizeCommand(view="summary", include_objects=True),
+            refresh=False,
+        )
+        if self._application_query_blocks_display(self.last_application_query):
+            self._clear_plan_controls()
             return
 
+        trainers = self.get_trainers()
+        previous_plan = self.plan_combo.currentData()
+        previous_plan_text = self.plan_combo.currentText()
+        previous_run = self.run_combo.currentData()
+        previous_run_text = self.run_combo.currentText()
+
         self.plan_combo.blockSignals(True)
+        self.run_combo.blockSignals(True)
         self.plan_combo.clear()
         self.plan_combo.addItem("Select a plan")
-
+        self.run_combo.clear()
         self.friendly_map = {}
+
+        if not trainers:
+            self.plan_combo.blockSignals(False)
+            self.run_combo.blockSignals(False)
+            self.on_update()
+            return
+
         for i, trainer in enumerate(trainers):
             model_name = trainer.model_holder.target_model.__name__
             friendly_name = f"Fold {i + 1} ({model_name})"
             self.friendly_map[friendly_name] = trainer
-            self.plan_combo.addItem(friendly_name)
+            self.plan_combo.addItem(friendly_name, trainer)
 
         self.plan_combo.blockSignals(False)
+        self.run_combo.blockSignals(False)
 
         # If items exist, select first real plan
         if self.plan_combo.count() > 1:
-            self.plan_combo.setCurrentIndex(1)
+            selected_index = 1
+            for i in range(1, self.plan_combo.count()):
+                if self.plan_combo.itemData(i) is previous_plan:
+                    selected_index = i
+                    break
+                if (
+                    previous_plan_text
+                    and self.plan_combo.itemText(i) == previous_plan_text
+                ):
+                    selected_index = i
+                    break
+            self.plan_combo.setCurrentIndex(selected_index)
             # Explicitly call on_plan_changed to ensure run_combo is populated
-            self.on_plan_changed(self.plan_combo.currentText())
+            self.on_plan_changed(
+                self.plan_combo.currentText(),
+                preferred_run=previous_run,
+                preferred_run_text=previous_run_text,
+            )
 
-    def on_plan_changed(self, text):
+    def on_plan_changed(self, text, preferred_run=None, preferred_run_text=""):
         """Update Run combo when Plan changes."""
         self.run_combo.blockSignals(True)
         self.run_combo.clear()
 
         if text in self.friendly_map:
             trainer = self.friendly_map[text]
+            plans = trainer.get_plans()
             # Add runs
             for i in range(trainer.option.repeat_num):
-                self.run_combo.addItem(f"Run {i + 1}")
+                plan = plans[i] if i < len(plans) else None
+                self.run_combo.addItem(f"Run {i + 1}", plan)
             # Add Average
-            self.run_combo.addItem("Average")
+            if plans:
+                self.run_combo.addItem("Average", "average")
 
         self.run_combo.blockSignals(False)
 
         if self.run_combo.count() > 0:
-            self.run_combo.setCurrentIndex(0)  # Select first run by default
+            selected_index = 0
+            for i in range(self.run_combo.count()):
+                if self.run_combo.itemData(i) is preferred_run:
+                    selected_index = i
+                    break
+                if (
+                    preferred_run_text
+                    and self.run_combo.itemText(i) == preferred_run_text
+                ):
+                    selected_index = i
+                    break
+            self.run_combo.setCurrentIndex(selected_index)
         else:
             self.on_update()  # Trigger update to clear if empty
 
@@ -236,17 +343,27 @@ class VisualizationPanel(BasePanel):
 
     def on_update(self):
         """Gather settings and call update_plot on current tab."""
+        current_widget = self.tabs.currentWidget()
+        self.last_application_query = execute_application_command(
+            self,
+            VisualizeCommand(
+                view=self.tabs.tabText(self.tabs.currentIndex()),
+                include_objects=True,
+            ),
+            refresh=False,
+        )
+        if self._application_query_blocks_display(self.last_application_query):
+            self._show_widget_error(current_widget, self._application_query_message())
+            return
+
         plan_name = self.plan_combo.currentText()
         run_name = self.run_combo.currentText()
         method_name = self.method_combo.currentText()
         absolute = self.abs_check.isChecked()
 
-        current_widget = self.tabs.currentWidget()
-
         if plan_name not in self.friendly_map or not run_name:
             # Clear or show placeholder
-            if current_widget and hasattr(current_widget, "show_error"):
-                current_widget.show_error("Please select a Plan and Run.")
+            self._show_widget_error(current_widget, "Please select a Plan and Run.")
             return
 
         trainer = self.friendly_map[plan_name]
@@ -254,14 +371,24 @@ class VisualizationPanel(BasePanel):
         # Resolve Plan and EvalRecord
         target_plan = None
         eval_record = None
+        run_data = self.run_combo.currentData()
 
-        if run_name == "Average":
-            eval_record = self.controller.get_averaged_record(trainer)
+        if run_data == "average" or run_name == "Average":
+            averaged_record = self._averaged_record_from_application_query(trainer)
+            if averaged_record is _MISSING:
+                if self._visualization_query_payload() is not None:
+                    eval_record = None
+                else:
+                    eval_record = self._legacy_averaged_record_for_render(trainer)
+            else:
+                eval_record = averaged_record
             if not eval_record:
-                if current_widget and hasattr(current_widget, "show_error"):
-                    current_widget.show_error("No finished runs to average.")
+                self._show_widget_error(current_widget, "No finished runs to average.")
                 return
             target_plan = trainer.get_plans()[0]  # Dummy plan for context
+        elif run_data is not None:
+            target_plan = run_data
+            eval_record = target_plan.get_eval_record()
         else:
             try:
                 # Robust parsing: Expect "Run X" or similar
@@ -285,8 +412,10 @@ class VisualizationPanel(BasePanel):
                 logger.warning("Failed to find plan for run %s: %s", run_name, e)
 
         if not eval_record:
-            if current_widget and hasattr(current_widget, "show_error"):
-                current_widget.show_error("Selected run has no evaluation record.")
+            self._show_widget_error(
+                current_widget,
+                "Selected run has no evaluation record.",
+            )
             return
 
         # Call update_plot on the active widget
@@ -305,6 +434,11 @@ class VisualizationPanel(BasePanel):
 
     def update_info(self):
         """Update the Sidebar Info Panel and refresh combos."""
+        self.last_saliency_query = execute_application_command(
+            self,
+            SaliencyCommand(),
+            refresh=False,
+        )
         if hasattr(self, "sidebar"):
             self.sidebar.update_info()
 
@@ -317,3 +451,81 @@ class VisualizationPanel(BasePanel):
         # Explicitly trigger update to ensure plot is shown even if signals were
         # suppressed
         self.on_update()
+
+    def _application_query_blocks_display(self, result) -> bool:
+        if result is None:
+            return False
+        if result.failed:
+            return True
+        diagnostics = getattr(result, "diagnostics", {}) or {}
+        return (
+            diagnostics.get("payload_type") == "visualization_summary"
+            and diagnostics.get("available") is False
+        )
+
+    def _visualization_query_payload(self) -> dict | None:
+        result = self.last_application_query
+        if result is None or result.failed:
+            return None
+        diagnostics = getattr(result, "diagnostics", {}) or {}
+        if diagnostics.get("payload_type") != "visualization_summary":
+            return None
+        return diagnostics
+
+    def _trainers_from_application_query(self):
+        payload = self._visualization_query_payload()
+        if payload is None:
+            return None
+        return list(payload.get("trainer_objects") or [])
+
+    def _averaged_record_from_application_query(self, trainer):
+        payload = self._visualization_query_payload()
+        if payload is None:
+            return _MISSING
+        trainer_index = self._current_trainer_index(trainer)
+        records = payload.get("averaged_records") or []
+        if trainer_index < 0 or trainer_index >= len(records):
+            return _MISSING
+        return records[trainer_index]
+
+    def _legacy_averaged_record_for_render(self, trainer):
+        controller = self.controller
+        if controller is None:
+            return None
+        try:
+            return run_legacy_controller_fallback(
+                self,
+                lambda: controller.get_averaged_record(trainer),
+            )
+        except LegacyControllerFallbackUnavailableError:
+            return None
+
+    def _current_trainer_index(self, trainer) -> int:
+        for index in range(1, self.plan_combo.count()):
+            if self.plan_combo.itemData(index) is trainer:
+                return index - 1
+        return -1
+
+    def _application_query_message(self) -> str:
+        result = self.last_application_query
+        if result is not None and getattr(result, "message", ""):
+            return str(result.message)
+        return "No visualization views are ready yet."
+
+    def _clear_plan_controls(self) -> None:
+        self.plan_combo.blockSignals(True)
+        self.run_combo.blockSignals(True)
+        self.plan_combo.clear()
+        self.plan_combo.addItem("Select a plan")
+        self.run_combo.clear()
+        self.friendly_map = {}
+        self.plan_combo.blockSignals(False)
+        self.run_combo.blockSignals(False)
+
+    @staticmethod
+    def _show_widget_error(widget, message: str) -> bool:
+        show_error = getattr(widget, "show_error", None)
+        if not callable(show_error):
+            return False
+        show_error(message)
+        return True

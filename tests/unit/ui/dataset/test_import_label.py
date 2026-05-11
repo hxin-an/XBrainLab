@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+import numpy as np
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QDialog
 
@@ -19,6 +20,23 @@ def test_import_label_dialog_init(qtbot):
     assert dialog.map_table.rowCount() == 0
 
 
+def test_import_label_dialog_shows_target_context(qtbot):
+    """The post-load label dialog should show where labels will be applied."""
+    target = type(
+        "Target",
+        (),
+        {
+            "get_filepath": lambda self: "/tmp/sub-01_task-mi_raw.fif",
+        },
+    )()
+    dialog = ImportLabelDialog(target_files=[target])
+    qtbot.addWidget(dialog)
+
+    assert "Apply labels to 1 loaded EEG file" in dialog.target_summary_label.text()
+    assert "sub-01_task-mi_raw.fif" in dialog.target_summary_label.text()
+    assert "updates the current import recipe trace" in dialog.recipe_note_label.text()
+
+
 def test_import_label_dialog_load_file(qtbot):
     """Test loading label files."""
     dialog = ImportLabelDialog()
@@ -34,8 +52,8 @@ def test_import_label_dialog_load_file(qtbot):
         dialog.update_unique_labels()
 
         assert dialog.file_list.count() == 1
-        assert "labels.txt" in dialog.label_data_map
-        assert dialog.label_data_map["labels.txt"] == [1, 2, 1]
+        assert "/path/to/labels.txt" in dialog.label_data_map
+        assert dialog.label_data_map["/path/to/labels.txt"] == [1, 2, 1]
 
         assert dialog.unique_labels == [1, 2]
         assert dialog.map_table.rowCount() == 2
@@ -62,6 +80,28 @@ def test_import_label_dialog_accept_success(qtbot):
     assert mapping == {1: "Event A", 2: "Event B"}
 
 
+def test_import_label_dialog_supports_string_sequence_labels(qtbot):
+    """String sequence labels should remain usable through the mapping table."""
+    dialog = ImportLabelDialog()
+    qtbot.addWidget(dialog)
+
+    dialog.label_data_map = {
+        "labels.csv": np.array(["left", "right", "left"], dtype=object)
+    }
+    dialog.update_unique_labels()
+
+    assert dialog.unique_labels == ["left", "right"]
+    assert dialog.map_table.item(0, 0).text() == "left"
+    assert dialog.map_table.item(1, 0).text() == "right"
+
+    dialog.map_table.item(0, 1).setText("Left Hand")
+    dialog.map_table.item(1, 1).setText("Right Hand")
+
+    labels, mapping = dialog.get_result()
+    assert labels is not None
+    assert mapping == {"left": "Left Hand", "right": "Right Hand"}
+
+
 def test_event_filter_dialog(qtbot):
     """Test EventFilterDialog logic."""
     events = ["Event1", "Event2", "Event3"]
@@ -81,6 +121,36 @@ def test_event_filter_dialog(qtbot):
         mock_accept.assert_called_once()
 
     assert dialog.get_selected_ids() == ["Event1"]
+
+
+def test_event_filter_dialog_defaults_to_all_when_history_has_no_overlap(qtbot):
+    """A stale saved selection should not uncheck every event in a new dataset."""
+    with patch(
+        "XBrainLab.ui.dialogs.dataset.event_filter_dialog.QSettings"
+    ) as mock_settings:
+        mock_settings.return_value.value.return_value = ["OldEvent"]
+        dialog = EventFilterDialog(None, ["Event1", "Event2"])
+        qtbot.addWidget(dialog)
+
+    assert dialog.list_widget.item(0).checkState() == Qt.CheckState.Checked
+    assert dialog.list_widget.item(1).checkState() == Qt.CheckState.Checked
+
+
+@patch("XBrainLab.ui.dialogs.dataset.event_filter_dialog.QMessageBox.warning")
+def test_event_filter_dialog_rejects_empty_selection(mock_warning, qtbot):
+    """The dialog should not accept an empty keep-list."""
+    with patch(
+        "XBrainLab.ui.dialogs.dataset.event_filter_dialog.QSettings"
+    ) as mock_settings:
+        mock_settings.return_value.value.return_value = []
+        dialog = EventFilterDialog(None, ["Event1", "Event2"])
+        qtbot.addWidget(dialog)
+
+    dialog.set_all_checked(False)
+    dialog.accept()
+
+    mock_warning.assert_called_once()
+    assert dialog.result() != QDialog.DialogCode.Accepted
 
 
 def test_label_mapping_dialog(qtbot):
@@ -107,6 +177,24 @@ def test_label_mapping_dialog(qtbot):
     mapping = dialog.get_mapping()
     assert mapping["/path/sub01.set"] == "/path/sub01_labels.txt"
     assert mapping["/path/sub02.set"] == "/path/sub02_labels.txt"
+
+
+def test_label_mapping_dialog_avoids_ambiguous_substring_match(qtbot):
+    """Auto-sort should prefer exact subject keys over substring containment."""
+    data_files = ["/path/sub01.set", "/path/sub010.set"]
+    label_files = ["/path/sub010_labels.txt", "/path/sub01_labels.txt"]
+
+    dialog = LabelMappingDialog(None, data_files, label_files)
+    qtbot.addWidget(dialog)
+
+    assert (
+        dialog.label_list.item(0).data(Qt.ItemDataRole.UserRole)
+        == "/path/sub01_labels.txt"
+    )
+    assert (
+        dialog.label_list.item(1).data(Qt.ItemDataRole.UserRole)
+        == "/path/sub010_labels.txt"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -139,11 +227,14 @@ class TestImportLabelDialogBrowse:
             mock_fd.getOpenFileNames.return_value = (["/tmp/labels.txt"], "")
             dialog.browse_files()
         assert dialog.file_list.count() == 1
+        assert (
+            dialog.file_list.item(0).data(Qt.ItemDataRole.UserRole) == "/tmp/labels.txt"
+        )
 
     def test_browse_files_skips_duplicate(self, qtbot):
         dialog = ImportLabelDialog()
         qtbot.addWidget(dialog)
-        dialog.label_data_map["labels.txt"] = [1]
+        dialog.label_data_map["/tmp/labels.txt"] = [1]
         with patch(
             "XBrainLab.ui.dialogs.dataset.import_label_dialog.QFileDialog"
         ) as mock_fd:
@@ -151,6 +242,31 @@ class TestImportLabelDialogBrowse:
             dialog.browse_files()
         # Should not add a second entry
         assert dialog.file_list.count() == 0
+
+    def test_browse_files_allows_same_basename_from_different_dirs(self, qtbot):
+        dialog = ImportLabelDialog()
+        qtbot.addWidget(dialog)
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.dataset.import_label_dialog.QFileDialog"
+            ) as mock_fd,
+            patch.object(dialog, "load_file"),
+        ):
+            mock_fd.getOpenFileNames.return_value = (
+                ["/tmp/sub01/labels.txt", "/tmp/sub02/labels.txt"],
+                "",
+            )
+            dialog.browse_files()
+
+        assert dialog.file_list.count() == 2
+        assert (
+            dialog.file_list.item(0).data(Qt.ItemDataRole.UserRole)
+            == "/tmp/sub01/labels.txt"
+        )
+        assert (
+            dialog.file_list.item(1).data(Qt.ItemDataRole.UserRole)
+            == "/tmp/sub02/labels.txt"
+        )
 
     def test_browse_files_handles_error(self, qtbot):
         dialog = ImportLabelDialog()

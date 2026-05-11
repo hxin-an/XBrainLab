@@ -1,5 +1,5 @@
 import threading
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -73,7 +73,7 @@ def test_trainer_run(training_plan_holders, interact):
         def job():
             if interact:
                 assert trainer.is_running()
-                assert not isinstance(threading.current_thread(), threading._MainThread)
+                assert threading.current_thread() is not threading.main_thread()
                 call_count = job_mock.call_count
                 trainer.run()
                 assert job_mock.call_count == call_count
@@ -81,7 +81,7 @@ def test_trainer_run(training_plan_holders, interact):
                     trainer.clean()
                 trainer.clean(force_update=True)
             else:
-                assert isinstance(threading.current_thread(), threading._MainThread)
+                assert threading.current_thread() is threading.main_thread()
 
         job_mock.side_effect = job
         trainer.run(interact=interact)
@@ -130,6 +130,31 @@ def test_trainer_interrupt(training_plan_holders):
         trainer.set_interrupt()
         trainer.job()
         train_mock.assert_not_called()
+
+
+def test_trainer_force_clean_joins_running_job(training_plan_holders):
+    trainer = Trainer(training_plan_holders)
+    thread = MagicMock()
+    thread.is_alive.side_effect = [True, False]
+    trainer.job_thread = thread
+
+    trainer.clean(force_update=True)
+
+    thread.join.assert_called_once()
+    assert trainer.job_thread is None
+    assert trainer.interrupt is True
+
+
+def test_trainer_force_clean_raises_when_job_stays_running(training_plan_holders):
+    trainer = Trainer(training_plan_holders)
+    thread = MagicMock()
+    thread.is_alive.return_value = True
+    trainer.job_thread = thread
+
+    with pytest.raises(RuntimeError, match="did not stop"):
+        trainer.clean(force_update=True)
+
+    assert trainer.job_thread is thread
 
 
 @pytest.mark.parametrize(

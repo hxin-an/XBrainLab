@@ -131,6 +131,28 @@ class TestLoadFif:
         result = load_fif_file("empty.fif")
         assert result is None
 
+    @patch("XBrainLab.backend.load_data.raw.validate_type")
+    @patch("XBrainLab.backend.load_data.raw_data_loader.mne.read_epochs")
+    @patch("XBrainLab.backend.load_data.raw_data_loader.mne.io.read_raw_fif")
+    def test_fallback_to_epochs(self, mock_read_raw, mock_read_epochs, mock_validate):
+        mock_read_raw.side_effect = ValueError("not raw")
+        mock_epochs = MagicMock()
+        mock_read_epochs.return_value = mock_epochs
+
+        result = load_fif_file("epochs.fif")
+
+        assert isinstance(result, Raw)
+        assert result.get_mne() == mock_epochs
+
+    @patch("XBrainLab.backend.load_data.raw_data_loader.mne.read_epochs")
+    @patch("XBrainLab.backend.load_data.raw_data_loader.mne.io.read_raw_fif")
+    def test_raw_and_epochs_fail(self, mock_read_raw, mock_read_epochs):
+        mock_read_raw.side_effect = ValueError("not raw")
+        mock_read_epochs.side_effect = Exception("also fails")
+
+        with pytest.raises(FileCorruptedError):
+            load_fif_file("bad.fif")
+
 
 # ---------------------------------------------------------------------------
 # SET loader edge cases

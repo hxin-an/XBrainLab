@@ -5,6 +5,7 @@ EEG data files, as well as label management and channel selection.
 """
 
 # Ensure loaders are registered
+from typing import Any
 
 from XBrainLab.backend import preprocessor
 from XBrainLab.backend.exceptions import FileCorruptedError, UnsupportedFormatError
@@ -13,6 +14,7 @@ from XBrainLab.backend.load_data.factory import RawDataLoaderFactory
 from XBrainLab.backend.services.label_import_service import LabelImportService
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.utils.observer import Observable
+from XBrainLab.backend.utils.runtime_diagnostics import collect_runtime_diagnostics
 
 
 class DatasetController(Observable):
@@ -236,6 +238,10 @@ class DatasetController(Observable):
             "unique_count": len(unique_events),
             "unique_labels": sorted(unique_events),
         }
+
+    def get_runtime_diagnostics(self) -> dict[str, Any]:
+        """Return aggregated runtime diagnostics for currently loaded data."""
+        return collect_runtime_diagnostics(self.study.loaded_data_list)
 
     def update_metadata(self, index, subject=None, session=None):
         """Update subject and/or session metadata for a specific file.

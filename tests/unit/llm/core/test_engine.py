@@ -1,9 +1,7 @@
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from XBrainLab.llm.core.backends.api import APIBackend
-from XBrainLab.llm.core.backends.gemini import GeminiBackend
 from XBrainLab.llm.core.backends.local import LocalBackend
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.engine import LLMEngine
@@ -14,10 +12,8 @@ from XBrainLab.llm.core.engine import LLMEngine
 @pytest.fixture
 def mock_config():
     return LLMConfig(
-        model_name="test-model",
+        model_name=LLMConfig.default_local_model_id(),
         inference_mode="local",
-        api_key="test-key",  # pragma: allowlist secret
-        gemini_api_key="test-gemini-key",  # pragma: allowlist secret
     )
 
 
@@ -39,22 +35,29 @@ def test_engine_init_local(mock_config):
         MockBackend.assert_called_once_with(mock_config)
 
 
-def test_engine_init_api(mock_config):
-    """Test that engine can load API backend."""
+def test_engine_init_legacy_remote_request_uses_local(mock_config):
+    """Legacy remote mode requests are migrated to local backend creation."""
     mock_config.inference_mode = "api"
-    with patch("XBrainLab.llm.core.backends.api.APIBackend") as MockBackend:
+    with patch("XBrainLab.llm.core.backends.local.LocalBackend") as MockBackend:
         engine = LLMEngine(mock_config)
         engine.load_model()
-        MockBackend.assert_called_with(mock_config)
+        MockBackend.assert_called_once_with(mock_config)
+        assert "local" in engine.backends
 
 
-def test_engine_init_gemini(mock_config):
-    """Test that engine can load Gemini backend."""
-    mock_config.inference_mode = "gemini"
-    with patch("XBrainLab.llm.core.backends.gemini.GeminiBackend") as MockBackend:
-        engine = LLMEngine(mock_config)
-        engine.load_model()
-        MockBackend.assert_called_with(mock_config)
+def test_engine_close_unloads_cached_backends(mock_config):
+    engine = LLMEngine(mock_config)
+    backend = MagicMock()
+    engine.backends["local"] = backend
+    engine._backend_model_ids["local"] = mock_config.model_name
+    engine.active_backend = backend
+
+    engine.close()
+
+    backend.unload.assert_called_once()
+    assert engine.backends == {}
+    assert engine._backend_model_ids == {}
+    assert engine.active_backend is None
 
 
 # --- Test LocalBackend ---
@@ -70,6 +73,7 @@ def test_local_backend_load_success(mock_model_cls, mock_tokenizer_cls, mock_con
     mock_tokenizer_cls.from_pretrained.return_value = mock_tokenizer
 
     mock_model = MagicMock()
+    mock_model.to.return_value = mock_model
     mock_model_cls.from_pretrained.return_value = mock_model
 
     backend.load()
@@ -98,76 +102,8 @@ def test_local_backend_template_processing(mock_config):
     assert "Query" in processed[0]["content"]
 
 
-# --- Test APIBackend ---
+def test_remote_backend_modules_removed():
+    import importlib.util
 
-
-@patch("XBrainLab.llm.core.backends.api.OpenAI")
-def test_api_backend_load_success(mock_openai_cls, mock_config):
-    backend = APIBackend(mock_config)
-    backend.load()
-
-    assert backend.client is not None
-    mock_openai_cls.assert_called_with(
-        api_key="test-key",  # pragma: allowlist secret
-        base_url=ANY,
-    )
-
-
-@patch("XBrainLab.llm.core.backends.api.OpenAI")
-def test_api_backend_generate_stream(mock_openai_cls, mock_config):
-    backend = APIBackend(mock_config)
-
-    # Mock client and stream
-    mock_client = MagicMock()
-    mock_openai_cls.return_value = mock_client
-
-    mock_chunk = MagicMock()
-    mock_chunk.choices = [MagicMock()]
-    mock_chunk.choices[0].delta.content = "Hello"
-
-    mock_client.chat.completions.create.return_value = [mock_chunk]
-
-    # Run
-    generator = backend.generate_stream([{"role": "user", "content": "Hi"}])
-    result = list(generator)
-
-    assert result == ["Hello"]
-    mock_client.chat.completions.create.assert_called_once()
-
-
-# --- Test GeminiBackend ---
-
-
-@patch("XBrainLab.llm.core.backends.gemini.genai")
-def test_gemini_backend_load_success(mock_genai, mock_config):
-    # Setup mock to exist (simulate import success)
-    backend = GeminiBackend(mock_config)
-
-    backend.load()
-
-    mock_genai.Client.assert_called_with(
-        api_key="test-gemini-key"  # pragma: allowlist secret
-    )
-    assert backend.client is not None
-
-
-@patch("XBrainLab.llm.core.backends.gemini.genai")
-def test_gemini_backend_generate_stream(mock_genai, mock_config):
-    backend = GeminiBackend(mock_config)
-
-    mock_client = MagicMock()
-    mock_genai.Client.return_value = mock_client
-
-    mock_chat = MagicMock()
-    mock_client.chats.create.return_value = mock_chat
-
-    # Mock stream response
-    mock_chunk = MagicMock()
-    mock_chunk.text = "GeminiResponse"
-    mock_chat.send_message_stream.return_value = [mock_chunk]
-
-    generator = backend.generate_stream([{"role": "user", "content": "Hi"}])
-    result = list(generator)
-
-    assert result == ["GeminiResponse"]
-    mock_client.chats.create.assert_called()  # Verifies session creation with history logic
+    assert importlib.util.find_spec("XBrainLab.llm.core.backends.api") is None
+    assert importlib.util.find_spec("XBrainLab.llm.core.backends.gemini") is None

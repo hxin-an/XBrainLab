@@ -1,260 +1,344 @@
-import sys
-import unittest
+from __future__ import annotations
+
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
-from PyQt6.QtWidgets import QLabel, QWidget
+from PyQt6.QtWidgets import QWidget
 
-# Mock backend modules before importing UI
-sys.modules["XBrainLab.backend.visualization"] = MagicMock()
-sys.modules["XBrainLab.backend.visualization.VisualizerType"] = MagicMock()
-sys.modules["XBrainLab.backend.visualization.supported_saliency_methods"] = [
-    "SmoothGrad"
-]
-sys.modules["XBrainLab.backend.visualization.saliency_3d_engine"] = MagicMock()
-
-# Import UI components
-from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
-from XBrainLab.ui.panels.visualization.saliency_views.map_view import SaliencyMapWidget
-from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view import (
-    Saliency3DPlotWidget,
-)
-from XBrainLab.ui.panels.visualization.saliency_views.spectrogram_view import (
-    SaliencySpectrogramWidget,
-)
-from XBrainLab.ui.panels.visualization.saliency_views.topomap_view import (
-    SaliencyTopographicMapWidget,
-)
-
-# app = QApplication(sys.argv) # REMOVED
+from XBrainLab.backend.application.results import ChangedState, CommandResult, ErrorType
+from XBrainLab.backend.study import Study
+from XBrainLab.backend.utils.observer import Observable
 
 
-@unittest.skip("Segfaults in headless environment due to VTK/Qt interaction")
-class TestVisualizationPanelRedesign(unittest.TestCase):
-    def setUp(self):
-        # Patch AggregateInfoPanel
-        self.patcher_info = patch(
-            "XBrainLab.ui.panels.visualization.panel.AggregateInfoPanel"
+def _widget_factory(parent=None):
+    widget = QWidget(parent)
+    mock_widget = cast(Any, widget)
+    mock_widget.show_error = MagicMock()
+    mock_widget.update_plot = MagicMock()
+    mock_widget.repaint = MagicMock()
+    return widget
+
+
+def _info_panel_factory(*args, **kwargs):
+    return QWidget()
+
+
+def _make_panel(qtbot, training_controller=None, parent=None):
+    mock_ctrl = MagicMock()
+    mock_ctrl.get_trainers.return_value = []
+    mock_ctrl.get_averaged_record.return_value = MagicMock()
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.AggregateInfoPanel",
+            side_effect=_info_panel_factory,
+        ),
+        patch(
+            "XBrainLab.ui.panels.visualization.panel.SaliencyMapWidget",
+            side_effect=_widget_factory,
+        ),
+        patch(
+            "XBrainLab.ui.panels.visualization.panel.SaliencySpectrogramWidget",
+            side_effect=_widget_factory,
+        ),
+        patch(
+            "XBrainLab.ui.panels.visualization.panel.SaliencyTopographicMapWidget",
+            side_effect=_widget_factory,
+        ),
+        patch(
+            "XBrainLab.ui.panels.visualization.panel.Saliency3DPlotWidget",
+            side_effect=_widget_factory,
+        ),
+    ):
+        from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
+
+        panel = VisualizationPanel(
+            controller=mock_ctrl,
+            training_controller=training_controller,
+            parent=parent,
         )
-        self.MockAggregateInfoPanel = self.patcher_info.start()
-        # Make sure the mock instance is a QWidget so layout.addWidget accepts it
-        self.MockAggregateInfoPanel.return_value = QWidget()
+        qtbot.addWidget(panel)
 
-        # Mock Study and Trainer
-        self.mock_study = MagicMock()
-        self.mock_trainer = MagicMock()
-        self.mock_study.trainer = self.mock_trainer
+    return panel, mock_ctrl
 
-        # Mock Model Holder
-        self.mock_model_holder = MagicMock()
-        self.mock_model_holder.target_model.__name__ = "TestModel"
-        self.mock_trainer.model_holder = self.mock_model_holder
 
-        # Mock Option
-        self.mock_trainer.option.repeat_num = 2
+def _make_trainer(name="EEGNet", repeats=2):
+    trainer = MagicMock()
+    trainer.model_holder.target_model.__name__ = name
+    trainer.option.repeat_num = repeats
+    trainer.get_plans.return_value = [MagicMock() for _ in range(repeats)]
+    return trainer
 
-        # Mock Dataset and EpochData
-        self.mock_dataset = MagicMock()
-        self.mock_epoch_data = MagicMock()
-        self.mock_dataset.get_epoch_data.return_value = self.mock_epoch_data
-        self.mock_trainer.get_dataset.return_value = self.mock_dataset
 
-        # Mock Plans
-        self.mock_plan1 = MagicMock()
-        self.mock_plan2 = MagicMock()
-        self.mock_trainer.get_plans.return_value = [self.mock_plan1, self.mock_plan2]
-        self.mock_trainer.get_training_plan_holders.return_value = [self.mock_trainer]
+def _current_mock_widget(panel) -> Any:
+    widget = panel.tabs.currentWidget()
+    assert widget is not None
+    return cast(Any, widget)
 
-        # Mock EvalRecord
-        self.mock_eval_record = MagicMock()
-        self.mock_plan1.get_eval_record.return_value = self.mock_eval_record
 
-        # Mock MainWindow
-        self.mock_main_window = MagicMock()
-        self.mock_main_window.study = self.mock_study
+def test_visualization_panel_layout_and_sidebar(qtbot):
+    panel, _ctrl = _make_panel(qtbot)
 
-        # Initialize Panel
-        self.panel = VisualizationPanel(self.mock_main_window)
-        self.panel.show()  # Ensure isVisible checks work
+    assert panel.tabs.count() == 4
+    assert panel.plan_combo.itemText(0) == "Select a plan"
+    assert panel.method_combo.count() >= 3
+    assert panel.sidebar.btn_montage.text() == "Set Montage"
+    assert panel.sidebar.btn_saliency.text() == "Saliency Settings"
+    assert panel.sidebar.btn_export.text() == "Export Saliency"
 
-    def tearDown(self):
-        self.panel.close()
-        self.patcher_info.stop()
 
-    def test_initialization(self):
-        """Test if UI components are initialized correctly."""
-        self.assertIsNotNone(self.panel.plan_combo)
-        self.assertIsNotNone(self.panel.run_combo)
-        self.assertIsNotNone(self.panel.method_combo)
-        self.assertIsNotNone(self.panel.abs_check)
-        self.assertIsNotNone(self.panel.tabs)
+def test_visualization_panel_populates_controls_for_multiple_trainers(qtbot):
+    panel, ctrl = _make_panel(qtbot)
+    ctrl.get_trainers.return_value = [
+        _make_trainer("EEGNet", repeats=2),
+        _make_trainer("SCCNet", repeats=2),
+    ]
 
-        # Check Tabs
-        self.assertEqual(self.panel.tabs.count(), 4)
-        self.assertIsInstance(self.panel.tabs.widget(0), SaliencyMapWidget)
-        self.assertIsInstance(self.panel.tabs.widget(2), SaliencyTopographicMapWidget)
-        self.assertIsInstance(self.panel.tabs.widget(3), Saliency3DPlotWidget)
+    panel.refresh_combos()
 
-    def test_unified_controls(self):
-        """Test if unified controls update state."""
-        # Check Plan Combo Population
-        self.assertEqual(
-            self.panel.plan_combo.count(), 2
-        )  # "Select a plan", "Group 1 (TestModel)"
+    assert panel.plan_combo.count() == 3
+    assert panel.plan_combo.currentText() == "Fold 1 (EEGNet)"
+    assert panel.run_combo.count() == 3
 
-        # Select Plan
-        self.panel.plan_combo.setCurrentIndex(1)
+    panel.plan_combo.setCurrentIndex(2)
 
-        # Check Run Combo Population
-        self.assertEqual(self.panel.run_combo.count(), 3)  # Run 1, Run 2, Average
+    assert panel.plan_combo.currentText() == "Fold 2 (SCCNet)"
+    assert panel.run_combo.count() == 3
+    assert panel.run_combo.itemText(2) == "Average"
 
-        # Select Run
-        self.panel.run_combo.setCurrentIndex(0)  # Run 1
 
-        # Verify friendly map
-        friendly_name = self.panel.plan_combo.currentText()
-        self.assertIn(friendly_name, self.panel.friendly_map)
-        self.assertEqual(self.panel.friendly_map[friendly_name], self.mock_trainer)
+def test_visualization_panel_dispatches_plot_update_to_active_tab(qtbot):
+    panel, ctrl = _make_panel(qtbot)
+    trainer = _make_trainer("EEGNet", repeats=2)
+    eval_record = MagicMock()
+    trainer.get_plans.return_value[0].get_eval_record.return_value = eval_record
+    ctrl.get_trainers.return_value = [trainer]
 
-    @patch.object(SaliencyMapWidget, "update_plot")
-    def test_update_plot_call(self, mock_update_plot):
-        """Test if changing controls calls update_plot on active widget."""
-        # Setup
-        self.panel.tabs.setCurrentIndex(0)  # Saliency Map
-        self.panel.plan_combo.setCurrentIndex(1)
-        self.panel.run_combo.setCurrentIndex(0)
+    panel.refresh_combos()
+    panel.tabs.setCurrentIndex(0)
+    panel.plan_combo.setCurrentIndex(1)
+    panel.run_combo.setCurrentIndex(0)
+    current_widget = _current_mock_widget(panel)
 
-        # Manually trigger update to ensure logic is tested regardless of signal timing
-        self.panel.on_update()
+    panel.on_update()
 
-        # Verify call
-        mock_update_plot.assert_called()
-        args, _ = mock_update_plot.call_args
-        # args: plan, trainer, method, absolute, eval_record
-        self.assertEqual(args[0], self.mock_plan1)
-        self.assertEqual(args[1], self.mock_trainer)
-        self.assertEqual(args[4], self.mock_eval_record)
+    current_widget.update_plot.assert_called_once()
+    args, _kwargs = current_widget.update_plot.call_args
+    assert args[0] is trainer.get_plans.return_value[0]
+    assert args[1] is trainer
+    assert args[4] is eval_record
 
-    @patch.object(SaliencySpectrogramWidget, "update_plot")
-    def test_spectrogram_update(self, mock_update_plot):
-        """Test Spectrogram update call."""
-        self.panel.tabs.setCurrentIndex(1)  # Spectrogram
-        self.panel.on_update()
-        mock_update_plot.assert_called()
 
-    def test_tab_switching_montage_button(self):
-        """Test if Montage button is always visible."""
-        # Saliency Map (Tab 0) -> Visible
-        self.panel.tabs.setCurrentIndex(0)
-        self.panel.on_tab_changed(0)
-        self.assertTrue(self.panel.btn_montage.isVisible())
+def test_visualization_panel_preserves_selection_on_training_stopped(qtbot):
+    training_controller = Observable()
+    panel, ctrl = _make_panel(qtbot, training_controller=training_controller)
+    ctrl.get_trainers.return_value = [
+        _make_trainer("EEGNet", repeats=2),
+        _make_trainer("SCCNet", repeats=2),
+    ]
 
-        # Topomap (Tab 2) -> Visible
-        self.panel.tabs.setCurrentIndex(2)
-        self.panel.on_tab_changed(2)
-        self.assertTrue(self.panel.btn_montage.isVisible())
+    panel.refresh_combos()
+    panel.plan_combo.setCurrentIndex(2)
+    panel.run_combo.setCurrentIndex(2)
 
-        # 3D Plot (Tab 3) -> Visible
-        self.panel.tabs.setCurrentIndex(3)
-        self.panel.on_tab_changed(3)
-        self.assertTrue(self.panel.btn_montage.isVisible())
+    assert panel.plan_combo.currentText() == "Fold 2 (SCCNet)"
+    assert panel.run_combo.currentText() == "Average"
 
-    def test_refresh_data(self):
-        """Test refresh_data method."""
-        # Should call refresh_combos
-        with patch.object(self.panel, "refresh_combos") as mock_refresh:
-            self.panel.refresh_data()
-            mock_refresh.assert_called_once()
+    training_controller.notify("training_stopped")
+    qtbot.wait(50)
 
-    def test_montage_check_topomap(self):
-        """Test Montage Check in Topomap Widget."""
-        widget = self.panel.tab_topo
+    assert panel.plan_combo.currentText() == "Fold 2 (SCCNet)"
+    assert panel.run_combo.currentText() == "Average"
 
-        # Case 1: No Montage
-        self.mock_epoch_data.get_montage_position.return_value = None
 
-        widget.update_plot(
-            self.mock_plan1, self.mock_trainer, "Gradient", False, self.mock_eval_record
-        )
+def test_visualization_panel_shows_placeholder_without_valid_selection(qtbot):
+    panel, _ctrl = _make_panel(qtbot)
+    current_widget = _current_mock_widget(panel)
+    current_widget.show_error.reset_mock()
 
-        # Verify Error Message
-        # The widget clears layout and adds a QLabel
-        last_widget = widget.plot_layout.itemAt(widget.plot_layout.count() - 1).widget()
-        self.assertIsInstance(last_widget, QLabel)
-        self.assertIn("Please Set Montage First", last_widget.text())
+    panel.on_update()
 
-    @patch("XBrainLab.ui.panels.visualization.saliency_views.topomap_view.plt")
-    def test_topomap_plotting(self, mock_plt):
-        """Test Topomap plotting logic (figure clearing)."""
-        widget = self.panel.tab_topo
+    current_widget.show_error.assert_called_once_with("Please select a Plan and Run.")
 
-        # Setup Montage
-        self.mock_epoch_data.get_montage_position.return_value = [[0, 0, 0]]
 
-        # Mock Visualizer
-        with patch("XBrainLab.backend.visualization.VisualizerType") as MockVizType:
-            mock_viz_instance = MagicMock()
-            MockVizType.SaliencyTopoMap.value.return_value = mock_viz_instance
-            mock_viz_instance.get_plt.return_value = MagicMock()  # Return a mock figure
+def test_visualization_panel_update_panel_refreshes_combos_and_tab(qtbot):
+    panel, _ctrl = _make_panel(qtbot)
 
-            widget.update_plot(
-                self.mock_plan1,
-                self.mock_trainer,
-                "Gradient",
-                False,
-                self.mock_eval_record,
-            )
+    with (
+        patch.object(panel, "update_info") as mock_info,
+        patch.object(panel, "on_update") as mock_update,
+    ):
+        panel.update_panel()
 
-            # Verify plt.close('all') and plt.figure() called
-            mock_plt.close.assert_called_with("all")
-            mock_plt.figure.assert_called_once()
+    mock_info.assert_called_once()
+    mock_update.assert_called_once()
 
-    @patch("XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt")
-    @patch("XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.QTimer")
-    @patch("XBrainLab.ui.panels.visualization.plot_3d_head.pv")
-    @patch("XBrainLab.ui.panels.visualization.plot_3d_head.os.path")
-    def test_3d_embedding(self, mock_path, mock_pv, mock_qtimer, mock_pyvistaqt):
-        """Test if 3D Plot embeds QtInteractor and defers plotting."""
-        widget = self.panel.tab_3d
 
-        # Setup Montage (Required)
-        self.mock_epoch_data.get_montage_position.return_value = [[0, 0, 0]]
-        self.mock_epoch_data.event_id = {"Event1": 0}
+def test_visualization_panel_uses_application_query_before_stale_controller_trainers(
+    qtbot,
+):
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
 
-        # Mock QtInteractor to return a real QWidget
-        mock_pyvistaqt.QtInteractor.return_value = QWidget()
+    main_window = RealMainWindow()
+    panel, ctrl = _make_panel(qtbot, parent=main_window)
+    ctrl.get_trainers.return_value = [_make_trainer("StaleNet", repeats=1)]
+    ctrl.get_trainers.reset_mock()
+    current_widget = _current_mock_widget(panel)
+    current_widget.show_error.reset_mock()
 
-        # Mock file existence for 3D models
-        mock_path.exists.return_value = True
-        mock_path.dirname.return_value = "/mock/dir"
-        mock_path.join.side_effect = lambda *args: "/".join(args)
+    panel.update_panel()
 
-        # Mock pv.read
-        mock_pv.read.return_value = MagicMock()
+    assert panel.last_application_query is not None
+    assert panel.last_application_query.failed
+    assert "Create epochs, complete training, or configure saliency" in (
+        panel.last_application_query.message
+    )
+    ctrl.get_trainers.assert_not_called()
+    assert panel.plan_combo.count() == 1
+    assert panel.plan_combo.itemText(0) == "Select a plan"
+    assert panel.run_combo.count() == 0
+    current_widget.show_error.assert_called()
 
-        # Mock Saliency3D class to avoid actual plotting logic
-        # We need to mock Saliency3D inside the module where it's used
-        with patch(
-            "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.Saliency3D"
-        ) as MockSaliency3D:
-            # Setup QTimer to run immediately
-            mock_qtimer.singleShot.side_effect = lambda delay, func: func()
 
-            widget.update_plot(
-                self.mock_plan1,
-                self.mock_trainer,
-                "Gradient",
-                False,
-                self.mock_eval_record,
-            )
+def test_visualization_get_trainers_does_not_fallback_after_failed_query(qtbot):
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
 
-            # Verify QtInteractor created
-            mock_pyvistaqt.QtInteractor.assert_called_once()
+    panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
+    stale_trainer = _make_trainer("StaleNet", repeats=1)
+    ctrl.get_trainers.return_value = [stale_trainer]
+    ctrl.get_trainers.reset_mock()
+    panel.last_application_query = CommandResult.failure_result(
+        command_name="visualize",
+        message="Visualization is not ready.",
+        state={},
+        changed_state=ChangedState(),
+        error_type=ErrorType.PRECONDITION,
+        recoverable=True,
+    )
 
-            # Verify QTimer called
-            mock_qtimer.singleShot.assert_called_once()
+    assert panel.get_trainers() == []
+    ctrl.get_trainers.assert_not_called()
 
-            # Verify Saliency3D instantiated with plotter
-            # (because QTimer ran immediately)
-            MockSaliency3D.assert_called_once()
-            _, kwargs = MockSaliency3D.call_args
-            self.assertIn("plotter", kwargs)
+
+def test_visualization_panel_refuses_real_study_query_none_controller_fallback(
+    qtbot,
+    monkeypatch,
+):
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command",
+        lambda *_args, **_kwargs: None,
+    )
+    panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
+    ctrl.get_trainers.side_effect = AssertionError(
+        "stale visualization trainers should not be read",
+    )
+    ctrl.get_averaged_record.side_effect = AssertionError(
+        "stale averaged records should not be read",
+    )
+    ctrl.get_trainers.reset_mock()
+    ctrl.get_averaged_record.reset_mock()
+
+    panel.refresh_combos()
+
+    ctrl.get_trainers.assert_not_called()
+    ctrl.get_averaged_record.assert_not_called()
+    assert panel.plan_combo.count() == 1
+    assert panel.plan_combo.itemText(0) == "Select a plan"
+    assert panel.run_combo.count() == 0
+
+
+def test_visualization_panel_uses_application_payload_before_stale_controller(
+    qtbot,
+    monkeypatch,
+):
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    service_trainer = _make_trainer("ServiceNet", repeats=1)
+    average_record = MagicMock()
+    query_result = CommandResult.success_result(
+        command_name="visualize",
+        message="Visualization summary ready.",
+        state={},
+        changed_state=ChangedState(),
+        diagnostics={
+            "payload_type": "visualization_summary",
+            "available": True,
+            "trainer_objects": [service_trainer],
+            "averaged_records": [average_record],
+        },
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command",
+        lambda *_args, **_kwargs: query_result,
+    )
+    panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
+    ctrl.get_trainers.return_value = [_make_trainer("StaleNet", repeats=1)]
+    ctrl.get_averaged_record.return_value = MagicMock()
+    ctrl.get_trainers.reset_mock()
+    ctrl.get_averaged_record.reset_mock()
+
+    panel.refresh_combos()
+
+    ctrl.get_trainers.assert_not_called()
+    assert panel.plan_combo.count() == 2
+    assert panel.plan_combo.itemText(1) == "Fold 1 (ServiceNet)"
+
+    panel.run_combo.setCurrentText("Average")
+    current_widget = _current_mock_widget(panel)
+    current_widget.update_plot.reset_mock()
+    panel.on_update()
+
+    ctrl.get_averaged_record.assert_not_called()
+    current_widget.update_plot.assert_called()
+    args, _kwargs = current_widget.update_plot.call_args
+    assert args[1] is service_trainer
+    assert args[4] is average_record
+
+
+def test_visualization_panel_refuses_real_study_query_none_average_fallback(
+    qtbot,
+    monkeypatch,
+):
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command",
+        lambda *_args, **_kwargs: None,
+    )
+    panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
+    trainer = _make_trainer("StaleNet", repeats=1)
+    ctrl.get_averaged_record.side_effect = AssertionError(
+        "stale averaged records should not be read",
+    )
+    ctrl.get_averaged_record.reset_mock()
+    panel.friendly_map = {"Fold 1 (StaleNet)": trainer}
+    panel.plan_combo.clear()
+    panel.plan_combo.addItem("Fold 1 (StaleNet)", trainer)
+    panel.run_combo.clear()
+    panel.run_combo.addItem("Average", "average")
+    current_widget = _current_mock_widget(panel)
+    current_widget.show_error.reset_mock()
+    current_widget.update_plot.reset_mock()
+
+    panel.on_update()
+
+    ctrl.get_averaged_record.assert_not_called()
+    current_widget.update_plot.assert_not_called()
+    current_widget.show_error.assert_called_once_with("No finished runs to average.")

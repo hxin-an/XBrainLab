@@ -152,7 +152,13 @@ class EvaluationController(Observable):
 
         """
         try:
-            from torchinfo import summary  # noqa: PLC0415 — lazy: optional dep
+            try:
+                from torchinfo import summary  # noqa: PLC0415 — lazy optional dep
+            except ModuleNotFoundError:
+                return (
+                    "Model summary unavailable: optional dependency "
+                    "'torchinfo' is not installed."
+                )
 
             # Get model instance
             # If record is provided, use its trained model

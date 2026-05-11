@@ -18,6 +18,8 @@ import re
 from collections import Counter
 from pathlib import Path
 
+from .example_policy import is_primary_workflow_example
+
 logger = logging.getLogger(__name__)
 
 # ── BM25 hyper-parameters (Okapi defaults) ──────────────────
@@ -103,6 +105,8 @@ class BM25Index:
                 "tool_calls": json.dumps(item.get("expected_tool_calls", [])),
                 "input": content,
             }
+            if not is_primary_workflow_example(metadata):
+                continue
             self.add_document(doc_id, content, metadata)
 
         logger.info("BM25 index built: %d documents", self.doc_count)

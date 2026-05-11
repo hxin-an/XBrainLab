@@ -5,17 +5,45 @@ tool commands embedded within free-form text or code blocks.
 """
 
 import json
+import re
 from typing import Any
 
 from XBrainLab.backend.utils.logger import logger
+
+_BARE_COMMANDS = frozenset(
+    {
+        "scan_source",
+        "preview_interpretation",
+        "validate_interpretation",
+        "apply_interpretation",
+        "save_interpretation_recipe",
+        "reload_interpretation_recipe",
+        "load_data",
+        "attach_labels",
+        "apply_standard_preprocess",
+        "apply_bandpass_filter",
+        "epoch_data",
+        "create_epoch",
+        "generate_dataset",
+        "configure_training",
+        "start_training",
+        "train",
+        "evaluate",
+        "visualize",
+        "saliency",
+        "clear_dataset",
+        "query_state",
+        "get_dataset_info",
+    }
+)
 
 
 class CommandParser:
     """Parses LLM output to extract structured tool commands.
 
     Scans response text for JSON objects containing ``tool_name`` (or
-    ``command``) and ``parameters`` keys, handling both raw JSON and
-    fenced code blocks.
+    ``command``) and ``parameters`` / ``arguments`` keys, handling both
+    raw JSON and fenced code blocks.
     """
 
     @staticmethod
@@ -61,13 +89,9 @@ class CommandParser:
                     data, end_idx = decoder.raw_decode(cleaned_text[start_idx:])
                     # data is the JSON object, end_idx is length relative to start_idx
 
-                    if isinstance(data, dict):
-                        # Check if it's a valid tool command
-                        cmd = data.get("tool_name") or data.get("command")
-                        params = data.get("parameters")
-
-                        if cmd and params is not None:
-                            found_commands.append((cmd, params))
+                    found_commands.extend(
+                        CommandParser._extract_commands_from_decoded(data),
+                    )
 
                     # Move cursor past this object
                     cursor = start_idx + end_idx
@@ -86,4 +110,122 @@ class CommandParser:
             # But simple_bench expects a tuple.
             # I should change simple_bench first or return a list and fix simple_bench.
             return found_commands  # Return List[Tuple]
+        partial_command = CommandParser._extract_partial_json_command(cleaned_text)
+        if partial_command is not None:
+            return [partial_command]
+        bare_command = CommandParser._extract_bare_command(cleaned_text)
+        if bare_command is not None:
+            return [bare_command]
+        return None
+
+    @staticmethod
+    def _extract_commands_from_object(
+        data: dict[str, Any],
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """Extract one or more tool calls from a decoded JSON object."""
+        function_call = data.get("function")
+        if isinstance(function_call, dict):
+            return CommandParser._extract_single_command(function_call)
+
+        tool_call = data.get("tool_call")
+        if isinstance(tool_call, dict):
+            return CommandParser._extract_commands_from_object(tool_call)
+
+        tool_calls = data.get("tool_calls")
+        if isinstance(tool_calls, list):
+            commands: list[tuple[str, dict[str, Any]]] = []
+            for item in tool_calls:
+                if isinstance(item, dict):
+                    commands.extend(CommandParser._extract_commands_from_object(item))
+            return commands
+
+        return CommandParser._extract_single_command(data)
+
+    @staticmethod
+    def _extract_commands_from_decoded(
+        data: Any,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """Extract commands from a decoded JSON value."""
+        if isinstance(data, dict):
+            return CommandParser._extract_commands_from_object(data)
+        if isinstance(data, list):
+            commands: list[tuple[str, dict[str, Any]]] = []
+            for item in data:
+                if isinstance(item, dict):
+                    commands.extend(CommandParser._extract_commands_from_object(item))
+            return commands
+        return []
+
+    @staticmethod
+    def _extract_single_command(
+        data: dict[str, Any],
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """Extract one tool call from a decoded JSON object."""
+        cmd = (
+            data.get("tool_name")
+            or data.get("command")
+            or data.get("name")
+            or data.get("tool")
+        )
+        params = data.get("parameters")
+        if params is None:
+            params = data.get("arguments")
+        if params is None and any(
+            key in data
+            for key in (
+                "reason",
+                "reasons",
+                "blocked_reason",
+                "requires_confirmation",
+                "decision_boundary",
+            )
+        ):
+            params = {}
+        if isinstance(params, str):
+            try:
+                decoded_params = json.loads(params)
+            except json.JSONDecodeError:
+                decoded_params = None
+            if isinstance(decoded_params, dict):
+                params = decoded_params
+        if isinstance(cmd, str) and cmd.strip().lower() in {
+            "ask_clarification",
+            "clarify",
+            "none",
+            "no_tool",
+            "null",
+        }:
+            return []
+        if isinstance(cmd, str) and isinstance(params, dict):
+            return [(cmd, params)]
+        return []
+
+    @staticmethod
+    def _extract_bare_command(text: str) -> tuple[str, dict[str, Any]] | None:
+        """Extract a bare tool name when the model emits command syntax text."""
+        stripped = text.strip()
+        if not stripped:
+            return None
+        command = re.split(r"[\s:]+", stripped, maxsplit=1)[0]
+        rest = stripped[len(command) :]
+        if command in _BARE_COMMANDS and (
+            not rest or rest.startswith(("\n", "\r", ":", "(", "{"))
+        ):
+            return command, {}
+        return None
+
+    @staticmethod
+    def _extract_partial_json_command(
+        text: str,
+    ) -> tuple[str, dict[str, Any]] | None:
+        """Extract a tool name from truncated JSON when parameters are unusable."""
+        match = re.search(
+            r'"(?:tool_name|name)"\s*:\s*"([A-Za-z0-9_]+)"',
+            text,
+        )
+        if not match:
+            return None
+        command = match.group(1)
+        if command in _BARE_COMMANDS:
+            return command, {}
         return None

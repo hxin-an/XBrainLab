@@ -16,6 +16,54 @@ from XBrainLab.backend.load_data.label_loader import load_label_file
 
 
 class TestLoadMat:
+    def test_mat_prefers_label_like_variable_over_first_variable(self, tmp_path):
+        """When multiple variables exist, prefer label-like arrays."""
+        p = tmp_path / "labels.mat"
+        scipy.io.savemat(
+            str(p),
+            {
+                "aaa_meta": np.array([[999]]),
+                "classlabel": np.array([[1], [2], [3]]),
+            },
+        )
+        labels = load_label_file(str(p))
+        np.testing.assert_array_equal(labels, [1, 2, 3])
+
+    def test_mat_uses_selected_variable_when_provided(self, tmp_path):
+        """Wizard-reviewed MAT variable should override automatic selection."""
+        p = tmp_path / "labels.mat"
+        scipy.io.savemat(
+            str(p),
+            {
+                "classlabel": np.array([9, 9, 9]),
+                "target": np.array([1, 2, 1]),
+            },
+        )
+        labels = load_label_file(str(p), label_field="target")
+        np.testing.assert_array_equal(labels, [1, 2, 1])
+
+    def test_mat_uses_selected_label_and_sample_anchor_as_events(self, tmp_path):
+        """Reviewed MAT label and anchor variables should form MNE events."""
+        p = tmp_path / "labels.mat"
+        scipy.io.savemat(
+            str(p),
+            {
+                "classlabel": np.array([1, 2, 1]),
+                "cue_onset": np.array([100, 250, 400]),
+            },
+        )
+
+        labels = load_label_file(
+            str(p),
+            label_field="classlabel",
+            anchor="cue_onset",
+        )
+
+        np.testing.assert_array_equal(
+            labels,
+            np.array([[100, 0, 1], [250, 0, 2], [400, 0, 1]], dtype=np.int32),
+        )
+
     def test_mat_n_by_1(self, tmp_path):
         """(n, 1) shape should flatten to 1D."""
         p = tmp_path / "labels.mat"
@@ -135,6 +183,24 @@ class TestLoadCsvTsv:
         assert len(result) == 2
         assert result[0]["onset"] == 0.1
         assert result[0]["label"] == "A"
+
+    def test_tsv_uses_selected_label_and_anchor_columns(self, tmp_path):
+        """Wizard-reviewed TSV label and anchor columns should drive loading."""
+        p = tmp_path / "events.tsv"
+        p.write_text(
+            "sample\ttrial_type\tignored\n128\tleft\tnoise\n256\tright\tnoise\n",
+            encoding="utf-8",
+        )
+        result = load_label_file(
+            str(p),
+            label_field="trial_type",
+            anchor="sample",
+        )
+        assert isinstance(result, list)
+        assert result == [
+            {"onset": 128, "label": "left", "duration": 0.0},
+            {"onset": 256, "label": "right", "duration": 0.0},
+        ]
 
 
 # ---------------------------------------------------------------------------

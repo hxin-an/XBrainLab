@@ -1,0 +1,57 @@
+{
+  "artifact": "data-source-entry-options",
+  "buttons": [
+    {
+      "enabled": true,
+      "text": "Interpret Data Source",
+      "tooltip": "Scan, preview, validate, and apply EEG data"
+    },
+    {
+      "enabled": true,
+      "text": "Interpret Folder / BIDS",
+      "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+    },
+    {
+      "enabled": true,
+      "text": "Reload Import Recipe",
+      "tooltip": "Review a saved import recipe before applying it"
+    },
+    {
+      "enabled": false,
+      "text": "Add Labels to Loaded Data",
+      "tooltip": "Interpret a data source before adding labels."
+    },
+    {
+      "enabled": true,
+      "text": "Smart Parse Metadata",
+      "tooltip": "Auto-extract Subject/Session from filenames"
+    },
+    {
+      "enabled": true,
+      "text": "Channel Selection",
+      "tooltip": "Select specific channels to keep"
+    },
+    {
+      "enabled": true,
+      "text": "Clear Dataset",
+      "tooltip": "Remove all loaded data"
+    }
+  ],
+  "claim_boundary": "Automated Qt sidebar replay; not human desktop acceptance.",
+  "pass": true,
+  "screenshot": "artifacts/ui/data-source-entry-options/data-source-entry-options.png",
+  "screenshot_nonblank": true,
+  "screenshot_size": [
+    260,
+    620
+  ],
+  "visible_text": [
+    "Interpret Data Source",
+    "Interpret Folder / BIDS",
+    "Reload Import Recipe",
+    "Add Labels to Loaded Data",
+    "Smart Parse Metadata",
+    "Channel Selection",
+    "Clear Dataset"
+  ]
+}

@@ -36,9 +36,6 @@ class MetricTab(QWidget):
         self.canvas = FigureCanvas(self.fig)
         self.ax = self.fig.add_subplot(111)
 
-        # Apply Theme
-        Theme.apply_matplotlib_dark_theme(self.fig, ax=self.ax)
-
         self.ax.set_title(f"{self.metric_name} vs Epoch")
         self.ax.set_xlabel("Epoch")
 
@@ -54,7 +51,8 @@ class MetricTab(QWidget):
             alpha=0.3,
             color=Theme.TEXT_SECONDARY,
         )  # Subtle grid
-        self.fig.tight_layout()
+        Theme.apply_matplotlib_dark_theme(self.fig, ax=self.ax)
+        self._fit_axes()
         layout.addWidget(self.canvas, stretch=1)
 
         self.epochs = []
@@ -116,6 +114,10 @@ class MetricTab(QWidget):
 
         self.canvas.draw()
 
+    def _fit_axes(self):
+        """Keep dark themed axis labels visible in compact panel captures."""
+        self.fig.subplots_adjust(left=0.14, right=0.95, top=0.88, bottom=0.16)
+
     def clear(self):
         """Clear the plot and reset accumulated data history."""
         # Clear plot
@@ -130,6 +132,8 @@ class MetricTab(QWidget):
         self.ax.set_ylabel(ylabel)
 
         self.ax.grid(True, linestyle="--", alpha=0.3, color=Theme.TEXT_SECONDARY)
+        Theme.apply_matplotlib_dark_theme(self.fig, ax=self.ax)
+        self._fit_axes()
         self.canvas.draw()
 
         # Clear history data

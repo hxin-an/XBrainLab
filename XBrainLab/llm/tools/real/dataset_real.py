@@ -8,27 +8,52 @@ import os
 from pathlib import Path
 from typing import Any
 
+from XBrainLab.backend.application import (
+    QueryStateCommand,
+    ReloadInterpretationRecipeCommand,
+    SaveInterpretationRecipeCommand,
+)
 from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.utils.logger import logger
 
 from ..definitions.dataset_def import (
+    BaseApplyInterpretationTool,
     BaseAttachLabelsTool,
     BaseClearDatasetTool,
     BaseGenerateDatasetTool,
     BaseGetDatasetInfoTool,
     BaseListFilesTool,
     BaseLoadDataTool,
+    BasePreviewInterpretationTool,
+    BaseQueryStateTool,
+    BaseReloadInterpretationRecipeTool,
+    BaseSaveInterpretationRecipeTool,
+    BaseScanSourceTool,
+    BaseValidateInterpretationTool,
 )
 
-# Directories that should NEVER be exposed to the LLM agent.
+
+def _existing_env_realpath(name: str) -> str | None:
+    value = os.environ.get(name)
+    return os.path.realpath(value) if value else None
+
+
+def _application_result_message(result: Any) -> str:
+    """Return a legacy-safe string for direct real-tool callers."""
+    if getattr(result, "ok", False):
+        return str(result.message)
+    return f"Failed: {result.message}"
+
+
+# Directories that should NEVER be exposed to the LLM agent. Windows paths are
+# included only when the environment variables exist; otherwise WSL/Linux would
+# resolve fallback strings relative to the repo and block the workspace itself.
 _SENSITIVE_DIRS: frozenset[str] = frozenset(
-    {
-        # Windows
-        os.path.realpath(os.environ.get("SYSTEMROOT", r"C:\Windows")),
-        os.path.realpath(os.environ.get("PROGRAMFILES", r"C:\Program Files")),
-        os.path.realpath(
-            os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
-        ),
+    path
+    for path in {
+        _existing_env_realpath("SYSTEMROOT"),
+        _existing_env_realpath("PROGRAMFILES"),
+        _existing_env_realpath("PROGRAMFILES(X86)"),
         # Unix
         "/etc",
         "/var",
@@ -38,7 +63,8 @@ _SENSITIVE_DIRS: frozenset[str] = frozenset(
         "/boot",
         "/proc",
         "/sys",
-    },
+    }
+    if path
 )
 
 
@@ -157,6 +183,106 @@ class RealLoadDataTool(BaseLoadDataTool):
         return f"Failed to load any data. Errors: {errors}"
 
 
+class RealScanSourceTool(BaseScanSourceTool):
+    """Real implementation of :class:`BaseScanSourceTool`."""
+
+    def execute(
+        self,
+        study: Any,
+        source_path: str | None = None,
+        source_hint: str = "auto",
+        **kwargs,
+    ) -> str:
+        if not source_path:
+            return "Error: source_path is required"
+        result = BackendFacade(study).service.scan_source(
+            source_path=source_path,
+            source_hint=source_hint,
+        )
+        return _application_result_message(result)
+
+
+class RealPreviewInterpretationTool(BasePreviewInterpretationTool):
+    """Real implementation of :class:`BasePreviewInterpretationTool`."""
+
+    def execute(
+        self,
+        study: Any,
+        scan_id: str | None = None,
+        choices: dict[str, Any] | None = None,
+        **kwargs,
+    ) -> str:
+        result = BackendFacade(study).service.preview_interpretation(
+            scan_id=scan_id,
+            choices=dict(choices or {}),
+        )
+        return _application_result_message(result)
+
+
+class RealValidateInterpretationTool(BaseValidateInterpretationTool):
+    """Real implementation of :class:`BaseValidateInterpretationTool`."""
+
+    def execute(
+        self,
+        study: Any,
+        candidate_id: str | None = None,
+        **kwargs,
+    ) -> str:
+        result = BackendFacade(study).service.validate_interpretation(
+            candidate_id=candidate_id,
+        )
+        return _application_result_message(result)
+
+
+class RealApplyInterpretationTool(BaseApplyInterpretationTool):
+    """Real implementation of :class:`BaseApplyInterpretationTool`."""
+
+    def execute(
+        self,
+        study: Any,
+        candidate_id: str | None = None,
+        confirmed: bool = False,
+        **kwargs,
+    ) -> str:
+        result = BackendFacade(study).service.apply_interpretation(
+            candidate_id=candidate_id,
+            confirmed=confirmed,
+        )
+        return _application_result_message(result)
+
+
+class RealSaveInterpretationRecipeTool(BaseSaveInterpretationRecipeTool):
+    """Real implementation of :class:`BaseSaveInterpretationRecipeTool`."""
+
+    def execute(
+        self,
+        study: Any,
+        recipe_path: str | None = None,
+        **kwargs,
+    ) -> str:
+        result = BackendFacade(study).service.execute(
+            SaveInterpretationRecipeCommand(recipe_path=recipe_path),
+        )
+        return _application_result_message(result)
+
+
+class RealReloadInterpretationRecipeTool(BaseReloadInterpretationRecipeTool):
+    """Real implementation of :class:`BaseReloadInterpretationRecipeTool`."""
+
+    def execute(
+        self,
+        study: Any,
+        recipe_path: str | None = None,
+        **kwargs,
+    ) -> str:
+        if not recipe_path:
+            return "Error: recipe_path is required"
+        result = BackendFacade(study).service.execute(
+            ReloadInterpretationRecipeCommand(recipe_path=recipe_path),
+        )
+        return _application_result_message(result)
+
+
 class RealAttachLabelsTool(BaseAttachLabelsTool):
     """Real implementation of :class:`BaseAttachLabelsTool`.
 
@@ -244,7 +370,29 @@ class RealGetDatasetInfoTool(BaseGetDatasetInfoTool):
                 f"Events: {summary['total']} (Unique: {summary['unique_count']})",
             )
 
+        diagnostics = summary.get("gdf_duplicate_channel_details", [])
+        if diagnostics:
+            info.append("Diagnostics:")
+            for detail in diagnostics:
+                filename = detail.get("file") or "unknown file"
+                bases = detail.get("generated_bases") or []
+                base_text = ", ".join(bases) if bases else "unknown bases"
+                info.append(
+                    "- GDF duplicate-channel ambiguity: "
+                    f"{filename} (bases: {base_text})",
+                )
+
         return "\n".join(info)
+
+
+class RealQueryStateTool(BaseQueryStateTool):
+    """Real implementation of :class:`BaseQueryStateTool`."""
+
+    def execute(self, study: Any, **kwargs) -> str:
+        result = BackendFacade(study).service.execute(
+            QueryStateCommand(query=str(kwargs.get("query", "state"))),
+        )
+        return str(result.message)
 
 
 class RealGenerateDatasetTool(BaseGenerateDatasetTool):

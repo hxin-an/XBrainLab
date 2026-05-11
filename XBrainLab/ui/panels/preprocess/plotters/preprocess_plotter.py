@@ -4,7 +4,7 @@ Handles time-domain and frequency-domain (PSD) signal rendering
 with support for original-vs-current overlays and event markers.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pyqtgraph as pg
@@ -12,7 +12,12 @@ from PyQt6.QtCore import QThreadPool
 from scipy.signal import welch
 
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.ui.application_capabilities import (
+    LegacyControllerFallbackUnavailableError,
+    run_legacy_controller_fallback,
+)
 from XBrainLab.ui.core.worker import Worker
+from XBrainLab.ui.panels.preprocess.data_query import query_preprocess_render_lists
 from XBrainLab.ui.styles.theme import Theme
 
 if TYPE_CHECKING:
@@ -36,6 +41,7 @@ class PreprocessPlotter:
         self.widget = widget
         self.controller = controller
         self.threadpool = QThreadPool.globalInstance()
+        self._plot_generation = 0
 
     def _get_chan_data(self, obj, ch_idx, start_time=0, duration=5):
         """Helper to retrieve channel data from a data object."""
@@ -147,8 +153,41 @@ class PreprocessPlotter:
 
         return f, pxx, f_orig, pxx_orig
 
-    def plot_sample_data(self):
+    def _legacy_data_lists_for_render(self) -> tuple[list[Any], list[Any]] | None:
+        def fallback() -> tuple[list[Any], list[Any]] | None:
+            if not self.controller or not self.controller.has_data():
+                return None
+            data_list = self.controller.get_preprocessed_data_list()
+            orig_list: list[Any] = []
+            if hasattr(self.controller, "study"):
+                orig_list = list(self.controller.study.loaded_data_list)
+            return data_list, orig_list
+
+        try:
+            return run_legacy_controller_fallback(self, fallback)
+        except LegacyControllerFallbackUnavailableError:
+            return None
+
+    def _original_data_list_for_render(self) -> list[Any]:
+        queried_lists = query_preprocess_render_lists(self)
+        if queried_lists is not None:
+            return queried_lists[1]
+
+        legacy_lists = self._legacy_data_lists_for_render()
+        if legacy_lists is None:
+            return []
+        return legacy_lists[1]
+
+    def plot_sample_data(
+        self,
+        *,
+        data_list: list[Any] | None = None,
+        original_data_list: list[Any] | None = None,
+    ):
         """Main plotting routine."""
+        self._plot_generation += 1
+        plot_generation = self._plot_generation
+
         # 1. Clear previous plots
         self.widget.plot_time.clear()
         self.widget.plot_freq.clear()
@@ -162,13 +201,18 @@ class PreprocessPlotter:
         self.widget.plot_freq.addItem(self.widget.h_line_freq)
         self.widget.plot_freq.addItem(self.widget.label_freq)
 
-        if not self.controller or not self.controller.has_data():
-            return
-
-        data_list = self.controller.get_preprocessed_data_list()
-        orig_list = []
-        if hasattr(self.controller, "study"):
-            orig_list = self.controller.study.loaded_data_list
+        orig_list = original_data_list or []
+        if data_list is None:
+            queried_lists = query_preprocess_render_lists(self)
+            if queried_lists is not None:
+                data_list, orig_list = queried_lists
+            else:
+                legacy_lists = self._legacy_data_lists_for_render()
+                if legacy_lists is None:
+                    return
+                data_list, orig_list = legacy_lists
+        elif original_data_list is None:
+            orig_list = self._original_data_list_for_render()
 
         if not data_list:
             return
@@ -260,6 +304,8 @@ class PreprocessPlotter:
                 # We also need orig data if present
 
                 def handle_psd_result(result):
+                    if plot_generation != self._plot_generation:
+                        return
                     f_curr, p_curr, f_orig, p_orig = result
 
                     # Plot Original (if available)

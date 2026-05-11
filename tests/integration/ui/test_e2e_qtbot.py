@@ -84,10 +84,17 @@ class TestAIAssistantDock:
 
     def test_toggle_ai_dock(self, test_app, qtbot):
         """Toggling the AI button should change its checked state."""
+
+        def _fake_start_system():
+            test_app.agent_manager.agent_initialized = True
+
+        test_app.agent_manager.start_system = _fake_start_system
         _click(qtbot, test_app.ai_btn)
         assert test_app.ai_btn.isChecked()
+        assert test_app.agent_manager.chat_dock.isVisible()
         _click(qtbot, test_app.ai_btn)
         assert not test_app.ai_btn.isChecked()
+        assert not test_app.agent_manager.chat_dock.isVisible()
 
 
 class TestPanelWidgets:

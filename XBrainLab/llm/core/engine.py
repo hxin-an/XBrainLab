@@ -1,8 +1,8 @@
-"""LLM engine facade.
+"""Local-only LLM engine facade.
 
-Provides a unified interface for loading and generating text across
-multiple backends (local, OpenAI-compatible API, Google Gemini),
-with caching and hot-swap support.
+Provides the product assistant interface for loading and generating text with
+the local HuggingFace backend. Legacy remote backend requests are migrated to
+local and never instantiate remote clients.
 """
 
 import logging
@@ -16,10 +16,9 @@ logger = logging.getLogger("XBrainLab.LLM")
 class LLMEngine:
     """Core engine for handling LLM loading and inference.
 
-    Acts as a facade over ``LocalBackend``, ``APIBackend``, and
-    ``GeminiBackend``, lazily instantiating and caching backends as
-    needed. Stale backends are automatically replaced when the
-    configured model changes.
+    Acts as a facade over ``LocalBackend``, lazily instantiating and caching
+    it as needed. Stale backends are automatically replaced when the configured
+    local model changes.
 
     Attributes:
         config: The active ``LLMConfig`` instance.
@@ -42,23 +41,18 @@ class LLMEngine:
         self.active_backend: Any | None = None
 
         logger.info(
-            "Initializing LLMEngine with default mode: %s",
+            "Initializing local-only LLMEngine with requested mode: %s",
             self.config.inference_mode,
         )
 
     def load_model(self):
-        """Loads the model for the backend specified by ``config.inference_mode``."""
-        self.switch_backend(self.config.inference_mode)
+        """Load the product local model."""
+        self.switch_backend(self.config.runtime_backend_mode_key())
 
     def _get_current_model_id(self, mode: str) -> str:
         """Return the model identifier for the given backend mode."""
-        if mode == "local":
-            return self.config.model_name
-        if mode == "api":
-            return self.config.api_model_name
-        if mode == "gemini":
-            return self.config.gemini_model_name
-        return ""
+        _ = mode
+        return self.config.model_name
 
     def switch_backend(self, mode: str):
         """Switches the active backend, creating it if necessary.
@@ -67,10 +61,17 @@ class LLMEngine:
         configuration is stale, the backend is recreated.
 
         Args:
-            mode: Backend mode to activate (``'local'``, ``'api'``, or
-                ``'gemini'``).
+            mode: Requested backend mode. Any legacy remote value is migrated
+                to ``'local'`` before backend creation.
 
         """
+        requested_mode = str(mode or "local")
+        mode = LLMConfig.normalize_backend_mode(requested_mode)
+        if requested_mode.strip().lower() != "local":
+            logger.warning(
+                "Ignoring legacy remote backend request %r; using local runtime.",
+                requested_mode,
+            )
         logger.info("Switching backend to: %s", mode)
 
         # 1. Check Cache and Validity (compare snapshots, not shared refs)
@@ -91,31 +92,34 @@ class LLMEngine:
                 logger.info("Switched to cached backend: %s", mode)
                 return
             # Remove stale backend
+            stale_backend = self.backends[mode]
+            unload = getattr(stale_backend, "unload", None)
+            if callable(unload):
+                unload()
             del self.backends[mode]
 
         # 2. Create if missing
         new_backend: Any = None
 
-        if mode == "api":
-            from .backends.api import APIBackend
+        from .backends.local import LocalBackend
 
-            new_backend = APIBackend(self.config)
-        elif mode == "gemini":
-            from .backends.gemini import GeminiBackend
-
-            new_backend = GeminiBackend(self.config)
-        else:
-            # Default to local
-            from .backends.local import LocalBackend
-
-            new_backend = LocalBackend(self.config)
-            # Local needs explicit load (others might be lazy or fast)
-            new_backend.load()
+        new_backend = LocalBackend(self.config)
+        new_backend.load()
 
         self.backends[mode] = new_backend
         self._backend_model_ids[mode] = self._get_current_model_id(mode)
         self.active_backend = new_backend
         logger.info("Created and switched to backend: %s", mode)
+
+    def close(self) -> None:
+        """Unload cached local backends and clear active backend references."""
+        for backend in list(self.backends.values()):
+            unload = getattr(backend, "unload", None)
+            if callable(unload):
+                unload()
+        self.backends.clear()
+        self._backend_model_ids.clear()
+        self.active_backend = None
 
     def generate_stream(self, messages: list):
         """Generates a response in a streaming fashion.

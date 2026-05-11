@@ -5,6 +5,14 @@ from .dataset import Dataset
 from .dataset_generator import DatasetGenerator
 from .epochs import Epochs
 from .option import SplitByType, SplitUnit, TrainingType, ValSplitByType
+from .split_audit import (
+    SplitAuditIssue,
+    SplitAuditResult,
+    audit_dataset_splits,
+    build_split_artifact,
+    split_indices,
+    write_split_artifact,
+)
 
 __all__ = [
     "DataSplitter",
@@ -12,8 +20,14 @@ __all__ = [
     "Dataset",
     "DatasetGenerator",
     "Epochs",
+    "SplitAuditIssue",
+    "SplitAuditResult",
     "SplitByType",
     "SplitUnit",
     "TrainingType",
     "ValSplitByType",
+    "audit_dataset_splits",
+    "build_split_artifact",
+    "split_indices",
+    "write_split_artifact",
 ]
