@@ -44,8 +44,8 @@ from XBrainLab.backend.application import (
     PreviewInterpretationCommand,
     ScanSourceCommand,
     ValidateInterpretationCommand,
+    get_application_service,
 )
-from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.llm.core.config import LLMConfig
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -225,7 +225,7 @@ def prepare_training_dataset_ready_state(
     source_path: Path,
 ) -> dict[str, Any]:
     """Prepare dataset-ready state with epoch duration suitable for EEGNet."""
-    service = BackendFacade(study).service
+    service = get_application_service(study)
     commands = [
         ScanSourceCommand(source_path=str(source_path)),
         PreviewInterpretationCommand(),
@@ -351,7 +351,7 @@ def run_training_completion_walkthrough(
             state["executed_tools"] = collect_executed_tools(controller.metrics)
             controller.close()
         try:
-            state["final_state"] = BackendFacade(study).get_state().to_dict()
+            state["final_state"] = get_application_service(study).get_state().to_dict()
         except Exception:
             state["final_state"] = {}
         state["chat_processing"] = bool(manager.chat_controller.is_processing)
@@ -488,7 +488,7 @@ def run_training_completion_walkthrough(
         if time.monotonic() - started_at > timeout_seconds:
             fail(f"Timed out after {timeout_seconds} seconds waiting for training.")
             return
-        backend_state = BackendFacade(study).get_state().to_dict()
+        backend_state = get_application_service(study).get_state().to_dict()
         training = _section(backend_state, "training")
         evaluation = _section(backend_state, "evaluation")
         if training.get("has_trainer") and not training.get("is_running"):

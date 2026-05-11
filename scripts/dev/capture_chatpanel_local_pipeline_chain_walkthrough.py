@@ -144,7 +144,7 @@ def run_pipeline_chain(
     timeout_seconds: int,
 ) -> dict[str, Any]:
     """Run import -> apply -> preprocess -> epoch -> dataset through ChatPanel."""
-    from XBrainLab.backend.facade import BackendFacade
+    from XBrainLab.backend.application import get_application_service
     from XBrainLab.backend.study import Study
     from XBrainLab.ui.main_window import MainWindow
 
@@ -217,7 +217,7 @@ def run_pipeline_chain(
             state["executed_tools"] = collect_executed_tools(controller.metrics)
             controller.close()
         try:
-            state["final_state"] = BackendFacade(study).get_state().to_dict()
+            state["final_state"] = get_application_service(study).get_state().to_dict()
         except Exception:
             state["final_state"] = {}
         state["chat_processing"] = bool(manager.chat_controller.is_processing)

@@ -54,7 +54,9 @@ class _StepScrollArea(QScrollArea):
 
     def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802
         if self.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff:
-            self.verticalScrollBar().setValue(0)
+            scrollbar = self.verticalScrollBar()
+            if scrollbar is not None:
+                scrollbar.setValue(0)
             event.accept()
             return
         super().wheelEvent(event)
@@ -1268,8 +1270,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
             matched = bool(selector.currentData())
             badge.setText("Matched" if matched else "Needs label")
             badge.setProperty("pairingState", "matched" if matched else "review")
-            badge.style().unpolish(badge)
-            badge.style().polish(badge)
+            style = badge.style()
+            if style is not None:
+                style.unpolish(badge)
+                style.polish(badge)
         if hasattr(self, "pairing_status_label"):
             self.pairing_status_label.setText(self._pairing_summary_text())
         self._refresh_label_rule_status()
@@ -2108,8 +2112,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
             else:
                 state = "upcoming"
             label.setProperty("stepState", state)
-            label.style().unpolish(label)
-            label.style().polish(label)
+            style = label.style()
+            if style is not None:
+                style.unpolish(label)
+                style.polish(label)
 
     def resizeEvent(self, event):  # noqa: N802
         super().resizeEvent(event)
@@ -2136,7 +2142,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
         current = self.step_stack.currentWidget()
         if current is None:
             return
-        viewport_height = self.scroll_area.viewport().height()
+        viewport = self.scroll_area.viewport()
+        if viewport is None:
+            return
+        viewport_height = viewport.height()
         if viewport_height <= 0:
             return
         content_height = current.sizeHint().height()
@@ -2152,7 +2161,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if self.scroll_area.verticalScrollBarPolicy() != policy:
             self.scroll_area.setVerticalScrollBarPolicy(policy)
         if policy == Qt.ScrollBarPolicy.ScrollBarAlwaysOff:
-            self.scroll_area.verticalScrollBar().setValue(0)
+            scrollbar = self.scroll_area.verticalScrollBar()
+            if scrollbar is not None:
+                scrollbar.setValue(0)
 
     def get_result(self) -> dict[str, Any]:
         choices = self._edited_choices()
@@ -2897,7 +2908,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._apply_widget_column_minimums(tree, scaled, min_width, viewport.width())
         for column, width in enumerate(scaled):
             tree.setColumnWidth(column, width)
-        tree.horizontalScrollBar().setRange(0, 0)
+        scrollbar = tree.horizontalScrollBar()
+        if scrollbar is not None:
+            scrollbar.setRange(0, 0)
 
     @staticmethod
     def _apply_widget_column_minimums(

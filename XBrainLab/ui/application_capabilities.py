@@ -6,9 +6,13 @@ from collections.abc import Callable
 from typing import Any, TypeVar
 from unittest.mock import Mock
 
-from XBrainLab.backend.application import Command, CommandName, CommandResult
+from XBrainLab.backend.application import (
+    Command,
+    CommandName,
+    CommandResult,
+    get_application_service,
+)
 from XBrainLab.backend.application.capabilities import CommandCapability
-from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.refresh_coordinator import refresh_after_command
 
@@ -66,7 +70,7 @@ def get_command_capability(
     study = find_study(context)
     if study is None or not isinstance(study, Study) or isinstance(study, Mock):
         return None
-    return BackendFacade(study).get_capabilities().get(command_name)
+    return get_application_service(study).get_capabilities().get(command_name)
 
 
 def blocked_reason(capability: CommandCapability | None, fallback: str) -> str:
@@ -93,7 +97,7 @@ def execute_application_command(
     study = find_study(context)
     if study is None or not isinstance(study, Study) or isinstance(study, Mock):
         return None
-    result = BackendFacade(study).service.execute(command)
+    result = get_application_service(study).execute(command)
     if refresh:
         refresh_after_command(context, result)
     return result

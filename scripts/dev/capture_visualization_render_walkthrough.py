@@ -31,8 +31,8 @@ from XBrainLab.backend.application import (
     SaliencyCommand,
     TrainCommand,
     VisualizeCommand,
+    get_application_service,
 )
-from XBrainLab.backend.facade import BackendFacade
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "ui" / "visualization-render"
@@ -119,7 +119,7 @@ def run_visualization_render_walkthrough(
     _clear_saved_main_window_geometry()
     source_path = write_synthetic_training_raw_fif()
     study = Study()
-    service = BackendFacade(study).service
+    service = get_application_service(study)
     dataset_preparation = prepare_training_dataset_ready_state(study, source_path)
     payload: dict[str, Any] = {
         "status": "running",

@@ -30,9 +30,9 @@ from XBrainLab.backend.application import (
     TrainCommand,
     ValidateInterpretationCommand,
     VisualizeCommand,
+    get_application_service,
 )
 from XBrainLab.backend.application.capabilities import CommandCapability
-from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.study import Study
 
 
@@ -273,9 +273,9 @@ def build_agent_tool_policy(study: Any) -> dict[str, ToolAvailability]:
             "ApplicationService policy requires a real Study instance.",
         )
 
-    facade = BackendFacade(study)
-    app_policy = facade.get_capabilities()
-    state = facade.get_state()
+    service = get_application_service(study)
+    app_policy = service.get_capabilities()
+    state = service.get_state()
 
     tool_policy: dict[str, ToolAvailability] = {}
     for tool_name, command_name in TOOL_TO_COMMAND.items():
@@ -416,7 +416,7 @@ def execute_application_tool_command(
         except CapabilityPolicyUnavailableError:
             availability = None
 
-    result = BackendFacade(study).service.execute(command)
+    result = get_application_service(study).execute(command)
     return ToolCommandResult.from_command_result(
         tool_name,
         result,
@@ -768,6 +768,6 @@ def _state_snapshot_dict(study: Any) -> dict[str, Any] | None:
     if not isinstance(study, Study) or isinstance(study, Mock):
         return None
     try:
-        return BackendFacade(study).get_state().to_dict()
+        return get_application_service(study).get_state().to_dict()
     except Exception:
         return None

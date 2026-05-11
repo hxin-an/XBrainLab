@@ -68,6 +68,7 @@ from .errors import (
     map_exception,
 )
 from .results import ChangedState, CommandResult, CommandStatus, ErrorType
+from .runtime import get_application_service
 from .service import ApplicationService
 from .state import (
     ActiveDatasetSnapshot,
@@ -157,6 +158,7 @@ __all__ = [
     "command_name",
     "command_specs",
     "execute_automation_payload",
+    "get_application_service",
     "map_exception",
     "mcp_tool_specs",
 ]

@@ -21,9 +21,9 @@ from XBrainLab.backend.application import (
     ApplyMontageCommand,
     CommandName,
     QueryStateCommand,
+    get_application_service,
 )
 from XBrainLab.backend.controller.chat_controller import ChatController
-from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.core.config import LLMConfig
@@ -124,7 +124,7 @@ class AgentManager(QObject):
         super().__init__(main_window)
         self.main_window = main_window
         self.study = study
-        self.backend_facade = BackendFacade(study)
+        self.application_service = get_application_service(study)
 
         self.chat_panel = None
         self.chat_dock = None
@@ -885,8 +885,8 @@ class AgentManager(QObject):
             return
 
         try:
-            state = self.backend_facade.get_state()
-            capabilities = self.backend_facade.get_capabilities()
+            state = self.application_service.get_state()
+            capabilities = self.application_service.get_capabilities()
             enabled = self._product_next_steps(state, capabilities)
             stage = workflow_stage_label(state)
             model_config = LLMConfig.load_from_file() or LLMConfig()

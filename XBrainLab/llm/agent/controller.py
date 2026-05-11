@@ -16,8 +16,7 @@ from typing import Any
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
-from XBrainLab.backend.application import CommandName
-from XBrainLab.backend.facade import BackendFacade
+from XBrainLab.backend.application import CommandName, get_application_service
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.pipeline_state import (  # noqa: F401
     STAGE_CONFIG,
@@ -384,7 +383,7 @@ class LLMController(QObject):
         if "train" in normalized or "training" in normalized or "訓練" in normalized:
             try:
                 capability = (
-                    BackendFacade(self.study)
+                    get_application_service(self.study)
                     .get_capabilities()
                     .get(
                         CommandName.TRAIN,
@@ -1130,7 +1129,7 @@ class LLMController(QObject):
 
         try:
             capability = (
-                BackendFacade(self.study)
+                get_application_service(self.study)
                 .get_capabilities()
                 .get(
                     requested_command,
@@ -1247,7 +1246,7 @@ class LLMController(QObject):
         if not hasattr(self.study, "data_manager"):
             return None
         try:
-            return BackendFacade(self.study).get_state().to_dict()
+            return get_application_service(self.study).get_state().to_dict()
         except Exception:
             logger.debug("Failed to capture ApplicationService state", exc_info=True)
             return None
@@ -1453,7 +1452,7 @@ class LLMController(QObject):
             if cleaned.lower().startswith(prefix.lower()):
                 cleaned = cleaned[len(prefix) :].strip()
         cleaned = cleaned.replace("ApplicationService", "the workflow")
-        cleaned = cleaned.replace("BackendFacade legacy path", "app confirmation path")
+        cleaned = cleaned.replace("legacy facade path", "app confirmation path")
         cleaned = cleaned.replace(
             "paths list cannot be empty.", "a file or folder path is required."
         )

@@ -41,8 +41,8 @@ from XBrainLab.backend.application import (
     PreviewInterpretationCommand,
     ScanSourceCommand,
     ValidateInterpretationCommand,
+    get_application_service,
 )
-from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.llm.core.config import LLMConfig
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -160,7 +160,7 @@ def build_prompts() -> list[str]:
 
 def prepare_dataset_ready_state(study: Any, source_path: Path) -> dict[str, Any]:
     """Prepare dataset-ready state through ApplicationService before UI prompts."""
-    service = BackendFacade(study).service
+    service = get_application_service(study)
     commands = [
         ScanSourceCommand(source_path=str(source_path)),
         PreviewInterpretationCommand(),
@@ -283,7 +283,7 @@ def run_training_readiness_walkthrough(
             state["executed_tools"] = collect_executed_tools(controller.metrics)
             controller.close()
         try:
-            state["final_state"] = BackendFacade(study).get_state().to_dict()
+            state["final_state"] = get_application_service(study).get_state().to_dict()
         except Exception:
             state["final_state"] = {}
         state["chat_processing"] = bool(manager.chat_controller.is_processing)

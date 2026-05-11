@@ -1,13 +1,19 @@
 """Real implementations of EEG preprocessing tools.
 
-These tools interact with the ``BackendFacade`` to apply actual
-preprocessing operations (filtering, resampling, normalisation, etc.)
+These tools interact with the ApplicationService command spine to apply
+actual preprocessing operations (filtering, resampling, normalisation, etc.)
 to the loaded EEG data.
 """
 
 from typing import Any
 
-from XBrainLab.backend.facade import BackendFacade
+from XBrainLab.backend.application import (
+    CreateEpochCommand,
+    PreprocessCommand,
+    PreprocessOperation,
+    QueryStateCommand,
+    get_application_service,
+)
 
 from ..definitions.preprocess_def import (
     BaseBandPassFilterTool,
@@ -56,18 +62,29 @@ def _format_channel_identity_guardrail(diagnostics: dict[str, Any]) -> str:
     )
 
 
-def _append_channel_identity_guardrail(message: str, facade: BackendFacade) -> str:
-    """Append a preprocess-stage channel-identity guardrail when needed."""
-    return message + _format_channel_identity_guardrail(
-        facade.get_preprocess_diagnostics(),
+def _preprocess_diagnostics(study: Any) -> dict[str, Any]:
+    """Return preprocess diagnostics from the shared command service."""
+    result = get_application_service(study).execute(
+        QueryStateCommand(query="preprocess_diagnostics"),
     )
+    return dict(result.diagnostics) if result.ok else {}
+
+
+def _append_channel_identity_guardrail(message: str, study: Any) -> str:
+    """Append a preprocess-stage channel-identity guardrail when needed."""
+    return message + _format_channel_identity_guardrail(_preprocess_diagnostics(study))
+
+
+def _raise_if_failed(result: Any) -> None:
+    if getattr(result, "failed", False):
+        raise RuntimeError(str(result.message))
 
 
 class RealStandardPreprocessTool(BaseStandardPreprocessTool):
     """Real implementation of :class:`BaseStandardPreprocessTool`.
 
     Applies a full preprocessing pipeline (bandpass, notch, resample,
-    re-reference, normalise) via :class:`BackendFacade`.
+    re-reference, normalise) via ApplicationService.
     """
 
     def execute(
@@ -98,35 +115,71 @@ class RealStandardPreprocessTool(BaseStandardPreprocessTool):
             A success message or an error description.
 
         """
-        facade = BackendFacade(study)
+        service = get_application_service(study)
 
         try:
-            with facade.preprocess.batch_notifications():
+            with service.preprocess.batch_notifications():
                 # 1. Bandpass
-                facade.apply_filter(l_freq, h_freq)
+                _raise_if_failed(
+                    service.execute(
+                        PreprocessCommand(
+                            operation=PreprocessOperation.BANDPASS,
+                            low_freq=l_freq,
+                            high_freq=h_freq,
+                        ),
+                    ),
+                )
 
                 # 2. Notch
                 if notch_freq:
-                    facade.apply_notch_filter(notch_freq)
+                    _raise_if_failed(
+                        service.execute(
+                            PreprocessCommand(
+                                operation=PreprocessOperation.NOTCH,
+                                notch_freq=notch_freq,
+                            ),
+                        ),
+                    )
 
                 # 3. Resample
                 if resample_rate:
-                    facade.resample_data(resample_rate)
+                    _raise_if_failed(
+                        service.execute(
+                            PreprocessCommand(
+                                operation=PreprocessOperation.RESAMPLE,
+                                rate=resample_rate,
+                            ),
+                        ),
+                    )
 
                 # 4. Rereference
                 if rereference:
-                    facade.set_reference(rereference)
+                    _raise_if_failed(
+                        service.execute(
+                            PreprocessCommand(
+                                operation=PreprocessOperation.REREFERENCE,
+                                method=rereference,
+                            ),
+                        ),
+                    )
 
                 # 5. Normalize
                 if normalize_method:
-                    facade.normalize_data(normalize_method)
+                    _raise_if_failed(
+                        service.execute(
+                            PreprocessCommand(
+                                operation=PreprocessOperation.NORMALIZE,
+                                method=normalize_method,
+                            ),
+                        ),
+                    )
 
         except Exception as e:
             return f"Preprocessing failed: {e!s}"
 
         return _append_channel_identity_guardrail(
-            "Standard preprocessing applied successfully via Facade.",
-            facade,
+            "Standard preprocessing applied successfully.",
+            study,
         )
 
 
@@ -155,9 +208,16 @@ class RealBandPassFilterTool(BaseBandPassFilterTool):
         if low_freq is None or high_freq is None:
             return "Error: low_freq and high_freq are required."
 
-        facade = BackendFacade(study)
         try:
-            facade.apply_filter(low_freq, high_freq)
+            _raise_if_failed(
+                get_application_service(study).execute(
+                    PreprocessCommand(
+                        operation=PreprocessOperation.BANDPASS,
+                        low_freq=low_freq,
+                        high_freq=high_freq,
+                    ),
+                ),
+            )
         except Exception as e:
             return f"Bandpass filter failed: {e!s}"
         return f"Applied Bandpass Filter ({low_freq}-{high_freq} Hz)"
@@ -181,9 +241,15 @@ class RealNotchFilterTool(BaseNotchFilterTool):
         if freq is None:
             return "Error: freq is required."
 
-        facade = BackendFacade(study)
         try:
-            facade.apply_notch_filter(freq)
+            _raise_if_failed(
+                get_application_service(study).execute(
+                    PreprocessCommand(
+                        operation=PreprocessOperation.NOTCH,
+                        notch_freq=freq,
+                    ),
+                ),
+            )
         except Exception as e:
             return f"Notch filter failed: {e!s}"
         return f"Applied Notch Filter ({freq} Hz)"
@@ -207,9 +273,15 @@ class RealResampleTool(BaseResampleTool):
         if rate is None:
             return "Error: rate is required."
 
-        facade = BackendFacade(study)
         try:
-            facade.resample_data(rate)
+            _raise_if_failed(
+                get_application_service(study).execute(
+                    PreprocessCommand(
+                        operation=PreprocessOperation.RESAMPLE,
+                        rate=rate,
+                    ),
+                ),
+            )
         except Exception as e:
             return f"Resample failed: {e!s}"
         return f"Resampled data to {rate} Hz"
@@ -233,9 +305,15 @@ class RealNormalizeTool(BaseNormalizeTool):
         if method is None:
             return "Error: method is required."
 
-        facade = BackendFacade(study)
         try:
-            facade.normalize_data(method)
+            _raise_if_failed(
+                get_application_service(study).execute(
+                    PreprocessCommand(
+                        operation=PreprocessOperation.NORMALIZE,
+                        method=method,
+                    ),
+                ),
+            )
         except Exception as e:
             return f"Normalization failed: {e!s}"
         return f"Normalized data using {method}"
@@ -259,14 +337,20 @@ class RealRereferenceTool(BaseRereferenceTool):
         if method is None:
             return "Error: method is required."
 
-        facade = BackendFacade(study)
         try:
-            facade.set_reference(method)
+            _raise_if_failed(
+                get_application_service(study).execute(
+                    PreprocessCommand(
+                        operation=PreprocessOperation.REREFERENCE,
+                        method=method,
+                    ),
+                ),
+            )
         except Exception as e:
             return f"Re-reference failed: {e!s}"
         return _append_channel_identity_guardrail(
             f"Applied reference: {method}",
-            facade,
+            study,
         )
 
 
@@ -288,14 +372,20 @@ class RealChannelSelectionTool(BaseChannelSelectionTool):
         if channels is None:
             return "Error: channels list is required."
 
-        facade = BackendFacade(study)
         try:
-            facade.select_channels(channels)
+            _raise_if_failed(
+                get_application_service(study).execute(
+                    PreprocessCommand(
+                        operation=PreprocessOperation.SELECT_CHANNELS,
+                        channels=channels,
+                    ),
+                ),
+            )
         except Exception as e:
             return f"Channel selection failed: {e!s}"
         return _append_channel_identity_guardrail(
             f"Selected {len(channels)} channels.",
-            facade,
+            study,
         )
 
 
@@ -321,13 +411,11 @@ class RealSetMontageTool(BaseSetMontageTool):
         if montage_name is None:
             return "Error: montage_name is required."
 
-        facade = BackendFacade(study)
-
         # Instead of auto-applying, request UI confirmation
         # This allows users to visually verify channel-to-electrode mapping
         return _append_channel_identity_guardrail(
             f"Request: confirm_montage '{montage_name}'",
-            facade,
+            study,
         )
 
 
@@ -357,11 +445,17 @@ class RealEpochDataTool(BaseEpochDataTool):
             A confirmation message or an error description.
 
         """
-        facade = BackendFacade(study)
-
         try:
-            # Facade expects event_ids as list of strings
-            facade.epoch_data(t_min, t_max, baseline=baseline, event_ids=event_id)
+            _raise_if_failed(
+                get_application_service(study).execute(
+                    CreateEpochCommand(
+                        t_min=t_min,
+                        t_max=t_max,
+                        baseline=baseline,
+                        event_ids=event_id,
+                    ),
+                ),
+            )
         except Exception as e:
             return f"Epoching failed: {e!s}"
         else:

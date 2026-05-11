@@ -70,7 +70,7 @@ class PreprocessCommandService:
             montage_name = self._require(command.montage_name, "montage_name")
             raise ConfirmationRequiredError(
                 "set_montage requires UI confirmation and remains on the "
-                f"BackendFacade legacy path for '{montage_name}'.",
+                f"app confirmation path for '{montage_name}'.",
             )
         if operation == PreprocessOperation.STANDARD:
             return self._handle_standard_preprocess(command)

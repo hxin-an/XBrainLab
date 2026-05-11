@@ -1,18 +1,27 @@
 """Real implementations of model training tools.
 
-These tools interact with the ``BackendFacade`` to configure and
-launch actual deep-learning training runs.
+These tools interact with the ApplicationService command spine to configure
+and launch actual deep-learning training runs.
 """
 
 from typing import Any
 
-from XBrainLab.backend.facade import BackendFacade
+from XBrainLab.backend.application import (
+    ConfigureTrainingCommand,
+    TrainCommand,
+    get_application_service,
+)
 
 from ..definitions.training_def import (
     BaseConfigureTrainingTool,
     BaseSetModelTool,
     BaseStartTrainingTool,
 )
+
+
+def _raise_if_failed(result: Any) -> None:
+    if result.failed:
+        raise RuntimeError(result.message)
 
 
 class RealSetModelTool(BaseSetModelTool):
@@ -34,9 +43,11 @@ class RealSetModelTool(BaseSetModelTool):
         if not model_name:
             return "Error: model_name must be provided."
 
-        facade = BackendFacade(study)
         try:
-            facade.set_model(model_name)
+            result = get_application_service(study).execute(
+                ConfigureTrainingCommand(model_name=model_name),
+            )
+            _raise_if_failed(result)
         except Exception as e:
             return f"Failed to set model {model_name}: {e!s}"
         else:
@@ -77,19 +88,22 @@ class RealConfigureTrainingTool(BaseConfigureTrainingTool):
             A summary of the configured parameters, or an error message.
 
         """
-        facade = BackendFacade(study)
-
         try:
-            facade.configure_training(
-                epoch=epoch if epoch is not None else 10,
-                batch_size=batch_size if batch_size is not None else 32,
-                learning_rate=learning_rate if learning_rate is not None else 0.001,
-                repeat=repeat,
-                device=device,
-                optimizer=optimizer,
-                save_checkpoints_every=save_checkpoints_every,
-                output_dir=output_dir,
+            result = get_application_service(study).execute(
+                ConfigureTrainingCommand(
+                    epoch=epoch if epoch is not None else 10,
+                    batch_size=batch_size if batch_size is not None else 32,
+                    learning_rate=(
+                        learning_rate if learning_rate is not None else 0.001
+                    ),
+                    repeat=repeat,
+                    device=device,
+                    optimizer=optimizer,
+                    save_checkpoints_every=save_checkpoints_every,
+                    output_dir=output_dir,
+                ),
             )
+            _raise_if_failed(result)
         except Exception as e:
             return f"Failed to configure training: {e!s}"
         else:
@@ -104,8 +118,7 @@ class RealConfigureTrainingTool(BaseConfigureTrainingTool):
 class RealStartTrainingTool(BaseStartTrainingTool):
     """Real implementation of :class:`BaseStartTrainingTool`.
 
-    Launches the training process in a background thread via
-    :class:`BackendFacade`.
+    Launches the training process through ApplicationService.
     """
 
     def execute(self, study: Any, **kwargs) -> str:
@@ -119,10 +132,11 @@ class RealStartTrainingTool(BaseStartTrainingTool):
             A success message or an error description.
 
         """
-        facade = BackendFacade(study)
-
         try:
-            facade.run_training(confirmed=bool(kwargs.get("confirmed", False)))
+            result = get_application_service(study).execute(
+                TrainCommand(confirmed=bool(kwargs.get("confirmed", False))),
+            )
+            _raise_if_failed(result)
         except Exception as e:
             return f"Failed to start training: {e!s}"
         else:

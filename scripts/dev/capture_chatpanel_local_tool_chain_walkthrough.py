@@ -157,7 +157,7 @@ def run_tool_chain(
     timeout_seconds: int,
 ) -> dict[str, Any]:
     """Run scan -> preview -> validate through the visible ChatPanel."""
-    from XBrainLab.backend.facade import BackendFacade
+    from XBrainLab.backend.application import get_application_service
     from XBrainLab.backend.study import Study
     from XBrainLab.ui.main_window import MainWindow
 
@@ -208,7 +208,7 @@ def run_tool_chain(
             state["executed_tools"] = collect_executed_tools(controller.metrics)
             controller.close()
         try:
-            app_state = BackendFacade(study).get_state().to_dict()
+            app_state = get_application_service(study).get_state().to_dict()
             interpretation = app_state.get("interpretation")
             state["final_interpretation_state"] = (
                 dict(interpretation) if isinstance(interpretation, dict) else {}

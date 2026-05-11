@@ -7,14 +7,23 @@ import argparse
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import patch
 
 import torch
 
-from XBrainLab.backend.facade import BackendFacade
-from XBrainLab.backend.model_base import EEGNet
+from XBrainLab.backend.application import (
+    ConfigureTrainingCommand,
+    CreateEpochCommand,
+    GenerateDatasetCommand,
+    LoadDataCommand,
+    PreprocessCommand,
+    PreprocessOperation,
+    SaliencyCommand,
+    get_application_service,
+)
+from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import (
-    ModelHolder,
     TrainingEvaluation,
     TrainingOption,
 )
@@ -71,6 +80,11 @@ class SmokeResult:
     message: str
 
 
+def _raise_if_failed(result) -> None:
+    if result.failed:
+        raise RuntimeError(result.message)
+
+
 def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
     """Execute one public-fixture training smoke and return structured status."""
     filepath = PUBLIC_DATA_DIR / str(fixture["filename"])
@@ -84,34 +98,55 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
             message=f"fixture not downloaded: {filepath}",
         )
 
-    facade = BackendFacade()
-    success_count, errors = facade.load_data([str(filepath)])
-    if success_count != 1 or errors:
+    study = Study()
+    service = get_application_service(study)
+    load_result = service.execute(LoadDataCommand(paths=[str(filepath)]))
+    if load_result.failed or load_result.diagnostics.get("success_count") != 1:
         return SmokeResult(
             name=str(fixture["name"]),
             filename=str(fixture["filename"]),
             source_family=str(fixture["source_family"]),
             status="failed",
             dataset_count=0,
-            message=f"load failed: {errors}",
+            message=f"load failed: {load_result.message}",
         )
 
     try:
-        facade.apply_filter(4, 38)
-        facade.normalize_data("z score")
-        facade.epoch_data(
-            fixture["tmin"],
-            fixture["tmax"],
-            event_ids=list(fixture["event_ids"]),
+        filter_result = service.execute(
+            PreprocessCommand(
+                operation=PreprocessOperation.BANDPASS,
+                low_freq=4,
+                high_freq=38,
+            ),
         )
-        facade.generate_dataset(
-            test_ratio=0.2,
-            val_ratio=0.2,
-            split_strategy="trial",
-            training_mode="individual",
+        _raise_if_failed(filter_result)
+        normalize_result = service.execute(
+            PreprocessCommand(
+                operation=PreprocessOperation.NORMALIZE,
+                method="z score",
+            ),
         )
+        _raise_if_failed(normalize_result)
+        event_ids = [str(item) for item in cast(list[object], fixture["event_ids"])]
+        epoch_result = service.execute(
+            CreateEpochCommand(
+                t_min=float(cast(float | int | str, fixture["tmin"])),
+                t_max=float(cast(float | int | str, fixture["tmax"])),
+                event_ids=event_ids,
+            ),
+        )
+        _raise_if_failed(epoch_result)
+        dataset_result = service.execute(
+            GenerateDatasetCommand(
+                test_ratio=0.2,
+                val_ratio=0.2,
+                split_strategy="trial",
+                training_mode="individual",
+            ),
+        )
+        _raise_if_failed(dataset_result)
 
-        datasets = facade.study.datasets
+        datasets = study.datasets
         dataset_count = len(datasets) if datasets is not None else 0
         if dataset_count <= 0:
             return SmokeResult(
@@ -123,29 +158,36 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
                 message="dataset generation produced no datasets",
             )
 
-        facade.study.set_model_holder(ModelHolder(EEGNet, {}, None))
-        facade.study.set_training_option(
-            TrainingOption(
-                output_dir="test_public_output",
-                optim=torch.optim.Adam,
-                optim_params={},
-                use_cpu=True,
-                gpu_idx=None,
-                epoch=1,
-                bs=8,
-                lr=0.001,
-                checkpoint_epoch=1,
-                evaluation_option=TrainingEvaluation.TEST_ACC,
-                repeat_num=1,
+        configure_model = service.execute(ConfigureTrainingCommand(model_name="EEGNet"))
+        _raise_if_failed(configure_model)
+        configure_training = service.execute(
+            ConfigureTrainingCommand(
+                training_option=TrainingOption(
+                    output_dir="test_public_output",
+                    optim=torch.optim.Adam,
+                    optim_params={},
+                    use_cpu=True,
+                    gpu_idx=None,
+                    epoch=1,
+                    bs=8,
+                    lr=0.001,
+                    checkpoint_epoch=1,
+                    evaluation_option=TrainingEvaluation.TEST_ACC,
+                    repeat_num=1,
+                ),
             ),
         )
-        facade.study.set_saliency_params(
-            {
-                "SmoothGrad": {"nt_samples": 1, "stdevs": 0.1},
-                "SmoothGrad_Squared": {"nt_samples": 1, "stdevs": 0.1},
-                "VarGrad": {"nt_samples": 1, "stdevs": 0.1},
-            },
+        _raise_if_failed(configure_training)
+        saliency_result = service.execute(
+            SaliencyCommand(
+                params={
+                    "SmoothGrad": {"nt_samples": 1, "stdevs": 0.1},
+                    "SmoothGrad_Squared": {"nt_samples": 1, "stdevs": 0.1},
+                    "VarGrad": {"nt_samples": 1, "stdevs": 0.1},
+                },
+            ),
         )
+        _raise_if_failed(saliency_result)
 
         with (
             patch("matplotlib.pyplot.savefig"),
@@ -153,10 +195,20 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
             patch("numpy.savetxt"),
             patch("os.makedirs"),
         ):
-            facade.study.generate_plan()
-            facade.study.train(interact=False)
+            study.generate_plan()
+            study.train(interact=False)
 
-        plan_holders = facade.study.trainer.get_training_plan_holders()
+        trainer = study.trainer
+        if trainer is None:
+            return SmokeResult(
+                name=str(fixture["name"]),
+                filename=str(fixture["filename"]),
+                source_family=str(fixture["source_family"]),
+                status="failed",
+                dataset_count=dataset_count,
+                message="training produced no trainer",
+            )
+        plan_holders = trainer.get_training_plan_holders()
         record = plan_holders[0].train_record_list[0]
         if RecordKey.LOSS not in record.train or RecordKey.ACC not in record.train:
             return SmokeResult(
@@ -187,7 +239,7 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
         )
 
 
-def build_snapshot(repo_root: Path = ROOT) -> dict[str, object]:
+def build_snapshot(repo_root: Path = ROOT) -> dict[str, Any]:
     """Run the current public cross-source smoke protocol and summarize it."""
     results = [
         asdict(run_fixture_smoke(fixture)) for fixture in PUBLIC_TRAINING_FIXTURES
@@ -211,7 +263,7 @@ def build_snapshot(repo_root: Path = ROOT) -> dict[str, object]:
     }
 
 
-def render_markdown(snapshot: dict[str, object]) -> str:
+def render_markdown(snapshot: dict[str, Any]) -> str:
     """Render the current public training-smoke snapshot in Markdown."""
     lines = [
         "# Public Cross-Source Training Smoke",

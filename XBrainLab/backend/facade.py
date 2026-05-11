@@ -33,6 +33,7 @@ from XBrainLab.backend.application import (
     TrainCommand,
     UpdateMetadataCommand,
     VisualizeCommand,
+    get_application_service,
 )
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.logger import logger
@@ -69,16 +70,8 @@ class BackendFacade:
         """
         if service is not None:
             self.service = service
-        elif (
-            study is not None
-            and (cached_service := getattr(study, "_application_service", None))
-            is not None
-        ):
-            self.service = cached_service
         else:
-            self.service = ApplicationService(study if study is not None else Study())
-            if study is not None:
-                study._application_service = self.service
+            self.service = get_application_service(study)
         self.study = self.service.study
         # Use Study's cached controllers for singleton-like access
         # This ensures all components share the same controller instances
