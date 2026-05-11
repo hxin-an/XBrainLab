@@ -1,6 +1,6 @@
 # XBrainLab Agent Skills
 
-最後更新：`2026-05-05`
+最後更新：`2026-05-11`
 
 這裡放 repo-local reusable skills。
 
@@ -48,6 +48,7 @@ skill 是「可重用能力」，不是長流程。長流程放 `.agents/workflo
 | `validation-runner` | 選擇驗證指令、判斷 evidence 能支撐什麼。 |
 | `refactor-slicer` | 將後端 / agent 重構切成小 slice。 |
 | `agent-toolcall-designer` | 設計 agent state / tool / verifier / scoring contract。 |
+| `pr-branch-governance` | 套用 branch / PR / dirty worktree / scope ownership / parallel-agent 規則。 |
 
 ## 使用原則
 
