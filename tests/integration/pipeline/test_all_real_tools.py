@@ -21,7 +21,9 @@ from XBrainLab.llm.tools.real.preprocess_real import (
 from XBrainLab.llm.tools.real.ui_control_real import RealSwitchPanelTool
 
 # Locate test data
-TEST_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data"))
+TEST_DATA_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../../fixtures/data")
+)
 GDF_FILE = os.path.join(TEST_DATA_DIR, "A01T.gdf")
 
 

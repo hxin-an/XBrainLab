@@ -17,13 +17,36 @@ def _touch(path: Path) -> None:
 def test_build_dataset_validation_rows_reports_checked_in_and_public_layers(
     tmp_path: Path,
 ):
-    _touch(tmp_path / "tests" / "data" / "A01T.gdf")
-    _touch(tmp_path / "tests" / "data" / "label" / "A01T.mat")
-    _touch(tmp_path / "tests" / "data" / "multiformat" / "A01T-mini-real.edf")
-    _touch(tmp_path / "tests" / "data" / "public" / "physionet-eegmmidb-S008R01.edf")
-    _touch(tmp_path / "tests" / "data" / "public" / "physionet-eegmmidb-S008R04.edf")
-    _touch(tmp_path / "tests" / "data" / "public" / "bbci-competition-iii-O3VR.gdf")
-    _touch(tmp_path / "tests" / "data" / "public" / "sccn-eeglab_data.set")
+    _touch(tmp_path / "tests" / "fixtures" / "data" / "A01T.gdf")
+    _touch(tmp_path / "tests" / "fixtures" / "data" / "label" / "A01T.mat")
+    _touch(
+        tmp_path / "tests" / "fixtures" / "data" / "multiformat" / "A01T-mini-real.edf"
+    )
+    _touch(
+        tmp_path
+        / "tests"
+        / "fixtures"
+        / "data"
+        / "public"
+        / "physionet-eegmmidb-S008R01.edf"
+    )
+    _touch(
+        tmp_path
+        / "tests"
+        / "fixtures"
+        / "data"
+        / "public"
+        / "physionet-eegmmidb-S008R04.edf"
+    )
+    _touch(
+        tmp_path
+        / "tests"
+        / "fixtures"
+        / "data"
+        / "public"
+        / "bbci-competition-iii-O3VR.gdf"
+    )
+    _touch(tmp_path / "tests" / "fixtures" / "data" / "public" / "sccn-eeglab_data.set")
 
     rows = build_dataset_validation_rows(tmp_path)
 
@@ -43,12 +66,13 @@ def test_build_dataset_validation_rows_reports_checked_in_and_public_layers(
 
 
 def test_render_markdown_includes_current_truth(tmp_path: Path):
-    _touch(tmp_path / "tests" / "data" / "A01T.gdf")
-    _touch(tmp_path / "tests" / "data" / "label" / "A01T.mat")
+    _touch(tmp_path / "tests" / "fixtures" / "data" / "A01T.gdf")
+    _touch(tmp_path / "tests" / "fixtures" / "data" / "label" / "A01T.mat")
 
     snapshot = build_snapshot(tmp_path)
     rendered = render_markdown(snapshot)
 
+    assert snapshot["tests_data_dir"] == str(tmp_path / "tests" / "fixtures" / "data")
     assert "# Dataset Validation Matrix" in rendered
     assert "checked-in core GDF + MAT" in rendered
     assert "public local-only event-rich fixtures" in rendered

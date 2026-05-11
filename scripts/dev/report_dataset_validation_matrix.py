@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-TEST_DATA_DIR = ROOT / "tests" / "data"
+TEST_DATA_DIR = ROOT / "tests" / "fixtures" / "data"
 
 CHECKED_IN_GDF_STEMS = ("A01T", "A02T", "A03T")
 MULTIFORMAT_FILES = (
@@ -78,7 +78,7 @@ def build_dataset_validation_rows(
     repo_root: Path = ROOT,
 ) -> list[DatasetLayerRow]:
     """Build the current dataset validation matrix from known repo fixtures."""
-    tests_data_dir = repo_root / "tests" / "data"
+    tests_data_dir = repo_root / "tests" / "fixtures" / "data"
     checked_in_stems = [
         stem
         for stem in CHECKED_IN_GDF_STEMS
@@ -206,9 +206,10 @@ def build_dataset_validation_rows(
 def build_snapshot(repo_root: Path = ROOT) -> dict[str, object]:
     """Return the current machine-readable dataset validation snapshot."""
     rows = build_dataset_validation_rows(repo_root)
+    tests_data_dir = repo_root / "tests" / "fixtures" / "data"
     return {
         "repo_root": str(repo_root),
-        "tests_data_dir": str(repo_root / "tests" / "data"),
+        "tests_data_dir": str(tests_data_dir),
         "rows": [asdict(row) for row in rows],
         "current_truth": {
             "checked_in_depth": (

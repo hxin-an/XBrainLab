@@ -18,7 +18,7 @@ from XBrainLab.backend.training import (
 )
 from XBrainLab.backend.training.record import RecordKey
 
-TEST_DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+TEST_DATA_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "data"
 CHECKED_IN_GDF_STEMS = ("A01T", "A02T", "A03T")
 
 

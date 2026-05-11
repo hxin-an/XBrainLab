@@ -7,9 +7,9 @@ from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.load_data.raw_data_loader import load_gdf_file, load_raw_data
 
-# Path to the small real-data fixtures stored under tests/data
+# Path to the small real-data fixtures stored under tests/fixtures/data
 TEST_DATA_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "data"),
+    os.path.join(os.path.dirname(__file__), "..", "..", "fixtures", "data"),
 )
 GDF_FILE = os.path.join(TEST_DATA_DIR, "A01T.gdf")
 MULTIFORMAT_DIR = os.path.join(TEST_DATA_DIR, "multiformat")

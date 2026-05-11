@@ -22,9 +22,9 @@ from XBrainLab.backend.training import (
 )
 from XBrainLab.backend.training.record import RecordKey
 
-# Path to real test data stored under tests/data in the repo
+# Path to real test data stored under tests/fixtures/data in the repo
 TEST_DATA_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "data"),
+    os.path.join(os.path.dirname(__file__), "..", "..", "fixtures", "data"),
 )
 GDF_FILE = os.path.join(TEST_DATA_DIR, "A01T.gdf")
 

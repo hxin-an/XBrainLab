@@ -13,7 +13,9 @@ from XBrainLab.backend.controller.dataset_controller import (
 from XBrainLab.backend.study import Study
 
 # Locate test data (relative to project root)
-TEST_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data"))
+TEST_DATA_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../../fixtures/data")
+)
 GDF_FILE = os.path.join(TEST_DATA_DIR, "A01T.gdf")
 
 

@@ -1,4 +1,4 @@
-These fixtures are compact real-signal derivatives of `tests/data/A01T.gdf`.
+These fixtures are compact real-signal derivatives of `tests/fixtures/data/A01T.gdf`.
 
 They were generated from a 15-second slice of the real recording using 8 channels
 to keep disk usage low while still exercising real import paths across multiple
