@@ -25,7 +25,7 @@ UI / assistant / MCP / scripts
 | `ApplicationService` | command dispatch、capability / confirmation gate、result envelope。 | 必須保持 spine，不要變成 god object。 |
 | focused services | Data Interpretation、preprocess、dataset、training、analysis、lifecycle。 | 邊界要靠 tests 和 architecture guard 維持。 |
 | `Study` / managers | domain state、data lifecycle、training lifecycle。 | legacy controller mutation path 還要在 product runtime 清乾淨。 |
-| `BackendFacade` | assistant / script 的 high-level wrapper。 | 不能變成第二套 backend 或重新定義成功條件。 |
+| `BackendFacade` | Legacy compatibility wrapper outside product runtime. | Product UI / assistant / MCP / current headless scripts should use `ApplicationService / Command API` directly. |
 | assistant / MCP | tool / JSON payload 轉 command。 | MVP 先做 baseline；client certification 屬 Phase 4。 |
 
 ## Roadmap 對應
@@ -43,7 +43,7 @@ UI / assistant / MCP / scripts
 | --- | --- | --- |
 | legacy controller path | 桌面操作可能繞過 command spine，測試也可能保護舊路徑。 | real `Study` product path 不再 hidden fallback。 |
 | UI refresh split truth | backend state 正確但畫面顯示舊狀態。 | command result / changed state 驅動 refresh。 |
-| `BackendFacade` scope creep | wrapper 若重做 workflow logic，就會和 UI / MCP 分裂。 | 只包 command API，不自己判斷 workflow 成功。 |
+| `BackendFacade` scope creep | wrapper 若回到 product runtime，就會和 UI / MCP 分裂。 | Architecture guard blocks `BackendFacade` use in product UI / assistant / MCP packages. |
 | Data Interpretation maturity | 資料語意錯會污染後續 training / evidence。 | MVP 先處理代表性 ambiguity，不誇大 final support。 |
 | MCP session confusion | headless session 容易被誤解成桌面 UI 控制。 | Phase 4 明確 session ownership 和 client matrix。 |
 

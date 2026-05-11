@@ -15418,3 +15418,25 @@
     -> `74 passed`.
   - Focused `ruff check ...` -> `All checks passed!`.
   - Focused `basedpyright ...` -> `0 errors, 0 warnings, 0 notes`.
+
+### 2026-05-11 Legacy Command Spine Runtime Cleanup
+
+- scope：
+  - Remove `BackendFacade` from product runtime paths without redesigning Data Import UX.
+- 做了什麼：
+  - Added `XBrainLab/backend/application/runtime.py::get_application_service`.
+  - Routed UI capability helpers, AgentManager, LLMController, agent application surface, real
+    agent tools, and current walkthrough scripts through direct ApplicationService access.
+  - Added product-runtime architecture guard coverage for `BackendFacade` imports / construction.
+  - Replaced facade-method real-tool tests with command-object assertions.
+  - Documented `BackendFacade` as non-product legacy compatibility only.
+- focused validation so far：
+  - `poetry run pytest --capture=sys tests/architecture_compliance.py -q` -> `1 passed`.
+  - `poetry run pytest --capture=sys tests/unit/backend/application -q` -> `142 passed`.
+  - `poetry run pytest --capture=sys tests/unit/llm/tools -q` -> `225 passed`.
+  - `env MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/mcp -q` ->
+    `13 passed`.
+  - Focused `ruff check <changed Python files>` -> `All checks passed!`.
+- 不能宣稱：
+  - Full goal completion still depends on the required full UI suite, combined LLM/MCP gate,
+    basedpyright, mkdocs strict build, quality dashboard, commits, and clean worktree.

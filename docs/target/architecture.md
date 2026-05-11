@@ -58,14 +58,14 @@ MNE / PyTorch / filesystem / runtime diagnostics
 
 ## `BackendFacade` 的角色
 
-`BackendFacade` 可以保留，但只能是 wrapper：
+`BackendFacade` 可以保留，但只能是 legacy compatibility wrapper：
 
-- assistant / script 的 high-level convenience layer。
-- command API 的便利入口。
+- 不在 product runtime path 裡作為 UI / assistant / MCP / headless 入口。
+- 舊 caller 需要時只轉呼叫 command API，不新增 workflow policy。
 - 不自己重做 import / preprocess / train / evaluate workflow。
 - 不讓 UI、agent、MCP 看到不同的 readiness / success / error truth。
 
-如果 `BackendFacade` 開始自己維護 workflow 狀態，它就違反目標架構。
+如果 `BackendFacade` 回到 product runtime 或開始自己維護 workflow 狀態，它就違反目標架構。
 
 ## Data Interpretation 目標
 

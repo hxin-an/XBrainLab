@@ -28,7 +28,7 @@ acceptance。
 | Test cleanup | 測試不再把 legacy fallback 當作預期成功路徑；mock 只隔離外部依賴。 |
 | Validation reality-gap audit | 盤點現有 tests / artifacts / smoke 的 claim boundary，補上 human-observable product smoke，避免 dashboard PASS 但實機 workflow 仍不可用。 |
 | Data Import UX alignment | task-oriented step-panel wizard baseline 和第一輪 task-panel visual polish 已交付；後續不再以 debug-style preview 為目標。 |
-| BackendFacade boundary | `BackendFacade` 只包 `ApplicationService / Command API`，不重做 workflow logic。 |
+| BackendFacade boundary | Product runtime packages use `get_application_service(study)` / `ApplicationService`; `BackendFacade` is legacy compatibility only. |
 | Architecture guard | 新增或維持 guard，防止 product path 繞過 command spine。 |
 | Docs alignment | `current`、`roadmap`、`architecture` 不互相矛盾。 |
 

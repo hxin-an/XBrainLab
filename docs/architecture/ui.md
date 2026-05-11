@@ -91,7 +91,7 @@ legacy adapter，但直接 controller lookup 已開始被集中與 guard。
 
 2026-05-02 起，UI 不再把所有 readiness 判斷都散落在 panels 裡。新增
 `XBrainLab/ui/application_capabilities.py`，讓 UI component 從 nearest
-`main_window.study` 取得 `BackendFacade(study).get_capabilities()`，並提供
+`main_window.study` 透過 `get_application_service(study)` 取得 capability policy，並提供
 `execute_application_command(...)` 讓 real `Study` path 可以直接執行
 `ApplicationService.execute()`。
 
@@ -396,8 +396,9 @@ Product runtime 不讓 `InfoPanelService` 自行訂閱 controller events。Aggre
 `refresh_coordinator` shared-status path 呼叫 `MainWindow.update_info_panel()`，再委派到
 `InfoPanelService.notify_all()`。Real `Study` data-list query 也透過
 `execute_application_command(..., refresh=False)` 進入 ApplicationService；UI code 不應直接
-呼叫 `BackendFacade(...).service.execute()`，這個 direct service execution 只保留在
-`application_capabilities.py` 的共用 helper 內。
+建立 service 或呼叫 legacy facade。Direct command execution 只保留在
+`application_capabilities.py` 的共用 helper 內，helper 會處理 real-Study detection、
+mock / legacy fallback boundary 和 refresh policy。
 
 若以 mock / legacy non-`Study` context 單獨建立並允許 observer events，`InfoPanelService` 可透過
 `get_legacy_controller_from_study()` 建立 compatibility observer bridge：

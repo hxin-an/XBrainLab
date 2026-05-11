@@ -6115,3 +6115,31 @@ current blockers.
 
 - This is only the first documentation reset slice. `current.md`, `validation/README.md`, and the
   records still need follow-up trimming and better information hierarchy.
+
+## 2026-05-11 Legacy Command Spine Runtime Cleanup
+
+### 狀態
+
+Product runtime paths now enter the backend through `ApplicationService / Command API` directly;
+`BackendFacade` is legacy compatibility only.
+
+### 已可宣稱
+
+- Added `get_application_service(study)` as the Study-scoped command-spine accessor.
+- UI capability helpers, AgentManager status refresh, LLMController state / capability checks,
+  agent application surface, real dataset / preprocess / training / analysis tools, MCP product
+  paths, and current dev walkthrough scripts no longer import or instantiate `BackendFacade`.
+- `tests/architecture_compliance.py` now runs as a pytest gate and blocks `BackendFacade` usage
+  under `XBrainLab/ui`, `XBrainLab/llm`, and `XBrainLab/mcp`.
+- Real-tool tests now assert typed ApplicationService commands instead of facade method calls.
+
+### 仍保留的 legacy
+
+- `XBrainLab/backend/facade.py` remains as non-product compatibility wrapper.
+- Facade-specific tests and legacy fixtures remain outside product runtime and should not be used
+  as completion evidence for new workflow behavior.
+
+### 不能宣稱完成
+
+- This does not remove all controller compatibility paths or complete human Windows desktop
+  acceptance.
