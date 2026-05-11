@@ -37,7 +37,7 @@ EEG classification metrics、train/validation/test split、模型 baseline 和 s
 | UI-observable scripted replay | 固定 replay 經過 UI adapter / ChatPanel / import wizard，保存 transcript、state、screenshots 或 UI artifacts | 人眼可審查的 UI 行為、button enablement、visible response、wizard flow | local LLM 真實 tool-call accuracy |
 | local LLM tool-call runs | 同一 cases 接 local primary / fallback runtime | tool selection / parameter / state-transition / recovery accuracy | EEG model quality |
 | UI-assisted workflow cases | 真 UI / agent 操作代表性 EEG workflow | end-to-end workflow success、user-facing error handling | EEG classification thesis result |
-| checked-in EEG fixtures | `tests/data/` compact GDF/MAT/multiformat fixtures | IO、shape、tiny train/evaluate smoke | agent tool-call accuracy 或 EEG 泛化能力 |
+| checked-in EEG fixtures | `tests/fixtures/data/` compact GDF/MAT/multiformat fixtures | IO、shape、tiny train/evaluate smoke | agent tool-call accuracy 或 EEG 泛化能力 |
 | public / external EEG datasets | documented source、license、checksum | domain workflow robustness、optional EEG model sanity | tool-call accuracy 或本論文主結論 |
 
 資料下載不可靜默發生。public 或 external dataset 需先記錄來源、授權、大小、cache/path、

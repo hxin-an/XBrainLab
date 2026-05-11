@@ -5,7 +5,7 @@
         {
             "tool": "list_files",
             "params": {
-                "directory": "tests/data",
+                "directory": "tests/fixtures/data",
                 "pattern": "*.gdf"
             }
         },
@@ -13,7 +13,7 @@
             "tool": "load_data",
             "params": {
                 "paths": [
-                    "tests/data/A01T.gdf"
+                    "tests/fixtures/data/A01T.gdf"
                 ]
             }
         },
@@ -21,7 +21,7 @@
             "tool": "attach_labels",
             "params": {
                 "mapping": {
-                    "A01T.gdf": "tests/data/label/A01T.mat"
+                    "A01T.gdf": "tests/fixtures/data/label/A01T.mat"
                 }
             }
         },
