@@ -14,8 +14,8 @@ from XBrainLab.backend.application import (
     CommandName,
     CommandResult,
     QueryStateCommand,
+    get_application_service,
 )
-from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.study import Study
 from XBrainLab.ui import application_capabilities
 from XBrainLab.ui.application_capabilities import (
@@ -35,7 +35,7 @@ def test_ui_capability_helper_returns_application_policy(qtbot):
 
     ui_capability = get_command_capability(widget, CommandName.TRAIN)
     backend_capability = (
-        BackendFacade(study)
+        get_application_service(study)
         .get_capabilities()
         .get(
             CommandName.TRAIN,
@@ -78,12 +78,15 @@ def test_execute_application_command_triggers_changed_state_refresh(
             assert isinstance(command, QueryStateCommand)
             return result
 
-    class _Facade:
-        def __init__(self, provided_study):
-            assert provided_study is study
-            self.service = _Service()
+    def _service_for(provided_study):
+        assert provided_study is study
+        return _Service()
 
-    monkeypatch.setattr(application_capabilities, "BackendFacade", _Facade)
+    monkeypatch.setattr(
+        application_capabilities,
+        "get_application_service",
+        _service_for,
+    )
     monkeypatch.setattr(
         application_capabilities,
         "refresh_after_command",
@@ -116,12 +119,15 @@ def test_execute_application_command_can_skip_refresh(qtbot, monkeypatch):
             assert isinstance(command, QueryStateCommand)
             return result
 
-    class _Facade:
-        def __init__(self, provided_study):
-            assert provided_study is study
-            self.service = _Service()
+    def _service_for(provided_study):
+        assert provided_study is study
+        return _Service()
 
-    monkeypatch.setattr(application_capabilities, "BackendFacade", _Facade)
+    monkeypatch.setattr(
+        application_capabilities,
+        "get_application_service",
+        _service_for,
+    )
     monkeypatch.setattr(
         application_capabilities,
         "refresh_after_command",

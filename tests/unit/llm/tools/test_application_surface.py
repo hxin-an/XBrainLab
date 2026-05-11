@@ -7,8 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from XBrainLab.backend.application import CommandName
-from XBrainLab.backend.facade import BackendFacade
+from XBrainLab.backend.application import CommandName, get_application_service
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.tools.application_surface import (
     CapabilityPolicyUnavailable,
@@ -22,9 +21,9 @@ from XBrainLab.llm.tools.application_surface import (
 
 def test_agent_tool_policy_reuses_application_train_reasons():
     study = Study()
-    facade = BackendFacade(study)
+    service = get_application_service(study)
 
-    application_train = facade.get_capabilities().get(CommandName.TRAIN)
+    application_train = service.get_capabilities().get(CommandName.TRAIN)
     tool_policy = build_agent_tool_policy(study)
 
     start_training = tool_policy["start_training"]
@@ -352,14 +351,14 @@ def test_query_state_tool_uses_application_command_surface():
 
 def test_query_state_tool_surfaces_interpretation_review_truth(tmp_path):
     study = Study()
-    facade = BackendFacade(study)
+    service = get_application_service(study)
     source_dir = tmp_path / "agent_reviewed_source"
     source_dir.mkdir()
     eeg_path = source_dir / "sub-01_task-mi_raw.fif"
     events_path = source_dir / "events.tsv"
     eeg_path.write_bytes(b"placeholder")
     events_path.write_text("onset\ttrial_type\n0.0\tleft\n", encoding="utf-8")
-    facade.service.dataset.import_files = MagicMock(return_value=(1, []))
+    service.dataset.import_files = MagicMock(return_value=(1, []))
 
     execute_application_tool_command(
         study,

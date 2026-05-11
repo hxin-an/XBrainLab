@@ -1,6 +1,7 @@
 """Coverage tests for AgentManager ??UI component interactions."""
 
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 from PyQt6.QtWidgets import QMainWindow
@@ -8,15 +9,18 @@ from PyQt6.QtWidgets import QMainWindow
 from XBrainLab.backend.study import Study
 
 
-def _make_manager():
+def _make_manager() -> Any:
     """Create a stub AgentManager without calling __init__."""
     from XBrainLab.ui.components.agent_manager import AgentManager
 
-    m = AgentManager.__new__(AgentManager)
+    m = cast(Any, AgentManager.__new__(AgentManager))
     m.study = MagicMock()
     m.main_window = MagicMock()
     m.chat_panel = MagicMock()
     m.chat_controller = MagicMock()
+    m.application_service = MagicMock()
+    m.application_service.get_state.return_value = _empty_workflow_state()
+    m.application_service.get_capabilities.return_value = {}
     m.preprocess_controller = MagicMock()
     m.agent_controller = MagicMock()
     m.agent_initialized = True
@@ -59,7 +63,10 @@ def test_agent_manager_does_not_fetch_preprocess_controller_from_real_study(qtbo
     main_window = QMainWindow()
     qtbot.addWidget(main_window)
 
-    with patch("XBrainLab.ui.components.agent_manager.BackendFacade"):
+    with patch(
+        "XBrainLab.ui.components.agent_manager.get_application_service",
+        return_value=MagicMock(),
+    ):
         manager = AgentManager(main_window, study)
 
     study.get_controller.assert_not_called()
@@ -118,9 +125,8 @@ class TestAgentManagerStartSystem:
 class TestAgentManagerBackendStatus:
     def test_refresh_backend_status_handles_missing_train_capability(self):
         m = _make_manager()
-        m.backend_facade = MagicMock()
-        m.backend_facade.get_state.return_value = _empty_workflow_state()
-        m.backend_facade.get_capabilities.return_value = {
+        m.application_service.get_state.return_value = _empty_workflow_state()
+        m.application_service.get_capabilities.return_value = {
             "scan_source": SimpleNamespace(enabled=True, reasons=[]),
         }
         model_config = MagicMock()

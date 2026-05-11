@@ -1,4 +1,5 @@
 from tests.architecture_compliance import (
+    check_product_runtime_backend_facade_usage,
     check_ui_capability_gated_controller_readiness,
     check_ui_controller_fallbacks,
     check_ui_controller_render_fallbacks,
@@ -21,6 +22,44 @@ def _write_ui_file(root, source: str) -> None:
     path = root / "XBrainLab" / "ui" / "panels" / "demo" / "sidebar.py"
     path.parent.mkdir(parents=True)
     path.write_text(source, encoding="utf-8")
+
+
+def test_product_runtime_facade_guard_flags_agent_facade_import(tmp_path):
+    path = tmp_path / "XBrainLab" / "llm" / "tools" / "demo.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+from XBrainLab.backend.facade import BackendFacade
+
+
+def run(study):
+    return BackendFacade(study).get_capabilities()
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_product_runtime_backend_facade_usage(tmp_path)
+
+    assert len(violations) == 2
+    assert "XBrainLab/llm/tools/demo.py" in violations[0]
+    assert "ApplicationService / Command API" in violations[0]
+
+
+def test_product_runtime_facade_guard_allows_application_service(tmp_path):
+    path = tmp_path / "XBrainLab" / "llm" / "tools" / "demo.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+from XBrainLab.backend.application import get_application_service
+
+
+def run(study):
+    return get_application_service(study).get_capabilities()
+""",
+        encoding="utf-8",
+    )
+
+    assert check_product_runtime_backend_facade_usage(tmp_path) == []
 
 
 def test_direct_backend_service_execute_guard_flags_ui_bypass(tmp_path):

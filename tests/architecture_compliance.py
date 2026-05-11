@@ -124,6 +124,11 @@ UI_REFRESH_FALSE_READ_ONLY_COMMANDS = (
     "QueryStateCommand",
     "VisualizeCommand",
 )
+PRODUCT_RUNTIME_BACKEND_FACADE_DIRS = (
+    Path("XBrainLab/ui"),
+    Path("XBrainLab/llm"),
+    Path("XBrainLab/mcp"),
+)
 
 
 def check_architecture(root_dir: str) -> int:
@@ -206,6 +211,13 @@ def check_architecture(root_dir: str) -> int:
     if llm_violations:
         print("\nLocal-only LLM Runtime Violations Found:")
         for violation in llm_violations:
+            print(f" - {violation}")
+        return 1
+
+    facade_usage_violations = check_product_runtime_backend_facade_usage(Path(root_dir))
+    if facade_usage_violations:
+        print("\nProduct Runtime BackendFacade Usage Violations Found:")
+        for violation in facade_usage_violations:
             print(f" - {violation}")
         return 1
 
@@ -359,6 +371,50 @@ def check_local_only_llm_runtime(root_dir: Path) -> list[str]:
         )
 
     return violations
+
+
+def check_product_runtime_backend_facade_usage(root_dir: Path) -> list[str]:
+    """Return product runtime code that still enters backend through BackendFacade."""
+    violations: list[str] = []
+
+    for relative_dir in PRODUCT_RUNTIME_BACKEND_FACADE_DIRS:
+        product_dir = root_dir / relative_dir
+        if not product_dir.exists():
+            continue
+        for py_file in product_dir.rglob("*.py"):
+            if py_file.name == "__init__.py":
+                continue
+            source = py_file.read_text(encoding="utf-8")
+            try:
+                tree = ast.parse(source, filename=str(py_file))
+            except SyntaxError:
+                continue
+            visitor = _BackendFacadeRuntimeUsageVisitor()
+            visitor.visit(tree)
+            violations.extend(
+                f"{py_file.relative_to(root_dir)}:{getattr(node, 'lineno', 0)} uses "
+                "BackendFacade in product runtime; route through "
+                "ApplicationService / Command API directly."
+                for node in visitor.violations
+            )
+    return violations
+
+
+class _BackendFacadeRuntimeUsageVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.violations: list[ast.AST] = []
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        if node.module == "XBrainLab.backend.facade":
+            self.violations.append(node)
+            return
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if isinstance(node.func, ast.Name) and node.func.id == "BackendFacade":
+            self.violations.append(node)
+            return
+        self.generic_visit(node)
 
 
 def check_ui_controller_fallbacks(root_dir: Path) -> list[str]:
@@ -1467,6 +1523,12 @@ def _is_capability_reference(node: ast.AST) -> bool:
     if isinstance(node, ast.Name):
         return "capability" in node.id
     return isinstance(node, ast.Attribute) and "capability" in node.attr
+
+
+def test_repository_architecture_compliance():
+    """Pytest entry point for the repo architecture compliance gate."""
+    root_dir = Path(__file__).resolve().parents[1]
+    assert check_architecture(str(root_dir)) == 0
 
 
 if __name__ == "__main__":

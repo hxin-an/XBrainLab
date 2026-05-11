@@ -1647,7 +1647,7 @@ def test_set_montage_preprocess_operation_requires_ui_confirmation():
 
     assert result.failed is True
     assert result.error_type == ErrorType.CONFIRMATION_REQUIRED
-    assert "BackendFacade legacy path" in result.message
+    assert "app confirmation path" in result.message
 
 
 def _raw_mock():
