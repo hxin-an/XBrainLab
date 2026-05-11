@@ -58,7 +58,7 @@ protocol 是支撐工作流可信度，不是主要 thesis accuracy。
 | `tests/unit/` | 單元測試。 |
 | `tests/integration/` | 跨模組與 IO / UI integration tests。 |
 | `tests/regression/` | regression tests。 |
-| `tests/data/` | 測試資料與 fixture。 |
+| `tests/fixtures/data/` | 測試資料與 fixture。 |
 | `tests/baselines/ui/` | approved UI baseline images。 |
 | `artifacts/quality/latest.json` | 最新 dashboard machine-readable artifact。 |
 | `artifacts/quality/latest.md` | 最新 dashboard human-readable artifact。 |
