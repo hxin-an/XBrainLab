@@ -59,7 +59,9 @@ EEG file
 
 - loader 註冊：程式碼有對應 reader。
 - checked-in fixture import：repo 內小檔案可被測試讀取。
-- facade import：`BackendFacade.load_data()` 可走同一格式。
+- command import：`ApplicationService.execute(LoadDataCommand(...))` 可走同一格式。
+- legacy facade compatibility：`BackendFacade.load_data()` 仍可包同一 command path，但不是
+  product runtime 入口。
 - dataset generation：能套 labels / preprocess / epoch / split。
 - training smoke：能跑到一個小訓練閉環。
 - thesis-grade reproducibility：尚未完成。
@@ -95,13 +97,16 @@ label import 目前集中在 `LabelImportService`。
 | batch mapping | data file path 對 label file path。 |
 | legacy sequential | 一串 labels 依每個檔案 epoch/event count 分配。 |
 
-`BackendFacade.attach_labels(mapping)` 目前會：
+`ApplicationService.execute(AttachLabelsCommand(...))` 目前會：
 
 1. 從 dataset controller 取得 loaded data。
 2. 依 filepath、filename、basename 找對應 label path。
 3. 用 `load_label_file()` 讀 label。
 4. 呼叫 `LabelImportService.apply_labels_batch()`。
 5. 成功後 reset preprocess，因為 label/event 變更會讓下游狀態失效。
+
+`BackendFacade.attach_labels(mapping)` 保留 legacy compatibility wrapper，但 product runtime
+不應把它當成 label workflow 入口。
 
 這裡的風險是：label/event 正確性不是 import 成功就能保證。它需要 event count、event ID mapping、timestamp/sequence mode 都對上。
 
@@ -203,7 +208,8 @@ Study.train(interact=False/True)
 ## 目前可信結論
 
 - 多格式 loader 註冊清楚，且有 real-data IO integration coverage。
-- `BackendFacade` 能跑多格式 import path。
+- `ApplicationService / Command API` 能跑多格式 import path；`BackendFacade` 只剩 legacy
+  compatibility wrapper。
 - checked-in GDF+MAT fixtures 已有 dataset generation 和 one-epoch training smoke tests。
 - public fixtures 的 cross-source training smoke 屬於 local-only evidence，不能當成 checked-in baseline。
 - pipeline 已有工程 smoke，但還不是 thesis validation。
