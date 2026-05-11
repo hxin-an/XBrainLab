@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from scripts.dev.run_public_cross_source_training_smoke import (
     PUBLIC_TRAINING_FIXTURES,
     SmokeResult,
@@ -46,8 +48,12 @@ def test_build_snapshot_summarizes_runner_results(monkeypatch):
         fake_run_fixture_smoke,
     )
 
-    snapshot = build_snapshot()
+    repo_root = Path("/tmp/xbrainlab")
+    snapshot = build_snapshot(repo_root)
 
+    assert snapshot["public_data_dir"] == str(
+        repo_root / "tests" / "fixtures" / "data" / "public"
+    )
     assert snapshot["summary"]["passed"] == 1
     assert snapshot["summary"]["missing"] == 1
     assert snapshot["summary"]["failed"] == 2

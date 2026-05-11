@@ -69,7 +69,7 @@ def run_verification():
     study = Study()
 
     # --- Paths ---
-    data_dir = os.path.abspath(os.path.join(PROJECT_ROOT, "tests/data"))
+    data_dir = os.path.abspath(os.path.join(PROJECT_ROOT, "tests/fixtures/data"))
     data_path = os.path.join(data_dir, "A01T.gdf")
     label_path = os.path.join(data_dir, "label", "A01T.mat")
 

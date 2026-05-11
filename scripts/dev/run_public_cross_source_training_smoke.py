@@ -21,7 +21,7 @@ from XBrainLab.backend.training import (
 from XBrainLab.backend.training.record import RecordKey
 
 ROOT = Path(__file__).resolve().parents[2]
-PUBLIC_DATA_DIR = ROOT / "tests" / "data" / "public"
+PUBLIC_DATA_DIR = ROOT / "tests" / "fixtures" / "data" / "public"
 
 PUBLIC_TRAINING_FIXTURES = (
     {
@@ -197,7 +197,7 @@ def build_snapshot(repo_root: Path = ROOT) -> dict[str, object]:
     failed = sum(1 for result in results if result["status"] == "failed")
     return {
         "repo_root": str(repo_root),
-        "public_data_dir": str(repo_root / "tests" / "data" / "public"),
+        "public_data_dir": str(repo_root / "tests" / "fixtures" / "data" / "public"),
         "results": results,
         "summary": {
             "passed": passed,

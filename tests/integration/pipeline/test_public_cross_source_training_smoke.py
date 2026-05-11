@@ -18,7 +18,7 @@ from XBrainLab.backend.training import (
 from XBrainLab.backend.training.record import RecordKey
 
 ROOT = Path(__file__).resolve().parents[2]
-PUBLIC_DATA_DIR = ROOT / "data" / "public"
+PUBLIC_DATA_DIR = ROOT / "fixtures" / "data" / "public"
 PUBLIC_TRAINING_FIXTURES = (
     {
         "name": "physionet-edf",

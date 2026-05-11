@@ -9,7 +9,9 @@ from XBrainLab.backend.load_data.raw_data_loader import load_gdf_file
 from XBrainLab.backend.utils.filename_parser import FilenameParser
 
 # Path to the small test data provided in the repo
-TEST_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
+TEST_DATA_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "fixtures", "data")
+)
 GDF_FILE = os.path.join(TEST_DATA_DIR, "A01T.gdf")
 
 
