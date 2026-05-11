@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-05-06`
+最後更新：`2026-05-11`
 
 ## 這份文件的用途
 
@@ -34,6 +34,59 @@
 - 證據：
 - 接續 / 本輪剩餘：
 ```
+
+## 2026-05-11
+
+### 22:55 Backend/test hygiene clean branch split
+
+- 做了什麼：
+  - Created clean branch `codex/backend-test-hygiene-clean` from
+    `origin/codex/stabilization-autopilot` in `/tmp/xbrainlab-backend-test-hygiene-clean`
+    to keep backend/test hygiene separate from the Data Import wizard UX checkpoint.
+  - Cherry-picked fixture relocation and fixture-path documentation commits.
+  - Ported only backend/application, agent tool, MCP, backend integration, and backend/agent/MCP
+    test changes from the mixed checkpoint.
+  - Did not port `data_interpretation_preview_dialog.py`, smart parser, sidebar/layout changes,
+    UI screenshots, or Load Labels / Match Labels UX artifacts.
+- validation：
+  - `env MNE_DONTWRITE_HOME=true /home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-TKrzxeIe-py3.12/bin/python -m pytest --capture=sys tests/unit/backend/application/test_data_interpretation_state.py tests/unit/backend/application/test_data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_recipe.py tests/unit/backend/application/test_data_interpretation_service.py -q`
+    -> `29 passed`.
+  - `env MNE_DONTWRITE_HOME=true /home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-TKrzxeIe-py3.12/bin/python -m pytest --capture=sys tests/unit/backend/application -q`
+    -> `139 passed`.
+  - `env MNE_DONTWRITE_HOME=true /home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-TKrzxeIe-py3.12/bin/python -m pytest --capture=sys tests/unit/llm/tools/test_definitions.py tests/unit/llm/tools/test_application_surface.py tests/unit/mcp/test_server.py -q`
+    -> `181 passed`.
+  - `env POETRY_BIN=/tmp/xbrainlab-poetry-shim PYTHONPATH=/tmp/xbrainlab-backend-test-hygiene-clean MNE_DONTWRITE_HOME=true /home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-TKrzxeIe-py3.12/bin/python -m pytest --capture=sys tests/unit/llm/agent/test_tool_call_normalizer.py tests/integration/mcp/test_stdio_server.py tests/integration/mcp/test_client_config.py -q`
+    -> `51 passed`. The `/tmp` Poetry shim keeps the committed MCP client wrapper on the already
+    prepared XBrainLab virtualenv for this clean worktree.
+  - `env MNE_DONTWRITE_HOME=true /home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-TKrzxeIe-py3.12/bin/python -m pytest --capture=sys tests/integration/backend/test_application_service_workflow.py -q`
+    -> `7 passed`.
+  - `env MNE_DONTWRITE_HOME=true /home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-TKrzxeIe-py3.12/bin/python -m pytest --capture=sys tests/integration/io/test_io_integration.py -q`
+    -> `21 passed, 10 skipped, 2 warnings`; skipped cases require local-only public fixtures under
+    `tests/fixtures/data/public/`.
+  - `env MNE_DONTWRITE_HOME=true /home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-TKrzxeIe-py3.12/bin/python -m pytest --capture=sys tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet -q`
+    -> `2 passed`.
+  - `env QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true /home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-TKrzxeIe-py3.12/bin/python -m pytest --capture=sys tests/unit/ui/test_ui_misc.py tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/dataset/test_panel.py -q`
+    -> `165 passed`.
+  - `env MNE_DONTWRITE_HOME=true /home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-TKrzxeIe-py3.12/bin/python -m pytest --capture=sys tests/unit/scripts/test_report_dataset_validation_matrix.py tests/unit/scripts/test_run_public_cross_source_training_smoke.py -q`
+    -> `4 passed`.
+  - `/home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-TKrzxeIe-py3.12/bin/python -m ruff check <changed Python scope>` -> `All checks passed!`.
+  - `/home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-TKrzxeIe-py3.12/bin/basedpyright <changed Python scope>` -> `0 errors, 0 warnings, 0 notes`.
+  - `env PYTHONPATH=/tmp/xbrainlab-backend-test-hygiene-clean MNE_DONTWRITE_HOME=true /home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-TKrzxeIe-py3.12/bin/python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `/home/administrator/.cache/pypoetry/virtualenvs/xbrainlab-TKrzxeIe-py3.12/bin/mkdocs build --strict`
+    -> passed; only existing MkDocs Material advisory / non-nav page info.
+  - `git diff --check` -> passed.
+  - Scope guards:
+    - `git diff --name-only -- XBrainLab/ui artifacts/ui` -> no output.
+    - `git ls-files tests/data` -> no output.
+    - `rg -n "tests/data" XBrainLab scripts tests docs --glob !docs/records/worklog.md --glob !docs/records/implementation_log.md`
+      -> only the new validation inventory rows documenting the obsolete path.
+- 接續 / 本輪剩餘：
+  - Commit the clean branch after final diff review.
+  - Full quality-dashboard refresh was not used as the branch evidence because the script rewrites
+    UI artifacts and hardcodes Poetry for the active workspace; this backend/test branch instead ran
+    the relevant underlying lint, type, architecture, docs, backend, UI-route, IO, pipeline, and MCP
+    gates directly.
 
 ## 2026-05-06
 

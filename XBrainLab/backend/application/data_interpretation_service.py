@@ -22,7 +22,9 @@ from .commands import (
 )
 from .data_interpretation import (
     AppliedInterpretation,
+    InterpretationCandidate,
     InterpretationDecision,
+    ValidationDecision,
     build_import_recipe,
     build_interpretation_candidate,
     build_interpretation_preview,
@@ -33,7 +35,7 @@ from .data_interpretation import (
 )
 from .data_interpretation_apply import DataInterpretationApplyService
 from .data_interpretation_state import DataInterpretationSessionState
-from .errors import ApplicationError, PreconditionError
+from .errors import ApplicationError, ConfirmationRequiredError, PreconditionError
 from .results import ErrorType
 from .state import InterpretationStateSnapshot
 
@@ -72,6 +74,7 @@ class DataInterpretationCommandService:
             scan_id=scan_id,
             source_path=command.source_path,
             source_hint=command.source_hint,
+            label_sources=command.label_sources,
         )
         self.state.record_scan(scan)
         return (
@@ -132,12 +135,8 @@ class DataInterpretationCommandService:
         decision = self.state.resolve_validation_decision(candidate.candidate_id)
         if decision is None:
             raise PreconditionError("Validate an interpretation before applying it.")
-        if decision.decision == InterpretationDecision.BLOCKED.value:
-            blocked = (
-                "; ".join(decision.blocked_reasons) or "Interpretation is blocked."
-            )
-            raise PreconditionError(blocked)
-        count, errors = self.dataset.import_files(candidate.selected_eeg_files)
+        self._ensure_candidate_can_apply(command, decision)
+        count, errors = self._replace_active_raw_data(candidate.selected_eeg_files)
         if count == 0 and errors:
             raise ApplicationError(
                 message=f"Failed to apply interpretation: {errors}",
@@ -146,30 +145,10 @@ class DataInterpretationCommandService:
                 diagnostics={"errors": errors},
             )
         interpretation_id = self.state.next_id("interpretation")
-        confirmations = (
-            list(decision.required_confirmations)
-            if decision.decision == InterpretationDecision.NEEDS_CONFIRMATION.value
-            else []
-        )
-        applied = AppliedInterpretation(
+        applied = self._build_applied_interpretation(
             interpretation_id=interpretation_id,
-            candidate_id=candidate.candidate_id,
-            source_path=candidate.source_path,
-            source_kind=candidate.source_kind,
-            loaded_files=list(candidate.selected_eeg_files),
-            label_carriers=list(candidate.label_carriers),
-            label_carrier_plan=[dict(item) for item in candidate.label_carrier_plan],
-            metadata=list(candidate.metadata),
-            format_capabilities=[dict(item) for item in candidate.format_capabilities],
-            validation_decision=decision.decision,
-            confirmations=confirmations,
-            event_roles=dict(candidate.event_roles),
-            class_map=dict(candidate.class_map),
-            recipe_trace=[
-                *candidate.recipe_trace,
-                f"validation:{decision.decision}",
-                f"applied:{interpretation_id}",
-            ],
+            candidate=candidate,
+            decision=decision,
         )
         self.state.record_applied(applied)
         metadata_apply = self.apply_service.apply_candidate_metadata_to_loaded_data(
@@ -199,6 +178,74 @@ class DataInterpretationCommandService:
                 "label_carriers_pending": list(candidate.label_carriers),
                 "label_apply": label_apply,
             },
+        )
+
+    def _ensure_candidate_can_apply(
+        self,
+        command: ApplyInterpretationCommand,
+        decision: ValidationDecision,
+    ) -> None:
+        """Enforce the target candidate's own validation decision."""
+        if decision.decision == InterpretationDecision.BLOCKED.value:
+            blocked = (
+                "; ".join(decision.blocked_reasons) or "Interpretation is blocked."
+            )
+            raise PreconditionError(blocked)
+        if (
+            decision.decision == InterpretationDecision.NEEDS_CONFIRMATION.value
+            and not command.confirmed
+        ):
+            raise ConfirmationRequiredError(
+                "Confirm this interpretation before applying it.",
+            )
+
+    def _replace_active_raw_data(self, paths: list[str]) -> tuple[int, list[str]]:
+        """Replace active raw data before importing reviewed interpretation files."""
+        loaded_files = list(self.dataset.get_loaded_data_list() or [])
+        clean_dataset = getattr(self.dataset, "clean_dataset", None)
+        if loaded_files and callable(clean_dataset):
+            clean_dataset()
+        return self.dataset.import_files(paths)
+
+    @staticmethod
+    def _build_applied_interpretation(
+        *,
+        interpretation_id: str,
+        candidate: InterpretationCandidate,
+        decision: ValidationDecision,
+    ) -> AppliedInterpretation:
+        confirmations = (
+            list(decision.required_confirmations)
+            if decision.decision == InterpretationDecision.NEEDS_CONFIRMATION.value
+            else []
+        )
+        return AppliedInterpretation(
+            interpretation_id=interpretation_id,
+            candidate_id=candidate.candidate_id,
+            source_path=candidate.source_path,
+            source_kind=candidate.source_kind,
+            loaded_files=list(candidate.selected_eeg_files),
+            label_sources=list(candidate.label_sources),
+            label_carriers=list(candidate.label_carriers),
+            label_carrier_plan=[dict(item) for item in candidate.label_carrier_plan],
+            metadata=list(candidate.metadata),
+            format_capabilities=[dict(item) for item in candidate.format_capabilities],
+            skip_labels=bool(candidate.choices.get("skip_labels")),
+            label_carrier=str(candidate.choices.get("label_carrier") or ""),
+            excluded_label_carriers=[
+                str(item)
+                for item in candidate.choices.get("excluded_label_carriers", [])
+                if str(item).strip()
+            ],
+            validation_decision=decision.decision,
+            confirmations=confirmations,
+            event_roles=dict(candidate.event_roles),
+            class_map=dict(candidate.class_map),
+            recipe_trace=[
+                *candidate.recipe_trace,
+                f"validation:{decision.decision}",
+                f"applied:{interpretation_id}",
+            ],
         )
 
     def handle_save_interpretation_recipe(self, command: Command) -> HandlerResult:
@@ -237,6 +284,7 @@ class DataInterpretationCommandService:
             scan_id=scan_id,
             source_path=recipe.source_path,
             source_hint=recipe.source_kind or "recipe",
+            label_sources=recipe.label_sources,
         )
         candidate_id = self.state.next_id("candidate")
         candidate = build_interpretation_candidate(

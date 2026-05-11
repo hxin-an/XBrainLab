@@ -167,6 +167,29 @@ def test_application_tool_command_routes_data_interpretation_scan(tmp_path):
     assert result.raw_result["diagnostics"]["payload_type"] == "scan_result"
 
 
+def test_application_tool_command_routes_scan_label_sources(tmp_path):
+    source_dir = tmp_path / "eeg"
+    label_dir = tmp_path / "labels"
+    source_dir.mkdir()
+    label_dir.mkdir()
+    eeg_path = source_dir / "sub-01_task-mi_raw.fif"
+    label_path = label_dir / "sub-01_task-mi_events.tsv"
+    eeg_path.write_bytes(b"placeholder")
+    label_path.write_text("onset\ttrial_type\n0.0\tleft\n", encoding="utf-8")
+
+    result = execute_application_tool_command(
+        Study(),
+        "scan_source",
+        {"source_path": str(source_dir), "label_sources": [str(label_dir)]},
+    )
+
+    assert result is not None
+    assert result.ok is True
+    scan = result.raw_result["diagnostics"]["scan_result"]
+    assert scan["label_sources"] == [str(label_dir.resolve())]
+    assert scan["label_carriers"] == [str(label_path.resolve())]
+
+
 def test_application_tool_command_apply_surfaces_confirmation_required(tmp_path):
     study = Study()
     source = tmp_path / "sub-01_task-mi_run-1.gdf"

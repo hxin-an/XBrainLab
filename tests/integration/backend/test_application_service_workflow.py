@@ -270,6 +270,25 @@ def test_data_interpretation_to_dataset_workflow_is_non_mocked(tmp_path):
     assert "choices:event_roles" in reloaded_candidate["recipe_trace"]
     assert "choices:class_map" in reloaded_candidate["recipe_trace"]
 
+    reload_apply_without_confirmation = reload_service.execute(
+        ApplyInterpretationCommand(),
+    )
+    reload_apply_result = reload_service.execute(
+        ApplyInterpretationCommand(confirmed=True),
+    )
+
+    assert reload_apply_without_confirmation.failed is True
+    assert (
+        reload_apply_without_confirmation.state.last_error.error_type
+        == "confirmation_required"
+    )
+    assert reload_apply_result.ok is True
+    assert reload_apply_result.state.raw.loaded is True
+    assert reload_apply_result.state.raw.files == [fif_path.name]
+    assert reload_apply_result.diagnostics["applied_interpretation"][
+        "loaded_files"
+    ] == [str(fif_path)]
+
     preprocess_result = service.execute(
         PreprocessCommand(
             operation=PreprocessOperation.NORMALIZE,

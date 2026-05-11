@@ -32,10 +32,12 @@ class InterpretationCandidate:
     source_path: str
     source_kind: str
     selected_eeg_files: list[str] = dc_field(default_factory=list)
+    label_sources: list[str] = dc_field(default_factory=list)
     label_carriers: list[str] = dc_field(default_factory=list)
     label_carrier_plan: list[dict[str, Any]] = dc_field(default_factory=list)
     event_roles: dict[str, str] = dc_field(default_factory=dict)
     class_map: dict[str, str] = dc_field(default_factory=dict)
+    class_map_source: str = ""
     time_model: str = "unknown"
     granularity: str = "unknown"
     metadata: list[FileMetadataResolution] = dc_field(default_factory=list)
@@ -68,30 +70,51 @@ def build_interpretation_candidate(
         if raw_selected_files
         else list(scan.eeg_files)
     )
+    selected_files = _resolve_selected_files_to_scan(selected_files, scan.eeg_files)
     blocked_reasons = list(scan.blocked_reasons)
     warnings = list(scan.warnings)
     confirmation_items: list[str] = []
     event_roles: dict[str, str] = {}
     class_map: dict[str, str] = _string_mapping(choices.get("class_map"))
-    metadata = _apply_metadata_overrides(
+    class_map_source = "user_choices" if class_map else ""
+    metadata = _metadata_for_selected_files(
         scan.metadata,
+        selected_files,
+        restrict=bool(raw_selected_files),
+    )
+    metadata = _apply_metadata_overrides(
+        metadata,
         _remapped_metadata_overrides(
             choices.get("metadata_overrides"),
             eeg_file_remap,
         ),
+    )
+    label_carrier_source = _label_carrier_source_choice(choices)
+    skip_labels = bool(choices.get("skip_labels"))
+    use_external_label_carriers = (
+        label_carrier_source != "embedded_events" and not skip_labels
+    )
+    excluded_label_carriers = _string_list(choices.get("excluded_label_carriers"))
+    active_label_carriers = (
+        _exclude_paths(scan.label_carriers, excluded_label_carriers)
+        if use_external_label_carriers
+        else []
     )
     label_carrier_choices = _remapped_label_carrier_choices(
         choices.get("label_carrier_choices"),
         choices.get("label_carrier_remap"),
     )
     label_carrier_plan = _build_label_carrier_plan(
-        scan.label_carriers,
+        active_label_carriers,
         label_carrier_choices,
+        carrier_sources=scan.label_carrier_sources,
     )
-    if not class_map:
+    if not class_map and use_external_label_carriers:
         class_map = _infer_class_map_from_label_carrier_plan(label_carrier_plan)
+        if class_map:
+            class_map_source = "label_carriers"
 
-    if scan.label_carriers:
+    if active_label_carriers:
         event_roles["label_carrier"] = "external label or event source"
         confirmation_items.append(
             "Confirm label carrier alignment, anchor event, and class map "
@@ -141,7 +164,7 @@ def build_interpretation_candidate(
         )
     missing_label_carriers = _required_label_carriers_missing_from_scan(
         choices,
-        scan.label_carriers,
+        active_label_carriers,
     )
     if missing_label_carriers:
         blocked_reasons.append(
@@ -156,10 +179,12 @@ def build_interpretation_candidate(
         source_path=scan.source_path,
         source_kind=scan.source_kind,
         selected_eeg_files=selected_files,
-        label_carriers=list(scan.label_carriers),
+        label_sources=list(scan.label_sources),
+        label_carriers=active_label_carriers,
         label_carrier_plan=label_carrier_plan,
         event_roles=event_roles,
         class_map=class_map,
+        class_map_source=class_map_source,
         time_model="sample_index_or_annotation_time"
         if event_roles
         else "file_native_time",
@@ -241,6 +266,27 @@ def _override_field(
     )
 
 
+def _metadata_for_selected_files(
+    metadata: list[FileMetadataResolution],
+    selected_files: list[str],
+    *,
+    restrict: bool,
+) -> list[FileMetadataResolution]:
+    """Return metadata rows relevant to the candidate EEG file selection."""
+    if not restrict:
+        return list(metadata)
+    selected_keys = {_path_key(path) for path in selected_files}
+    selected_names = {Path(path).name for path in selected_files}
+    return [
+        item
+        for item in metadata
+        if (
+            _path_key(item.file) in selected_keys
+            or Path(item.file).name in selected_names
+        )
+    ]
+
+
 def _string_mapping(payload: Any) -> dict[str, str]:
     """Return a cleaned string mapping from a user-choice payload."""
     if not isinstance(payload, dict):
@@ -252,11 +298,39 @@ def _string_mapping(payload: Any) -> dict[str, str]:
     }
 
 
+def _path_key(path: str) -> str:
+    return str(Path(path).expanduser())
+
+
 def _selected_files_missing_from_scan(
     selected_files: list[str],
     scanned_files: list[str],
 ) -> list[str]:
     return _paths_missing_from_scan(selected_files, scanned_files)
+
+
+def _resolve_selected_files_to_scan(
+    selected_files: list[str],
+    scanned_files: list[str],
+) -> list[str]:
+    """Map selected relative filenames to their scanned absolute file paths."""
+    scanned_exact = {str(item): str(item) for item in scanned_files}
+    scanned_by_name: dict[str, list[str]] = {}
+    for item in scanned_files:
+        text = str(item)
+        name = Path(text).name or text
+        scanned_by_name.setdefault(name, []).append(text)
+
+    result: list[str] = []
+    for selected in selected_files:
+        text = str(selected)
+        mapped = scanned_exact.get(text)
+        if mapped is None:
+            matches = scanned_by_name.get(Path(text).name or text, [])
+            mapped = matches[0] if len(matches) == 1 else text
+        if mapped not in result:
+            result.append(mapped)
+    return result
 
 
 def _remapped_selected_files(
@@ -289,6 +363,10 @@ def _required_label_carriers_missing_from_scan(
     choices: dict[str, Any],
     scanned_carriers: list[str],
 ) -> list[str]:
+    if _label_carrier_source_choice(choices) == "embedded_events" or bool(
+        choices.get("skip_labels")
+    ):
+        return []
     remap = _string_mapping(choices.get("label_carrier_remap"))
     required = _remapped_required_label_carriers(
         _string_list(choices.get("required_label_carriers")),
@@ -302,6 +380,25 @@ def _required_label_carriers_missing_from_scan(
             if str(key).strip()
         )
     return _paths_missing_from_scan(required, scanned_carriers)
+
+
+def _label_carrier_source_choice(choices: dict[str, Any]) -> str:
+    return str(choices.get("label_carrier") or "").strip()
+
+
+def _exclude_paths(paths: list[str], excluded: list[str]) -> list[str]:
+    if not excluded:
+        return list(paths)
+    excluded_exact = {str(item) for item in excluded}
+    excluded_names = {Path(str(item)).name or str(item) for item in excluded}
+    result: list[str] = []
+    for path in paths:
+        text = str(path)
+        name = Path(text).name or text
+        if text in excluded_exact or name in excluded_names:
+            continue
+        result.append(text)
+    return result
 
 
 def _remapped_required_label_carriers(
@@ -379,10 +476,22 @@ def _choice_recipe_trace(choices: dict[str, Any]) -> list[str]:
         traces.append("choices:class_map")
     if _string_mapping(choices.get("event_roles")):
         traces.append("choices:event_roles")
-    if _normalize_label_carrier_choices(
-        choices.get("label_carrier_choices")
-    ) or _string_list(choices.get("required_label_carriers")):
+    use_external_label_carriers = (
+        _label_carrier_source_choice(choices) != "embedded_events"
+    )
+    if use_external_label_carriers and (
+        _normalize_label_carrier_choices(choices.get("label_carrier_choices"))
+        or _string_list(choices.get("required_label_carriers"))
+    ):
         traces.append("choices:label_carriers")
+    if _label_carrier_source_choice(choices):
+        traces.append("choices:label_carrier")
+    if _string_list(choices.get("label_sources")):
+        traces.append("choices:label_sources")
+    if _string_list(choices.get("excluded_label_carriers")):
+        traces.append("choices:excluded_label_carriers")
+    if bool(choices.get("skip_labels")):
+        traces.append("choices:skip_labels")
     if _string_mapping(choices.get("eeg_file_remap")):
         traces.append("choices:eeg_file_remap")
     if _string_mapping(choices.get("label_carrier_remap")):

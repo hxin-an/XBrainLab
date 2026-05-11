@@ -28,12 +28,17 @@ def test_label_carrier_plan_uses_user_choices_for_bids_events(tmp_path):
             "path": str(events),
             "name": events.name,
             "format": "BIDS events",
+            "source_kind": "auto_discovered",
+            "source_location": "",
             "label_candidates": ["trial_type"],
             "anchor_candidates": ["onset"],
+            "duration_candidates": ["duration"],
             "selected_label_field": "trial_type",
             "selected_anchor": "onset",
+            "selected_duration_field": "duration",
             "time_model": "seconds",
             "granularity": "trial",
+            "placement_method": "interval",
             "role": "class cue labels",
             "selected_target_file": "sub-01_raw.fif",
             "decision": "needs_confirmation",
@@ -49,12 +54,19 @@ def test_normalize_label_carrier_choices_accepts_path_or_name_keys(tmp_path):
     carrier = tmp_path / "labels.csv"
     choices = normalize_label_carrier_choices(
         {
-            str(carrier): {"label_field": "label", "anchor": "sample"},
+            str(carrier): {
+                "label_field": "label",
+                "anchor": "sample",
+                "placement_method": "time_field",
+                "duration_field": "duration",
+            },
             carrier.name: {"role": "artifact markers"},
         }
     )
 
     assert choices[str(carrier)]["label_field"] == "label"
+    assert choices[str(carrier)]["placement_method"] == "time_field"
+    assert choices[str(carrier)]["duration_field"] == "duration"
     assert choices[carrier.name]["role"] == "artifact markers"
 
 

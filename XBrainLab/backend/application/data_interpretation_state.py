@@ -160,17 +160,34 @@ class DataInterpretationSessionState:
             else None
         )
         applied = self._latest_applied()
+        applied_review = self._applied_for_current_review(
+            applied=applied,
+            scan=scan,
+            candidate=candidate,
+            preview=preview,
+        )
+        candidate_review = None if applied_review is not None else candidate
+        preview_review = None if applied_review is not None else preview
         source_path, source_kind = self._source_identity(scan, candidate)
         warnings = self._warnings(scan, preview)
-        label_carrier_plan = self._label_carrier_plan(applied, candidate, preview)
-        format_capabilities = self._format_capabilities(
-            applied,
-            candidate,
-            preview,
-            scan,
+        action_items = self._action_items(preview, decision)
+        label_carrier_plan = self._label_carrier_plan(
+            candidate_review,
+            preview_review,
+            applied_review,
         )
-        event_roles = self._event_roles(applied, candidate, preview)
-        class_map = self._class_map(applied, candidate, preview)
+        format_capabilities = self._format_capabilities(
+            candidate_review,
+            preview_review,
+            scan,
+            applied_review,
+        )
+        event_roles = self._event_roles(
+            candidate_review,
+            preview_review,
+            applied_review,
+        )
+        class_map = self._class_map(candidate_review, preview_review, applied_review)
         return InterpretationStateSnapshot(
             has_scan_result=scan is not None,
             has_candidate=candidate is not None,
@@ -185,6 +202,17 @@ class DataInterpretationSessionState:
             latest_recipe_id=self._latest_recipe_id,
             source_path=source_path,
             source_kind=source_kind,
+            label_sources=list(
+                applied_review.label_sources
+                if applied_review is not None
+                else candidate.label_sources
+                if candidate is not None
+                else scan.label_sources
+                if scan is not None
+                else applied.label_sources
+                if applied is not None
+                else []
+            ),
             validation_decision=decision.decision if decision else None,
             pending_confirmation=(
                 decision is not None
@@ -192,13 +220,18 @@ class DataInterpretationSessionState:
             ),
             blocked_reasons=list(decision.blocked_reasons if decision else []),
             warnings=warnings,
+            action_items=action_items,
             summary=preview.summary if preview else None,
             metadata_preview=list(preview.metadata_preview if preview else []),
             label_carriers=list(
-                applied.label_carriers
-                if applied is not None
+                applied_review.label_carriers
+                if applied_review is not None
                 else candidate.label_carriers
                 if candidate is not None
+                else scan.label_carriers
+                if scan is not None
+                else applied.label_carriers
+                if applied is not None
                 else []
             ),
             label_carrier_plan=[dict(item) for item in label_carrier_plan],
@@ -309,6 +342,24 @@ class DataInterpretationSessionState:
         return None, None
 
     @staticmethod
+    def _applied_for_current_review(
+        *,
+        applied: AppliedInterpretation | None,
+        scan: ScanResult | None,
+        candidate: InterpretationCandidate | None,
+        preview: InterpretationPreview | None,
+    ) -> AppliedInterpretation | None:
+        if applied is None:
+            return None
+        if candidate is not None:
+            return applied if candidate.candidate_id == applied.candidate_id else None
+        if preview is not None:
+            return applied if preview.candidate_id == applied.candidate_id else None
+        if scan is not None:
+            return None
+        return applied
+
+    @staticmethod
     def _warnings(
         scan: ScanResult | None,
         preview: InterpretationPreview | None,
@@ -320,62 +371,73 @@ class DataInterpretationSessionState:
         return []
 
     @staticmethod
+    def _action_items(
+        preview: InterpretationPreview | None,
+        decision: ValidationDecision | None,
+    ) -> list[dict[str, str]]:
+        if decision is not None and decision.action_items:
+            return [dict(item) for item in decision.action_items]
+        if preview is not None:
+            return [dict(item) for item in preview.action_items]
+        return []
+
+    @staticmethod
     def _label_carrier_plan(
-        applied: AppliedInterpretation | None,
         candidate: InterpretationCandidate | None,
         preview: InterpretationPreview | None,
+        applied: AppliedInterpretation | None,
     ) -> list[dict[str, Any]]:
-        if applied is not None:
-            return list(applied.label_carrier_plan)
         if candidate is not None:
             return list(candidate.label_carrier_plan)
         if preview is not None:
             return list(preview.label_carrier_preview)
+        if applied is not None:
+            return list(applied.label_carrier_plan)
         return []
 
     @staticmethod
     def _format_capabilities(
-        applied: AppliedInterpretation | None,
         candidate: InterpretationCandidate | None,
         preview: InterpretationPreview | None,
         scan: ScanResult | None,
+        applied: AppliedInterpretation | None,
     ) -> list[dict[str, Any]]:
-        if applied is not None:
-            return list(applied.format_capabilities)
         if candidate is not None:
             return list(candidate.format_capabilities)
         if preview is not None:
             return list(preview.format_capabilities)
         if scan is not None:
             return list(scan.format_capabilities)
+        if applied is not None:
+            return list(applied.format_capabilities)
         return []
 
     @staticmethod
     def _event_roles(
-        applied: AppliedInterpretation | None,
         candidate: InterpretationCandidate | None,
         preview: InterpretationPreview | None,
+        applied: AppliedInterpretation | None,
     ) -> dict[str, str]:
-        if applied is not None:
-            return dict(applied.event_roles)
         if candidate is not None:
             return dict(candidate.event_roles)
         if preview is not None:
             return dict(preview.event_roles)
+        if applied is not None:
+            return dict(applied.event_roles)
         return {}
 
     @staticmethod
     def _class_map(
-        applied: AppliedInterpretation | None,
         candidate: InterpretationCandidate | None,
         preview: InterpretationPreview | None,
+        applied: AppliedInterpretation | None,
     ) -> dict[str, str]:
-        if applied is not None:
-            return dict(applied.class_map)
         if candidate is not None:
             return dict(candidate.class_map)
         if preview is not None:
             return dict(preview.class_map)
+        if applied is not None:
+            return dict(applied.class_map)
         return {}
 
     @staticmethod

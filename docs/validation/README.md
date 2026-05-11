@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-05-10`
+最後更新：`2026-05-11`
 
 這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
@@ -62,6 +62,21 @@ launcher
 -> Confirm and Apply remains visible
 -> apply loads exactly selected files
 ```
+
+## Backend Test Hygiene Inventory
+
+2026-05-11 compact inventory for the backend/test hygiene branch:
+
+| Cluster | Classification | Current evidence | Action in this branch |
+| --- | --- | --- | --- |
+| Data Interpretation backend lifecycle | Strong behavior tests | `tests/unit/backend/application/test_data_interpretation_service.py` covers scan -> preview -> validate -> apply, external label sources, selected file scope, metadata apply, label import recipe state. `tests/integration/backend/test_application_service_workflow.py` covers non-mocked ApplicationService interpretation -> recipe reload -> apply -> dataset workflow. | Strengthened selected-scope, external label source, confirmation, replace-before-apply, and service apply coverage. |
+| Scan / candidate / review / recipe contracts | Useful unit contract tests | `test_data_interpretation_scan.py`, `test_data_interpretation_candidate.py`, `test_data_interpretation_review.py`, `test_data_interpretation_recipe.py`, `test_data_interpretation_label_carriers.py`. | Preserves BIDS/file/folder scan behavior, selected scope, external label source provenance, structured action items, recipe reload/remap, label source mode, placement, duration, and class-map source. |
+| UI command route | Mock-heavy but useful command contract tests | `tests/unit/ui/test_ui_misc.py` asserts import file/folder/reload route through `ScanSourceCommand`, `PreviewInterpretationCommand`, `ValidateInterpretationCommand`, and `ApplyInterpretationCommand` without controller import fallback. `tests/unit/ui/dataset/test_dataset_sidebar.py` and `test_panel.py` guard real-Study fallback refusal. | This backend/test branch does not change Load Labels / Match Labels UX. UI route tests are retained as command-path guards, not as product UX acceptance. |
+| Agent / MCP command parity | Useful contract and adapter tests | `tests/unit/llm/tools/test_application_surface.py`, `tests/unit/llm/tools/test_definitions.py`, `tests/unit/llm/agent/test_tool_call_normalizer.py`, `tests/unit/mcp/test_server.py`, and `tests/integration/mcp/*` cover exposed Data Interpretation command names, confirmation boundary, blocked reasons, schema exposure, and state truth. | Tool schema, MCP tools/list, and real/mock tool surfaces carry `label_sources` and the shared choice schema. |
+| Real-data fixture validation | Strong integration evidence when fixtures are present | Real-data tests now resolve fixtures under `tests/fixtures/data/`; scripts use the same path. | Replaced obsolete `tests/data/` path references and moved checked-in fixtures to `tests/fixtures/data/` so real-data gates do not false-skip deleted tracked files. |
+| Legacy direct controller tests | Mock-heavy but useful compatibility tests | Legacy controller fallback tests remain in UI suites to guard mock/legacy contexts and real-Study refusal. | Not deleted; retained because they protect compatibility while architecture guards prevent product fallback bypass. |
+| Obsolete / duplicated clusters | Obsolete path cluster | The obsolete cluster is the deleted `tests/data/` fixture location, replaced by `tests/fixtures/data/`. No test cluster was deleted without replacement. | Consumers and docs were moved to `tests/fixtures/data/`; real-data gates must use that path. |
+| Missing coverage outside this scope | Explicitly out of current backend/test cleanup scope | Full internal event-name extraction for every EEG format, Windows human desktop acceptance, and final Epoch UI consumption of `duration_field`. | Documented as future validation/product work, not claimed by this branch. |
 
 ## 常用 docs gate
 

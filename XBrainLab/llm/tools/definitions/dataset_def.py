@@ -82,6 +82,15 @@ class BaseScanSourceTool(BaseTool):
                     "default": "auto",
                     "description": "Optional source type hint.",
                 },
+                "label_sources": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "default": [],
+                    "description": (
+                        "Additional label/event files or folders outside the EEG "
+                        "source."
+                    ),
+                },
             },
             "required": ["source_path"],
         }

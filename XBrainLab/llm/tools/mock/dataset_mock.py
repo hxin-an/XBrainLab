@@ -78,11 +78,14 @@ class MockScanSourceTool(BaseScanSourceTool):
         study: Any,
         source_path: str | None = None,
         source_hint: str = "auto",
+        label_sources: list[str] | None = None,
         **kwargs,
     ) -> str:
         if not source_path:
             return "Error: source_path is required"
-        return f"Scanned {source_path} as {source_hint}; found 1 EEG file."
+        label_count = len(label_sources or [])
+        suffix = f" Attached {label_count} label source(s)." if label_count else ""
+        return f"Scanned {source_path} as {source_hint}; found 1 EEG file.{suffix}"
 
 
 class MockPreviewInterpretationTool(BasePreviewInterpretationTool):

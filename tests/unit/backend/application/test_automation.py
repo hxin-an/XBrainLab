@@ -60,6 +60,8 @@ def test_preview_command_spec_exposes_recipe_remap_choices():
         "additionalProperties"
     ]
     assert "target_file" in carrier_choice["properties"]
+    assert "placement_method" in carrier_choice["properties"]
+    assert "duration_field" in carrier_choice["properties"]
 
 
 def test_mcp_tool_specs_use_same_command_schema():

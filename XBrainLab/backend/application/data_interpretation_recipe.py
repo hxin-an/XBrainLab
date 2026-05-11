@@ -24,10 +24,14 @@ class ImportRecipe:
     source_path: str
     source_kind: str
     selected_eeg_files: list[str] = dc_field(default_factory=list)
+    label_sources: list[str] = dc_field(default_factory=list)
     label_carriers: list[str] = dc_field(default_factory=list)
     label_carrier_plan: list[dict[str, Any]] = dc_field(default_factory=list)
     metadata: list[FileMetadataResolution] = dc_field(default_factory=list)
     format_capabilities: list[dict[str, Any]] = dc_field(default_factory=list)
+    skip_labels: bool = False
+    label_carrier: str = ""
+    excluded_label_carriers: list[str] = dc_field(default_factory=list)
     validation_decision: str = "safe"
     confirmations: list[str] = dc_field(default_factory=list)
     event_roles: dict[str, str] = dc_field(default_factory=dict)
@@ -68,6 +72,7 @@ def import_recipe_from_dict(payload: dict[str, Any]) -> ImportRecipe:
         selected_eeg_files=[
             str(item) for item in payload.get("selected_eeg_files", [])
         ],
+        label_sources=[str(item) for item in payload.get("label_sources", [])],
         label_carriers=[str(item) for item in payload.get("label_carriers", [])],
         label_carrier_plan=[
             dict(item)
@@ -79,6 +84,11 @@ def import_recipe_from_dict(payload: dict[str, Any]) -> ImportRecipe:
             dict(item)
             for item in payload.get("format_capabilities", [])
             if isinstance(item, dict)
+        ],
+        skip_labels=bool(payload.get("skip_labels", False)),
+        label_carrier=str(payload.get("label_carrier", "")),
+        excluded_label_carriers=[
+            str(item) for item in payload.get("excluded_label_carriers", [])
         ],
         validation_decision=str(payload.get("validation_decision", "safe")),
         confirmations=[str(item) for item in payload.get("confirmations", [])],
@@ -107,10 +117,16 @@ def build_import_recipe(
         source_path=str(applied.source_path),
         source_kind=str(applied.source_kind),
         selected_eeg_files=list(applied.loaded_files),
+        label_sources=list(getattr(applied, "label_sources", [])),
         label_carriers=list(applied.label_carriers),
         label_carrier_plan=[dict(item) for item in applied.label_carrier_plan],
         metadata=list(applied.metadata),
         format_capabilities=[dict(item) for item in applied.format_capabilities],
+        skip_labels=bool(getattr(applied, "skip_labels", False)),
+        label_carrier=str(getattr(applied, "label_carrier", "")),
+        excluded_label_carriers=[
+            str(item) for item in getattr(applied, "excluded_label_carriers", [])
+        ],
         validation_decision=str(applied.validation_decision),
         confirmations=list(applied.confirmations),
         event_roles=dict(applied.event_roles),
@@ -126,6 +142,14 @@ def choices_from_import_recipe(recipe: ImportRecipe) -> dict[str, Any]:
     choices: dict[str, Any] = {"recipe_id": recipe.recipe_id}
     if recipe.selected_eeg_files:
         choices["selected_eeg_files"] = list(recipe.selected_eeg_files)
+    if recipe.label_sources:
+        choices["label_sources"] = list(recipe.label_sources)
+    if recipe.skip_labels:
+        choices["skip_labels"] = True
+    if recipe.label_carrier:
+        choices["label_carrier"] = recipe.label_carrier
+    if recipe.excluded_label_carriers:
+        choices["excluded_label_carriers"] = list(recipe.excluded_label_carriers)
     required_label_carriers = _required_label_carriers_from_recipe(recipe)
     if required_label_carriers:
         choices["required_label_carriers"] = required_label_carriers
@@ -186,7 +210,9 @@ def _label_carrier_choices_from_recipe(
         "selected_target_file": "target_file",
         "selected_label_field": "label_field",
         "selected_anchor": "anchor",
+        "selected_duration_field": "duration_field",
         "time_model": "time_model",
+        "placement_method": "placement_method",
         "granularity": "granularity",
         "role": "role",
     }

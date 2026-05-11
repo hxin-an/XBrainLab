@@ -49,10 +49,14 @@ class AppliedInterpretation:
     source_path: str
     source_kind: str
     loaded_files: list[str] = dc_field(default_factory=list)
+    label_sources: list[str] = dc_field(default_factory=list)
     label_carriers: list[str] = dc_field(default_factory=list)
     label_carrier_plan: list[dict[str, Any]] = dc_field(default_factory=list)
     metadata: list[FileMetadataResolution] = dc_field(default_factory=list)
     format_capabilities: list[dict[str, Any]] = dc_field(default_factory=list)
+    skip_labels: bool = False
+    label_carrier: str = ""
+    excluded_label_carriers: list[str] = dc_field(default_factory=list)
     validation_decision: str = InterpretationDecision.SAFE.value
     confirmations: list[str] = dc_field(default_factory=list)
     event_roles: dict[str, str] = dc_field(default_factory=dict)

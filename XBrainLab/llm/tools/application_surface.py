@@ -487,6 +487,13 @@ def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
         return ScanSourceCommand(
             source_path=str(source_path),
             source_hint=str(params.get("source_hint", "auto")),
+            label_sources=[
+                str(item)
+                for item in params.get("label_sources", [])
+                if str(item).strip()
+            ]
+            if isinstance(params.get("label_sources"), list)
+            else [],
         )
 
     if tool_name == "preview_interpretation":

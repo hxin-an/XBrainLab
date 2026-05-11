@@ -18,11 +18,19 @@ NEEDS_CONFIRMATION = "needs_confirmation"
 def build_label_carrier_plan(
     label_carriers: list[str],
     choices_payload: Any,
+    *,
+    carrier_sources: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Build reviewable label-carrier rows for interpretation preview."""
     choices = normalize_label_carrier_choices(choices_payload)
+    carrier_sources = dict(carrier_sources or {})
     return [
-        _label_carrier_plan_for_path(Path(carrier), choices, raw_path=str(carrier))
+        _label_carrier_plan_for_path(
+            Path(carrier),
+            choices,
+            raw_path=str(carrier),
+            source_location=carrier_sources.get(str(carrier), ""),
+        )
         for carrier in label_carriers
     ]
 
@@ -56,6 +64,8 @@ def normalize_label_carrier_choices(payload: Any) -> dict[str, dict[str, str]]:
         "granularity",
         "role",
         "target_file",
+        "placement_method",
+        "duration_field",
     }
     for carrier_key, carrier_choices in payload.items():
         if not isinstance(carrier_choices, dict):
@@ -75,28 +85,50 @@ def _label_carrier_plan_for_path(
     choices: dict[str, dict[str, str]],
     *,
     raw_path: str | None = None,
+    source_location: str = "",
 ) -> dict[str, Any]:
     source_path = raw_path or str(path)
     carrier_choice = _choice_for_label_carrier(path, choices, source_path)
     label_candidates = _label_candidates_for_carrier(path)
     anchor_candidates = _anchor_candidates_for_carrier(path, label_candidates)
+    duration_candidates = _duration_candidates_for_carrier(path)
     selected_label = carrier_choice.get("label_field") or (
         label_candidates[0] if label_candidates else ""
     )
     selected_anchor = carrier_choice.get("anchor") or (
         anchor_candidates[0] if anchor_candidates else ""
     )
+    time_model = carrier_choice.get("time_model") or _default_time_model(
+        path, anchor_candidates
+    )
+    granularity = carrier_choice.get("granularity") or _default_granularity(path)
+    selected_duration = carrier_choice.get("duration_field") or _default_duration_field(
+        duration_candidates
+    )
+    placement_method = carrier_choice.get(
+        "placement_method"
+    ) or _default_placement_method(
+        time_model=time_model,
+        granularity=granularity,
+        duration_field=selected_duration,
+    )
     return {
         "path": source_path,
         "name": path.name,
         "format": _label_carrier_format(path),
+        "source_kind": "auto_discovered"
+        if source_location in {"", "auto"}
+        else "user_added",
+        "source_location": "" if source_location == "auto" else source_location,
         "label_candidates": label_candidates,
         "anchor_candidates": anchor_candidates,
+        "duration_candidates": duration_candidates,
         "selected_label_field": selected_label,
         "selected_anchor": selected_anchor,
-        "time_model": carrier_choice.get("time_model")
-        or _default_time_model(path, anchor_candidates),
-        "granularity": carrier_choice.get("granularity") or _default_granularity(path),
+        "selected_duration_field": selected_duration,
+        "time_model": time_model,
+        "granularity": granularity,
+        "placement_method": placement_method,
         "role": carrier_choice.get("role") or "external labels",
         "selected_target_file": carrier_choice.get("target_file", ""),
         "decision": NEEDS_CONFIRMATION,
@@ -211,6 +243,26 @@ def _anchor_candidates_for_carrier(
         ]
     if suffix == ".txt":
         return ["trial order"]
+    return []
+
+
+def _duration_candidates_for_carrier(path: Path) -> list[str]:
+    suffix = path.suffix.lower()
+    if suffix in {".csv", ".tsv"} or _is_bids_events_file(path):
+        return [
+            column
+            for column in _tabular_columns(path)
+            if column.lower()
+            in {
+                "duration",
+                "dur",
+                "end",
+                "end_time",
+                "offset",
+                "stop",
+                "stop_time",
+            }
+        ]
     return []
 
 
@@ -461,6 +513,26 @@ def _default_granularity(path: Path) -> str:
     if path.suffix.lower() in {".csv", ".tsv", ".mat", ".txt"}:
         return "trial"
     return "unknown"
+
+
+def _default_duration_field(duration_candidates: list[str]) -> str:
+    for candidate in duration_candidates:
+        if candidate.lower() == "duration":
+            return candidate
+    return duration_candidates[0] if duration_candidates else ""
+
+
+def _default_placement_method(
+    *,
+    time_model: str,
+    granularity: str,
+    duration_field: str,
+) -> str:
+    if granularity == "segment" or duration_field:
+        return "interval"
+    if time_model in {"seconds", "relative_time", "sample_index"}:
+        return "time_field"
+    return "eeg_event"
 
 
 def _label_carrier_reason(

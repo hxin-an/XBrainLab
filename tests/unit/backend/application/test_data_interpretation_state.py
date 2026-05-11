@@ -181,6 +181,40 @@ def test_session_state_owns_lifecycle_snapshot_and_clear() -> None:
     assert cleared.has_recipe is False
 
 
+def test_snapshot_uses_latest_review_state_before_previous_applied_truth() -> None:
+    state = _state()
+    old_scan = _scan(state.next_id("scan"))
+    old_candidate = _candidate(old_scan, state.next_id("candidate"))
+    state.record_scan(old_scan)
+    state.record_preview(
+        old_candidate, _preview(old_candidate, state.next_id("preview"))
+    )
+    state.record_validation(old_candidate.candidate_id, _decision(old_candidate))
+    state.record_applied(_applied(state, old_candidate))
+    new_scan = ScanResult(
+        scan_id=state.next_id("scan"),
+        source_path="/tmp/xbrainlab/new_source",
+        source_kind="folder",
+        eeg_files=["/tmp/xbrainlab/new_source/sub-02_raw.fif"],
+        label_sources=["/tmp/xbrainlab/new_labels"],
+        label_carriers=["/tmp/xbrainlab/new_labels/sub-02_events.tsv"],
+        format_capabilities=[{"format": "EDF", "status": "safe"}],
+    )
+
+    state.record_scan(new_scan)
+    snapshot = state.snapshot()
+
+    assert snapshot.has_applied_interpretation is True
+    assert snapshot.has_candidate is False
+    assert snapshot.source_path == "/tmp/xbrainlab/new_source"
+    assert snapshot.label_sources == ["/tmp/xbrainlab/new_labels"]
+    assert snapshot.label_carriers == ["/tmp/xbrainlab/new_labels/sub-02_events.tsv"]
+    assert snapshot.label_carrier_plan == []
+    assert snapshot.format_capabilities == [{"format": "EDF", "status": "safe"}]
+    assert snapshot.event_roles == {}
+    assert snapshot.class_map == {}
+
+
 def test_label_import_record_updates_applied_and_recipe_state() -> None:
     state = _state()
     scan = _scan(state.next_id("scan"))
