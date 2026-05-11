@@ -1,4 +1,4 @@
-from XBrainLab.backend.facade import BackendFacade
+from XBrainLab.backend.application import QueryStateCommand, get_application_service
 
 
 def test_headless_app_fixture(test_app):
@@ -38,11 +38,11 @@ def test_real_tool_access(test_app):
     Verify that we can access the backend through the UI's study reference,
     mimicking what Real Tools do.
     """
-    # Real Tools use BackendFacade(study)
     study = test_app.study
-    facade = BackendFacade(study)
+    service = get_application_service(study)
 
-    # Verify Facade works
-    summary = facade.get_data_summary()
+    # Verify command-backed state access works
+    result = service.execute(QueryStateCommand(query="data_summary"))
+    summary = dict(result.diagnostics)
     assert isinstance(summary, dict)
     assert "count" in summary

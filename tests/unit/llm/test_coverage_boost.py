@@ -1,9 +1,26 @@
 """Coverage-boost tests for remaining LLM module gaps."""
 
 from collections import deque
+from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+
+def _command_result(
+    *,
+    failed: bool = False,
+    message: str = "ok",
+    diagnostics: dict | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        failed=failed,
+        ok=not failed,
+        message=message,
+        diagnostics=diagnostics or {},
+    )
+
 
 # ── retriever.py ────────────────────────────────────────────
 
@@ -138,7 +155,7 @@ class TestDownloadWorkerRun:
         """L125-128: cancel flag terminates process."""
         from XBrainLab.llm.core.downloader import DownloadWorker
 
-        w = DownloadWorker.__new__(DownloadWorker)
+        w: Any = DownloadWorker.__new__(DownloadWorker)
         w.repo_id = "test/repo"
         w.cache_dir = "/tmp"
         w.download_finished = MagicMock()
@@ -160,7 +177,7 @@ class TestDownloadWorkerRun:
         """L131-140: process not alive + no success in queue."""
         from XBrainLab.llm.core.downloader import DownloadWorker
 
-        w = DownloadWorker.__new__(DownloadWorker)
+        w: Any = DownloadWorker.__new__(DownloadWorker)
         w.repo_id = "test/repo"
         w.cache_dir = "/tmp"
         w.download_finished = MagicMock()
@@ -188,7 +205,7 @@ class TestDownloadWorkerRun:
         """L143-144: successful download detected from queue."""
         from XBrainLab.llm.core.downloader import DownloadWorker
 
-        w = DownloadWorker.__new__(DownloadWorker)
+        w: Any = DownloadWorker.__new__(DownloadWorker)
         w.repo_id = "test/repo"
         w.cache_dir = "/tmp"
         w.download_finished = MagicMock()
@@ -223,7 +240,7 @@ class TestDownloadWorkerRun:
 # ── controller.py remaining lines ───────────────────────────
 
 
-def _make_ctrl():
+def _make_ctrl() -> Any:
     from PyQt6.QtCore import QObject
 
     from XBrainLab.llm.agent.controller import LLMController
@@ -573,7 +590,7 @@ class TestRAGIndexerEdgeCases:
         from XBrainLab.llm.rag.indexer import RAGIndexer
 
         with patch("XBrainLab.llm.rag.indexer.HuggingFaceEmbeddings"):
-            idx = RAGIndexer.__new__(RAGIndexer)
+            idx: Any = RAGIndexer.__new__(RAGIndexer)
             idx.client = MagicMock()
             idx.embeddings = MagicMock()
             idx._own_client = False
@@ -618,11 +635,11 @@ class TestRealTrainingTools:
         from XBrainLab.llm.tools.real.training_real import RealSetModelTool
 
         tool = RealSetModelTool()
-        mock_facade = MagicMock()
-        mock_facade.set_model.return_value = None  # no error
+        service = MagicMock()
+        service.execute.return_value = _command_result()
         with patch(
-            "XBrainLab.llm.tools.real.training_real.BackendFacade",
-            return_value=mock_facade,
+            "XBrainLab.llm.tools.real.training_real.get_application_service",
+            return_value=service,
         ):
             result = tool.execute(MagicMock(), model_name="EEGNet")
         assert "successfully" in result.lower() or "EEGNet" in result
@@ -632,11 +649,11 @@ class TestRealTrainingTools:
         from XBrainLab.llm.tools.real.training_real import RealConfigureTrainingTool
 
         tool = RealConfigureTrainingTool()
-        mock_facade = MagicMock()
-        mock_facade.configure_training.side_effect = Exception("bad config")
+        service = MagicMock()
+        service.execute.side_effect = Exception("bad config")
         with patch(
-            "XBrainLab.llm.tools.real.training_real.BackendFacade",
-            return_value=mock_facade,
+            "XBrainLab.llm.tools.real.training_real.get_application_service",
+            return_value=service,
         ):
             result = tool.execute(MagicMock(), learning_rate=0.001)
         assert "Failed" in result or "bad config" in result
@@ -646,11 +663,11 @@ class TestRealTrainingTools:
         from XBrainLab.llm.tools.real.training_real import RealStartTrainingTool
 
         tool = RealStartTrainingTool()
-        mock_facade = MagicMock()
-        mock_facade.run_training.side_effect = Exception("GPU OOM")
+        service = MagicMock()
+        service.execute.side_effect = Exception("GPU OOM")
         with patch(
-            "XBrainLab.llm.tools.real.training_real.BackendFacade",
-            return_value=mock_facade,
+            "XBrainLab.llm.tools.real.training_real.get_application_service",
+            return_value=service,
         ):
             result = tool.execute(MagicMock())
         assert "Failed" in result or "GPU OOM" in result

@@ -378,9 +378,13 @@ class TestProcessToolCalls:
         policy = MagicMock()
         policy.get.return_value = capability
 
-        with patch("XBrainLab.llm.agent.controller.BackendFacade") as facade:
-            facade.return_value.get_capabilities.return_value = policy
-            facade.return_value.get_state.side_effect = RuntimeError("state unused")
+        service = MagicMock()
+        service.get_capabilities.return_value = policy
+
+        with patch(
+            "XBrainLab.llm.agent.controller.get_application_service",
+            return_value=service,
+        ):
             result = ctrl._check_requested_intent_boundary("set_model")
 
         assert result is not None
@@ -398,8 +402,13 @@ class TestProcessToolCalls:
         policy = MagicMock()
         policy.get.return_value = capability
 
-        with patch("XBrainLab.llm.agent.controller.BackendFacade") as facade:
-            facade.return_value.get_capabilities.return_value = policy
+        service = MagicMock()
+        service.get_capabilities.return_value = policy
+
+        with patch(
+            "XBrainLab.llm.agent.controller.get_application_service",
+            return_value=service,
+        ):
             result = ctrl._check_requested_intent_boundary("switch_panel")
 
         assert result is not None
@@ -416,8 +425,13 @@ class TestProcessToolCalls:
         policy = MagicMock()
         policy.get.return_value = capability
 
-        with patch("XBrainLab.llm.agent.controller.BackendFacade") as facade:
-            facade.return_value.get_capabilities.return_value = policy
+        service = MagicMock()
+        service.get_capabilities.return_value = policy
+
+        with patch(
+            "XBrainLab.llm.agent.controller.get_application_service",
+            return_value=service,
+        ):
             result = ctrl._check_requested_intent_boundary("set_model")
 
         assert result is not None

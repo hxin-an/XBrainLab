@@ -1,6 +1,37 @@
 """Coverage tests for real preprocess + dataset tools — validation, error, and success paths."""
 
+from contextlib import nullcontext
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+
+
+def _command_result(
+    *,
+    failed: bool = False,
+    message: str = "ok",
+    diagnostics: dict | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        failed=failed,
+        ok=not failed,
+        message=message,
+        diagnostics=diagnostics or {},
+    )
+
+
+def _service(
+    result: SimpleNamespace | None = None,
+    *,
+    side_effect: Exception | None = None,
+) -> MagicMock:
+    service = MagicMock()
+    service.preprocess.batch_notifications.return_value = nullcontext()
+    if side_effect is not None:
+        service.execute.side_effect = side_effect
+    else:
+        service.execute.return_value = result or _command_result()
+    return service
+
 
 # --- Real Preprocess Tools ---
 
@@ -13,11 +44,11 @@ class TestRealBandPassValidation:
         assert "Error" in tool.execute(study=MagicMock(), low_freq=None, high_freq=40.0)
         assert "Error" in tool.execute(study=MagicMock(), low_freq=4.0, high_freq=None)
 
-    @patch("XBrainLab.llm.tools.real.preprocess_real.BackendFacade")
-    def test_facade_exception_returns_failed(self, mock_facade_cls):
+    @patch("XBrainLab.llm.tools.real.preprocess_real.get_application_service")
+    def test_service_exception_returns_failed(self, mock_get_service):
         from XBrainLab.llm.tools.real.preprocess_real import RealBandPassFilterTool
 
-        mock_facade_cls.return_value.apply_filter.side_effect = RuntimeError("boom")
+        mock_get_service.return_value = _service(side_effect=RuntimeError("boom"))
         tool = RealBandPassFilterTool()
         result = tool.execute(study=MagicMock(), low_freq=4.0, high_freq=40.0)
         assert "Bandpass filter failed" in result
@@ -30,11 +61,11 @@ class TestRealNotchValidation:
         tool = RealNotchFilterTool()
         assert "Error" in tool.execute(study=MagicMock(), freq=None)
 
-    @patch("XBrainLab.llm.tools.real.preprocess_real.BackendFacade")
-    def test_facade_exception(self, mock_facade_cls):
+    @patch("XBrainLab.llm.tools.real.preprocess_real.get_application_service")
+    def test_service_exception(self, mock_get_service):
         from XBrainLab.llm.tools.real.preprocess_real import RealNotchFilterTool
 
-        mock_facade_cls.return_value.apply_notch_filter.side_effect = RuntimeError("x")
+        mock_get_service.return_value = _service(side_effect=RuntimeError("x"))
         tool = RealNotchFilterTool()
         assert "Notch filter failed" in tool.execute(study=MagicMock(), freq=50.0)
 
@@ -45,11 +76,11 @@ class TestRealResampleValidation:
 
         assert "Error" in RealResampleTool().execute(study=MagicMock(), rate=None)
 
-    @patch("XBrainLab.llm.tools.real.preprocess_real.BackendFacade")
-    def test_facade_exception(self, mock_facade_cls):
+    @patch("XBrainLab.llm.tools.real.preprocess_real.get_application_service")
+    def test_service_exception(self, mock_get_service):
         from XBrainLab.llm.tools.real.preprocess_real import RealResampleTool
 
-        mock_facade_cls.return_value.resample_data.side_effect = RuntimeError("x")
+        mock_get_service.return_value = _service(side_effect=RuntimeError("x"))
         assert "Resample failed" in RealResampleTool().execute(
             study=MagicMock(), rate=256
         )
@@ -61,11 +92,11 @@ class TestRealNormalizeValidation:
 
         assert "Error" in RealNormalizeTool().execute(study=MagicMock(), method=None)
 
-    @patch("XBrainLab.llm.tools.real.preprocess_real.BackendFacade")
-    def test_facade_exception(self, mock_facade_cls):
+    @patch("XBrainLab.llm.tools.real.preprocess_real.get_application_service")
+    def test_service_exception(self, mock_get_service):
         from XBrainLab.llm.tools.real.preprocess_real import RealNormalizeTool
 
-        mock_facade_cls.return_value.normalize_data.side_effect = RuntimeError("x")
+        mock_get_service.return_value = _service(side_effect=RuntimeError("x"))
         assert "Normalization failed" in RealNormalizeTool().execute(
             study=MagicMock(), method="z-score"
         )
@@ -77,11 +108,11 @@ class TestRealRereferenceValidation:
 
         assert "Error" in RealRereferenceTool().execute(study=MagicMock(), method=None)
 
-    @patch("XBrainLab.llm.tools.real.preprocess_real.BackendFacade")
-    def test_facade_exception(self, mock_facade_cls):
+    @patch("XBrainLab.llm.tools.real.preprocess_real.get_application_service")
+    def test_service_exception(self, mock_get_service):
         from XBrainLab.llm.tools.real.preprocess_real import RealRereferenceTool
 
-        mock_facade_cls.return_value.set_reference.side_effect = RuntimeError("x")
+        mock_get_service.return_value = _service(side_effect=RuntimeError("x"))
         assert "Re-reference failed" in RealRereferenceTool().execute(
             study=MagicMock(), method="average"
         )
@@ -95,11 +126,11 @@ class TestRealChannelSelectionValidation:
             study=MagicMock(), channels=None
         )
 
-    @patch("XBrainLab.llm.tools.real.preprocess_real.BackendFacade")
-    def test_facade_exception(self, mock_facade_cls):
+    @patch("XBrainLab.llm.tools.real.preprocess_real.get_application_service")
+    def test_service_exception(self, mock_get_service):
         from XBrainLab.llm.tools.real.preprocess_real import RealChannelSelectionTool
 
-        mock_facade_cls.return_value.select_channels.side_effect = RuntimeError("x")
+        mock_get_service.return_value = _service(side_effect=RuntimeError("x"))
         assert "Channel selection failed" in RealChannelSelectionTool().execute(
             study=MagicMock(), channels=["C3"]
         )
@@ -115,11 +146,11 @@ class TestRealSetMontageValidation:
 
 
 class TestRealEpochDataError:
-    @patch("XBrainLab.llm.tools.real.preprocess_real.BackendFacade")
-    def test_facade_exception(self, mock_facade_cls):
+    @patch("XBrainLab.llm.tools.real.preprocess_real.get_application_service")
+    def test_service_exception(self, mock_get_service):
         from XBrainLab.llm.tools.real.preprocess_real import RealEpochDataTool
 
-        mock_facade_cls.return_value.epoch_data.side_effect = RuntimeError("bad epoch")
+        mock_get_service.return_value = _service(side_effect=RuntimeError("bad epoch"))
         result = RealEpochDataTool().execute(study=MagicMock(), t_min=-0.1, t_max=1.0)
         assert "Epoching failed" in result
 
@@ -127,15 +158,13 @@ class TestRealEpochDataError:
 class TestRealStandardPreprocessOptionalSteps:
     """Cover the optional branches in RealStandardPreprocessTool."""
 
-    @patch("XBrainLab.llm.tools.real.preprocess_real.BackendFacade")
-    def test_all_optional_steps(self, mock_facade_cls):
+    @patch("XBrainLab.llm.tools.real.preprocess_real.get_application_service")
+    def test_all_optional_steps(self, mock_get_service):
+        from XBrainLab.backend.application import PreprocessCommand, PreprocessOperation
         from XBrainLab.llm.tools.real.preprocess_real import RealStandardPreprocessTool
 
-        mock_facade = mock_facade_cls.return_value
-        mock_facade.preprocess.batch_notifications.return_value.__enter__ = MagicMock()
-        mock_facade.preprocess.batch_notifications.return_value.__exit__ = MagicMock(
-            return_value=False
-        )
+        service = _service(_command_result())
+        mock_get_service.return_value = service
 
         tool = RealStandardPreprocessTool()
         result = tool.execute(
@@ -148,10 +177,18 @@ class TestRealStandardPreprocessOptionalSteps:
             normalize_method="z-score",
         )
         assert "successfully" in result.lower()
-        mock_facade.apply_notch_filter.assert_called_once_with(50.0)
-        mock_facade.resample_data.assert_called_once_with(256)
-        mock_facade.set_reference.assert_called_once_with("average")
-        mock_facade.normalize_data.assert_called_once_with("z-score")
+        operations = [
+            call.args[0].operation
+            for call in service.execute.call_args_list
+            if isinstance(call.args[0], PreprocessCommand)
+        ]
+        assert operations == [
+            PreprocessOperation.BANDPASS,
+            PreprocessOperation.NOTCH,
+            PreprocessOperation.RESAMPLE,
+            PreprocessOperation.REREFERENCE,
+            PreprocessOperation.NORMALIZE,
+        ]
 
 
 # --- Real Dataset Tools ---
@@ -224,12 +261,16 @@ class TestRealLoadDataValidation:
         result = RealLoadDataTool().execute(study=MagicMock(), paths=["/empty/dir"])
         assert "No valid files" in result
 
-    @patch("XBrainLab.llm.tools.real.dataset_real.BackendFacade")
+    @patch("XBrainLab.llm.tools.real.dataset_real.get_application_service")
     @patch("XBrainLab.llm.tools.real.dataset_real.os.path.isdir", return_value=False)
-    def test_partial_success(self, _mock_isdir, mock_facade_cls):
+    def test_partial_success(self, _mock_isdir, mock_get_service):
         from XBrainLab.llm.tools.real.dataset_real import RealLoadDataTool
 
-        mock_facade_cls.return_value.load_data.return_value = (2, ["err1"])
+        mock_get_service.return_value = _service(
+            _command_result(
+                diagnostics={"success_count": 2, "errors": ["err1"]},
+            ),
+        )
         result = RealLoadDataTool().execute(
             study=MagicMock(), paths=["/a.gdf", "/b.gdf"]
         )
@@ -245,37 +286,45 @@ class TestRealAttachLabelsValidation:
             study=MagicMock(), mapping=None
         )
 
-    @patch("XBrainLab.llm.tools.real.dataset_real.BackendFacade")
-    def test_no_labels_attached(self, mock_facade_cls):
+    @patch("XBrainLab.llm.tools.real.dataset_real.get_application_service")
+    def test_no_labels_attached(self, mock_get_service):
         from XBrainLab.llm.tools.real.dataset_real import RealAttachLabelsTool
 
-        mock_facade_cls.return_value.attach_labels.return_value = 0
+        mock_get_service.return_value = _service(
+            _command_result(diagnostics={"success_count": 0}),
+        )
         result = RealAttachLabelsTool().execute(study=MagicMock(), mapping={"a": "b"})
         assert "No labels attached" in result
 
 
 class TestRealGetDatasetInfoEvents:
-    @patch("XBrainLab.llm.tools.real.dataset_real.BackendFacade")
-    def test_summary_with_events(self, mock_facade_cls):
+    @patch("XBrainLab.llm.tools.real.dataset_real.get_application_service")
+    def test_summary_with_events(self, mock_get_service):
         from XBrainLab.llm.tools.real.dataset_real import RealGetDatasetInfoTool
 
-        mock_facade_cls.return_value.get_data_summary.return_value = {
-            "count": 3,
-            "files": ["a.gdf", "b.gdf", "c.gdf"],
-            "total": 120,
-            "unique_count": 4,
-        }
+        mock_get_service.return_value = _service(
+            _command_result(
+                diagnostics={
+                    "count": 3,
+                    "files": ["a.gdf", "b.gdf", "c.gdf"],
+                    "total": 120,
+                    "unique_count": 4,
+                },
+            ),
+        )
         result = RealGetDatasetInfoTool().execute(study=MagicMock())
         assert "Events: 120" in result
         assert "Unique: 4" in result
 
 
 class TestRealGenerateDatasetError:
-    @patch("XBrainLab.llm.tools.real.dataset_real.BackendFacade")
-    def test_generation_failure(self, mock_facade_cls):
+    @patch("XBrainLab.llm.tools.real.dataset_real.get_application_service")
+    def test_generation_failure(self, mock_get_service):
         from XBrainLab.llm.tools.real.dataset_real import RealGenerateDatasetTool
 
-        mock_facade_cls.return_value.generate_dataset.side_effect = RuntimeError("fail")
+        mock_get_service.return_value = _service(
+            _command_result(failed=True, message="fail"),
+        )
         result = RealGenerateDatasetTool().execute(study=MagicMock())
         assert "Dataset generation failed" in result
 

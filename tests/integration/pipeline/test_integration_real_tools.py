@@ -1,4 +1,5 @@
 import os
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -19,39 +20,62 @@ from XBrainLab.llm.tools.real.training_real import (
 )
 
 
+def _command_result(
+    *,
+    failed: bool = False,
+    diagnostics: dict[str, object] | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        failed=failed,
+        ok=not failed,
+        message="ok",
+        diagnostics=diagnostics or {},
+    )
+
+
 def test_epoch_data_tool_execution():
-    """Verify RealEpochDataTool correctly calls Facade with list of strings."""
+    """Verify RealEpochDataTool passes event names to the command spine."""
     tool = RealEpochDataTool()
     mock_study = MagicMock()
 
-    # We patch BackendFacade to verify the call
-    with patch("XBrainLab.llm.tools.real.preprocess_real.BackendFacade") as MockFacade:
-        instance = MockFacade.return_value
+    service = MagicMock()
+    service.execute.return_value = _command_result()
 
+    with patch(
+        "XBrainLab.llm.tools.real.preprocess_real.get_application_service",
+        return_value=service,
+    ):
         # Execute tool with list of strings
         result = tool.execute(
             mock_study, t_min=-0.1, t_max=0.5, event_id=["Target", "Standard"]
         )
 
-        # Verify Facade call
-        instance.epoch_data.assert_called_once_with(
-            -0.1, 0.5, baseline=None, event_ids=["Target", "Standard"]
-        )
+        command = service.execute.call_args.args[0]
+        assert command.t_min == -0.1
+        assert command.t_max == 0.5
+        assert command.baseline is None
+        assert command.event_ids == ["Target", "Standard"]
         assert "Data epoched" in result
 
 
 def test_load_data_tool_execution():
-    """Verify RealLoadDataTool calls Facade.load_data."""
+    """Verify RealLoadDataTool calls LoadDataCommand."""
     tool = RealLoadDataTool()
     mock_study = MagicMock()
 
-    with patch("XBrainLab.llm.tools.real.dataset_real.BackendFacade") as MockFacade:
-        instance = MockFacade.return_value
-        instance.load_data.return_value = (1, [])  # 1 success, 0 errors
+    service = MagicMock()
+    service.execute.return_value = _command_result(
+        diagnostics={"success_count": 1, "errors": []},
+    )
 
+    with patch(
+        "XBrainLab.llm.tools.real.dataset_real.get_application_service",
+        return_value=service,
+    ):
         result = tool.execute(mock_study, paths=["C:/data/test.edf"])
 
-        instance.load_data.assert_called_once_with(["C:/data/test.edf"])
+        command = service.execute.call_args.args[0]
+        assert command.paths == ["C:/data/test.edf"]
         assert "Successfully loaded 1 files" in result
 
 
