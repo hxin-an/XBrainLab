@@ -15429,14 +15429,27 @@
     agent tools, and current walkthrough scripts through direct ApplicationService access.
   - Added product-runtime architecture guard coverage for `BackendFacade` imports / construction.
   - Replaced facade-method real-tool tests with command-object assertions.
+  - Converted older LLM/root/integration coverage tests that still patched real-tool
+    `BackendFacade` symbols to patch `get_application_service` and assert command objects /
+    structured command results.
   - Documented `BackendFacade` as non-product legacy compatibility only.
-- focused validation so far：
+- validation：
   - `poetry run pytest --capture=sys tests/architecture_compliance.py -q` -> `1 passed`.
   - `poetry run pytest --capture=sys tests/unit/backend/application -q` -> `142 passed`.
-  - `poetry run pytest --capture=sys tests/unit/llm/tools -q` -> `225 passed`.
-  - `env MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/mcp -q` ->
-    `13 passed`.
+  - `env QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui -q`
+    -> `1121 passed`.
+  - `env MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/llm/tools tests/unit/mcp -q`
+    -> `238 passed`.
+  - `env MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/llm -q` ->
+    `831 passed`.
+  - `env MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/test_agent_tools.py tests/integration/pipeline/test_integration_real_tools.py tests/integration/ui/test_ui_headless.py -q`
+    -> `8 passed, 1 skipped`.
   - Focused `ruff check <changed Python files>` -> `All checks passed!`.
+  - Focused `basedpyright <changed Python files>` -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run mkdocs build --strict` -> exit `0`.
+  - `poetry run python scripts/dev/update_quality_dashboard.py` -> dashboard `PASS` at
+    `2026-05-11 23:40:18 UTC+08:00`.
 - 不能宣稱：
-  - Full goal completion still depends on the required full UI suite, combined LLM/MCP gate,
-    basedpyright, mkdocs strict build, quality dashboard, commits, and clean worktree.
+  - This does not remove `XBrainLab/backend/facade.py`; it remains non-product compatibility.
+  - This does not claim Windows human desktop acceptance or complete removal of all historical
+    facade-specific compatibility tests.

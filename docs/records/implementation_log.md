@@ -6132,6 +6132,9 @@ Product runtime paths now enter the backend through `ApplicationService / Comman
 - `tests/architecture_compliance.py` now runs as a pytest gate and blocks `BackendFacade` usage
   under `XBrainLab/ui`, `XBrainLab/llm`, and `XBrainLab/mcp`.
 - Real-tool tests now assert typed ApplicationService commands instead of facade method calls.
+- Older LLM coverage tests, root agent-tool tests, and real-tool integration tests were converted
+  away from `BackendFacade` patching so they verify command-service access instead of a removed
+  product runtime symbol.
 
 ### 仍保留的 legacy
 
