@@ -129,10 +129,18 @@ cd '$Repo'
 export PYTHONUNBUFFERED=1
 echo "WSL repo: `$(pwd)"
 echo "Python stdout/stderr are mirrored to this terminal and the launcher log."
+export PYTHONFAULTHANDLER=1
 if [ "`${XBRAINLAB_STARTUP_DIAGNOSTICS:-}" = "1" ]; then
   echo "Startup geometry diagnostics: enabled"
 else
   echo "Startup geometry diagnostics: disabled"
+fi
+if [ -n "`${XBRAINLAB_QT_PLATFORM:-}" ]; then
+  export QT_QPA_PLATFORM="`$XBRAINLAB_QT_PLATFORM"
+  echo "Qt platform override: `$QT_QPA_PLATFORM"
+else
+  export QT_QPA_PLATFORM=xcb
+  echo "Qt platform override: `$QT_QPA_PLATFORM (launcher default)"
 fi
 if command -v poetry >/dev/null 2>&1; then
   echo "Launching: poetry run python run.py"

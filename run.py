@@ -13,13 +13,14 @@ Usage::
 import argparse
 import os
 import sys
+from time import monotonic, sleep
 
 # Ensure the project root is importable when running the script directly.
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from PyQt6.QtCore import QSettings, QSize, Qt
-from PyQt6.QtGui import QColor, QFont, QPainter, QPixmap
-from PyQt6.QtWidgets import QApplication, QSplashScreen
+from PyQt6.QtGui import QColor, QFont, QPainter, QPaintEvent, QPen, QPixmap
+from PyQt6.QtWidgets import QApplication, QWidget
 
 from XBrainLab.ui.window_placement import (
     center_widget_on_screen,
@@ -32,27 +33,82 @@ from XBrainLab.ui.window_placement import (
 )
 
 
-class _Splash(QSplashScreen):
-    """Minimal branded splash screen shown during startup."""
+class _Splash(QWidget):
+    """Branded startup window shown while the heavier UI stack imports."""
 
-    def drawContents(self, painter: QPainter) -> None:  # noqa: N802
-        painter.setPen(QColor("#cccccc"))
-        painter.setFont(QFont("Segoe UI", 24, QFont.Weight.Bold))
-        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "XBrainLab")
-        painter.setPen(QColor("#888888"))
-        painter.setFont(QFont("Segoe UI", 11))
-        painter.drawText(
-            self.rect().adjusted(0, 50, 0, 0),
-            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
-            "Loading…",
+    def __init__(self, pixmap: QPixmap) -> None:
+        super().__init__(
+            None,
+            Qt.WindowType.SplashScreen
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint,
         )
+        self._pixmap = pixmap
+        self.setObjectName("XBrainLabStartupSplash")
+        self.setWindowTitle("XBrainLab")
+        self.setFixedSize(pixmap.size())
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        self.setAutoFillBackground(False)
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+        _ = event
+        painter = QPainter(self)
+        painter.drawPixmap(0, 0, self._pixmap)
+        painter.end()
+
+    def finish(self, window: QWidget) -> None:
+        """Match QSplashScreen.finish enough for the startup path."""
+        _ = window
+        self.hide()
+        self.deleteLater()
 
 
 def _create_splash_pixmap() -> QPixmap:
     """Create the splash pixmap without importing the heavier UI stack."""
     pixmap = QPixmap(QSize(420, 200))
-    pixmap.fill(QColor("#1e1e1e"))
+    pixmap.fill(QColor("#22262b"))
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    painter.fillRect(0, 0, pixmap.width(), 6, QColor("#0e7ac4"))
+    painter.fillRect(0, pixmap.height() - 2, pixmap.width(), 2, QColor("#333942"))
+    painter.setPen(QPen(QColor("#4a5664"), 1))
+    painter.drawRect(pixmap.rect().adjusted(0, 0, -1, -1))
+
+    painter.setPen(QColor("#f1f1f1"))
+    painter.setFont(QFont("Segoe UI", 24, QFont.Weight.Bold))
+    painter.drawText(
+        pixmap.rect().adjusted(0, -18, 0, -18),
+        Qt.AlignmentFlag.AlignCenter,
+        "XBrainLab",
+    )
+    painter.setPen(QColor("#a0a0a0"))
+    painter.setFont(QFont("Segoe UI", 11))
+    painter.drawText(
+        pixmap.rect().adjusted(0, 118, 0, 0),
+        Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+        "Loading...",
+    )
+    painter.end()
     return pixmap
+
+
+def _flush_splash_paint(
+    app: QApplication,
+    splash: _Splash,
+    *,
+    paint_wait_ms: int = 220,
+) -> None:
+    """Force early splash painting before imports block the Qt event loop."""
+    splash.raise_()
+    splash.activateWindow()
+    splash.repaint()
+    app.processEvents()
+    deadline = monotonic() + max(0, paint_wait_ms) / 1000
+    while monotonic() < deadline:
+        splash.repaint()
+        app.processEvents()
+        sleep(0.01)
 
 
 def _create_centered_splash(app: QApplication, saved_geometry=None) -> _Splash:
@@ -65,11 +121,16 @@ def _create_centered_splash(app: QApplication, saved_geometry=None) -> _Splash:
     return splash
 
 
-def _show_centered_splash(app: QApplication, splash: _Splash) -> None:
+def _show_centered_splash(
+    app: QApplication,
+    splash: _Splash,
+    *,
+    paint_wait_ms: int = 220,
+) -> None:
     """Show the splash and recenter after the window manager assigns a frame."""
     splash.show()
     center_widget_on_screen(splash, startup_screen_hint() or app.primaryScreen())
-    app.processEvents()
+    _flush_splash_paint(app, splash, paint_wait_ms=paint_wait_ms)
 
 
 def main() -> None:
