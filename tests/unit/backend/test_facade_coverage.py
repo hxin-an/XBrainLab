@@ -14,6 +14,8 @@ import torch
 from XBrainLab.backend.application import ApplyMontageCommand, CreateEpochCommand
 from XBrainLab.backend.facade import BackendFacade
 
+pytestmark = pytest.mark.facade_compatibility
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

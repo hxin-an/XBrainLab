@@ -487,7 +487,7 @@ def check_product_success_backend_facade_tests(root_dir: Path) -> list[str]:
 
 
 def check_backend_facade_test_quarantine(root_dir: Path) -> list[str]:
-    """Return tests that use BackendFacade outside explicit compatibility files."""
+    """Return tests that use BackendFacade outside marked compatibility coverage."""
     violations: list[str] = []
     tests_dir = root_dir / "tests"
     if not tests_dir.exists():
@@ -497,8 +497,6 @@ def check_backend_facade_test_quarantine(root_dir: Path) -> list[str]:
         if py_file.name == "__init__.py":
             continue
         relative_path = py_file.relative_to(root_dir)
-        if relative_path in BACKEND_FACADE_TEST_QUARANTINE_ALLOWED_FILES:
-            continue
 
         source = py_file.read_text(encoding="utf-8")
         try:
@@ -507,6 +505,23 @@ def check_backend_facade_test_quarantine(root_dir: Path) -> list[str]:
             continue
         visitor = _BackendFacadeRuntimeUsageVisitor()
         visitor.visit(tree)
+        if not visitor.violations:
+            continue
+        if relative_path in BACKEND_FACADE_TEST_QUARANTINE_ALLOWED_FILES:
+            unmarked_nodes = [
+                node
+                for node in visitor.violations
+                if not _backend_facade_usage_has_compatibility_marker(tree, node)
+            ]
+            violations.extend(
+                f"{relative_path}:{getattr(node, 'lineno', 0)} uses BackendFacade "
+                "inside the facade quarantine without "
+                "pytest.mark.facade_compatibility; mark compatibility-only "
+                "coverage so it is not product-success evidence."
+                for node in unmarked_nodes
+            )
+            continue
+
         violations.extend(
             f"{relative_path}:{getattr(node, 'lineno', 0)} uses BackendFacade "
             "outside the facade quarantine; move replacement coverage to "
@@ -515,6 +530,72 @@ def check_backend_facade_test_quarantine(root_dir: Path) -> list[str]:
             for node in visitor.violations
         )
     return violations
+
+
+def _backend_facade_usage_has_compatibility_marker(
+    tree: ast.AST,
+    usage_node: ast.AST,
+) -> bool:
+    if _has_facade_compatibility_pytestmark(tree):
+        return True
+
+    return any(
+        _node_contains_usage(node, usage_node)
+        and _decorators_include_facade_compatibility(node.decorator_list)
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    )
+
+
+def _has_facade_compatibility_pytestmark(tree: ast.AST) -> bool:
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "pytestmark"
+            for target in node.targets
+        ):
+            return _expr_includes_facade_compatibility_marker(node.value)
+        if (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "pytestmark"
+            and node.value is not None
+        ):
+            return _expr_includes_facade_compatibility_marker(node.value)
+    return False
+
+
+def _decorators_include_facade_compatibility(
+    decorators: list[ast.expr],
+) -> bool:
+    return any(_expr_includes_facade_compatibility_marker(node) for node in decorators)
+
+
+def _expr_includes_facade_compatibility_marker(node: ast.AST) -> bool:
+    if isinstance(node, ast.Call):
+        return _expr_includes_facade_compatibility_marker(node.func)
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        return any(
+            _expr_includes_facade_compatibility_marker(item) for item in node.elts
+        )
+    return _is_pytest_facade_compatibility_marker(node)
+
+
+def _is_pytest_facade_compatibility_marker(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == "facade_compatibility"
+        and isinstance(node.value, ast.Attribute)
+        and node.value.attr == "mark"
+        and isinstance(node.value.value, ast.Name)
+        and node.value.value.id == "pytest"
+    )
+
+
+def _node_contains_usage(container: ast.AST, usage_node: ast.AST) -> bool:
+    container_start = getattr(container, "lineno", -1)
+    container_end = getattr(container, "end_lineno", container_start)
+    usage_lineno = getattr(usage_node, "lineno", -2)
+    return container_start <= usage_lineno <= container_end
 
 
 def check_product_success_legacy_fallback_tests(root_dir: Path) -> list[str]:

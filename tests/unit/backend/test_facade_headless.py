@@ -1,8 +1,11 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
 import torch
 
 from XBrainLab.backend.facade import BackendFacade
+
+pytestmark = pytest.mark.facade_compatibility
 
 
 def test_backend_facade_headless():

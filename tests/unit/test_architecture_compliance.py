@@ -173,10 +173,55 @@ def test_backend_facade_test_quarantine_allows_explicit_compatibility_files(tmp_
     path.parent.mkdir(parents=True)
     path.write_text(
         """
+import pytest
+
+from XBrainLab.backend.facade import BackendFacade
+
+pytestmark = pytest.mark.facade_compatibility
+
+
+def test_facade_compatibility(study):
+    return BackendFacade(study).get_capabilities()
+""",
+        encoding="utf-8",
+    )
+
+    assert check_backend_facade_test_quarantine(tmp_path) == []
+
+
+def test_backend_facade_test_quarantine_flags_unmarked_allowed_file(tmp_path):
+    path = tmp_path / "tests" / "unit" / "backend" / "test_facade_coverage.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
 from XBrainLab.backend.facade import BackendFacade
 
 
 def test_facade_compatibility(study):
+    return BackendFacade(study).get_capabilities()
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_backend_facade_test_quarantine(tmp_path)
+
+    assert len(violations) == 2
+    assert "facade_compatibility" in violations[0]
+    assert "not product-success evidence" in violations[0]
+
+
+def test_backend_facade_test_quarantine_allows_function_level_marker(tmp_path):
+    path = tmp_path / "tests" / "unit" / "backend" / "application" / "test_runtime.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+import pytest
+
+
+@pytest.mark.facade_compatibility
+def test_backend_facade_uses_existing_application_service(study):
+    from XBrainLab.backend.facade import BackendFacade
+
     return BackendFacade(study).get_capabilities()
 """,
         encoding="utf-8",

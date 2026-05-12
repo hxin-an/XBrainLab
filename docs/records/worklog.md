@@ -37,6 +37,40 @@
 
 ## 2026-05-12
 
+### 17:59 BackendFacade compatibility marker guard
+
+- 做了什麼：
+  - Added a registered `facade_compatibility` pytest marker.
+  - Tightened `check_backend_facade_test_quarantine()` so allowed `BackendFacade`
+    quarantine files must explicitly mark facade-only compatibility coverage.
+  - Marked the existing facade compatibility tests in `test_facade_coverage.py`,
+    `test_facade_headless.py`, and the one runtime cache compatibility test in
+    `test_runtime.py`.
+- TDD red：
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> failed first because an unmarked allowed facade file still returned no violations.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `70 passed`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py tests/unit/backend/test_facade_headless.py tests/unit/backend/application/test_runtime.py -q`
+    -> `47 passed`.
+  - `poetry run ruff check tests/architecture_compliance.py tests/unit/test_architecture_compliance.py tests/unit/backend/test_facade_coverage.py tests/unit/backend/test_facade_headless.py tests/unit/backend/application/test_runtime.py`
+    -> `All checks passed!`.
+  - `poetry run ruff check pyproject.toml tests/unit/backend/test_facade_coverage.py tests/unit/backend/test_facade_headless.py tests/unit/backend/application/test_runtime.py`
+    -> `All checks passed!`.
+  - `poetry run basedpyright tests/architecture_compliance.py tests/unit/test_architecture_compliance.py tests/unit/backend/test_facade_coverage.py tests/unit/backend/test_facade_headless.py tests/unit/backend/application/test_runtime.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run basedpyright tests/unit/backend/test_facade_coverage.py tests/unit/backend/test_facade_headless.py tests/unit/backend/application/test_runtime.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run mkdocs build --strict`
+    -> PASS, with the existing MkDocs Material advisory.
+  - `git diff --check`
+    -> PASS.
+- 接續 / 本輪剩餘：
+  - Commit this guard.
+
 ### 17:48 Weak test-name architecture guard
 
 - 做了什麼：
