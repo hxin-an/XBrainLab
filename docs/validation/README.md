@@ -304,6 +304,35 @@ or moved to command/service/dialog/helper tests.
 | Weak wording / weak-name scans | Weak wording scan has no matches; UI `accepted` scan has no matches; weak test-name scan only reports intentional architecture-compliance forbidden examples. | Weak UI/product test wording is cleaned into explicit behavior, command-route, or compatibility evidence. | Test quality beyond the scanned wording patterns. | Continue reviewing mock-heavy tests by behavior. |
 | `poetry run mkdocs build --strict` / `git diff --check` | PASS with existing MkDocs Material advisory and nav notices / PASS. | Validation/worklog docs build and current diff has no whitespace errors. | Documentation content is automatically complete. | Keep validation records tied to executed commands. |
 
+## 2026-05-12 Background Stabilization / Branch Readiness Audit
+
+This pass kept UX work separate: no answer UI layout redesign and no Data Import UX redesign.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `70 passed`. | Product runtime and product-success architecture guards remain green. | Runtime behavior outside scanned guard scope. | Keep guard examples aligned with every new product adapter. |
+| `poetry run pytest --capture=sys tests/unit/backend/application -q` | `160 passed`. | ApplicationService, command-service, query/state, and replacement backend coverage remain green. | Human desktop acceptance or complete external data coverage. | Keep adding direct command/service tests for new backend behavior. |
+| `poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py tests/unit/backend/test_facade_headless.py tests/unit/backend/application/test_runtime.py tests/unit/backend/utils/test_montage_mapping.py -q` | `59 passed`. | Legacy facade compatibility, shared service cache behavior, and extracted montage helper coverage are green. | Product runtime use of `BackendFacade`; these tests are compatibility-only evidence. | Physical facade removal should delete or migrate this cluster in a dedicated slice. |
+| `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q` | `31 passed, 8 warnings`. | Real-data IO integration remains green through current ApplicationService import coverage. | Warning-free MNE parsing or all external formats. | Warnings remain known MNE filename/annotation/CNT metadata/runtime notes. |
+| `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet -q` | `2 passed`. | Representative tiny pipeline train/evaluate and study train-cycle smokes remain green. | Training quality, GPU acceptance, or full MVP workflow. | Keep as a small regression gate. |
+| `poetry run mkdocs build --strict` / `git diff --check` | PASS with existing MkDocs Material advisory and nav notices / PASS after branch-readiness docs. | Docs build strictly and diff whitespace is clean. | Runtime behavior. | Re-run after future docs edits. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-12 22:51:43 UTC+08:00`. Includes ruff, basedpyright, architecture, startup smoke, UI baseline, UI dialog acceptance, UI unit suite, and real-data IO. | Fast engineering dashboard is green for this branch state. | Product complete, release approval, or human Windows acceptance. | Human-observable desktop smoke remains required before release claims. |
+| `rg -n "BackendFacade\|backend\.facade" XBrainLab -g '*.py'` | Only `XBrainLab/backend/facade.py` and a montage-helper docstring mention remain. | Product package runtime has no direct `BackendFacade` import/instantiation outside the facade module itself. | Physical deletion readiness by itself. | Keep `BackendFacade` out of product packages while compatibility remains. |
+| `rg -n "from XBrainLab\.backend\.facade\|BackendFacade\(" tests -g '*.py'` | References are confined to architecture guard examples, `test_facade_coverage.py`, `test_facade_headless.py`, and `application/test_runtime.py`. | Test usage is quarantined to guard/compatibility/runtime-cache evidence. | Product success through facade. | Delete or migrate the compatibility cluster when physically removing the facade. |
+
+Branch / PR readiness:
+
+- Scope completed: backend command-service replacement evidence, test hygiene, facade quarantine,
+  non-UX validation gates, and current evidence docs.
+- Intentionally not touched: answer UI layout, Data Import UX redesign, local LLM runtime,
+  Windows human desktop acceptance, and signed packaging.
+- Merge recommendation: this branch is suitable for review/merge as a backend/test hygiene and
+  validation-readiness branch if the team accepts that physical `BackendFacade` removal is a later
+  dedicated slice.
+- Remaining risk: product runtime is guarded away from `BackendFacade`, but the facade file and its
+  compatibility-only tests still exist. Human Windows desktop smoke is still required before product
+  completion or release claims.
+
 ## 常用 docs gate
 
 ```bash

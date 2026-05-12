@@ -16518,3 +16518,44 @@
     `BackendFacade` removal.
   - It is not human Windows desktop acceptance, full product runtime acceptance, Data Import UX
     approval, or answer UI approval.
+
+### 2026-05-12 Background stabilization / branch readiness audit
+
+- scope：
+  - Continued on `test/backend-ui-legacy-hygiene`.
+  - Kept UX work separate: no answer UI layout redesign and no Data Import UX redesign.
+  - Ran the non-UX branch readiness gates requested by the active goal.
+- validation：
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `70 passed`.
+  - `poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `160 passed`.
+  - `poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py
+    tests/unit/backend/test_facade_headless.py tests/unit/backend/application/test_runtime.py
+    tests/unit/backend/utils/test_montage_mapping.py -q`
+    -> `59 passed`.
+  - `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys
+    tests/integration/io/test_io_integration.py -q`
+    -> `31 passed, 8 warnings`.
+  - `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys
+    tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics
+    tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet -q`
+    -> `2 passed`.
+  - `poetry run mkdocs build --strict` -> PASS with existing MkDocs Material advisory and nav
+    notices.
+  - `git diff --check` -> PASS.
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python
+    scripts/dev/update_quality_dashboard.py`
+    -> Dashboard `PASS`, generated `2026-05-12 22:51:43 UTC+08:00`.
+- BackendFacade physical-removal readiness：
+  - Product package scan only found `XBrainLab/backend/facade.py` plus a montage-helper docstring
+    mention.
+  - Test scan found `BackendFacade` only in architecture guard examples, explicit facade
+    compatibility tests, and the shared ApplicationService cache runtime test.
+  - Branch is ready for review as backend/test hygiene evidence; physical facade deletion should be
+    a dedicated follow-up slice that deletes/migrates the compatibility cluster.
+- claims still not supported：
+  - This does not physically remove `BackendFacade`.
+  - This is not product complete, release approval, human Windows desktop acceptance, Data Import UX
+    approval, or answer UI approval.

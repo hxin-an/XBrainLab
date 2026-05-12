@@ -6512,3 +6512,33 @@ touch answer UI layout or Data Import UX. It moved `BackendFacade.get_data_summa
 - This does not physically remove `BackendFacade`.
 - This is state/query replacement evidence for one facade cluster, not human UI diagnostics
   acceptance.
+
+## 2026-05-12 Background Stabilization / Branch Readiness Audit
+
+### 狀態
+
+Continued on `test/backend-ui-legacy-hygiene` while UX work stayed separate. This pass did not
+redesign answer UI layout or Data Import UX. It closed the current background readiness lane by
+running non-UX product validation gates, recording facade-removal readiness, and updating canonical
+evidence docs.
+
+### 已可宣稱
+
+- Architecture compliance is green: `Architecture compliant!`, and architecture guard unit coverage
+  is `70 passed`.
+- Backend ApplicationService / command-service coverage is green: `160 passed`.
+- Quarantined facade compatibility/runtime-cache/helper coverage is green: `59 passed`.
+- Real-data IO and representative tiny pipeline smokes are green: `31 passed, 8 warnings` and
+  `2 passed`.
+- Fast quality dashboard is green at `2026-05-12 22:51:43 UTC+08:00`, including lint, type,
+  architecture, startup, UI baseline/dialog/unit, and real-data IO checks.
+- Product package scan shows no direct `BackendFacade` import or construction outside
+  `XBrainLab/backend/facade.py` itself; test usage is confined to architecture guard examples,
+  explicit facade compatibility tests, and the shared runtime-cache test.
+
+### 不能宣稱完成
+
+- This does not physically remove `BackendFacade`; deletion should be a separate slice that removes
+  or migrates the compatibility-only tests.
+- This is not product complete, release approval, human Windows desktop acceptance, Data Import UX
+  approval, or answer UI approval.
