@@ -3,29 +3,46 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TypedDict
 from unittest.mock import patch
 
 import pytest
-import torch
 
-from XBrainLab.backend.facade import BackendFacade
-from XBrainLab.backend.model_base import EEGNet
-from XBrainLab.backend.training import (
-    ModelHolder,
-    TrainingEvaluation,
-    TrainingOption,
+from XBrainLab.backend.application import (
+    ApplicationService,
+    CommandName,
+    ConfigureTrainingCommand,
+    CreateEpochCommand,
+    GenerateDatasetCommand,
+    LoadDataCommand,
+    PreprocessCommand,
+    PreprocessOperation,
+    QueryStateCommand,
+    TrainCommand,
 )
 from XBrainLab.backend.training.record import RecordKey
 
 ROOT = Path(__file__).resolve().parents[2]
 PUBLIC_DATA_DIR = ROOT / "fixtures" / "data" / "public"
-PUBLIC_TRAINING_FIXTURES = (
+
+
+class PublicTrainingFixture(TypedDict):
+    name: str
+    filename: str
+    event_ids: list[str]
+    tmin: float
+    tmax: float
+    split_ratio: float
+
+
+PUBLIC_TRAINING_FIXTURES: tuple[PublicTrainingFixture, ...] = (
     {
         "name": "physionet-edf",
         "filename": "physionet-eegmmidb-S008R04.edf",
         "event_ids": ["T1", "T2"],
         "tmin": 0,
         "tmax": 2,
+        "split_ratio": 0.2,
     },
     {
         "name": "bbci-gdf",
@@ -33,6 +50,7 @@ PUBLIC_TRAINING_FIXTURES = (
         "event_ids": ["769", "770"],
         "tmin": 0,
         "tmax": 2,
+        "split_ratio": 0.2,
     },
     {
         "name": "sccn-eeglab",
@@ -40,6 +58,7 @@ PUBLIC_TRAINING_FIXTURES = (
         "event_ids": ["rt", "square"],
         "tmin": 0,
         "tmax": 2,
+        "split_ratio": 0.2,
     },
     {
         "name": "mne-cnt",
@@ -52,66 +71,85 @@ PUBLIC_TRAINING_FIXTURES = (
 )
 
 
-def _build_public_training_facade(fixture: dict[str, object]) -> BackendFacade:
+def _build_public_training_service(
+    fixture: PublicTrainingFixture,
+) -> ApplicationService:
     filepath = PUBLIC_DATA_DIR / str(fixture["filename"])
     if not filepath.exists():
         pytest.skip(f"Public fixture not downloaded at {filepath}")
 
-    facade = BackendFacade()
-    success_count, errors = facade.load_data([str(filepath)])
-    assert success_count == 1
-    assert errors == []
-    return facade
+    service = ApplicationService()
+    load_result = service.execute(LoadDataCommand(paths=[str(filepath)]))
+    assert load_result.ok is True
+    assert load_result.diagnostics["success_count"] == 1
+    return service
 
 
 @pytest.mark.parametrize("fixture", PUBLIC_TRAINING_FIXTURES, ids=lambda f: f["name"])
-def test_public_cross_source_training_smoke(fixture: dict[str, object]) -> None:
+def test_public_cross_source_training_smoke(
+    fixture: PublicTrainingFixture,
+    tmp_path: Path,
+) -> None:
     """Event-rich public fixtures should support a one-epoch training smoke."""
-    facade = _build_public_training_facade(fixture)
+    service = _build_public_training_service(fixture)
 
-    facade.apply_filter(4, 38)
-    facade.normalize_data("z score")
-    facade.epoch_data(
-        fixture["tmin"],
-        fixture["tmax"],
-        event_ids=list(fixture["event_ids"]),
-    )
-    split_ratio = float(fixture.get("split_ratio", 0.2))
-    facade.generate_dataset(
-        test_ratio=split_ratio,
-        val_ratio=split_ratio,
-        split_strategy="trial",
-        training_mode="individual",
-    )
-
-    datasets = facade.study.datasets
-    assert datasets is not None
-    assert len(datasets) > 0
-    assert all(dataset.get_epoch_data().get_data().shape[0] > 0 for dataset in datasets)
-
-    facade.study.set_model_holder(ModelHolder(EEGNet, {}, None))
-    facade.study.set_training_option(
-        TrainingOption(
-            output_dir="test_public_output",
-            optim=torch.optim.Adam,
-            optim_params={},
-            use_cpu=True,
-            gpu_idx=None,
-            epoch=1,
-            bs=8,
-            lr=0.001,
-            checkpoint_epoch=1,
-            evaluation_option=TrainingEvaluation.TEST_ACC,
-            repeat_num=1,
+    filter_result = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.BANDPASS,
+            low_freq=4,
+            high_freq=38,
         ),
     )
-    facade.study.set_saliency_params(
-        {
-            "SmoothGrad": {"nt_samples": 1, "stdevs": 0.1},
-            "SmoothGrad_Squared": {"nt_samples": 1, "stdevs": 0.1},
-            "VarGrad": {"nt_samples": 1, "stdevs": 0.1},
-        },
+    normalize_result = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.NORMALIZE,
+            method="z score",
+        ),
     )
+    epoch_result = service.execute(
+        CreateEpochCommand(
+            t_min=float(fixture["tmin"]),
+            t_max=float(fixture["tmax"]),
+            event_ids=list(fixture["event_ids"]),
+        ),
+    )
+    split_ratio = float(fixture["split_ratio"])
+    dataset_result = service.execute(
+        GenerateDatasetCommand(
+            test_ratio=split_ratio,
+            val_ratio=split_ratio,
+            split_strategy="trial",
+            training_mode="individual",
+        ),
+    )
+
+    assert filter_result.ok is True
+    assert normalize_result.ok is True
+    assert epoch_result.ok is True
+    assert dataset_result.ok is True
+    assert dataset_result.diagnostics["split_audit"]["ok"] is True
+    assert dataset_result.state.dataset.available is True
+    assert dataset_result.state.dataset.count > 0
+    assert dataset_result.state.dataset.split_summary["train_count"] > 0
+    assert dataset_result.state.dataset.split_summary["val_count"] > 0
+    assert dataset_result.state.dataset.split_summary["test_count"] > 0
+
+    assert service.execute(ConfigureTrainingCommand(model_name="EEGNet")).ok is True
+    assert (
+        service.execute(
+            ConfigureTrainingCommand(
+                output_dir=str(tmp_path / "test-public-output"),
+                device="cpu",
+                epoch=1,
+                batch_size=8,
+                learning_rate=0.001,
+                save_checkpoints_every=1,
+                evaluation_option="test_acc",
+            ),
+        ).ok
+        is True
+    )
+    assert service.get_capabilities().get(CommandName.TRAIN).available is True
 
     with (
         patch("matplotlib.pyplot.savefig"),
@@ -119,12 +157,16 @@ def test_public_cross_source_training_smoke(fixture: dict[str, object]) -> None:
         patch("numpy.savetxt"),
         patch("os.makedirs"),
     ):
-        facade.study.generate_plan()
-        facade.study.train(interact=False)
+        train_result = service.execute(
+            TrainCommand(confirmed=True, interactive=False),
+        )
 
-    assert facade.study.trainer is not None
-    plan_holders = facade.study.trainer.get_training_plan_holders()
-    assert len(plan_holders) > 0
-    record = plan_holders[0].train_record_list[0]
+    assert train_result.ok is True
+    history = service.execute(
+        QueryStateCommand(query="training_history", include_objects=True),
+    )
+    assert history.ok is True
+    assert history.diagnostics["row_count"] > 0
+    record = history.diagnostics["rows"][0]["record"]
     assert RecordKey.LOSS in record.train
     assert RecordKey.ACC in record.train

@@ -129,6 +129,12 @@ PRODUCT_RUNTIME_BACKEND_FACADE_DIRS = (
     Path("XBrainLab/llm"),
     Path("XBrainLab/mcp"),
 )
+PRODUCT_SUCCESS_BACKEND_FACADE_TEST_DIRS = (
+    Path("tests/integration/backend"),
+    Path("tests/integration/io"),
+    Path("tests/integration/pipeline"),
+    Path("tests/integration/ui"),
+)
 
 
 def check_architecture(root_dir: str) -> int:
@@ -218,6 +224,13 @@ def check_architecture(root_dir: str) -> int:
     if facade_usage_violations:
         print("\nProduct Runtime BackendFacade Usage Violations Found:")
         for violation in facade_usage_violations:
+            print(f" - {violation}")
+        return 1
+
+    facade_test_violations = check_product_success_backend_facade_tests(Path(root_dir))
+    if facade_test_violations:
+        print("\nProduct Success BackendFacade Test Violations Found:")
+        for violation in facade_test_violations:
             print(f" - {violation}")
         return 1
 
@@ -395,6 +408,32 @@ def check_product_runtime_backend_facade_usage(root_dir: Path) -> list[str]:
                 f"{py_file.relative_to(root_dir)}:{getattr(node, 'lineno', 0)} uses "
                 "BackendFacade in product runtime; route through "
                 "ApplicationService / Command API directly."
+                for node in visitor.violations
+            )
+    return violations
+
+
+def check_product_success_backend_facade_tests(root_dir: Path) -> list[str]:
+    """Return product-success tests that still use BackendFacade as workflow truth."""
+    violations: list[str] = []
+
+    for relative_dir in PRODUCT_SUCCESS_BACKEND_FACADE_TEST_DIRS:
+        test_dir = root_dir / relative_dir
+        if not test_dir.exists():
+            continue
+        for py_file in test_dir.rglob("*.py"):
+            source = py_file.read_text(encoding="utf-8")
+            try:
+                tree = ast.parse(source, filename=str(py_file))
+            except SyntaxError:
+                continue
+            visitor = _BackendFacadeRuntimeUsageVisitor()
+            visitor.visit(tree)
+            violations.extend(
+                f"{py_file.relative_to(root_dir)}:{getattr(node, 'lineno', 0)} uses "
+                "BackendFacade in product-success evidence; rewrite the test to "
+                "exercise ApplicationService / Command API, or move compatibility "
+                "coverage into explicit facade-only unit tests."
                 for node in visitor.violations
             )
     return violations

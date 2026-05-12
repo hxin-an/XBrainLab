@@ -1,9 +1,14 @@
 import os
+from typing import Any
 
 import pytest
 
+from XBrainLab.backend.application import (
+    ApplicationService,
+    LoadDataCommand,
+    QueryStateCommand,
+)
 from XBrainLab.backend.exceptions import FileCorruptedError
-from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.load_data.raw_data_loader import load_gdf_file, load_raw_data
 
@@ -33,6 +38,15 @@ PUBLIC_REAL_DATA_FIXTURES = [
 ]
 
 
+def _assert_raw(value: object) -> Raw:
+    assert isinstance(value, Raw)
+    return value
+
+
+def _mne_data(raw: Raw) -> Any:
+    return raw.get_mne().get_data()
+
+
 class TestIOIntegration:
     """
     Integration tests for data loading module.
@@ -45,10 +59,9 @@ class TestIOIntegration:
         if not os.path.exists(GDF_FILE):
             pytest.skip(f"Test data not found at {GDF_FILE}")
 
-        raw = load_gdf_file(GDF_FILE)
+        raw = _assert_raw(load_gdf_file(GDF_FILE))
 
         # 1. Verify return type
-        assert raw is not None
         assert isinstance(raw, Raw)
 
         # 2. Verify metadata
@@ -58,7 +71,7 @@ class TestIOIntegration:
 
         # 3. Verify data access (preload=False by default now)
         # Use get_data() instead of private _data
-        data = raw.get_mne().get_data()
+        data = _mne_data(raw)
         assert data is not None
 
         # 4. Check shape
@@ -73,7 +86,7 @@ class TestIOIntegration:
         if not os.path.exists(GDF_FILE):
             pytest.skip(f"Test data not found at {GDF_FILE}")
 
-        raw = load_gdf_file(GDF_FILE)
+        raw = _assert_raw(load_gdf_file(GDF_FILE))
 
         assert raw.has_runtime_signals() is False
         assert raw.get_mne().ch_names[0:7] == [
@@ -109,15 +122,14 @@ class TestIOIntegration:
         if not os.path.exists(filepath):
             pytest.skip(f"Test data not found at {filepath}")
 
-        raw = load_raw_data(filepath)
+        raw = _assert_raw(load_raw_data(filepath))
 
-        assert raw is not None
         assert isinstance(raw, Raw)
         assert raw.get_filepath() == filepath
         assert raw.get_nchan() > 0
         assert raw.get_sfreq() > 0
 
-        data = raw.get_mne().get_data()
+        data = _mne_data(raw)
         assert data is not None
         assert data.ndim in (2, 3)
         if data.ndim == 2:
@@ -129,33 +141,41 @@ class TestIOIntegration:
             assert data.shape[2] > 0
 
     @pytest.mark.parametrize("filepath", REAL_DATA_FIXTURES)
-    def test_facade_import_supported_real_formats(self, filepath):
-        """Exercise the real dataset import entrypoint across multiple formats."""
+    def test_application_service_import_supported_real_formats(self, filepath):
+        """Exercise the product command import entrypoint across multiple formats."""
         if not os.path.exists(filepath):
             pytest.skip(f"Test data not found at {filepath}")
 
-        facade = BackendFacade()
-        success_count, errors = facade.load_data([filepath])
+        service = ApplicationService()
+        load_result = service.execute(LoadDataCommand(paths=[filepath]))
 
-        assert success_count == 1
-        assert errors == []
+        assert load_result.ok is True
+        assert load_result.diagnostics["success_count"] == 1
+        assert load_result.diagnostics["errors"] == []
 
-        summary = facade.get_data_summary()
+        summary_result = service.execute(QueryStateCommand(query="data_summary"))
+        assert summary_result.ok is True
+        summary = summary_result.diagnostics
         assert summary["count"] == 1
         assert summary["files"] == [os.path.basename(filepath)]
 
-    def test_facade_summary_excludes_resolved_gdf_channel_normalization(self):
+    def test_application_service_summary_excludes_resolved_gdf_channel_normalization(
+        self,
+    ):
         """Do not keep resolved Graz normalization in unresolved ambiguity summaries."""
         if not os.path.exists(GDF_FILE):
             pytest.skip(f"Test data not found at {GDF_FILE}")
 
-        facade = BackendFacade()
-        success_count, errors = facade.load_data([GDF_FILE])
+        service = ApplicationService()
+        load_result = service.execute(LoadDataCommand(paths=[GDF_FILE]))
 
-        assert success_count == 1
-        assert errors == []
+        assert load_result.ok is True
+        assert load_result.diagnostics["success_count"] == 1
+        assert load_result.diagnostics["errors"] == []
 
-        summary = facade.get_data_summary()
+        summary_result = service.execute(QueryStateCommand(query="data_summary"))
+        assert summary_result.ok is True
+        summary = summary_result.diagnostics
         assert summary["gdf_duplicate_channel_files"] == []
         assert summary["gdf_duplicate_channel_details"] == []
 
@@ -165,31 +185,33 @@ class TestIOIntegration:
         if not os.path.exists(filepath):
             pytest.skip(f"Public test data not found at {filepath}")
 
-        raw = load_raw_data(filepath)
+        raw = _assert_raw(load_raw_data(filepath))
 
-        assert raw is not None
         assert isinstance(raw, Raw)
         assert raw.get_filepath() == filepath
         assert raw.get_nchan() > 0
         assert raw.get_sfreq() > 0
 
-        data = raw.get_mne().get_data()
+        data = _mne_data(raw)
         assert data is not None
         assert data.ndim in (2, 3)
 
     @pytest.mark.parametrize("filepath", PUBLIC_REAL_DATA_FIXTURES)
-    def test_facade_import_public_real_formats(self, filepath):
-        """Exercise the facade import entrypoint across downloaded public EEG fixtures."""
+    def test_application_service_import_public_real_formats(self, filepath):
+        """Exercise the command import entrypoint across downloaded public EEG fixtures."""
         if not os.path.exists(filepath):
             pytest.skip(f"Public test data not found at {filepath}")
 
-        facade = BackendFacade()
-        success_count, errors = facade.load_data([filepath])
+        service = ApplicationService()
+        load_result = service.execute(LoadDataCommand(paths=[filepath]))
 
-        assert success_count == 1
-        assert errors == []
+        assert load_result.ok is True
+        assert load_result.diagnostics["success_count"] == 1
+        assert load_result.diagnostics["errors"] == []
 
-        summary = facade.get_data_summary()
+        summary_result = service.execute(QueryStateCommand(query="data_summary"))
+        assert summary_result.ok is True
+        summary = summary_result.diagnostics
         assert summary["count"] == 1
         assert summary["files"] == [os.path.basename(filepath)]
 

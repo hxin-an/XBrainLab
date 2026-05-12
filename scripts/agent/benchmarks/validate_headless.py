@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Backend Headless Verification — Validates backend imports without Qt.
 
-Ensures that the core backend modules (Study, BackendFacade, controllers,
-training, dataset, preprocessing, LLM pipeline) can be imported and
+Ensures that the core backend modules (Study, ApplicationService command API,
+controllers, training, dataset, preprocessing, LLM pipeline) can be imported and
 instantiated without a running Qt application or display server.
 
 This is a prerequisite for Docker / CI environments and headless batch
@@ -29,7 +29,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 _IMPORT_TESTS: list[tuple[str, str | None, str]] = [
     # ── Core backend ──
     ("XBrainLab.backend.study", "Study", "Backend Study singleton"),
-    ("XBrainLab.backend.facade", "BackendFacade", "High-level facade"),
+    ("XBrainLab.backend.application", "ApplicationService", "Command API service"),
     ("XBrainLab.backend.training_manager", "TrainingManager", "Training lifecycle"),
     ("XBrainLab.backend.data_manager", "DataManager", "Data lifecycle"),
     # ── Controllers (Observable, no Qt) ──
