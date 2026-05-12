@@ -19,17 +19,9 @@ INTERNAL_EVENT_EXTENSIONS = (
     ".cnt",
 )
 
-_GDF_CLASS_EVENT_CODES = {"769", "770", "771", "772"}
-_GDF_NON_LABEL_EVENT_CODES = {
-    "768": ("Trial timing", "Trial start marker", "Known GDF trial start marker"),
-    "1023": (
-        "Exclude bad trials",
-        "Rejected / artifact trial",
-        "Known GDF rejected-trial marker",
-    ),
-    "32766": ("Ignore", "System / boundary marker", "Known GDF system marker"),
-    "32767": ("Ignore", "System / boundary marker", "Known GDF system marker"),
-}
+_PATTERN_MIN_COUNT_PER_FILE = 5
+_PATTERN_MIN_LABEL_CODES = 2
+_PATTERN_MAX_LABEL_CODES = 12
 _CLASS_LIKE_TOKENS = {
     "left",
     "right",
@@ -91,8 +83,12 @@ def build_internal_event_preview(selected_files: list[str]) -> dict[str, Any]:
 
     candidate_rows: list[dict[str, Any]] = []
     not_used_rows: list[dict[str, Any]] = []
+    semantics_by_code = {
+        str(stats["code"]): _semantic_for_event(stats) for stats in aggregates.values()
+    }
+    _apply_count_pattern_evidence(aggregates, semantics_by_code, file_names)
     for stats in sorted(aggregates.values(), key=_event_sort_key):
-        semantic = _semantic_for_event(stats)
+        semantic = semantics_by_code[str(stats["code"])]
         row = _preview_row(stats, semantic, file_names)
         if semantic["bucket"] == "candidate":
             candidate_rows.append(row)
@@ -318,23 +314,7 @@ def _looks_like_coded_marker(text: str) -> bool:
 
 
 def _semantic_for_event(stats: dict[str, Any]) -> dict[str, str]:
-    code = str(stats["code"])
-    suffixes = set(stats.get("suffixes", set()))
     descriptions = [str(item) for item in stats.get("descriptions", set())]
-    if ".gdf" in suffixes and code in _GDF_CLASS_EVENT_CODES:
-        return {
-            "bucket": "candidate",
-            "use_as": "Class label",
-            "evidence": "Known GDF class event code",
-        }
-    if ".gdf" in suffixes and code in _GDF_NON_LABEL_EVENT_CODES:
-        use_as, reason, evidence = _GDF_NON_LABEL_EVENT_CODES[code]
-        return {
-            "bucket": "not_used",
-            "use_as": use_as,
-            "reason": reason,
-            "evidence": evidence,
-        }
     if _description_has_any(descriptions, ("artifact", "artefact", "reject", "bad")):
         return {
             "bucket": "not_used",
@@ -373,6 +353,151 @@ def _semantic_for_event(stats: dict[str, Any]) -> dict[str, str]:
         "reason": "Event role needs review",
         "evidence": "Event role needs review",
     }
+
+
+def _apply_count_pattern_evidence(
+    aggregates: dict[str, dict[str, Any]],
+    semantics_by_code: dict[str, dict[str, str]],
+    file_names: list[str],
+) -> None:
+    pattern = _repeated_event_group_pattern(
+        aggregates,
+        semantics_by_code,
+        file_names,
+    )
+    if not pattern:
+        return
+
+    evidence = "Repeated event group"
+    if pattern.get("timing_code"):
+        evidence += "; matches timing count"
+    for code in pattern["candidate_codes"]:
+        semantic = semantics_by_code.get(code)
+        if not semantic or semantic.get("bucket") == "candidate":
+            continue
+        semantic.pop("reason", None)
+        semantic.update(
+            {
+                "bucket": "candidate",
+                "use_as": "Class label",
+                "evidence": evidence,
+            }
+        )
+
+    timing_code = str(pattern.get("timing_code") or "").strip()
+    semantic = semantics_by_code.get(timing_code)
+    if semantic and semantic.get("use_as") == "Review":
+        semantic.update(
+            {
+                "bucket": "not_used",
+                "use_as": "Trial timing",
+                "reason": "Count matches candidate label group",
+                "evidence": "Count matches repeated candidate event group",
+            }
+        )
+
+
+def _repeated_event_group_pattern(
+    aggregates: dict[str, dict[str, Any]],
+    semantics_by_code: dict[str, dict[str, str]],
+    file_names: list[str],
+) -> dict[str, Any]:
+    total_files = len(file_names)
+    if total_files <= 0:
+        return {}
+
+    groups: dict[int, list[str]] = {}
+    for code, stats in aggregates.items():
+        semantic = semantics_by_code.get(code, {})
+        if not _eligible_for_count_pattern(stats, semantic, total_files):
+            continue
+        nonzero_count = _stable_nonzero_count(stats)
+        if nonzero_count:
+            groups.setdefault(nonzero_count, []).append(code)
+
+    candidates = [
+        (count, sorted(codes, key=_event_code_sort_value))
+        for count, codes in groups.items()
+        if _PATTERN_MIN_LABEL_CODES <= len(codes) <= _PATTERN_MAX_LABEL_CODES
+    ]
+    if not candidates:
+        return {}
+
+    candidate_count, candidate_codes = max(
+        candidates,
+        key=lambda item: (len(item[1]), item[0]),
+    )
+    timing_code = _timing_code_for_candidate_group(
+        aggregates,
+        candidate_codes,
+        file_names,
+    )
+    return {
+        "candidate_codes": candidate_codes,
+        "candidate_count": candidate_count,
+        "timing_code": timing_code,
+    }
+
+
+def _eligible_for_count_pattern(
+    stats: dict[str, Any],
+    semantic: dict[str, str],
+    total_files: int,
+) -> bool:
+    if semantic.get("bucket") == "candidate":
+        return False
+    if semantic.get("use_as") != "Review":
+        return False
+    stable_count = _stable_nonzero_count(stats)
+    if stable_count < _PATTERN_MIN_COUNT_PER_FILE:
+        return False
+    present_files = len(stats.get("file_counts", {}) or {})
+    return present_files >= max(total_files - 1, 1)
+
+
+def _stable_nonzero_count(stats: dict[str, Any]) -> int:
+    counts = [
+        int(value)
+        for value in (stats.get("file_counts", {}) or {}).values()
+        if isinstance(value, int) and value > 0
+    ]
+    if not counts or len(set(counts)) != 1:
+        return 0
+    return counts[0]
+
+
+def _timing_code_for_candidate_group(
+    aggregates: dict[str, dict[str, Any]],
+    candidate_codes: list[str],
+    file_names: list[str],
+) -> str:
+    expected_counts = {
+        file_name: sum(
+            int(
+                (aggregates.get(code, {}).get("file_counts", {}) or {}).get(
+                    file_name,
+                    0,
+                )
+            )
+            for code in candidate_codes
+        )
+        for file_name in file_names
+    }
+    if not any(expected_counts.values()):
+        return ""
+    for code, stats in sorted(
+        aggregates.items(),
+        key=lambda item: _event_sort_key(item[1]),
+    ):
+        if code in candidate_codes:
+            continue
+        file_counts = stats.get("file_counts", {}) or {}
+        if all(
+            int(file_counts.get(file_name, 0)) == expected
+            for file_name, expected in expected_counts.items()
+        ):
+            return code
+    return ""
 
 
 def _preview_row(
@@ -485,6 +610,11 @@ def _file_suffix(path: str) -> str:
 
 def _event_sort_key(item: dict[str, Any]) -> tuple[int, int | str]:
     code = str(item.get("code") or item.get("event_code") or "").strip()
+    return _event_code_sort_value(code)
+
+
+def _event_code_sort_value(code: str) -> tuple[int, int | str]:
+    code = str(code).strip()
     return (0, int(code)) if code.isdigit() else (1, code.casefold())
 
 

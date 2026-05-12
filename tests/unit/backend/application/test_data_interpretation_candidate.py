@@ -116,7 +116,7 @@ def test_build_interpretation_candidate_uses_inside_eeg_labels_instead_of_carrie
         "_read_internal_events_for_file",
         lambda _path: {
             "events": {
-                "768": {"count": 72, "description": "768"},
+                "768": {"count": 36, "description": "768"},
                 "769": {"count": 18, "description": "769"},
                 "770": {"count": 18, "description": "770"},
                 "1023": {"count": 6, "description": "1023"},
@@ -155,7 +155,7 @@ def test_build_interpretation_candidate_uses_inside_eeg_labels_instead_of_carrie
     ] == ["769", "770"]
     assert candidate.internal_event_preview["candidate_label_events"][0][
         "evidence"
-    ].startswith("Known GDF class event code")
+    ].startswith("Repeated event group")
     assert [
         row["event_code"] for row in candidate.internal_event_preview["not_used_events"]
     ] == ["768", "1023"]
@@ -530,8 +530,8 @@ def test_build_interpretation_candidate_uses_real_internal_event_evidence(
     def fake_read(path: str):
         name = Path(path).name
         counts_by_file = {
-            "A01T.gdf": {"768": 72, "769": 36, "770": 36, "772": 36, "1023": 2},
-            "A02T.gdf": {"768": 72, "769": 36, "770": 36, "772": 36, "1023": 2},
+            "A01T.gdf": {"768": 108, "769": 36, "770": 36, "772": 36, "1023": 2},
+            "A02T.gdf": {"768": 108, "769": 36, "770": 36, "772": 36, "1023": 2},
             "A03T.gdf": {"768": 72, "769": 36, "770": 36, "1023": 2},
         }
         return {
@@ -580,6 +580,44 @@ def test_build_interpretation_candidate_uses_real_internal_event_evidence(
     assert rows_by_code["772"]["missing_files"] == ["A03T.gdf"]
     assert "missing in A03T.gdf" in rows_by_code["772"]["evidence"]
     assert other_by_code["768"]["use_as"] == "Trial timing"
-    assert other_by_code["1023"]["reason"] == "Rejected / artifact trial"
+    assert other_by_code["1023"]["reason"] == "Event role needs review"
     assert candidate.class_map == {}
     assert candidate.class_map_source == ""
+
+
+def test_build_interpretation_candidate_uses_format_neutral_event_pattern(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "1": {"count": 40, "description": "1"},
+                "11": {"count": 20, "description": "11"},
+                "12": {"count": 20, "description": "12"},
+            }
+        },
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            source_kind="folder",
+            eeg_files=["/data/session.edf"],
+            label_carriers=[],
+            label_carrier_sources={},
+            bids={"is_bids": False, "events_files": []},
+        ),
+        choices={"label_carrier": "embedded_events"},
+    )
+
+    preview = candidate.internal_event_preview
+    candidate_codes = [row["event_code"] for row in preview["candidate_label_events"]]
+    other_by_code = {row["event_code"]: row for row in preview["not_used_events"]}
+
+    assert candidate_codes == ["11", "12"]
+    assert preview["candidate_label_events"][0]["evidence"].startswith(
+        "Repeated event group"
+    )
+    assert other_by_code["1"]["use_as"] == "Trial timing"

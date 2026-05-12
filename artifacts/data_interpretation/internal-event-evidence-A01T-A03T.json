@@ -28,7 +28,7 @@
           "A02T.gdf": 72,
           "A03T.gdf": 72
         },
-        "evidence": "Known GDF class event code; same count in each file"
+        "evidence": "Repeated event group; matches timing count; same count in each file"
       },
       {
         "event_code": "770",
@@ -44,7 +44,7 @@
           "A02T.gdf": 72,
           "A03T.gdf": 72
         },
-        "evidence": "Known GDF class event code; same count in each file"
+        "evidence": "Repeated event group; matches timing count; same count in each file"
       },
       {
         "event_code": "771",
@@ -60,7 +60,7 @@
           "A02T.gdf": 72,
           "A03T.gdf": 72
         },
-        "evidence": "Known GDF class event code; same count in each file"
+        "evidence": "Repeated event group; matches timing count; same count in each file"
       },
       {
         "event_code": "772",
@@ -76,7 +76,7 @@
           "A02T.gdf": 72,
           "A03T.gdf": 72
         },
-        "evidence": "Known GDF class event code; same count in each file"
+        "evidence": "Repeated event group; matches timing count; same count in each file"
       }
     ],
     "not_used_events": [
@@ -128,13 +128,13 @@
           "A02T.gdf": 288,
           "A03T.gdf": 288
         },
-        "evidence": "Known GDF trial start marker; same count in each file",
-        "reason": "Trial start marker"
+        "evidence": "Count matches repeated candidate event group; same count in each file",
+        "reason": "Count matches candidate label group"
       },
       {
         "event_code": "1023",
         "code": "1023",
-        "use_as": "Exclude bad trials",
+        "use_as": "Review",
         "event_count": 51,
         "coverage": "3/3 files",
         "present_files": 3,
@@ -145,8 +145,8 @@
           "A02T.gdf": 18,
           "A03T.gdf": 18
         },
-        "evidence": "Known GDF rejected-trial marker; count differs by file",
-        "reason": "Rejected / artifact trial"
+        "evidence": "Event role needs review; count differs by file",
+        "reason": "Event role needs review"
       },
       {
         "event_code": "1072",
@@ -168,7 +168,7 @@
       {
         "event_code": "32766",
         "code": "32766",
-        "use_as": "Ignore",
+        "use_as": "Review",
         "event_count": 27,
         "coverage": "3/3 files",
         "present_files": 3,
@@ -179,8 +179,8 @@
           "A02T.gdf": 9,
           "A03T.gdf": 9
         },
-        "evidence": "Known GDF system marker; same count in each file",
-        "reason": "System / boundary marker"
+        "evidence": "Event role needs review; same count in each file",
+        "reason": "Event role needs review"
       }
     ],
     "names_reliable": false,
