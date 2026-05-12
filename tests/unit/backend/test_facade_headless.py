@@ -51,7 +51,7 @@ def test_backend_facade_headless():
         controllers["evaluation"].get_plans.return_value = []
 
         # 3. Instantiate Facade
-        facade = BackendFacade()
+        facade = BackendFacade(study=mock_study_instance)
 
         # 4. Verify Components
         assert facade.study == mock_study_instance

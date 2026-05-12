@@ -6261,6 +6261,9 @@ mock-only sidebar tests explicit compatibility coverage.
   now keep old API behavior while command/service/dialog/helper tests own replacement evidence.
 - `tests/unit/backend/test_facade_coverage.py` now passes its mocked `Study` into `BackendFacade`,
   so its compatibility assertions no longer accidentally run against a real `Study`.
+- `tests/unit/backend/test_facade_headless.py` now uses the same explicit `BackendFacade(study=...)`
+  pattern; headless facade compatibility and shared `ApplicationService` runtime tests pass
+  together.
 
 ### Evidence 入口
 

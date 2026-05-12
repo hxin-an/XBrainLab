@@ -37,6 +37,30 @@
 
 ## 2026-05-12
 
+### 17:21 Facade headless mocked-study fixture correction
+
+- 做了什麼：
+  - Fixed `tests/unit/backend/test_facade_headless.py` so its mocked `Study` is passed into
+    `BackendFacade(study=...)`; before this, patching `XBrainLab.backend.facade.Study` did not
+    affect `get_application_service(None)`, so the test accidentally constructed a real `Study`.
+  - Re-ran the facade compatibility cluster together with the ApplicationService runtime cache
+    tests and montage helper coverage.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/backend/test_facade_headless.py tests/unit/backend/application/test_runtime.py -q`
+    -> `4 passed`.
+  - `poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py tests/unit/backend/test_facade_headless.py tests/unit/backend/application/test_runtime.py tests/unit/backend/utils/test_montage_mapping.py -q`
+    -> `54 passed`.
+  - `poetry run ruff check tests/unit/backend/test_facade_headless.py tests/unit/backend/application/test_runtime.py`
+    -> `All checks passed!`.
+  - `poetry run basedpyright tests/unit/backend/test_facade_headless.py tests/unit/backend/application/test_runtime.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run mkdocs build --strict`
+    -> PASS, with the existing MkDocs Material advisory.
+  - `git diff --check`
+    -> PASS.
+- 接續 / 本輪剩餘：
+  - Commit this compatibility fixture correction, then continue with remaining facade references.
+
 ### 17:15 Montage fuzzy-matching facade extraction
 
 - 做了什麼：
