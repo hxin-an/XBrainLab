@@ -22,3 +22,13 @@
 - `poetry run mkdocs build --strict`: PASS.
 - `git diff --check`: PASS.
 - Desktop and mobile screenshots captured with Playwright.
+
+## Publish Attempt
+
+- workflow run: `https://github.com/hxin-an/XBrainLab/actions/runs/25751345978`
+- build job: PASS.
+- deploy job: FAILED.
+- blocker: GitHub Pages environment protection rejects deployments from
+  `docs/data-import-private-portal`; the workflow reported
+  `Branch "docs/data-import-private-portal" is not allowed to deploy to github-pages due to
+  environment protection rules.`
