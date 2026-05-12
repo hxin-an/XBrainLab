@@ -109,6 +109,7 @@ def _state(
     has_model: bool = True,
     has_training_option: bool = True,
     has_trainer: bool = False,
+    is_training: bool = False,
 ) -> ApplicationStateSnapshot:
     return ApplicationStateSnapshot(
         pipeline_stage="dataset_ready",
@@ -120,6 +121,7 @@ def _state(
             has_model=has_model,
             has_training_option=has_training_option,
             has_trainer=has_trainer,
+            is_running=is_training,
         ),
         evaluation=EvaluationStateSnapshot(
             available=finished_runs > 0,
@@ -184,8 +186,45 @@ def test_analysis_service_summarizes_finished_evaluation_runs() -> None:
     assert diagnostics["target"] == "latest"
     assert diagnostics["plan_count"] == 1
     assert diagnostics["finished_run_count"] == 1
+    assert diagnostics["training_active"] is False
     assert diagnostics["plans"][0]["name"] == "Plan A"
     assert diagnostics["plans"][0]["metrics"] == {"accuracy": 0.75}
+
+
+def test_analysis_service_reports_no_results_without_facade() -> None:
+    service, _visualization, _preprocess = _service(
+        evaluation=_EvaluationController([]),
+    )
+
+    message, diagnostics = _expect_payload(
+        service.handle_evaluate(EvaluateCommand(target="latest")),
+    )
+
+    assert message == "No completed training runs are available for evaluation yet."
+    assert diagnostics["payload_type"] == "evaluation_summary"
+    assert diagnostics["available"] is False
+    assert diagnostics["plan_count"] == 0
+    assert diagnostics["finished_run_count"] == 0
+    assert diagnostics["training_active"] is False
+    assert diagnostics["plans"] == []
+
+
+def test_analysis_service_reports_training_active_without_facade() -> None:
+    plan_a = _Plan("Plan A", [_Run(finished=True)])
+    plan_b = _Plan("Plan B", [_Run(finished=True)])
+    service, _visualization, _preprocess = _service(
+        state=_state(is_training=True, finished_runs=2),
+        evaluation=_EvaluationController([plan_a, plan_b]),
+    )
+
+    _message, diagnostics = _expect_payload(
+        service.handle_evaluate(EvaluateCommand(target="latest")),
+    )
+
+    assert diagnostics["plan_count"] == 2
+    assert diagnostics["finished_run_count"] == 2
+    assert diagnostics["training_active"] is True
+    assert [plan["name"] for plan in diagnostics["plans"]] == ["Plan A", "Plan B"]
 
 
 def test_analysis_service_can_return_ui_evaluation_objects() -> None:

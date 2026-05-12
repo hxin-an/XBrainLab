@@ -6416,3 +6416,29 @@ behavior into direct `TrainingCommandService` tests.
 - This does not physically remove `BackendFacade`.
 - This is command-service replacement evidence for one facade cluster, not full training quality,
   GPU runtime acceptance, or desktop workflow completion.
+
+## 2026-05-12 Evaluation Latest-Results Facade-Replacement Guard
+
+### 狀態
+
+Continued the backend/test hygiene lane on `test/backend-ui-legacy-hygiene`. This slice did not
+touch answer UI layout or Data Import UX. It moved `BackendFacade.get_latest_results()`
+compatibility behavior into direct `EvaluateCommand` / `AnalysisCommandService` coverage.
+
+### 已可宣稱
+
+- Evaluation command diagnostics now include `training_active` from the shared application state
+  snapshot.
+- Analysis command-service coverage now checks no-results behavior without entering through
+  `BackendFacade`.
+- Analysis command-service coverage now checks multiple plans, multiple finished runs, and active
+  training state without entering through `BackendFacade`.
+- Focused validation is green: analysis service `6 passed`, facade compatibility plus replacement
+  coverage `49 passed`, ApplicationService evaluate focused tests `2 passed`, ruff PASS,
+  basedpyright `0 errors`, architecture compliant.
+
+### 不能宣稱完成
+
+- This does not physically remove `BackendFacade`.
+- This is command-result replacement evidence for one facade cluster, not full evaluation UI
+  acceptance or training quality evidence.

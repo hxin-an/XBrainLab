@@ -16337,3 +16337,38 @@
 - claims still not supported：
   - This does not physically remove `BackendFacade`.
   - This is command-service replacement coverage, not proof of full training runtime quality.
+
+### 2026-05-12 Evaluation latest-results facade-replacement guard
+
+- scope：
+  - Continued on `test/backend-ui-legacy-hygiene`.
+  - No answer UI redesign and no Data Import UX redesign.
+  - Moved `BackendFacade.get_latest_results()` compatibility behavior into direct
+    `EvaluateCommand` / `AnalysisCommandService` replacement coverage.
+- implementation：
+  - Added `training_active` to evaluation command diagnostics from the shared application state
+    snapshot, so the command result carries the old facade's active-training truth without using
+    the facade API.
+- test cleanup：
+  - Added direct no-results coverage for `EvaluateCommand`.
+  - Added direct multi-plan / multi-finished-run coverage with active-training state.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_analysis_service.py -q`
+    -> `6 passed`.
+  - `poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py
+    tests/unit/backend/application/test_analysis_service.py -q`
+    -> `49 passed`.
+  - `poetry run pytest --capture=sys
+    tests/unit/backend/application/test_application_service.py::test_evaluate_command_returns_typed_service_backed_summary
+    tests/unit/backend/application/test_application_service.py::test_evaluate_and_clear_history_block_when_trainer_has_no_plan_history -q`
+    -> `2 passed`.
+  - `poetry run ruff check XBrainLab/backend/application/analysis_service.py
+    tests/unit/backend/application/test_analysis_service.py`
+    -> PASS.
+  - `poetry run basedpyright XBrainLab/backend/application/analysis_service.py
+    tests/unit/backend/application/test_analysis_service.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+- claims still not supported：
+  - This does not physically remove `BackendFacade`.
+  - This is command-result replacement coverage, not proof of full evaluation UI acceptance.

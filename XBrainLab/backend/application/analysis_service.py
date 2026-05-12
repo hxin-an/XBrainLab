@@ -95,6 +95,7 @@ class AnalysisCommandService:
             "target": command.target,
             "plan_count": len(plans),
             "finished_run_count": finished_total,
+            "training_active": self._get_state().training.is_running,
             "plans": summaries,
         }
         if command.include_objects:
