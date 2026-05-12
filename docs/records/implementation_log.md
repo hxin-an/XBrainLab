@@ -6571,3 +6571,33 @@ command services, helper tests, and integration smokes.
   approval, or answer UI approval.
 - UI controller fallback compatibility still exists in guarded mock/legacy boundaries and must be
   handled separately.
+
+## 2026-05-12 UI Controller Fallback Helper-Scope Guard
+
+### 狀態
+
+Created `refactor/remove-ui-controller-fallback` from `test/backend-ui-legacy-hygiene`. This slice
+did not redesign answer UI layout or Data Import UX. It turned direct product-method
+`run_legacy_controller_fallback()` usage into a guarded architecture violation and moved current
+call sites into explicit legacy/fallback helpers.
+
+### 已可宣稱
+
+- Product UI methods in the scanned UI tree no longer directly call
+  `run_legacy_controller_fallback()`.
+- Dataset actions / panel / sidebar, Preprocess sidebar, Training sidebar, Visualization control
+  sidebar, AgentManager montage flow, and TrainingSettingDialog now keep mock / legacy `None`
+  adapter fallback in explicit helper boundaries.
+- Architecture compliance and architecture guard unit tests are green:
+  `Architecture compliant!` and `72 passed`.
+- Focused UI regression is green: `220 passed`.
+- Backend ApplicationService and workflow coverage remain green: `159 passed` and `8 passed`.
+- Representative pipeline smoke remains green: `2 passed`.
+- Fast dashboard is green: `PASS`, generated `2026-05-12 23:59:02 UTC+08:00`.
+
+### 不能宣稱完成
+
+- This does not remove every controller object from UI construction or all read-only controller
+  population paths.
+- This does not complete human Windows desktop acceptance, Data Import UX approval, answer UI
+  approval, release approval, or product completion.

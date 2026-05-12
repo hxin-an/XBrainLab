@@ -36,7 +36,6 @@ from XBrainLab.backend.application import (
 )
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
-    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
     LegacyControllerFallbackUnavailableError,
     blocked_reason,
     execute_application_command,
@@ -121,6 +120,130 @@ class DatasetActionHandler:
             return True
         return False
 
+    def _legacy_import_files(self, filepaths: list[str]) -> bool:
+        controller = self.controller
+        if controller is None:
+            QMessageBox.warning(
+                self.panel,
+                "Interpretation Blocked",
+                "Dataset controller unavailable.",
+            )
+            return False
+        available, _ = self._legacy_controller_value(
+            "Interpretation Blocked",
+            lambda: controller.import_files(filepaths),
+        )
+        return bool(available)
+
+    def _legacy_apply_smart_parse(self, results) -> tuple[bool, int]:
+        controller = self.controller
+        if controller is None:
+            QMessageBox.warning(
+                self.panel,
+                "Smart Parse Blocked",
+                "Dataset controller unavailable.",
+            )
+            return False, 0
+        available, count = self._legacy_controller_value(
+            "Smart Parse Blocked",
+            lambda: controller.apply_smart_parse(results),
+        )
+        return bool(available), int(count or 0)
+
+    def _legacy_filenames_for_smart_parse(self) -> list[str] | None:
+        controller = self.controller
+        if controller is None:
+            return []
+        available, filenames = self._legacy_controller_value(
+            "Smart Parse Blocked",
+            controller.get_filenames,
+        )
+        if not available:
+            return None
+        return list(filenames or [])
+
+    def _legacy_import_labels(
+        self,
+        target_files,
+        label_map,
+        mapping,
+        selected_event_names,
+        plan,
+    ) -> tuple[bool, int]:
+        try:
+            count = run_legacy_controller_fallback(
+                self.panel,
+                lambda: self._run_legacy_label_import(
+                    target_files,
+                    label_map,
+                    mapping,
+                    selected_event_names,
+                    plan,
+                ),
+            )
+        except LegacyControllerFallbackUnavailableError as exc:
+            QMessageBox.warning(self.panel, "Label Import Blocked", str(exc))
+            return False, 0
+        return True, int(count or 0)
+
+    def _legacy_target_files_from_controller(self, selected_rows) -> list[Any]:
+        controller = self.controller
+        if controller is None:
+            QMessageBox.warning(
+                self.panel,
+                "Add Labels Blocked",
+                "Dataset controller unavailable.",
+            )
+            return []
+        available, data_list = self._legacy_controller_value(
+            "Add Labels Blocked",
+            controller.get_loaded_data_list,
+        )
+        if not available:
+            return []
+        self._last_target_file_indices = [
+            i for i in selected_rows if i < len(data_list)
+        ]
+        return [data_list[i] for i in self._last_target_file_indices]
+
+    def _legacy_smart_filter_suggestions(
+        self,
+        raw_file,
+        target_count: int,
+    ) -> list[int]:
+        controller = self.controller
+        if controller is None:
+            return []
+        available, suggestions = self._legacy_controller_value(
+            "Smart Filter Blocked",
+            lambda: controller.get_smart_filter_suggestions(raw_file, target_count),
+            warn_when_unavailable=False,
+        )
+        if not available:
+            logger.warning(
+                "Skipped legacy smart-filter suggestions in real Study context.",
+            )
+            return []
+        return [int(item) for item in suggestions or []]
+
+    def _legacy_update_metadata(self, controller, updates) -> bool:
+        try:
+            run_legacy_controller_fallback(
+                self.panel,
+                lambda: self._run_metadata_update_fallback(controller, updates),
+            )
+        except LegacyControllerFallbackUnavailableError as exc:
+            QMessageBox.warning(self.panel, "Metadata Update Blocked", str(exc))
+            return False
+        return True
+
+    def _legacy_remove_files(self, controller, rows) -> bool:
+        available, _ = self._legacy_controller_value(
+            "Remove Files Blocked",
+            lambda: controller.remove_files(rows),
+        )
+        return bool(available)
+
     def import_data(self):
         """Scan, preview, validate, and apply an EEG data interpretation."""
         scan_capability = get_command_capability(self.panel, CommandName.SCAN_SOURCE)
@@ -187,17 +310,7 @@ class DatasetActionHandler:
                         )
                         return
                     if result is None:
-                        try:
-                            run_legacy_controller_fallback(
-                                self.panel,
-                                lambda: controller.import_files(filepaths),
-                            )
-                        except LegacyControllerFallbackUnavailableError as exc:
-                            QMessageBox.warning(
-                                self.panel,
-                                "Interpretation Blocked",
-                                str(exc),
-                            )
+                        if not self._legacy_import_files(list(filepaths)):
                             return
                         return
                     QMessageBox.information(
@@ -887,17 +1000,8 @@ class DatasetActionHandler:
                 ApplySmartParseCommand(results=results),
             )
             if result is None:
-                try:
-                    count = run_legacy_controller_fallback(
-                        self.panel,
-                        lambda: controller.apply_smart_parse(results),
-                    )
-                except LegacyControllerFallbackUnavailableError as exc:
-                    QMessageBox.warning(
-                        self.panel,
-                        "Smart Parse Blocked",
-                        str(exc),
-                    )
+                available, count = self._legacy_apply_smart_parse(results)
+                if not available:
                     return
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
@@ -915,21 +1019,7 @@ class DatasetActionHandler:
             refresh=False,
         )
         if result is None:
-            controller = self.controller
-            if controller is None:
-                return []
-            try:
-                return run_legacy_controller_fallback(
-                    self.panel,
-                    controller.get_filenames,
-                )
-            except LegacyControllerFallbackUnavailableError as exc:
-                QMessageBox.warning(
-                    self.panel,
-                    "Smart Parse Blocked",
-                    str(exc),
-                )
-                return None
+            return self._legacy_filenames_for_smart_parse()
         if result.failed:
             QMessageBox.warning(
                 self.panel,
@@ -1032,23 +1122,14 @@ class DatasetActionHandler:
                 ImportLabelsCommand(plan=plan),
             )
             if result is None:
-                try:
-                    count = run_legacy_controller_fallback(
-                        self.panel,
-                        lambda: self._run_legacy_label_import(
-                            target_files,
-                            label_map,
-                            mapping,
-                            selected_event_names,
-                            plan,
-                        ),
-                    )
-                except LegacyControllerFallbackUnavailableError as exc:
-                    QMessageBox.warning(
-                        self.panel,
-                        "Label Import Blocked",
-                        str(exc),
-                    )
+                available, count = self._legacy_import_labels(
+                    target_files,
+                    label_map,
+                    mapping,
+                    selected_event_names,
+                    plan,
+                )
+                if not available:
                     return
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
@@ -1176,30 +1257,7 @@ class DatasetActionHandler:
         if table_targets is not None:
             return table_targets
 
-        controller = self.controller
-        if controller is None:
-            QMessageBox.warning(
-                self.panel,
-                "Add Labels Blocked",
-                "Dataset controller unavailable.",
-            )
-            return []
-        try:
-            data_list = run_legacy_controller_fallback(
-                self.panel,
-                controller.get_loaded_data_list,
-            )
-        except LegacyControllerFallbackUnavailableError:
-            QMessageBox.warning(
-                self.panel,
-                "Add Labels Blocked",
-                LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
-            )
-            return []
-        self._last_target_file_indices = [
-            i for i in selected_rows if i < len(data_list)
-        ]
-        return [data_list[i] for i in self._last_target_file_indices]
+        return self._legacy_target_files_from_controller(selected_rows)
 
     def _target_files_from_table_rows(self, selected_rows):
         target_files = []
@@ -1349,25 +1407,7 @@ class DatasetActionHandler:
                     return [int(item) for item in suggestions]
                 return []
 
-        controller = self.controller
-        if controller is None:
-            return []
-        try:
-            return [
-                int(item)
-                for item in run_legacy_controller_fallback(
-                    self.panel,
-                    lambda: controller.get_smart_filter_suggestions(
-                        raw_file,
-                        target_count,
-                    ),
-                )
-            ]
-        except LegacyControllerFallbackUnavailableError:
-            logger.warning(
-                "Skipped legacy smart-filter suggestions in real Study context.",
-            )
-            return []
+        return self._legacy_smart_filter_suggestions(raw_file, target_count)
 
     def _target_index_for_filter_suggestion(self, raw_file, target_files) -> int | None:
         try:
@@ -1439,20 +1479,7 @@ class DatasetActionHandler:
                 UpdateMetadataCommand(updates=updates),
             )
             if result is None:
-                try:
-                    run_legacy_controller_fallback(
-                        self.panel,
-                        lambda: self._run_metadata_update_fallback(
-                            controller,
-                            updates,
-                        ),
-                    )
-                except LegacyControllerFallbackUnavailableError as exc:
-                    QMessageBox.warning(
-                        self.panel,
-                        "Metadata Update Blocked",
-                        str(exc),
-                    )
+                if not self._legacy_update_metadata(controller, updates):
                     return
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
@@ -1507,17 +1534,7 @@ class DatasetActionHandler:
                         "Dataset controller unavailable.",
                     )
                     return
-                try:
-                    run_legacy_controller_fallback(
-                        self.panel,
-                        lambda: controller.remove_files(rows),
-                    )
-                except LegacyControllerFallbackUnavailableError as exc:
-                    QMessageBox.warning(
-                        self.panel,
-                        "Remove Files Blocked",
-                        str(exc),
-                    )
+                if not self._legacy_remove_files(controller, rows):
                     return
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)

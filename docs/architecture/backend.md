@@ -63,6 +63,13 @@ mock / legacy adapter 回傳 `None` 的相容情境。
 後續 Training sidebar cleanup 也把重新 split 前的 dataset cleanup 和 Clear History 接回
 `ClearDatasetsCommand` / `ClearTrainingHistoryCommand`；successful service result 不再落回
 training controller mutation。
+2026-05-12 UI fallback helper-scope cleanup 又把 product UI methods 內的直接
+`run_legacy_controller_fallback()` 呼叫收進 explicit `_legacy_*` / fallback helpers，並新增
+architecture guard：real product method 若直接呼叫 fallback helper 會 fail。這次涵蓋
+Dataset actions / panel / sidebar、Preprocess sidebar、Training sidebar、Visualization
+control sidebar、AgentManager montage flow、TrainingSettingDialog initial-option fallback。
+mock / legacy `None` adapter branches 仍保留，但它們在程式碼上和 service-backed success path
+分離。
 最新 command-gate cleanup 又把 capability / confirmation enforcement 從
 `ApplicationService._ensure_command_allowed()` 的硬編碼清單抽到
 `XBrainLab/backend/application/command_gate.py`。`train` 的 long-running confirmation 現在由
@@ -288,8 +295,9 @@ controller，而是先經過 UI command adapter 進 `ApplicationService.execute(
 - Agent montage confirmation 使用 `ApplyMontageCommand`。
 - Info panel state refresh 使用 `QueryStateCommand(data_lists)`。
 
-UI 測試中的 mock `Study` 仍走 legacy fallback，避免 unit test 用不完整 mock state
-誤觸真 ApplicationService policy。
+UI 測試中的 mock `Study` 仍走 explicit legacy fallback，避免 unit test 用不完整 mock state
+誤觸真 ApplicationService policy。architecture guard 現在要求這些 fallback 只能出現在
+明確的 legacy / fallback helper，不可藏在 product action method 裡。
 
 仍保留 controller / UI-request path 包含：
 

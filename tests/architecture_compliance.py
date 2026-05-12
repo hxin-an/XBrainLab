@@ -298,6 +298,15 @@ def check_architecture(root_dir: str) -> int:
             print(f" - {violation}")
         return 1
 
+    legacy_fallback_scope_violations = check_ui_legacy_fallback_helper_scope(
+        Path(root_dir)
+    )
+    if legacy_fallback_scope_violations:
+        print("\nUI Legacy Fallback Helper Scope Violations Found:")
+        for violation in legacy_fallback_scope_violations:
+            print(f" - {violation}")
+        return 1
+
     backend_execute_violations = check_ui_direct_backend_service_execute(Path(root_dir))
     if backend_execute_violations:
         print("\nUI Direct Backend Service Execute Violations Found:")
@@ -857,6 +866,59 @@ class _LegacyMutationHelperCallVisitor(ast.NodeVisitor):
             return
 
         if _call_name(node.func) in self.helper_names and self._legacy_gate_depth == 0:
+            self.violations.append(node)
+            return
+        self.generic_visit(node)
+
+
+def check_ui_legacy_fallback_helper_scope(root_dir: Path) -> list[str]:
+    """Return direct legacy fallback gates outside explicit legacy helpers."""
+    violations: list[str] = []
+    ui_dir = root_dir / "XBrainLab" / "ui"
+    if not ui_dir.exists():
+        return violations
+
+    for py_file in ui_dir.rglob("*.py"):
+        if py_file.name in {"__init__.py", "application_capabilities.py"}:
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if _is_legacy_controller_mutation_helper(node.name):
+                continue
+            visitor = _LegacyFallbackGateVisitor()
+            visitor.visit(node)
+            violations.extend(
+                f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
+                "run_legacy_controller_fallback() from a product method; move "
+                "mock/legacy compatibility into an explicit legacy/fallback "
+                "helper so product command paths stay visually separate."
+                for call in visitor.violations
+            )
+    return violations
+
+
+class _LegacyFallbackGateVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.violations: list[ast.Call] = []
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        if _is_legacy_controller_mutation_helper(node.name):
+            return
+        self.generic_visit(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        if _is_legacy_controller_mutation_helper(node.name):
+            return
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if _call_name(node.func) == "run_legacy_controller_fallback":
             self.violations.append(node)
             return
         self.generic_visit(node)

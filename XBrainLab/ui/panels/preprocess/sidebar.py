@@ -220,23 +220,31 @@ class PreprocessSidebar(QWidget):
         )
         if result is None:
             if command_capability is None:
-                try:
-                    return run_legacy_controller_fallback(
-                        self,
-                        self.controller.get_preprocessed_data_list,
-                    )
-                except LegacyControllerFallbackUnavailableError:
-                    QMessageBox.warning(
-                        self,
-                        failure_title,
-                        LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
-                    )
-                    return None
+                return self._legacy_preprocessed_data_list_for_dialog(failure_title)
             return []
         if result.failed:
             self._show_command_failure(failure_title, result.message)
             return None
         data_list = result.diagnostics.get("preprocessed_data_list")
+        return list(data_list) if isinstance(data_list, list) else []
+
+    def _legacy_preprocessed_data_list_for_dialog(
+        self,
+        failure_title: str,
+    ) -> list[Any] | None:
+        """Return preprocessed data only for mock / legacy dialog contexts."""
+        try:
+            data_list = run_legacy_controller_fallback(
+                self,
+                self.controller.get_preprocessed_data_list,
+            )
+        except LegacyControllerFallbackUnavailableError:
+            QMessageBox.warning(
+                self,
+                failure_title,
+                LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+            )
+            return None
         return list(data_list) if isinstance(data_list, list) else []
 
     def _update_button_states(self, is_epoched):
@@ -699,13 +707,11 @@ class PreprocessSidebar(QWidget):
                 ResetPreprocessCommand(confirmed=True),
             )
             if result is None:
-                try:
-                    run_legacy_controller_fallback(
-                        self,
-                        self.controller.reset_preprocess,
-                    )
-                except LegacyControllerFallbackUnavailableError as exc:
-                    QMessageBox.warning(self, "Reset Blocked", str(exc))
+                applied, _ = self._run_legacy_preprocess_fallback(
+                    "Reset Blocked",
+                    self.controller.reset_preprocess,
+                )
+                if not applied:
                     return
             elif result.failed:
                 self._show_command_failure("Error", result.message)

@@ -189,7 +189,23 @@ class DatasetPanel(BasePanel):
 
         """
         try:
-            total_files = run_legacy_controller_fallback(
+            total_files = self._legacy_apply_loader(loader)
+        except Exception as exc:
+            logger.error("Failed to apply data", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Failed to apply data: {exc}")
+            return
+        if total_files is None:
+            return
+
+        QMessageBox.information(
+            self,
+            "Success",
+            f"Dataset updated. Total files: {total_files}",
+        )
+
+    def _legacy_apply_loader(self, loader) -> int | None:
+        try:
+            return run_legacy_controller_fallback(
                 self,
                 lambda: self._apply_legacy_loader(loader),
             )
@@ -201,17 +217,7 @@ class DatasetPanel(BasePanel):
                 "Use Import file, Import folder, or Import BIDS folder so "
                 "the data goes through the guided import workflow.",
             )
-            return
-        except Exception as exc:
-            logger.error("Failed to apply data", exc_info=True)
-            QMessageBox.critical(self, "Error", f"Failed to apply data: {exc}")
-            return
-
-        QMessageBox.information(
-            self,
-            "Success",
-            f"Dataset updated. Total files: {total_files}",
-        )
+            return None
 
     def _apply_legacy_loader(self, loader) -> int:
         # Kept for mock/unit-test compatibility; product data entry uses commands.
@@ -245,17 +251,7 @@ class DatasetPanel(BasePanel):
         if controller is None:
             data_list = []
         elif queried_data_list is None:
-            try:
-                data_list = run_legacy_controller_fallback(
-                    self,
-                    controller.get_loaded_data_list,
-                )
-            except LegacyControllerFallbackUnavailableError:
-                logger.warning(
-                    "Blocked stale dataset controller render fallback in real "
-                    "Study context.",
-                )
-                data_list = []
+            data_list = self._legacy_loaded_data_list_for_render(controller)
         else:
             data_list = queried_data_list
         metadata_capability = get_command_capability(self, CommandName.UPDATE_METADATA)
@@ -363,6 +359,31 @@ class DatasetPanel(BasePanel):
         data_list = result.diagnostics.get("loaded_data_list")
         return list(data_list) if isinstance(data_list, list) else []
 
+    def _legacy_loaded_data_list_for_render(self, controller) -> list[Any]:
+        try:
+            return run_legacy_controller_fallback(
+                self,
+                controller.get_loaded_data_list,
+            )
+        except LegacyControllerFallbackUnavailableError:
+            logger.warning(
+                "Blocked stale dataset controller render fallback in real "
+                "Study context.",
+            )
+            return []
+
+    def _legacy_update_metadata(self, controller, *, row: int, **kwargs) -> bool:
+        try:
+            run_legacy_controller_fallback(
+                self,
+                lambda: controller.update_metadata(row, **kwargs),
+            )
+        except LegacyControllerFallbackUnavailableError as exc:
+            QMessageBox.warning(self, "Metadata blocked", str(exc))
+            self._update_panel_after_legacy_result(None)
+            return False
+        return True
+
     @staticmethod
     def _metadata_item(
         value: str,
@@ -415,14 +436,11 @@ class DatasetPanel(BasePanel):
                     UpdateMetadataCommand(index=row, subject=new_value),
                 )
                 if result is None:
-                    try:
-                        run_legacy_controller_fallback(
-                            self,
-                            lambda: controller.update_metadata(row, subject=new_value),
-                        )
-                    except LegacyControllerFallbackUnavailableError as exc:
-                        QMessageBox.warning(self, "Metadata blocked", str(exc))
-                        self._update_panel_after_legacy_result(None)
+                    if not self._legacy_update_metadata(
+                        controller,
+                        row=row,
+                        subject=new_value,
+                    ):
                         return
                 elif result.failed:
                     QMessageBox.warning(self, "Metadata blocked", result.message)
@@ -438,14 +456,11 @@ class DatasetPanel(BasePanel):
                     UpdateMetadataCommand(index=row, session=new_value),
                 )
                 if result is None:
-                    try:
-                        run_legacy_controller_fallback(
-                            self,
-                            lambda: controller.update_metadata(row, session=new_value),
-                        )
-                    except LegacyControllerFallbackUnavailableError as exc:
-                        QMessageBox.warning(self, "Metadata blocked", str(exc))
-                        self._update_panel_after_legacy_result(None)
+                    if not self._legacy_update_metadata(
+                        controller,
+                        row=row,
+                        session=new_value,
+                    ):
                         return
                 elif result.failed:
                     QMessageBox.warning(self, "Metadata blocked", result.message)

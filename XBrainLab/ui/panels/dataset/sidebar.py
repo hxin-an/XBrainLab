@@ -22,7 +22,6 @@ from XBrainLab.backend.application import (
     ResetSessionCommand,
 )
 from XBrainLab.ui.application_capabilities import (
-    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
     LegacyControllerFallbackUnavailableError,
     blocked_reason,
     execute_application_command,
@@ -446,17 +445,13 @@ class DatasetSidebar(QWidget):
             refresh=False,
         )
         if result is None:
-            try:
-                has_epoch = bool(
-                    run_legacy_controller_fallback(
-                        self,
-                        self._legacy_has_epoch_data,
-                    ),
-                )
-            except LegacyControllerFallbackUnavailableError:
+            available, has_epoch = self._legacy_controller_value(
+                self._legacy_has_epoch_data,
+            )
+            if not available:
                 return False, "Dataset state is unavailable right now."
             return (
-                has_epoch,
+                bool(has_epoch),
                 "Clear epoched dataset and downstream results."
                 if has_epoch
                 else "Create epochs before clearing the dataset.",
@@ -476,6 +471,29 @@ class DatasetSidebar(QWidget):
             result = is_epoched()
             return False if isinstance(result, Mock) else bool(result)
         return False
+
+    def _legacy_clear_dataset(self) -> bool:
+        available, _ = self._legacy_controller_value(
+            self.controller.clean_dataset,
+            blocked_title="Clear Dataset Blocked",
+        )
+        return bool(available)
+
+    def _legacy_apply_channel_selection(self, result) -> bool:
+        available, _ = self._legacy_controller_value(
+            lambda: self.controller.apply_channel_selection(result),
+            blocked_title="Channel Selection Blocked",
+        )
+        return bool(available)
+
+    def _legacy_loaded_data_list_for_channel_selection(self) -> list[Any] | None:
+        available, data_list = self._legacy_controller_value(
+            self.controller.get_loaded_data_list,
+            blocked_title="Channel Selection Blocked",
+        )
+        if not available:
+            return None
+        return list(data_list or [])
 
     @staticmethod
     def _state_has_clearable_epoch(state: dict[str, Any]) -> bool:
@@ -563,17 +581,7 @@ class DatasetSidebar(QWidget):
                         ),
                     )
                     if command_result is None:
-                        try:
-                            run_legacy_controller_fallback(
-                                self,
-                                lambda: self.controller.apply_channel_selection(result),
-                            )
-                        except LegacyControllerFallbackUnavailableError as exc:
-                            QMessageBox.warning(
-                                self,
-                                "Channel Selection Blocked",
-                                str(exc),
-                            )
+                        if not self._legacy_apply_channel_selection(result):
                             return
                     elif command_result.failed:
                         QMessageBox.critical(
@@ -606,18 +614,7 @@ class DatasetSidebar(QWidget):
         )
         if result is None:
             if preprocess_capability is None:
-                try:
-                    return run_legacy_controller_fallback(
-                        self,
-                        self.controller.get_loaded_data_list,
-                    )
-                except LegacyControllerFallbackUnavailableError:
-                    QMessageBox.warning(
-                        self,
-                        "Channel Selection Blocked",
-                        LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
-                    )
-                    return None
+                return self._legacy_loaded_data_list_for_channel_selection()
             return []
         if result.failed:
             return []
@@ -663,13 +660,7 @@ class DatasetSidebar(QWidget):
                 ResetSessionCommand(confirmed=True),
             )
             if result is None:
-                try:
-                    run_legacy_controller_fallback(
-                        self,
-                        self.controller.clean_dataset,
-                    )
-                except LegacyControllerFallbackUnavailableError as exc:
-                    QMessageBox.warning(self, "Clear Dataset Blocked", str(exc))
+                if not self._legacy_clear_dataset():
                     return
             elif result.failed:
                 QMessageBox.critical(

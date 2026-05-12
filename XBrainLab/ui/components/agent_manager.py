@@ -1196,28 +1196,7 @@ class AgentManager(QObject):
                     ),
                 )
                 if result is None:
-                    controller = self.preprocess_controller
-                    if controller is None:
-                        sb = self.main_window.statusBar()
-                        if sb:
-                            sb.showMessage(
-                                "Montage setup blocked: legacy controller unavailable.",
-                            )
-                        self.handle_user_input("Montage Selection Failed.")
-                        return
-                    try:
-                        run_legacy_controller_fallback(
-                            self,
-                            lambda: controller.apply_montage(
-                                chs,
-                                positions,
-                            ),
-                        )
-                    except LegacyControllerFallbackUnavailableError as exc:
-                        sb = self.main_window.statusBar()
-                        if sb:
-                            sb.showMessage(f"Montage setup blocked: {exc}")
-                        self.handle_user_input("Montage Selection Failed.")
+                    if not self._legacy_apply_montage_selection(chs, positions):
                         return
                 elif result.failed:
                     sb = self.main_window.statusBar()
@@ -1252,6 +1231,33 @@ class AgentManager(QObject):
             self.chat_controller.add_agent_message("Operation Cancelled.")
             self.handle_user_input("Montage Selection Cancelled by User.")
 
+    def _legacy_apply_montage_selection(self, chs, positions) -> bool:
+        """Apply montage only for mock / legacy UI contexts."""
+        controller = self.preprocess_controller
+        if controller is None:
+            sb = self.main_window.statusBar()
+            if sb:
+                sb.showMessage(
+                    "Montage setup blocked: legacy controller unavailable.",
+                )
+            self.handle_user_input("Montage Selection Failed.")
+            return False
+        try:
+            run_legacy_controller_fallback(
+                self,
+                lambda: controller.apply_montage(
+                    chs,
+                    positions,
+                ),
+            )
+        except LegacyControllerFallbackUnavailableError as exc:
+            sb = self.main_window.statusBar()
+            if sb:
+                sb.showMessage(f"Montage setup blocked: {exc}")
+            self.handle_user_input("Montage Selection Failed.")
+            return False
+        return True
+
     def _montage_channel_names_for_dialog(self) -> list[str] | None:
         """Return montage channel names through the command spine when available."""
         result = execute_application_command(
@@ -1260,17 +1266,7 @@ class AgentManager(QObject):
             refresh=False,
         )
         if result is None:
-            try:
-                return run_legacy_controller_fallback(
-                    self,
-                    self._legacy_montage_channel_names,
-                )
-            except LegacyControllerFallbackUnavailableError as exc:
-                sb = self.main_window.statusBar()
-                if sb:
-                    sb.showMessage(f"Montage setup blocked: {exc}")
-                self.handle_user_input("Montage Selection Failed.")
-                return None
+            return self._legacy_montage_channel_names_for_dialog()
         if result.failed:
             sb = self.main_window.statusBar()
             if sb:
@@ -1285,6 +1281,20 @@ class AgentManager(QObject):
         if not isinstance(channel_names, list):
             return []
         return [str(name) for name in channel_names]
+
+    def _legacy_montage_channel_names_for_dialog(self) -> list[str] | None:
+        """Return montage channel names only for mock / legacy UI contexts."""
+        try:
+            return run_legacy_controller_fallback(
+                self,
+                self._legacy_montage_channel_names,
+            )
+        except LegacyControllerFallbackUnavailableError as exc:
+            sb = self.main_window.statusBar()
+            if sb:
+                sb.showMessage(f"Montage setup blocked: {exc}")
+            self.handle_user_input("Montage Selection Failed.")
+            return None
 
     def _legacy_montage_channel_names(self) -> list[str]:
         """Read montage channel names only for mock / legacy UI contexts."""

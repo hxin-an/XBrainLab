@@ -1,6 +1,6 @@
 # XBrainLab 目前架構
 
-最後更新：`2026-05-09`
+最後更新：`2026-05-12`
 
 這裡描述目前實作，不描述理想終局。目標態請看 [target/architecture.md](../target/architecture.md)。
 
@@ -40,7 +40,7 @@ UI / assistant / MCP / scripts
 
 | Risk | 為什麼重要 | 處理方向 |
 | --- | --- | --- |
-| legacy controller path | 桌面操作可能繞過 command spine，測試也可能保護舊路徑。 | real `Study` product path 不再 hidden fallback。 |
+| legacy controller path | 桌面操作可能繞過 command spine，測試也可能保護舊路徑。 | real `Study` product methods 不可直接呼叫 `run_legacy_controller_fallback()`；mock / legacy fallback 必須隔離在 explicit `_legacy_*` / fallback helper 並由 architecture guard 保護。 |
 | UI refresh split truth | backend state 正確但畫面顯示舊狀態。 | command result / changed state 驅動 refresh；command 執行期間的 observer refresh 會被暫停，避免先用 stale controller state 重刷。 |
 | `BackendFacade` reintroduction | 已移除的 wrapper 若回來，就會和 UI / MCP 分裂。 | Architecture guard blocks `BackendFacade` use in product UI / assistant / MCP packages and tests. |
 | Data Interpretation maturity | 資料語意錯會污染後續 training / evidence。 | MVP 先處理代表性 ambiguity，不誇大 final support。 |

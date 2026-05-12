@@ -13,6 +13,7 @@ from tests.architecture_compliance import (
     check_ui_direct_loader_apply,
     check_ui_direct_study_get_controller_lookups,
     check_ui_direct_study_state_reads,
+    check_ui_legacy_fallback_helper_scope,
     check_ui_legacy_mutation_helper_calls,
     check_ui_observer_direct_update_bridges,
     check_ui_observer_handlers_call_refresh_coordinator,
@@ -1159,6 +1160,43 @@ def _run_legacy_label_import(self):
     )
 
     assert check_ui_legacy_mutation_helper_calls(tmp_path) == []
+
+
+def test_legacy_fallback_scope_guard_flags_product_method_gate(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def run(self):
+    return run_legacy_controller_fallback(
+        self,
+        lambda: self.controller.get_loaded_data_list(),
+    )
+""",
+    )
+
+    violations = check_ui_legacy_fallback_helper_scope(tmp_path)
+
+    assert len(violations) == 1
+    assert "run_legacy_controller_fallback" in violations[0]
+    assert "explicit legacy/fallback helper" in violations[0]
+
+
+def test_legacy_fallback_scope_guard_allows_named_helper(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def run(self):
+    return self._legacy_loaded_rows()
+
+def _legacy_loaded_rows(self):
+    return run_legacy_controller_fallback(
+        self,
+        lambda: self.controller.get_loaded_data_list(),
+    )
+""",
+    )
+
+    assert check_ui_legacy_fallback_helper_scope(tmp_path) == []
 
 
 def test_direct_controller_mutation_guard_ignores_non_controller_methods(tmp_path):

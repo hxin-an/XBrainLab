@@ -101,15 +101,7 @@ class TrainingSettingDialog(BaseDialog):
         """Load settings from a service snapshot or explicit legacy fallback."""
         opt = self.initial_option
         if opt is None:
-            if not self.controller:
-                return
-            try:
-                opt = run_legacy_controller_fallback(
-                    self,
-                    self.controller.get_training_option,
-                )
-            except LegacyControllerFallbackUnavailableError:
-                return
+            opt = self._legacy_training_option()
         if opt:
             if isinstance(opt, dict):
                 self._load_settings_snapshot(opt)
@@ -145,6 +137,18 @@ class TrainingSettingDialog(BaseDialog):
             # Restore evaluation
             if opt.evaluation_option and self.evaluation_combo:
                 self.evaluation_combo.setCurrentText(opt.evaluation_option.value)
+
+    def _legacy_training_option(self) -> Any | None:
+        """Read training option only for mock / legacy dialog contexts."""
+        if not self.controller:
+            return None
+        try:
+            return run_legacy_controller_fallback(
+                self,
+                self.controller.get_training_option,
+            )
+        except LegacyControllerFallbackUnavailableError:
+            return None
 
     def _load_settings_snapshot(self, option: dict[str, Any]) -> None:
         """Load saved settings from an ApplicationService state snapshot."""

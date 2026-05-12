@@ -16545,6 +16545,8 @@
   - `poetry run mkdocs build --strict` -> PASS with existing MkDocs Material advisory and nav
     notices.
   - `git diff --check` -> PASS.
+  - `poetry run mkdocs build --strict` -> PASS with existing MkDocs Material advisory and nav
+    notices.
   - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python
     scripts/dev/update_quality_dashboard.py`
     -> Dashboard `PASS`, generated `2026-05-12 22:51:43 UTC+08:00`.
@@ -16611,3 +16613,60 @@
     approval, or answer UI approval.
   - Controller fallback compatibility still exists in UI/test boundaries and must be handled in
     separate slices.
+
+### 2026-05-12 UI controller fallback helper-scope guard
+
+- scope：
+  - Created `refactor/remove-ui-controller-fallback` from `test/backend-ui-legacy-hygiene`.
+  - Kept UX work separate: no answer UI layout redesign and no Data Import UX redesign.
+  - Goal of this slice: product UI methods must not directly call
+    `run_legacy_controller_fallback()`; fallback compatibility must be visually quarantined in
+    explicit legacy / fallback helpers.
+- red gate：
+  - Added `check_ui_legacy_fallback_helper_scope()` and unit guard examples.
+  - First `poetry run python tests/architecture_compliance.py` failed with 33 direct fallback
+    product-method violations.
+  - After initial isolation, the existing mutating-helper guard failed on 2 Dataset action helper
+    calls outside the explicit fallback gate; those were also moved behind direct fallback gates.
+- implementation：
+  - Moved product-method direct fallback branches into explicit `_legacy_*` / fallback helpers in
+    Dataset actions / panel / sidebar, Preprocess sidebar, Training sidebar, Visualization control
+    sidebar, AgentManager montage flow, and TrainingSettingDialog.
+  - Preserved mock / legacy `None` adapter compatibility while keeping real `Study` service-backed
+    success paths on `execute_application_command()` / command result refresh.
+  - Did not change visible Data Import or answer UI layout.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `72 passed`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys
+    tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/dataset/test_panel.py
+    tests/unit/ui/test_sidebars_and_components.py tests/unit/ui/components/test_agent_manager.py
+    tests/unit/ui/preprocess/test_preprocess_panel.py tests/unit/ui/training/test_training_sidebar.py
+    tests/unit/ui/training/test_training_panel.py tests/unit/ui/visualization/test_control_sidebar.py -q`
+    -> `220 passed`.
+  - Focused ruff on changed Python files -> PASS.
+  - Focused basedpyright on changed Python files -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run pytest --capture=sys tests/unit/backend/application -q` -> `159 passed`.
+  - `poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py -q`
+    -> `8 passed`.
+  - `poetry run pytest --capture=sys
+    tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics
+    tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet -q`
+    -> `2 passed`.
+  - `git diff --check` -> PASS.
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python
+    scripts/dev/update_quality_dashboard.py`
+    -> Dashboard `PASS`, generated `2026-05-12 23:59:02 UTC+08:00`.
+- audit：
+  - `run_legacy_controller_fallback()` calls remain only in `application_capabilities.py` or
+    explicit legacy/fallback helper functions covered by architecture compliance.
+  - `get_controller()` remains in MainWindow panel construction and explicit legacy bootstrap/read
+    helpers; this slice did not remove panel controller injection.
+  - Integration scan found no product-success legacy fallback usage; the only `BackendFacade`
+    integration hit is a forbidden-string assertion in the UI transcript test.
+- claims still not supported：
+  - This does not remove every controller object from UI construction.
+  - This does not finish all read-only controller population / observer refresh cleanup.
+  - This is not product complete, release approval, human Windows desktop acceptance, Data Import UX
+    approval, or answer UI approval.

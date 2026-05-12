@@ -193,6 +193,107 @@ class TrainingSidebar(QWidget):
                 QMessageBox.warning(self, blocked_title, str(exc))
             return False, None
 
+    def _legacy_clear_datasets_for_split(self) -> bool:
+        """Clear generated datasets only for mock / legacy UI contexts."""
+        try:
+            run_legacy_controller_fallback(
+                self,
+                lambda: self.controller.clean_datasets(force_update=True),
+            )
+        except LegacyControllerFallbackUnavailableError as exc:
+            QMessageBox.warning(
+                self,
+                "Data Splitting Blocked",
+                str(exc),
+            )
+            return False
+        return True
+
+    def _legacy_apply_data_splitting(self, generator) -> bool:
+        """Apply data splitting only for mock / legacy UI contexts."""
+        try:
+            run_legacy_controller_fallback(
+                self,
+                lambda: self.controller.apply_data_splitting(generator),
+            )
+        except LegacyControllerFallbackUnavailableError as exc:
+            QMessageBox.warning(
+                self,
+                "Data Splitting Blocked",
+                str(exc),
+            )
+            return False
+        return True
+
+    def _legacy_set_model_holder(self, model_holder) -> bool:
+        """Set model holder only for mock / legacy UI contexts."""
+        try:
+            run_legacy_controller_fallback(
+                self,
+                lambda: self.controller.set_model_holder(model_holder),
+            )
+        except LegacyControllerFallbackUnavailableError as exc:
+            QMessageBox.warning(
+                self,
+                "Model Selection Blocked",
+                str(exc),
+            )
+            return False
+        return True
+
+    def _legacy_set_training_option(self, option) -> bool:
+        """Set training option only for mock / legacy UI contexts."""
+        try:
+            run_legacy_controller_fallback(
+                self,
+                lambda: self.controller.set_training_option(option),
+            )
+        except LegacyControllerFallbackUnavailableError as exc:
+            QMessageBox.warning(
+                self,
+                "Training Settings Blocked",
+                str(exc),
+            )
+            return False
+        return True
+
+    def _legacy_start_training(self) -> bool:
+        """Start training only for mock / legacy UI contexts."""
+        try:
+            run_legacy_controller_fallback(
+                self,
+                self.controller.start_training,
+            )
+        except LegacyControllerFallbackUnavailableError as exc:
+            QMessageBox.warning(
+                self,
+                "Start Training Blocked",
+                str(exc),
+            )
+            return False
+        return True
+
+    def _legacy_stop_training(self) -> bool:
+        """Stop training only for mock / legacy UI contexts."""
+        try:
+            run_legacy_controller_fallback(self, self.controller.stop_training)
+        except LegacyControllerFallbackUnavailableError as exc:
+            QMessageBox.warning(self, "Stop Training Blocked", str(exc))
+            return False
+        return True
+
+    def _legacy_clear_history(self) -> bool:
+        """Clear training history only for mock / legacy UI contexts."""
+        try:
+            run_legacy_controller_fallback(
+                self,
+                self.controller.clear_history,
+            )
+        except LegacyControllerFallbackUnavailableError as exc:
+            QMessageBox.warning(self, "Clear History Blocked", str(exc))
+            return False
+        return True
+
     def check_ready_to_train(self, *args):
         """Check if all configurations are set and enable/disable start button."""
         train_capability = get_command_capability(self, CommandName.TRAIN)
@@ -322,17 +423,7 @@ class TrainingSidebar(QWidget):
                     ClearDatasetsCommand(confirmed=True),
                 )
                 if clear_result is None:
-                    try:
-                        run_legacy_controller_fallback(
-                            self,
-                            lambda: self.controller.clean_datasets(force_update=True),
-                        )
-                    except LegacyControllerFallbackUnavailableError as exc:
-                        QMessageBox.warning(
-                            self,
-                            "Data Splitting Blocked",
-                            str(exc),
-                        )
+                    if not self._legacy_clear_datasets_for_split():
                         return
                 elif clear_result.failed:
                     QMessageBox.critical(
@@ -349,17 +440,7 @@ class TrainingSidebar(QWidget):
                     GenerateDatasetCommand(generator=generator),
                 )
                 if result is None:
-                    try:
-                        run_legacy_controller_fallback(
-                            self,
-                            lambda: self.controller.apply_data_splitting(generator),
-                        )
-                    except LegacyControllerFallbackUnavailableError as exc:
-                        QMessageBox.warning(
-                            self,
-                            "Data Splitting Blocked",
-                            str(exc),
-                        )
+                    if not self._legacy_apply_data_splitting(generator):
                         return
                 elif result.failed:
                     QMessageBox.critical(
@@ -525,17 +606,7 @@ class TrainingSidebar(QWidget):
                 ),
             )
             if result is None:
-                try:
-                    run_legacy_controller_fallback(
-                        self,
-                        lambda: self.controller.set_model_holder(model_holder),
-                    )
-                except LegacyControllerFallbackUnavailableError as exc:
-                    QMessageBox.warning(
-                        self,
-                        "Model Selection Blocked",
-                        str(exc),
-                    )
+                if not self._legacy_set_model_holder(model_holder):
                     return
                 model_holder = self.controller.get_model_holder()
                 if model_holder is None:
@@ -596,17 +667,7 @@ class TrainingSidebar(QWidget):
                 ),
             )
             if result is None:
-                try:
-                    run_legacy_controller_fallback(
-                        self,
-                        lambda: self.controller.set_training_option(option),
-                    )
-                except LegacyControllerFallbackUnavailableError as exc:
-                    QMessageBox.warning(
-                        self,
-                        "Training Settings Blocked",
-                        str(exc),
-                    )
+                if not self._legacy_set_training_option(option):
                     return
             elif result.failed:
                 QMessageBox.critical(
@@ -680,17 +741,7 @@ class TrainingSidebar(QWidget):
                         return
                 result = execute_application_command(self, TrainCommand(confirmed=True))
                 if result is None:
-                    try:
-                        run_legacy_controller_fallback(
-                            self,
-                            self.controller.start_training,
-                        )
-                    except LegacyControllerFallbackUnavailableError as exc:
-                        QMessageBox.warning(
-                            self,
-                            "Start Training Blocked",
-                            str(exc),
-                        )
+                    if not self._legacy_start_training():
                         return
                 elif result.failed:
                     QMessageBox.critical(
@@ -736,10 +787,7 @@ class TrainingSidebar(QWidget):
 
         result = execute_application_command(self, StopTrainingCommand())
         if result is None:
-            try:
-                run_legacy_controller_fallback(self, self.controller.stop_training)
-            except LegacyControllerFallbackUnavailableError as exc:
-                QMessageBox.warning(self, "Stop Training Blocked", str(exc))
+            if not self._legacy_stop_training():
                 return
         elif result.failed:
             QMessageBox.warning(
@@ -799,13 +847,7 @@ class TrainingSidebar(QWidget):
                 ClearTrainingHistoryCommand(confirmed=True),
             )
             if result is None:
-                try:
-                    run_legacy_controller_fallback(
-                        self,
-                        self.controller.clear_history,
-                    )
-                except LegacyControllerFallbackUnavailableError as exc:
-                    QMessageBox.warning(self, "Clear History Blocked", str(exc))
+                if not self._legacy_clear_history():
                     return
             elif result.failed:
                 QMessageBox.warning(self, "Warning", result.message)

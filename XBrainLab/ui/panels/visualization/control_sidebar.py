@@ -144,14 +144,8 @@ class ControlSidebar(QWidget):
             return
 
         if capability is None:
-            try:
-                has_epoch_data = bool(
-                    run_legacy_controller_fallback(
-                        self,
-                        self.controller.has_epoch_data,
-                    ),
-                )
-            except LegacyControllerFallbackUnavailableError:
+            has_epoch_data = self._legacy_has_epoch_data_for_montage()
+            if has_epoch_data is None:
                 self._show_legacy_fallback_warning("Montage blocked")
                 return
             if not has_epoch_data:
@@ -204,15 +198,7 @@ class ControlSidebar(QWidget):
                     ),
                 )
                 if result is None:
-                    try:
-                        run_legacy_controller_fallback(
-                            self,
-                            lambda: self.controller.set_montage(
-                                list(chs),
-                                normalized_positions,
-                            ),
-                        )
-                    except LegacyControllerFallbackUnavailableError:
+                    if not self._legacy_apply_montage(chs, normalized_positions):
                         self._show_legacy_fallback_warning("Montage blocked")
                         return
                 elif result.failed:
@@ -230,10 +216,7 @@ class ControlSidebar(QWidget):
 
     def _montage_channel_names(self, query_result) -> list[str]:
         if query_result is None:
-            return run_legacy_controller_fallback(
-                self,
-                self.controller.get_channel_names,
-            )
+            return self._legacy_montage_channel_names()
         diagnostics = getattr(query_result, "diagnostics", {}) or {}
         state = diagnostics.get("state")
         epoch = state.get("epoch") if isinstance(state, dict) else {}
@@ -241,6 +224,39 @@ class ControlSidebar(QWidget):
         if not isinstance(names, list):
             return []
         return [str(name) for name in names]
+
+    def _legacy_has_epoch_data_for_montage(self) -> bool | None:
+        """Return epoch availability only for mock / legacy UI contexts."""
+        try:
+            return bool(
+                run_legacy_controller_fallback(
+                    self,
+                    self.controller.has_epoch_data,
+                ),
+            )
+        except LegacyControllerFallbackUnavailableError:
+            return None
+
+    def _legacy_apply_montage(self, chs, normalized_positions) -> bool:
+        """Apply montage only for mock / legacy UI contexts."""
+        try:
+            run_legacy_controller_fallback(
+                self,
+                lambda: self.controller.set_montage(
+                    list(chs),
+                    normalized_positions,
+                ),
+            )
+        except LegacyControllerFallbackUnavailableError:
+            return False
+        return True
+
+    def _legacy_montage_channel_names(self) -> list[str]:
+        """Return montage channel names only for mock / legacy UI contexts."""
+        return run_legacy_controller_fallback(
+            self,
+            self.controller.get_channel_names,
+        )
 
     def set_saliency(self):
         """Open the saliency-settings dialog and apply parameters."""
@@ -286,12 +302,7 @@ class ControlSidebar(QWidget):
                     SaliencyCommand(params=dict(params)),
                 )
                 if result is None:
-                    try:
-                        run_legacy_controller_fallback(
-                            self,
-                            lambda: self.controller.set_saliency_params(params),
-                        )
-                    except LegacyControllerFallbackUnavailableError:
+                    if not self._legacy_set_saliency_params(params):
                         self._show_legacy_fallback_warning("Saliency blocked")
                         return
                 elif result.failed:
@@ -307,15 +318,30 @@ class ControlSidebar(QWidget):
 
     def _saliency_dialog_params(self, query_result) -> dict | None:
         if query_result is None:
-            return run_legacy_controller_fallback(
-                self,
-                self.controller.get_saliency_params,
-            )
+            return self._legacy_saliency_dialog_params()
         diagnostics = getattr(query_result, "diagnostics", {}) or {}
         if diagnostics.get("payload_type") != "saliency_summary":
             return None
         params = diagnostics.get("params")
         return params if isinstance(params, dict) else None
+
+    def _legacy_set_saliency_params(self, params) -> bool:
+        """Set saliency params only for mock / legacy UI contexts."""
+        try:
+            run_legacy_controller_fallback(
+                self,
+                lambda: self.controller.set_saliency_params(params),
+            )
+        except LegacyControllerFallbackUnavailableError:
+            return False
+        return True
+
+    def _legacy_saliency_dialog_params(self) -> dict | None:
+        """Return saliency params only for mock / legacy UI contexts."""
+        return run_legacy_controller_fallback(
+            self,
+            self.controller.get_saliency_params,
+        )
 
     def export_saliency(self):
         """Open the saliency-export dialog to save computed saliency data."""
