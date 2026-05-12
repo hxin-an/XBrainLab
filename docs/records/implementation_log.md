@@ -6464,3 +6464,28 @@ mapping behavior into direct `PreprocessCommandService` tests.
 - This does not physically remove `BackendFacade`.
 - This is command-service replacement evidence for one facade cluster, not full preprocessing
   workflow acceptance.
+
+## 2026-05-12 Data Compatibility Attach-Label Facade-Replacement Guard
+
+### 狀態
+
+Continued the backend/test hygiene lane on `test/backend-ui-legacy-hygiene`. This slice did not
+touch answer UI layout or Data Import UX. It moved remaining `BackendFacade.attach_labels()`
+compatibility behavior into direct `DataCompatibilityCommandService` tests.
+
+### 已可宣稱
+
+- Data compatibility command-service coverage now checks no matching data file without entering
+  through `BackendFacade`.
+- Data compatibility command-service coverage now checks label-loader error handling without
+  entering through `BackendFacade`.
+- Data compatibility command-service coverage now checks full-data-path mapping and multi-file
+  batch attachment without entering through `BackendFacade`.
+- Focused validation is green: data compatibility service `7 passed`, facade compatibility plus
+  replacement coverage `50 passed`, ruff PASS, basedpyright `0 errors`, architecture compliant.
+
+### 不能宣稱完成
+
+- This does not physically remove `BackendFacade`.
+- This is command-service replacement evidence for one facade cluster, not Data Import UX
+  acceptance or complete external-label format coverage.

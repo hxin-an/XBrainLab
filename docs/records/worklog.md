@@ -16399,3 +16399,30 @@
 - claims still not supported：
   - This does not physically remove `BackendFacade`.
   - This is command-service mapping coverage, not full preprocessing workflow acceptance.
+
+### 2026-05-12 Data compatibility attach-label facade-replacement guard
+
+- scope：
+  - Continued on `test/backend-ui-legacy-hygiene`.
+  - No answer UI redesign and no Data Import UX redesign.
+  - Moved remaining `BackendFacade.attach_labels()` compatibility behavior into direct
+    `DataCompatibilityCommandService` replacement coverage.
+- test cleanup：
+  - Added direct command-service checks for no matching data file, label loader errors,
+    full-data-path mapping, and multi-file batch label attachment.
+  - The tests assert command-service result payloads and `apply_labels_batch()` inputs rather than
+    preserving facade method names as product evidence.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_data_compatibility_service.py -q`
+    -> `7 passed`.
+  - `poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py
+    tests/unit/backend/application/test_data_compatibility_service.py -q`
+    -> `50 passed`.
+  - `poetry run ruff check tests/unit/backend/application/test_data_compatibility_service.py`
+    -> PASS.
+  - `poetry run basedpyright tests/unit/backend/application/test_data_compatibility_service.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+- claims still not supported：
+  - This does not physically remove `BackendFacade`.
+  - This is command-service replacement coverage, not full Data Import UX acceptance.

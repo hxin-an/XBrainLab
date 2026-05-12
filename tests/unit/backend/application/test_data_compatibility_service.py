@@ -36,6 +36,7 @@ class _DatasetController:
         self.loaded_data: list[Any] = []
         self.batch_calls: list[tuple[Any, ...]] = []
         self.legacy_calls: list[tuple[Any, ...]] = []
+        self.batch_result: int | None = None
 
     def import_files(self, paths: list[str]) -> tuple[int, list[str]]:
         self.import_paths = paths
@@ -46,7 +47,10 @@ class _DatasetController:
 
     def apply_labels_batch(self, *args: Any) -> int:
         self.batch_calls.append(args)
-        return 1
+        if self.batch_result is not None:
+            return self.batch_result
+        target_files = args[0] if args else []
+        return len(target_files)
 
     def apply_labels_legacy(self, *args: Any, **kwargs: Any) -> int:
         self.legacy_calls.append((*args, kwargs))
@@ -125,6 +129,132 @@ def test_data_compatibility_service_attaches_labels_with_default_event_names(
             [raw],
             {"labels.txt": [1, 2, 1]},
             {"/data/sub-01_raw.fif": "labels.txt"},
+            {1: "1", 2: "2"},
+            None,
+        ),
+    ]
+
+
+def test_data_compatibility_service_attach_labels_reports_no_match_without_facade(
+    monkeypatch: Any,
+) -> None:
+    service, dataset, _interpretation = _service()
+    raw = _Raw("/data/sub-01_raw.fif", "sub-01_raw.fif")
+    dataset.loaded_data = [raw]
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.data_compatibility_service.load_label_file",
+        lambda _path: (_ for _ in ()).throw(
+            AssertionError("label loader should not run without a matching file")
+        ),
+    )
+
+    message, payload = _expect_payload(
+        service.handle_attach_labels(
+            AttachLabelsCommand(mapping={"other-file.fif": "labels.txt"}),
+        ),
+    )
+
+    assert message == "No labels attached. Check file name mapping."
+    assert payload == {"success_count": 0, "errors": []}
+    assert dataset.batch_calls == []
+
+
+def test_data_compatibility_service_attach_labels_reports_loader_errors_without_facade(
+    monkeypatch: Any,
+) -> None:
+    service, dataset, _interpretation = _service()
+    raw = _Raw("/data/sub-01_raw.fif", "sub-01_raw.fif")
+    dataset.loaded_data = [raw]
+
+    def load_bad_label(_path: str) -> list[int]:
+        raise ValueError("bad file")
+
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.data_compatibility_service.load_label_file",
+        load_bad_label,
+    )
+
+    message, payload = _expect_payload(
+        service.handle_attach_labels(
+            AttachLabelsCommand(mapping={"sub-01_raw.fif": "labels.txt"}),
+        ),
+    )
+
+    assert message == "No labels attached. Check file name mapping."
+    assert payload == {"success_count": 0, "errors": ["sub-01_raw.fif: bad file"]}
+    assert dataset.batch_calls == []
+
+
+def test_data_compatibility_service_attach_labels_accepts_full_data_path_without_facade(
+    monkeypatch: Any,
+) -> None:
+    service, dataset, _interpretation = _service()
+    raw = _Raw("/data/sub-01_raw.fif", "sub-01_raw.fif")
+    dataset.loaded_data = [raw]
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.data_compatibility_service.load_label_file",
+        lambda _path: ["left", "right"],
+    )
+
+    message, payload = _expect_payload(
+        service.handle_attach_labels(
+            AttachLabelsCommand(mapping={"/data/sub-01_raw.fif": "labels.csv"}),
+        ),
+    )
+
+    assert message == "Attached labels to 1 file(s)."
+    assert payload == {"success_count": 1, "errors": []}
+    assert dataset.batch_calls == [
+        (
+            [raw],
+            {"labels.csv": ["left", "right"]},
+            {"/data/sub-01_raw.fif": "labels.csv"},
+            {"left": "left", "right": "right"},
+            None,
+        ),
+    ]
+
+
+def test_data_compatibility_service_attach_labels_batches_multiple_files_without_facade(
+    monkeypatch: Any,
+) -> None:
+    service, dataset, _interpretation = _service()
+    raw_1 = _Raw("/data/sub-01_raw.fif", "sub-01_raw.fif")
+    raw_2 = _Raw("/data/sub-02_raw.fif", "sub-02_raw.fif")
+    dataset.loaded_data = [raw_1, raw_2]
+
+    def load_label(path: str) -> list[int]:
+        return [1, 2] if path.endswith("01.txt") else [2, 1]
+
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.data_compatibility_service.load_label_file",
+        load_label,
+    )
+
+    message, payload = _expect_payload(
+        service.handle_attach_labels(
+            AttachLabelsCommand(
+                mapping={
+                    "sub-01_raw.fif": "labels-01.txt",
+                    "sub-02_raw.fif": "labels-02.txt",
+                },
+            ),
+        ),
+    )
+
+    assert message == "Attached labels to 2 file(s)."
+    assert payload == {"success_count": 2, "errors": []}
+    assert dataset.batch_calls == [
+        (
+            [raw_1, raw_2],
+            {
+                "labels-01.txt": [1, 2],
+                "labels-02.txt": [2, 1],
+            },
+            {
+                "/data/sub-01_raw.fif": "labels-01.txt",
+                "/data/sub-02_raw.fif": "labels-02.txt",
+            },
             {1: "1", 2: "2"},
             None,
         ),
