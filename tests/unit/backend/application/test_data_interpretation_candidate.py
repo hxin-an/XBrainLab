@@ -155,7 +155,7 @@ def test_build_interpretation_candidate_uses_inside_eeg_labels_instead_of_carrie
     ] == ["769", "770"]
     assert candidate.internal_event_preview["candidate_label_events"][0][
         "evidence"
-    ].startswith("Repeated event group")
+    ].startswith("Repeated group")
     assert [
         row["event_code"] for row in candidate.internal_event_preview["not_used_events"]
     ] == ["768", "1023"]
@@ -575,7 +575,7 @@ def test_build_interpretation_candidate_uses_real_internal_event_evidence(
     assert list(rows_by_code) == ["769", "770", "772"]
     assert rows_by_code["769"]["event_count"] == 108
     assert rows_by_code["769"]["coverage"] == "3/3 files"
-    assert "same count in each file" in rows_by_code["769"]["evidence"]
+    assert "stable count" in rows_by_code["769"]["evidence"]
     assert rows_by_code["772"]["coverage"] == "2/3 files"
     assert rows_by_code["772"]["missing_files"] == ["A03T.gdf"]
     assert "missing in A03T.gdf" in rows_by_code["772"]["evidence"]
@@ -617,7 +617,5 @@ def test_build_interpretation_candidate_uses_format_neutral_event_pattern(
     other_by_code = {row["event_code"]: row for row in preview["not_used_events"]}
 
     assert candidate_codes == ["11", "12"]
-    assert preview["candidate_label_events"][0]["evidence"].startswith(
-        "Repeated event group"
-    )
+    assert preview["candidate_label_events"][0]["evidence"].startswith("Repeated group")
     assert other_by_code["1"]["use_as"] == "Trial timing"

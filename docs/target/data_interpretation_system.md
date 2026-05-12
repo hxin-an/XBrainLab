@@ -453,6 +453,29 @@ Match Labels 第一層應先問 `Label source`：
   和 `Check`。使用者應先看到哪個 EEG 對哪個 label file，再設定 `Read labels from`、
   `Use as`、`Place labels by`、`Align to`、`Label unit` 和 `Duration field`。
 
+`Labels inside EEG files` 的 suggested label 不應由單一 dataset 或單一格式 code table
+硬編碼決定。後端必須先讀 EEG 內建 event / annotation，再用可審查 evidence 分群：
+
+- 文字語意規則：若 event description 不是純數字，且包含 `left`、`right`、`hand`、
+  `foot`、`feet`、`tongue`、`target`、`non-target`、`nontarget`、`standard`、
+  `deviant` 或 `rest`，可列為 `Class label` candidate。
+- Count pattern 規則：只從尚未有明確語意、目前仍是 `Review` 的 events 中找候選群組。
+  每個 code 的 per-file count 必須完全一致，且每個 file 至少 `5` 次；該 code 必須出現在
+  至少 `total_files - 1` 個 selected EEG file；同一 count 的 code 數量必須在 `2` 到 `12`
+  之間。若多個群組符合，選 code 數量最多者；數量相同時選 per-file count 較高者。
+- Timing evidence：若某個非 candidate event 在每個 file 的 count 等於 candidate 群組所有
+  code 的 count 總和，將該 event 標為 `Trial timing`，reason 為
+  `Count matches candidate label group`。
+- Other events：未進 candidate 的 event 留在 `Other EEG events`。只有 description 明確包含
+  `artifact`、`artefact`、`reject`、`bad` 時才標為 artifact；明確包含 `boundary`、`edge`、
+  `new segment`、`sync`、`system` 時才標為 ignore；明確包含 `trial start`、`starttrial` 或
+  `start trial` 時才標為 trial timing。否則維持 `Review`。
+
+這套規則只能產生可審查建議，不能自動宣稱 class semantics 正確；UI 必須保留使用者把
+event 在 suggested labels 與 other events 之間雙向移動的能力。GDF、EDF、BrainVision、
+EEGLAB、FIF 等來源都應走同一套 evidence contract；特定資料集若需要 code semantics，
+應由 sidecar、recipe、preset 或使用者確認提供，而不是藏在通用 import heuristic。
+
 `duration_field` 不代表 Data Import 直接決定 epoch 長度。它是 recipe 中保存給後續 Epoch UI
 的 timing evidence；epoch step 之後應能用這個欄位建議或限制 epoch window。
 

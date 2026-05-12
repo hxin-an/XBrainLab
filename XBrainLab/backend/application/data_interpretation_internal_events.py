@@ -368,9 +368,9 @@ def _apply_count_pattern_evidence(
     if not pattern:
         return
 
-    evidence = "Repeated event group"
+    evidence = "Repeated group"
     if pattern.get("timing_code"):
-        evidence += "; matches timing count"
+        evidence += "; timing match"
     for code in pattern["candidate_codes"]:
         semantic = semantics_by_code.get(code)
         if not semantic or semantic.get("bucket") == "candidate":
@@ -392,7 +392,7 @@ def _apply_count_pattern_evidence(
                 "bucket": "not_used",
                 "use_as": "Trial timing",
                 "reason": "Count matches candidate label group",
-                "evidence": "Count matches repeated candidate event group",
+                "evidence": "Matches candidate total",
             }
         )
 
@@ -542,9 +542,9 @@ def _evidence_text(
     details: list[str] = []
     counts = list(file_counts.values())
     if len(counts) > 1 and len(set(counts)) == 1:
-        details.append("same count in each file")
+        details.append("stable count")
     elif len(counts) > 1:
-        details.append("count differs by file")
+        details.append("count differs")
     if missing_files:
         details.append("missing in " + ", ".join(missing_files))
     return "; ".join([base, *details])

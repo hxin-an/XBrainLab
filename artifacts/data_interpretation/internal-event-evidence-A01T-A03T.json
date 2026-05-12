@@ -28,7 +28,7 @@
           "A02T.gdf": 72,
           "A03T.gdf": 72
         },
-        "evidence": "Repeated event group; matches timing count; same count in each file"
+        "evidence": "Repeated group; timing match; stable count"
       },
       {
         "event_code": "770",
@@ -44,7 +44,7 @@
           "A02T.gdf": 72,
           "A03T.gdf": 72
         },
-        "evidence": "Repeated event group; matches timing count; same count in each file"
+        "evidence": "Repeated group; timing match; stable count"
       },
       {
         "event_code": "771",
@@ -60,7 +60,7 @@
           "A02T.gdf": 72,
           "A03T.gdf": 72
         },
-        "evidence": "Repeated event group; matches timing count; same count in each file"
+        "evidence": "Repeated group; timing match; stable count"
       },
       {
         "event_code": "772",
@@ -76,7 +76,7 @@
           "A02T.gdf": 72,
           "A03T.gdf": 72
         },
-        "evidence": "Repeated event group; matches timing count; same count in each file"
+        "evidence": "Repeated group; timing match; stable count"
       }
     ],
     "not_used_events": [
@@ -94,7 +94,7 @@
           "A02T.gdf": 1,
           "A03T.gdf": 1
         },
-        "evidence": "Event role needs review; same count in each file",
+        "evidence": "Event role needs review; stable count",
         "reason": "Event role needs review"
       },
       {
@@ -111,7 +111,7 @@
           "A02T.gdf": 1,
           "A03T.gdf": 1
         },
-        "evidence": "Event role needs review; same count in each file",
+        "evidence": "Event role needs review; stable count",
         "reason": "Event role needs review"
       },
       {
@@ -128,7 +128,7 @@
           "A02T.gdf": 288,
           "A03T.gdf": 288
         },
-        "evidence": "Count matches repeated candidate event group; same count in each file",
+        "evidence": "Matches candidate total; stable count",
         "reason": "Count matches candidate label group"
       },
       {
@@ -145,7 +145,7 @@
           "A02T.gdf": 18,
           "A03T.gdf": 18
         },
-        "evidence": "Event role needs review; count differs by file",
+        "evidence": "Event role needs review; count differs",
         "reason": "Event role needs review"
       },
       {
@@ -162,7 +162,7 @@
           "A02T.gdf": 1,
           "A03T.gdf": 1
         },
-        "evidence": "Event role needs review; same count in each file",
+        "evidence": "Event role needs review; stable count",
         "reason": "Event role needs review"
       },
       {
@@ -179,7 +179,7 @@
           "A02T.gdf": 9,
           "A03T.gdf": 9
         },
-        "evidence": "Event role needs review; same count in each file",
+        "evidence": "Event role needs review; stable count",
         "reason": "Event role needs review"
       }
     ],
