@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-05-11`
+最後更新：`2026-05-12`
 
 ## 這份文件的用途
 
@@ -34,6 +34,45 @@
 - 證據：
 - 接續 / 本輪剩餘：
 ```
+
+## 2026-05-12
+
+### 13:25 Epoch UI freeze / hidden-modal reality gap
+
+- 做了什麼：
+  - Reproduced the reported A01T/A02T/A03T epoch path through an offscreen `MainWindow`,
+    `ApplicationService`, and `PreprocessSidebar.open_epoching()`.
+  - The command path reached `Dataset locked`; targeted timing showed `preprocess_panel`,
+    `training_panel`, `visualization_panel`, info panel, and agent status refresh were fast.
+  - Added red tests for the two post-command UI risks: blocking success modal on real product
+    command success, and queued preprocess plot redraw after the data is epoched/locked.
+  - Changed product `CreateEpochCommand` success feedback from blocking `QMessageBox.information`
+    to status-bar feedback while keeping legacy mock/non-`Study` success behavior intact.
+  - Made locked/no-data preview states cancel pending plot timers, and made queued
+    `update_plot_only()` refuse epoched data instead of plotting epochs / PSD after lock.
+- TDD red：
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/preprocess/test_preprocess_panel.py::test_update_panel_epoched_data_cancels_pending_plot_timer tests/unit/ui/preprocess/test_preprocess_panel.py::test_update_plot_only_epoched_data_shows_locked_message_without_plotting tests/integration/ui/test_epoch_runtime.py::test_real_gdf_epoching_does_not_block_on_success_modal -q`
+    -> failed before implementation: pending timer stayed active, queued plot did not show locked
+    state, and real-GDF product success called `QMessageBox.information`.
+- validation：
+  - Same focused command after implementation -> `3 passed`.
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/preprocess/test_preprocess_panel.py tests/unit/ui/preprocess/test_preprocess_performance.py tests/unit/ui/test_sidebars_and_components.py -k 'epoching or preprocess_panel or update_plot_only or plot_timer or debouncing' tests/integration/ui/test_product_walkthrough.py::test_pipeline_product_walkthrough_uses_user_facing_actions tests/integration/ui/test_epoch_runtime.py -q`
+    -> `28 passed, 92 deselected`.
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/preprocess -q`
+    -> `51 passed`.
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py -q`
+    -> `96 passed`.
+  - `poetry run ruff check <changed Python files>` -> `All checks passed!`.
+  - `poetry run basedpyright <changed Python files>` -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run mkdocs build --strict` -> PASS, with the existing MkDocs Material advisory.
+  - `git diff --check` -> PASS.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py`
+    -> `Overall status: PASS`, generated `2026-05-12 13:31:22 UTC+08:00`.
+- 接續 / 本輪剩餘：
+  - This fixes the reported Epoch UI freeze class in automated product runtime evidence; it still
+    does not replace human Windows desktop acceptance.
 
 ## 2026-05-11
 

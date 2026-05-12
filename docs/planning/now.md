@@ -34,8 +34,11 @@ acceptance。
 
 2026-05-12 狀態：backend command spine cleanup 已補上 product-success `BackendFacade`
 guard、ApplicationService real-data / pipeline replacement coverage、dataset split default
-regression、agent stage snapshot cleanup、full type/lint/docs/dashboard PASS。下一個不能跳過的
-缺口是 human-observable desktop product smoke；不能用 dashboard PASS 取代。
+regression、agent stage snapshot cleanup、full type/lint/docs/dashboard PASS。Epoch UI freeze/hang
+reality gap 也已補上 command-backed real-GDF offscreen smoke：A01T/A02T/A03T epoching 回到 UI、
+不開 blocking success modal，且 epoched preview 會取消 queued plot redraw。下一個不能跳過的
+缺口仍是更完整的 human-observable desktop product smoke；不能用 dashboard PASS 或單一 offscreen
+smoke 取代。
 
 ## 接下來才做
 

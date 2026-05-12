@@ -115,6 +115,60 @@ def test_update_panel_refuses_real_study_query_none_controller_fallback(qtbot):
     panel.preview_widget.reset_view.assert_called_once()
 
 
+def test_update_panel_epoched_data_cancels_pending_plot_timer(qtbot):
+    controller = MagicMock()
+    dataset_controller = MagicMock()
+    panel = PreprocessPanel(
+        controller=controller,
+        dataset_controller=dataset_controller,
+    )
+    qtbot.addWidget(panel)
+    panel.sidebar.update_sidebar = MagicMock()
+    panel.plotter.plot_sample_data = MagicMock()
+
+    epoched = MagicMock()
+    epoched.is_raw.return_value = False
+    epoched.get_preprocess_history.return_value = ["epoch"]
+
+    panel.preview_widget.plot_timer.start(1000)
+    assert panel.preview_widget.plot_timer.isActive()
+
+    with patch(
+        "XBrainLab.ui.panels.preprocess.panel.query_preprocess_render_lists",
+        return_value=([epoched], []),
+    ):
+        panel.update_panel()
+
+    assert not panel.preview_widget.plot_timer.isActive()
+    panel.plotter.plot_sample_data.assert_not_called()
+
+
+def test_update_plot_only_epoched_data_shows_locked_message_without_plotting(qtbot):
+    controller = MagicMock()
+    dataset_controller = MagicMock()
+    panel = PreprocessPanel(
+        controller=controller,
+        dataset_controller=dataset_controller,
+    )
+    qtbot.addWidget(panel)
+    panel.plotter.plot_sample_data = MagicMock()
+    panel.preview_widget.show_locked_message = MagicMock()
+
+    epoched = MagicMock()
+    epoched.is_raw.return_value = False
+
+    with patch(
+        "XBrainLab.ui.panels.preprocess.panel.query_preprocess_render_lists",
+        return_value=([epoched], []),
+    ):
+        panel.update_plot_only()
+
+    panel.preview_widget.show_locked_message.assert_called_once_with(
+        "Data is Epoched - Preprocessing Locked",
+    )
+    panel.plotter.plot_sample_data.assert_not_called()
+
+
 def test_preprocess_panel_filtering(mock_main_window, mock_controller, qtbot):
     """Test filtering delegates to controller."""
     mock_controller.has_data.return_value = True

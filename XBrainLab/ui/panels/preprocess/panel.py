@@ -170,6 +170,11 @@ class PreprocessPanel(BasePanel):
             self.plotter.plot_sample_data()
             return
         data_list, original_data_list = queried_lists
+        if data_list and not data_list[0].is_raw():
+            self.preview_widget.show_locked_message(
+                "Data is Epoched - Preprocessing Locked",
+            )
+            return
         self.plotter.plot_sample_data(
             data_list=data_list,
             original_data_list=original_data_list,

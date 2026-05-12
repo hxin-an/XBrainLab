@@ -1,6 +1,6 @@
 # XBrainLab Implementation Log
 
-最後更新：`2026-05-06`
+最後更新：`2026-05-12`
 
 ## 這份文件的用途
 
@@ -41,6 +41,49 @@
 
 ### 下一手重點
 ```
+
+## 2026-05-12 Epoch UI Freeze / Hidden Modal Fix
+
+### 狀態
+
+The reported Epoch UI freeze/hang after A01T/A02T/A03T epoching was traced to post-command UI
+behavior rather than backend command failure. The ApplicationService-backed epoch command reached
+`Dataset locked`; product success feedback then used a blocking modal, and the preprocess preview
+also allowed queued redraws to target epoched data after lock.
+
+Product `CreateEpochCommand` success now reports through the main status bar instead of a blocking
+success dialog. Locked/no-data preview states stop pending plot timers, and queued plot-only
+refreshes refuse epoched data.
+
+### 已可宣稱
+
+- Real-GDF offscreen product smoke loads A01T/A02T/A03T, runs all-event epoching through
+  `ApplicationService`, and returns to UI without opening `QMessageBox.information`.
+- Preprocess locked-state regression tests prevent pending plot timers from redrawing epoched
+  data after epoching.
+- Legacy mock/non-`Study` sidebar behavior still has compatibility coverage.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/preprocess/sidebar.py`,
+  `XBrainLab/ui/panels/preprocess/panel.py`,
+  `XBrainLab/ui/panels/preprocess/preview_widget.py`
+- Tests：`tests/integration/ui/test_epoch_runtime.py`,
+  `tests/unit/ui/preprocess/test_preprocess_panel.py`
+- Validation boundary：`docs/validation/README.md`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is offscreen automated product-runtime evidence for the reported Epoch UI freeze class.
+  It does not replace human Windows desktop acceptance, long-session local-model testing, or full
+  MVP product completion.
+
+### 下一手重點
+
+- Re-run a human desktop click-through on Windows after merge into the stabilization line.
+- Keep expanding product smokes around the full import -> preprocess -> epoch -> split -> train
+  path instead of relying on dashboard PASS alone.
 
 ## 2026-05-06 Data Interpretation Class-map Preview
 

@@ -374,6 +374,7 @@ class PreviewWidget(QWidget):
 
     def reset_view(self):
         """Clear both plots and show a *No Data* title."""
+        self.plot_timer.stop()
         self.plot_time.clear()
         self.plot_freq.clear()
         self.plot_time.setTitle("No Data")
@@ -381,6 +382,7 @@ class PreviewWidget(QWidget):
 
     def show_locked_message(self, message: str):
         """Display a locked/status message on the plots."""
+        self.plot_timer.stop()
         self.plot_time.clear()
         self.plot_freq.clear()
 

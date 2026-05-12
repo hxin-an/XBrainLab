@@ -413,6 +413,26 @@ class PreprocessSidebar(QWidget):
     def _show_command_failure(self, title: str, message: str) -> None:
         QMessageBox.critical(self, title, message)
 
+    def _show_epoch_success(self, result) -> None:
+        if result is None:
+            QMessageBox.information(
+                self,
+                "Success",
+                "Epoching applied.\nPreprocessing is now LOCKED.",
+            )
+            return
+
+        message = "Epoching applied. Preprocessing is now locked."
+        status_bar_factory = getattr(self.main_window, "statusBar", None)
+        if callable(status_bar_factory):
+            status_bar = status_bar_factory()
+            show_message = getattr(status_bar, "showMessage", None)
+            if callable(show_message):
+                show_message(message, 5000)
+                return
+
+        logger.info(message)
+
     def _run_legacy_preprocess_fallback(
         self,
         blocked_title: str,
@@ -638,12 +658,7 @@ class PreprocessSidebar(QWidget):
                     if applied:
                         self._notify_update_after_legacy_result(result)
                         self._refresh_shared_status_after_legacy_result(result)
-
-                        QMessageBox.information(
-                            self,
-                            "Success",
-                            "Epoching applied.\nPreprocessing is now LOCKED.",
-                        )
+                        self._show_epoch_success(result)
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"Epoching failed: {e}")
 
