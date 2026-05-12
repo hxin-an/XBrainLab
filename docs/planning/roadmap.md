@@ -46,11 +46,10 @@ MVP 之後才做 release candidate、formal thesis evidence、完整 MCP client 
 
 這一段是 MVP 前置，不是可有可無的重構。
 
-`BackendFacade` 可以保留，但它的角色必須明確：
+`BackendFacade` 已從 product code 移除；Phase 1A 的邊界現在是防止它回來：
 
-- assistant / script 的 high-level convenience wrapper。
-- `ApplicationService / Command API` 的入口包裝。
-- 不自己重做 workflow logic。
+- assistant / script 直接使用 `ApplicationService / Command API` 或薄 command adapter。
+- 舊 facade 行為只能保存在 command/service/helper replacement coverage。
 - 不替 UI / agent / MCP 維護另一套 state truth。
 
 如果 `BackendFacade`、UI controller fallback、test adapter 任一方開始定義自己的 workflow 成功條件，

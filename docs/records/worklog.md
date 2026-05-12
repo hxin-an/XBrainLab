@@ -16559,3 +16559,55 @@
   - This does not physically remove `BackendFacade`.
   - This is not product complete, release approval, human Windows desktop acceptance, Data Import UX
     approval, or answer UI approval.
+
+### 2026-05-12 Physical BackendFacade removal
+
+- scope：
+  - Created `refactor/remove-backend-facade` from `test/backend-ui-legacy-hygiene`.
+  - Kept UX work separate: no answer UI layout redesign and no Data Import UX redesign.
+  - Removed the physical `BackendFacade` wrapper and compatibility-only tests after replacement
+    coverage had already moved to ApplicationService / focused service / helper tests.
+- red gate：
+  - After tightening the architecture guard but before deleting old files,
+    `poetry run python tests/architecture_compliance.py` failed with 6 `BackendFacade` test-usage
+    violations in `test_facade_coverage.py`, `test_facade_headless.py`, and
+    `application/test_runtime.py`.
+- implementation：
+  - Deleted `XBrainLab/backend/facade.py`.
+  - Deleted `tests/unit/backend/test_facade_coverage.py` and
+    `tests/unit/backend/test_facade_headless.py`.
+  - Removed the facade runtime-cache case from `tests/unit/backend/application/test_runtime.py`;
+    kept `get_application_service(study)` cache coverage.
+  - Removed the registered `facade_compatibility` pytest marker.
+  - Tightened `check_backend_facade_test_usage()` so any test-side facade import/construction is
+    rejected.
+  - Updated current/target/architecture/validation docs to describe facade as removed, not
+    quarantined.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `70 passed`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `poetry run pytest --capture=sys tests/unit/backend/application -q` -> `159 passed`.
+  - `poetry run pytest --capture=sys tests/unit/backend/utils/test_montage_mapping.py
+    tests/unit/test_architecture_compliance.py -q`
+    -> `77 passed`.
+  - Focused `ruff` on changed Python files -> PASS.
+  - Focused `basedpyright` on changed Python files -> `0 errors, 0 warnings, 0 notes`.
+  - `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys
+    tests/integration/io/test_io_integration.py -q`
+    -> `31 passed, 8 warnings`.
+  - `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys
+    tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics
+    tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet -q`
+    -> `2 passed`.
+  - `poetry run mkdocs build --strict` -> PASS with existing MkDocs Material advisory and nav
+    notices.
+  - `git diff --check` -> PASS.
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python
+    scripts/dev/update_quality_dashboard.py`
+    -> Dashboard `PASS`, generated `2026-05-12 23:20:21 UTC+08:00`.
+- claims still not supported：
+  - This is not product complete, release approval, human Windows desktop acceptance, Data Import UX
+    approval, or answer UI approval.
+  - Controller fallback compatibility still exists in UI/test boundaries and must be handled in
+    separate slices.

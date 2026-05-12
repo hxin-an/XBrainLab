@@ -178,7 +178,6 @@ testpaths = ["tests"]
 norecursedirs = ["XBrainLab", ".git", "__pycache__", "*.egg-info"]
 markers = [
     "timeout: Mark test with a timeout.",
-    "facade_compatibility: marks BackendFacade legacy compatibility tests; not product-success evidence.",
 ]
 filterwarnings = [
     "ignore::pytest.PytestUnknownMarkWarning",

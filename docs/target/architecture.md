@@ -56,16 +56,16 @@ MNE / PyTorch / filesystem / runtime diagnostics
 
 它不應該吸收所有業務邏輯。
 
-## `BackendFacade` 的角色
+## Removed `BackendFacade`
 
-`BackendFacade` 可以保留，但只能是 legacy compatibility wrapper：
+`BackendFacade` 不再是目標架構的一層；舊 high-level wrapper 已由
+`ApplicationService / Command API` 和 focused command services 取代。
 
-- 不在 product runtime path 裡作為 UI / assistant / MCP / headless 入口。
-- 舊 caller 需要時只轉呼叫 command API，不新增 workflow policy。
-- 不自己重做 import / preprocess / train / evaluate workflow。
-- 不讓 UI、agent、MCP 看到不同的 readiness / success / error truth。
+- UI、assistant、MCP、headless scripts 不應 import 或 instantiate `BackendFacade`。
+- 舊 facade API behavior 要保存在 command/service/helper tests，不保留 facade wrapper。
+- 不新增第二套 readiness / success / error truth。
 
-如果 `BackendFacade` 回到 product runtime 或開始自己維護 workflow 狀態，它就違反目標架構。
+如果 `BackendFacade` module 或 facade compatibility tests 被重新加入，它就違反目標架構。
 
 ## Data Interpretation 目標
 

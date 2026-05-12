@@ -115,9 +115,9 @@ remap 不再只是 UI/backend 私有能力；external agent 和 headless payload
 packages. `get_application_service(study)` now owns Study-scoped `ApplicationService`
 reuse, and UI capability helpers, AgentManager, LLMController, real agent tools, MCP
 adapters, and current dev walkthrough scripts enter the backend through
-`ApplicationService / Command API` directly. `BackendFacade` remains only as a legacy
-compatibility wrapper in `XBrainLab/backend/facade.py` and legacy tests / compatibility
-fixtures; it is not a product runtime layer.
+`ApplicationService / Command API` directly. 2026-05-12 physical removal then deleted
+`XBrainLab/backend/facade.py` and the facade compatibility-only test files; architecture
+compliance now rejects any test that imports or constructs `BackendFacade`.
 
 2026-05-12 zero-legacy runtime cleanup tightened the evidence boundary: product-success
 IO and pipeline integration tests now execute `ApplicationService` command sequences
@@ -301,8 +301,7 @@ UI 測試中的 mock `Study` 仍走 legacy fallback，避免 unit test 用不完
 
 Assistant real tools、LLMController、dev walkthrough scripts 和 MCP adapters 現在直接使用
 `get_application_service(study)` 或自己持有的 `ApplicationService` session。
-`BackendFacade` 不再是 product runtime 入口；它保留舊方法名稱和舊回傳形狀，只給 legacy
-compatibility tests / fixtures 或手動相容呼叫使用。
+`BackendFacade` 不再存在；assistant / headless 入口不保留舊方法名稱或舊回傳形狀。
 
 `XBrainLab.backend.application.automation` 是新的 headless / MCP-ready adapter。它輸出
 `ApplicationService` command schema、MCP-shaped tool specs 和 live capability / autonomy
@@ -754,8 +753,8 @@ UI 也會透過 `TrainingController` 設定 model / option / data splitting。
 ## 已驗證事實
 
 - `Study.get_controller()` 會 cache built-in controllers；`tests/unit/test_architecture.py` 有 coverage。
-- UI panels 目前直接吃 controllers，不吃 `BackendFacade`。
-- `BackendFacade` 目前只剩 legacy compatibility wrapper；product runtime packages 不再使用它。
+- UI panels 目前直接吃 controllers 或 command helpers，不吃 `BackendFacade`。
+- `BackendFacade` module 已移除；product runtime packages 和 tests 不應使用它。
 - `ApplicationService` 第一版已可回傳 state snapshot、capability policy 和
   `CommandResult`，並可執行 load / label / preprocess / epoch / dataset /
   training setup / train / reset commands。
@@ -775,8 +774,7 @@ UI 也會透過 `TrainingController` 設定 model / option / data splitting。
 1. `Study` 是否應繼續保留大量 delegation property，還是逐步收斂成更明確的 state API。
 2. controller 裡的 workflow logic 是否要下沉到 service / manager，讓 controller 更接近 UI adapter。
 3. UI 是否應逐步改成和 assistant 共用同一組 backend capability command，而不是各自繞 controller。
-4. Legacy `BackendFacade` 是否可在更多 tests / fixtures 移除，只留下明確相容範圍。
-5. error handling 已有第一版分類，但仍需用更多 real workflow 驗證是否足以支撐
+4. error handling 已有第一版分類，但仍需用更多 real workflow 驗證是否足以支撐
    tool-call verification，包括可恢復狀態和可回報給 agent 的 diagnostics。
 
 ## 目標方向
@@ -831,8 +829,8 @@ Agent tool: load_data(files)
   -> LoadDataCommand(files)
 ```
 
-`BackendFacade` 可以暫時保留為 legacy wrapper，但不再是 product runtime 入口。Assistant /
-script 的穩定入口是 `ApplicationService / Command API` 或薄 command adapter。
+Assistant / script 的穩定入口是 `ApplicationService / Command API` 或薄 command adapter；
+不再保留 `BackendFacade` wrapper。
 
 這個方向已由使用者確認。第一版 service 已採取保守路線：command layer 先呼叫既有
 controllers，保留 observer event、refresh、lock / running-state 行為；後續再逐步把
@@ -840,16 +838,15 @@ controller 內的 business workflow 下沉。
 
 ## 重構原則
 
-目前不應直接大改 `Study`，也不應把 workflow 重新塞回 `BackendFacade`。
+目前不應直接大改 `Study`，也不應重新加入 `BackendFacade`。
 
 比較安全的順序是：
 
 1. 盤點每個 controller 裡的 workflow logic。
 2. 把真正 business workflow 抽成 service / command。
 3. controller 變成 UI adapter，只負責輸入轉換、事件通知、呼叫 command。
-4. Legacy `BackendFacade` 留在非產品相容層；assistant / script product path 直接呼叫 command。
-5. agent tools 只包 command input / output，不自己實作另一套流程。
-6. 先測 command API，再用 UI / agent integration tests 驗證兩條入口一致。
+4. agent tools 只包 command input / output，不自己實作另一套流程。
+5. 先測 command API，再用 UI / agent integration tests 驗證兩條入口一致。
 
 ## 目前判斷
 

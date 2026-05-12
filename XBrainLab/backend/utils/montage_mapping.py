@@ -1,9 +1,8 @@
 """Montage channel-name matching helpers.
 
-This module owns the fuzzy channel cleanup that used to live inside the legacy
-``BackendFacade.set_montage`` path. Keeping it here makes the behavior directly
-testable and reusable by command/UI confirmation paths before the facade is
-physically removed.
+This module owns the fuzzy channel cleanup that used to live inside the removed
+legacy facade montage path. Keeping it here makes the behavior directly testable
+and reusable by command/UI confirmation paths.
 """
 
 from __future__ import annotations

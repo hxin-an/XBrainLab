@@ -1,5 +1,5 @@
 from tests.architecture_compliance import (
-    check_backend_facade_test_quarantine,
+    check_backend_facade_test_usage,
     check_product_runtime_backend_facade_usage,
     check_product_success_backend_facade_tests,
     check_product_success_legacy_fallback_tests,
@@ -130,15 +130,15 @@ def test_pipeline():
     assert "product-success evidence" in violations[0]
 
 
-def test_product_success_facade_test_guard_allows_unit_compatibility_test(tmp_path):
-    path = tmp_path / "tests" / "unit" / "backend" / "test_facade_compat.py"
+def test_product_success_facade_test_guard_does_not_scan_unit_tests(tmp_path):
+    path = tmp_path / "tests" / "unit" / "backend" / "test_demo.py"
     path.parent.mkdir(parents=True)
     path.write_text(
         """
 from XBrainLab.backend.facade import BackendFacade
 
 
-def test_facade_compatibility():
+def test_old_facade_usage():
     return BackendFacade()
 """,
         encoding="utf-8",
@@ -147,7 +147,7 @@ def test_facade_compatibility():
     assert check_product_success_backend_facade_tests(tmp_path) == []
 
 
-def test_backend_facade_test_quarantine_flags_new_unit_facade_usage(tmp_path):
+def test_backend_facade_test_guard_flags_new_unit_facade_usage(tmp_path):
     path = tmp_path / "tests" / "unit" / "llm" / "test_demo.py"
     path.parent.mkdir(parents=True)
     path.write_text(
@@ -161,14 +161,14 @@ def test_tool_path(study):
         encoding="utf-8",
     )
 
-    violations = check_backend_facade_test_quarantine(tmp_path)
+    violations = check_backend_facade_test_usage(tmp_path)
 
     assert len(violations) == 2
     assert "tests/unit/llm/test_demo.py" in violations[0]
-    assert "facade quarantine" in violations[0]
+    assert "physical facade removal" in violations[0]
 
 
-def test_backend_facade_test_quarantine_allows_explicit_compatibility_files(tmp_path):
+def test_backend_facade_test_guard_flags_marked_compatibility_file(tmp_path):
     path = tmp_path / "tests" / "unit" / "backend" / "test_facade_coverage.py"
     path.parent.mkdir(parents=True)
     path.write_text(
@@ -177,19 +177,23 @@ import pytest
 
 from XBrainLab.backend.facade import BackendFacade
 
-pytestmark = pytest.mark.facade_compatibility
+pytestmark = pytest.mark.legacy_marker
 
 
-def test_facade_compatibility(study):
+def test_old_facade_api(study):
     return BackendFacade(study).get_capabilities()
 """,
         encoding="utf-8",
     )
 
-    assert check_backend_facade_test_quarantine(tmp_path) == []
+    violations = check_backend_facade_test_usage(tmp_path)
+
+    assert len(violations) == 2
+    assert "tests/unit/backend/test_facade_coverage.py" in violations[0]
+    assert "replacement coverage" in violations[0]
 
 
-def test_backend_facade_test_quarantine_flags_unmarked_allowed_file(tmp_path):
+def test_backend_facade_test_guard_flags_unmarked_old_compatibility_file(tmp_path):
     path = tmp_path / "tests" / "unit" / "backend" / "test_facade_coverage.py"
     path.parent.mkdir(parents=True)
     path.write_text(
@@ -197,20 +201,20 @@ def test_backend_facade_test_quarantine_flags_unmarked_allowed_file(tmp_path):
 from XBrainLab.backend.facade import BackendFacade
 
 
-def test_facade_compatibility(study):
+def test_old_facade_api(study):
     return BackendFacade(study).get_capabilities()
 """,
         encoding="utf-8",
     )
 
-    violations = check_backend_facade_test_quarantine(tmp_path)
+    violations = check_backend_facade_test_usage(tmp_path)
 
     assert len(violations) == 2
-    assert "facade_compatibility" in violations[0]
-    assert "not product-success evidence" in violations[0]
+    assert "physical facade removal" in violations[0]
+    assert "replacement coverage" in violations[0]
 
 
-def test_backend_facade_test_quarantine_allows_function_level_marker(tmp_path):
+def test_backend_facade_test_guard_flags_function_level_marker(tmp_path):
     path = tmp_path / "tests" / "unit" / "backend" / "application" / "test_runtime.py"
     path.parent.mkdir(parents=True)
     path.write_text(
@@ -218,8 +222,8 @@ def test_backend_facade_test_quarantine_allows_function_level_marker(tmp_path):
 import pytest
 
 
-@pytest.mark.facade_compatibility
-def test_backend_facade_uses_existing_application_service(study):
+@pytest.mark.legacy_marker
+def test_old_facade_uses_existing_application_service(study):
     from XBrainLab.backend.facade import BackendFacade
 
     return BackendFacade(study).get_capabilities()
@@ -227,7 +231,11 @@ def test_backend_facade_uses_existing_application_service(study):
         encoding="utf-8",
     )
 
-    assert check_backend_facade_test_quarantine(tmp_path) == []
+    violations = check_backend_facade_test_usage(tmp_path)
+
+    assert len(violations) == 2
+    assert "tests/unit/backend/application/test_runtime.py" in violations[0]
+    assert "ApplicationService / Command API" in violations[0]
 
 
 def test_product_success_legacy_fallback_test_guard_flags_integration_fallback(

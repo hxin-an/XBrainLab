@@ -6542,3 +6542,32 @@ evidence docs.
   or migrates the compatibility-only tests.
 - This is not product complete, release approval, human Windows desktop acceptance, Data Import UX
   approval, or answer UI approval.
+
+## 2026-05-12 Physical BackendFacade Removal
+
+### 狀態
+
+Created `refactor/remove-backend-facade` from `test/backend-ui-legacy-hygiene`. This slice did not
+redesign answer UI layout or Data Import UX. It physically removed the legacy facade layer after the
+prior replacement-map slices had moved durable behavior coverage into ApplicationService, focused
+command services, helper tests, and integration smokes.
+
+### 已可宣稱
+
+- `XBrainLab/backend/facade.py` is deleted.
+- `tests/unit/backend/test_facade_coverage.py` and `tests/unit/backend/test_facade_headless.py` are
+  deleted.
+- `pyproject.toml` no longer registers `facade_compatibility`.
+- Architecture compliance now rejects any test-side `BackendFacade` import / construction; before
+  deletion, the tightened guard failed on the old facade compatibility cluster with 6 violations.
+- Replacement validation is green: architecture guard `70 passed` / `Architecture compliant!`,
+  backend application suite `159 passed`, montage helper plus guard `77 passed`, real-data IO
+  `31 passed, 8 warnings`, tiny pipeline smoke `2 passed`, and fast dashboard `PASS` generated
+  `2026-05-12 23:20:21 UTC+08:00`.
+
+### 不能宣稱完成
+
+- This is not product complete, release approval, human Windows desktop acceptance, Data Import UX
+  approval, or answer UI approval.
+- UI controller fallback compatibility still exists in guarded mock/legacy boundaries and must be
+  handled separately.

@@ -28,7 +28,7 @@ acceptance。
 | Test cleanup | 測試不再把 legacy fallback 當作預期成功路徑；mock 只隔離外部依賴。 |
 | Validation reality-gap audit | 盤點現有 tests / artifacts / smoke 的 claim boundary，補上 human-observable product smoke，避免 dashboard PASS 但實機 workflow 仍不可用。 |
 | Data Import UX alignment | task-oriented step-panel wizard baseline 和第一輪 task-panel visual polish 已交付；後續不再以 debug-style preview 為目標。 |
-| BackendFacade boundary | Product runtime packages and product-success tests use `get_application_service(study)` / `ApplicationService`; `BackendFacade` is legacy compatibility only. |
+| BackendFacade boundary | Product runtime packages、product-success tests 和 unit tests 不再使用 `BackendFacade`; replacement coverage lives in `ApplicationService` / focused service / helper tests. |
 | Architecture guard | 新增或維持 guard，防止 product runtime 和 product-success tests 繞過 command spine。 |
 | Docs alignment | `current`、`roadmap`、`architecture` 不互相矛盾。 |
 
@@ -39,7 +39,9 @@ reality gap 也已補上 command-backed real-GDF offscreen smoke：A01T/A02T/A03
 不開 blocking success modal，且 epoched preview 會取消 queued plot redraw。下一個不能跳過的
 follow-up backend hardening 已補 command-time observer refresh suppression、read-only query
 state preservation、unsupported command structured result，以及 product walkthrough 對
-`TrainCommand` confirmation / `append` / `interactive` contract 的測試對齊。下一個不能跳過的缺口
+`TrainCommand` confirmation / `append` / `interactive` contract 的測試對齊。最新 refactor slice
+已物理移除 `BackendFacade` module 和 facade compatibility-only tests，architecture guard 現在
+拒絕任何 test 使用 facade。下一個不能跳過的缺口
 仍是更完整的 human-observable desktop product smoke；不能用 dashboard PASS 或單一 offscreen smoke
 取代。
 

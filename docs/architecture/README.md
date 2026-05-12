@@ -25,7 +25,6 @@ UI / assistant / MCP / scripts
 | `ApplicationService` | command dispatch、capability / confirmation gate、result envelope。 | 必須保持 spine，不要變成 god object。 |
 | focused services | Data Interpretation、preprocess、dataset、training、analysis、lifecycle。 | 邊界要靠 tests 和 architecture guard 維持。 |
 | `Study` / managers | domain state、data lifecycle、training lifecycle。 | legacy controller mutation path 還要在 product runtime 清乾淨。 |
-| `BackendFacade` | Legacy compatibility wrapper outside product runtime. | Product UI / assistant / MCP / current headless scripts should use `ApplicationService / Command API` directly. |
 | assistant / MCP | tool / JSON payload 轉 command。 | MVP 先做 baseline；client certification 屬 Phase 4。 |
 
 ## Roadmap 對應
@@ -43,7 +42,7 @@ UI / assistant / MCP / scripts
 | --- | --- | --- |
 | legacy controller path | 桌面操作可能繞過 command spine，測試也可能保護舊路徑。 | real `Study` product path 不再 hidden fallback。 |
 | UI refresh split truth | backend state 正確但畫面顯示舊狀態。 | command result / changed state 驅動 refresh；command 執行期間的 observer refresh 會被暫停，避免先用 stale controller state 重刷。 |
-| `BackendFacade` scope creep | wrapper 若回到 product runtime，就會和 UI / MCP 分裂。 | Architecture guard blocks `BackendFacade` use in product UI / assistant / MCP packages. |
+| `BackendFacade` reintroduction | 已移除的 wrapper 若回來，就會和 UI / MCP 分裂。 | Architecture guard blocks `BackendFacade` use in product UI / assistant / MCP packages and tests. |
 | Data Interpretation maturity | 資料語意錯會污染後續 training / evidence。 | MVP 先處理代表性 ambiguity，不誇大 final support。 |
 | MCP session confusion | headless session 容易被誤解成桌面 UI 控制。 | Phase 4 明確 session ownership 和 client matrix。 |
 
@@ -51,7 +50,7 @@ UI / assistant / MCP / scripts
 
 | File | 用途 |
 | --- | --- |
-| [backend.md](backend.md) | backend command spine、controllers、facade 詳細現況。 |
+| [backend.md](backend.md) | backend command spine、controllers、legacy removal 詳細現況。 |
 | [ui.md](ui.md) | PyQt panels、refresh、observer boundary。 |
 | [agent.md](agent.md) | in-app assistant、local-only runtime、tool calls。 |
 | [data_pipeline.md](data_pipeline.md) | EEG import / preprocess / dataset / training pipeline。 |
