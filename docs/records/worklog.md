@@ -37,6 +37,32 @@
 
 ## 2026-05-12
 
+### 18:35 Saliency map widget no-crash test cleanup
+
+- 做了什麼：
+  - Replaced `test_update_plot_with_data()`'s no-crash try/except with
+    `test_update_plot_replaces_canvas_with_visualizer_figure()`.
+  - The test now patches only the backend visualizer factory and asserts the UI
+    behavior: eval record lookup, visualizer call, figure replacement, live canvas,
+    and hidden error label.
+- baseline：
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_visualization.py -q`
+    -> `18 passed` before cleanup, but the target test swallowed generic matplotlib
+    exceptions.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_visualization.py -q`
+    -> `18 passed`.
+  - `poetry run ruff check tests/unit/ui/test_visualization.py`
+    -> `All checks passed!`.
+  - `poetry run basedpyright tests/unit/ui/test_visualization.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run mkdocs build --strict`
+    -> PASS, with the existing MkDocs Material advisory.
+  - `git diff --check`
+    -> PASS.
+- 接續 / 本輪剩餘：
+  - Commit this cleanup.
+
 ### 18:24 Export saliency dialog test and import-cycle cleanup
 
 - 做了什麼：

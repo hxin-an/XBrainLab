@@ -6286,6 +6286,8 @@ mock-only sidebar tests explicit compatibility coverage.
 - Export saliency dialog tests now run again after breaking the visualization/training circular
   import with a lightweight saliency-method module, and their no-crash paths now assert concrete
   combo state, warning, export-cancel, and accept/no-accept behavior.
+- Saliency map widget coverage no longer swallows generic matplotlib exceptions; the data-path test
+  now asserts visualizer invocation, figure replacement, canvas ownership, and hidden error state.
 
 ### Evidence 入口
 

@@ -6,7 +6,6 @@ from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pytest
 
 # ============ Saliency3DEngine ============
 
@@ -75,7 +74,9 @@ class TestSaliencyMapWidget:
         plan.get_eval_record.return_value = None
         w.update_plot(plan, None, None, None, None)
 
-    def test_update_plot_with_data(self, qtbot):
+    def test_update_plot_replaces_canvas_with_visualizer_figure(self, qtbot):
+        from matplotlib.figure import Figure
+
         from XBrainLab.ui.panels.visualization.saliency_views.map_view import (
             SaliencyMapWidget,
         )
@@ -94,15 +95,23 @@ class TestSaliencyMapWidget:
         epoch.get_channel_names.return_value = ["C3", "C4", "Cz", "Fz"]
         trainer.get_dataset.return_value.get_epoch_data.return_value = epoch
 
-        # update_plot exercises the rendering path; matplotlib may raise
-        # in headless environments, so we just verify it doesn't crash with
-        # TypeError/AttributeError (real bugs), while allowing rendering errors.
-        try:
+        visualizer = MagicMock()
+        new_fig = Figure(figsize=(4, 3), dpi=100)
+        visualizer.get_plt.return_value = new_fig
+
+        with patch(
+            "XBrainLab.ui.panels.visualization.saliency_views.map_view.VisualizerType"
+        ) as visualizer_type:
+            visualizer_type.SaliencyMap.value.return_value = visualizer
             w.update_plot(plan, trainer, "Gradient", False, None)
-        except (TypeError, AttributeError):
-            pytest.fail("update_plot raised unexpected error")
-        except Exception:
-            pass  # matplotlib rendering backend errors are acceptable
+
+        plan.get_eval_record.assert_called_once_with()
+        visualizer_type.SaliencyMap.value.assert_called_once_with(eval_rec, epoch)
+        visualizer.get_plt.assert_called_once_with(method="Gradient", absolute=False)
+        assert w.fig is new_fig
+        assert w.canvas is not None
+        assert w.canvas.parent() is w
+        assert not w.error_label.isVisible()
 
     def test_close_releases_figure_and_canvas(self, qtbot):
         from PyQt6.QtGui import QCloseEvent
