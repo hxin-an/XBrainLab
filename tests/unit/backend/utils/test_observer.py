@@ -39,8 +39,8 @@ class TestUnsubscribe:
         assert cb not in obs._observers["evt"]
 
     def test_unsubscribe_nonexistent_event(self, obs):
-        # Should not raise
         obs.unsubscribe("no_such_event", lambda: None)
+        assert obs._observers == {}
 
     def test_unsubscribe_nonexistent_callback(self, obs):
         obs.subscribe("evt", lambda: None)
@@ -56,8 +56,8 @@ class TestNotify:
         assert received[0] == ((1, 2), {"key": "val"})
 
     def test_notify_no_subscribers(self, obs):
-        # Should not raise
         obs.notify("no_event")
+        assert obs._pending_events == {}
 
     def test_notify_multiple_subscribers(self, obs):
         calls = []
@@ -73,8 +73,19 @@ class TestSafeCall:
             raise RuntimeError("boom")
 
         received = []
+        logged = []
         obs.subscribe("evt", bad_callback)
         obs.subscribe("evt", lambda: received.append("ok"))
-        # Should not raise
-        obs.notify("evt")
+        with pytest.MonkeyPatch.context() as monkeypatch:
+
+            def error(*args, **_kwargs):
+                logged.append(args[0])
+
+            monkeypatch.setattr(
+                "XBrainLab.backend.utils.observer.logger.error",
+                error,
+            )
+            obs.notify("evt")
+
+        assert logged == ["Error in subscriber for %s: %s"]
         assert received == ["ok"]

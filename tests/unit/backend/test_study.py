@@ -1,3 +1,4 @@
+from typing import Any, cast
 from unittest.mock import patch
 
 import mne
@@ -135,6 +136,7 @@ def test_study_set_datasets(
     )
     study = Study()
     study.set_loaded_data_list(loaded_epoch_data_list)
+    assert study.epoch_data is not None
     dataset = Dataset(study.epoch_data, config)
 
     study.set_datasets([dataset], force_update)
@@ -188,25 +190,27 @@ class FakeTrainer:
 @pytest.fixture
 def trainer_study():
     study = Study()
-    study.trainer = FakeTrainer()
+    cast(Any, study).trainer = FakeTrainer()
     return study
 
 
 @pytest.mark.parametrize("force_update", [True, False])
 def test_study_set_training_option(trainer_study, force_update):
     option = TrainingOption(
-        "test", int, 0, True, None, 1, 1, 1, 1, TrainingEvaluation.TEST_ACC, 1
+        "test", int, {}, True, None, 1, 1, 1, 1, TrainingEvaluation.TEST_ACC, 1
     )
-    # Since we allow multi-experiment history, this should not raise ValueError anymore
+
     trainer_study.set_training_option(option, force_update)
+
     assert trainer_study.training_option == option
 
 
 @pytest.mark.parametrize("force_update", [True, False])
 def test_study_set_model_holder(trainer_study, force_update):
-    holder = ModelHolder(int, 0)
-    # Since we allow multi-experiment history, this should not raise ValueError anymore
+    holder = ModelHolder(int, {})
+
     trainer_study.set_model_holder(holder, force_update)
+
     assert trainer_study.model_holder == holder
 
 
@@ -220,9 +224,9 @@ def test_study_generate_plan(trainer_study, force_update):
             "XBrainLab.backend.training.Trainer.__init__", return_value=None
         ) as trainer_mock,
     ):
-        trainer_study.datasets = [1, 2, 3]
-        trainer_study.training_option = 2
-        trainer_study.model_holder = 3
+        cast(Any, trainer_study).datasets = [1, 2, 3]
+        cast(Any, trainer_study).training_option = 2
+        cast(Any, trainer_study).model_holder = 3
         if force_update:
             trainer_study.generate_plan(force_update=force_update)
         else:
@@ -253,9 +257,9 @@ def test_study_generate_plan(trainer_study, force_update):
 )
 def test_study_generate_plan_missing_options(missing_part, complain):
     study = Study()
-    study.datasets = [1, 2, 3]
-    study.training_option = 2
-    study.model_holder = 3
+    cast(Any, study).datasets = [1, 2, 3]
+    cast(Any, study).training_option = 2
+    cast(Any, study).model_holder = 3
     setattr(study, missing_part, None)
 
     with pytest.raises(ValueError, match=rf".*{complain}.*"):
@@ -316,10 +320,11 @@ def test_study_set_channels():
             self.channel_types = channel_types
 
     study = Study()
-    study.epoch_data = FakeEpochData()
-    study.set_channels([1], [2])
-    assert study.epoch_data.channels == [1]
-    assert study.epoch_data.channel_types == [2]
+    fake_epoch_data = FakeEpochData()
+    cast(Any, study).epoch_data = fake_epoch_data
+    study.set_channels(["Cz"], [(0.0, 0.0, 1.0)])
+    assert fake_epoch_data.channels == ["Cz"]
+    assert fake_epoch_data.channel_types == [(0.0, 0.0, 1.0)]
 
 
 def test_study_set_channels_not_set():
@@ -345,6 +350,6 @@ def test_study_saliency_params():
         def get_training_plan_holders(self):
             return [holder]
 
-    study.trainer = FakeTrainer()
+    cast(Any, study).trainer = FakeTrainer()
     study.set_saliency_params(params)
     assert holder.params == params

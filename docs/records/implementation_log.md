@@ -6308,3 +6308,36 @@ mock-only sidebar tests explicit compatibility coverage.
   blessing that compatibility layer.
 - Physical `BackendFacade` removal still needs the remaining compatibility-only tests either moved
   to command/service/dialog/helper coverage or deleted with documented replacement evidence.
+
+## 2026-05-12 Repo Weak Assertion Cleanup
+
+### 狀態
+
+Continued the backend/test hygiene lane on `test/backend-ui-legacy-hygiene`. This slice did not
+touch answer UI layout or Data Import UX. It removed the remaining repo-wide weak
+`no crash` / `should not raise` style test wording and replaced those checks with explicit
+observable assertions.
+
+### 已可宣稱
+
+- A full test scan for weak assertion wording now returns no matches across `tests/**/*.py`.
+- Training panel update-event coverage now asserts empty-history cleanup, refresh dispatch, and no
+  legacy fallback call.
+- LLM retriever/config/downloader/worker coverage now asserts BM25 builder wiring, CUDA import
+  fallback, save-error logging, no-worker cancellation state, and no-engine reinitialize behavior.
+- UI coverage now asserts file-link side effects, visualization download-error logging, dialog
+  warning/result behavior, AgentManager status/message behavior, and no-op state preservation.
+- Backend/load-data/preprocessor coverage now asserts truncation output, event IDs, accepted
+  preprocessor data lists, observer logging, idle trainer cleanup, and TrainRecord no-op state.
+- Small product type annotations were added where the tests exposed real type holes:
+  `EventLoader` mutable event fields, `TimeEpoch` optional baseline/event selections, and
+  `WindowEpoch` UI-origin empty-string overlap.
+- Focused validation is green: touched tests `585 passed`, changed-file ruff PASS, changed-file
+  basedpyright `0 errors`.
+
+### 不能宣稱完成
+
+- This is test-hygiene and type-hygiene evidence, not a product-complete claim.
+- It does not remove `BackendFacade`; it prepares the test suite so future removal is judged
+  against stronger replacement coverage rather than weak no-crash assertions.
+- Human Windows desktop acceptance and full MVP flow validation remain separate gates.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -68,9 +69,9 @@ class TestDataSplittingPreviewDialog:
             qtbot.addWidget(dlg)
             if hasattr(dlg, "timer"):
                 dlg.timer.stop()
-            # get_result returns the generator mock (since we mocked DatasetGenerator)
+
             result = dlg.get_result()
-            # Just verify get_result() is callable without error
+            assert result is MockGen.return_value
 
 
 # ============ TrainingManagerWindow ============
@@ -149,7 +150,7 @@ class TestVisualizationPanel:
             """Return a factory that creates real QWidgets so they can be added to tabs."""
 
             def factory(*args, **kwargs):
-                w = QWidget(*args)
+                w = cast(Any, QWidget(*args))
                 w.update_plot = MagicMock()
                 return w
 
@@ -216,7 +217,7 @@ class TestEvaluationPanel:
 
         def make_widget_factory():
             def factory(*args, **kwargs):
-                w = QWidget()
+                w = cast(Any, QWidget())
                 w.update_plot = MagicMock()
                 w.clear = MagicMock()
                 return w

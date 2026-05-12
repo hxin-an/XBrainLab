@@ -22,7 +22,7 @@ class TestCheckboxObj:
 
     def test_no_callback(self):
         cb = CheckboxObj(0, callback=None)
-        cb(1)  # should not raise
+        cb(1)
         assert cb.ctrl == 1
 
     def test_multiple_calls(self):

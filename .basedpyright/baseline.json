@@ -46,14 +46,6 @@
         ],
         "./XBrainLab/backend/load_data/event_loader.py": [
             {
-                "code": "reportGeneralTypeIssues",
-                "range": {
-                    "startColumn": 24,
-                    "endColumn": 39,
-                    "lineCount": 1
-                }
-            },
-            {
                 "code": "reportArgumentType",
                 "range": {
                     "startColumn": 29,

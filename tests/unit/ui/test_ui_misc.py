@@ -68,7 +68,10 @@ class TestDataSplitterHolder:
 
     def test_to_thread(self):
         h = self._make()
-        h.to_thread()  # should not raise
+        h.set_entry_var("0.25")
+        h.to_thread()
+
+        assert h.value_var == "0.25"
 
     def test_not_option(self):
         h = self._make(is_option=False)
@@ -2418,7 +2421,13 @@ class TestImportLabelDialog:
         assert isinstance(dlg, QDialog)
 
     def test_remove_files_empty(self, dlg):
-        dlg.remove_files()  # no items, should not crash
+        dlg.update_unique_labels = MagicMock()
+
+        dlg.remove_files()
+
+        assert dlg.label_data_map == {}
+        assert dlg.file_list.count() == 0
+        dlg.update_unique_labels.assert_not_called()
 
     def test_update_unique_labels_empty(self, dlg):
         dlg.update_unique_labels()
@@ -2466,7 +2475,11 @@ class TestImportLabelDialog:
         mock_mb.warning.assert_called()
 
     def test_on_file_selection_changed(self, dlg):
-        dlg.on_file_selection_changed()  # no-op, should not crash
+        dlg.label_data_map["f.txt"] = np.array([1, 2])
+
+        dlg.on_file_selection_changed()
+
+        assert list(dlg.label_data_map) == ["f.txt"]
 
     @patch("XBrainLab.ui.dialogs.dataset.import_label_dialog.load_label_file")
     def test_load_file(self, mock_load, dlg):
@@ -2514,7 +2527,11 @@ class TestAgentManagerDeep:
 
     def test_toggle_float_no_dock(self, mgr):
         mgr.chat_dock = None
-        mgr._toggle_float()  # should not crash
+        mgr._place_floating_dock = MagicMock()
+
+        mgr._toggle_float()
+
+        mgr._place_floating_dock.assert_not_called()
 
     def test_toggle_float_with_dock(self, mgr, qtbot):
         from PyQt6.QtWidgets import QDockWidget
@@ -2615,9 +2632,17 @@ class TestAgentManagerDeep:
 
     def test_switch_panel_unknown(self, mgr):
         mgr.main_window.switch_page = MagicMock()
-        mgr.main_window.statusBar = MagicMock(return_value=MagicMock())
+        status_bar = MagicMock()
+        mgr.main_window.statusBar = MagicMock(return_value=status_bar)
         mgr.switch_panel({"panel": "unknown_panel"})
-        # Should not crash; statusBar shows error
+
+        mgr.main_window.switch_page.assert_not_called()
+        status_bar.showMessage.assert_called_once_with(
+            "Error: Unknown panel 'unknown_panel'",
+        )
+        mgr.chat_controller.add_agent_message.assert_called_once_with(
+            "Error: Could not switch to unknown_panel",
+        )
 
     def test_prepare_model_deletion_no_controller(self, mgr):
         mgr.agent_controller = None

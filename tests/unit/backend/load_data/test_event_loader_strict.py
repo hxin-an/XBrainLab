@@ -45,9 +45,9 @@ def test_event_loader_raw_mismatch_truncates():
     loader.label_list = [1, 2, 3]  # 3 labels vs 2 events
     mapping = {1: "A", 2: "B", 3: "C"}
 
-    # Should NOT raise error, but truncate
     new_events, _ = loader.create_event(mapping)
 
+    assert new_events is not None
     assert len(new_events) == 2
     assert new_events[0, -1] == 1
     assert new_events[1, -1] == 2
@@ -93,6 +93,7 @@ def test_event_loader_string_labels_assign_sequential_event_ids():
 
     events, event_id = loader.create_event({"left": "Left", "right": "Right"})
 
+    assert events is not None
     assert events[:, -1].tolist() == [1, 2, 1]
     assert event_id == {"Left": 1, "Right": 2}
 
@@ -108,6 +109,7 @@ def test_event_loader_numeric_string_labels_preserve_numeric_codes():
 
     events, event_id = loader.create_event({"769": "Left", "770": "Right"})
 
+    assert events is not None
     assert events[:, -1].tolist() == [769, 770]
     assert event_id == {"Left": 769, "Right": 770}
 
@@ -125,9 +127,9 @@ def test_event_loader_epochs_fallback_ok():
     loader.label_list = [1, 2]
     mapping = {1: "A", 2: "B"}
 
-    # Should NOT raise error, but create events with index timestamps
     events, _ = loader.create_event(mapping)
 
+    assert events is not None
     assert len(events) == 2
     # Since we provided matching count (2 labels, 2 events), it syncs with
     # existing events [10, 20]

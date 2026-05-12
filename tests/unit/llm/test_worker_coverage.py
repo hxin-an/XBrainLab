@@ -198,9 +198,11 @@ class TestAgentWorkerReinitialize:
         from XBrainLab.llm.agent.worker import AgentWorker
 
         worker = AgentWorker()
+        worker.engine = None
         worker.log = MagicMock()
         worker.reinitialize_agent("gemini")
-        # Should not crash, just log warning and return
+
+        worker.log.emit.assert_called_once_with("Switching to gemini...")
 
     def test_local_catalog_model_switch(self):
         from XBrainLab.llm.agent.worker import AgentWorker

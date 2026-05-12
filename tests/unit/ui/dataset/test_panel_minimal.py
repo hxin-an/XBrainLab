@@ -1,3 +1,4 @@
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -16,7 +17,7 @@ def app(qapp):
 def mock_main_window(qapp):
     """Mock main window with study controller."""
     # Must be a QWidget to satisfy PyQt inheritance
-    mw = QWidget()
+    mw = cast(Any, QWidget())
     mw.study = MagicMock()
     # Mock dataset controller
     mw.study.get_controller.return_value = MagicMock()
@@ -42,6 +43,9 @@ def test_dataset_panel_init(app, mock_main_window):
 
 def test_dataset_panel_no_parent(app):
     """Verify DatasetPanel can init without parent (headless/test mode)."""
-    # Should not crash even if controller is missing
     panel = DatasetPanel(parent=None)
+
+    assert panel.controller is None
+    assert panel.main_window is None
+    assert panel._bridges == []
     assert isinstance(panel.table, QTableWidget)

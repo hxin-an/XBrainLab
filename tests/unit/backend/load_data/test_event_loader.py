@@ -73,18 +73,11 @@ def test_create_event_from_nx3_array(raw):  # noqa: F811
 
 
 def test_create_event_inconsistent(epoch):  # noqa: F811
-    # Epoch object has specific length (e.g. 10 epochs)
-    # If we provide label list with different length, it should fail
     event_loader = EventLoader(epoch)
-    # Assuming mock epoch has length != 1
     event_loader.label_list = [1]
 
-    # We need to check what is the length of mock epoch
-    # Based on previous test code, it seemed to expect failure
+    events, event_id = event_loader.create_event({1: "new 1"})
 
-    # Note: create_event checks consistency for Epochs
-    # But now it truncates, so it should NOT raise ValueError
-    # Unless epoch has NO events?
-    # If epoch has events, it truncates.
-    # Let's assume it succeeds.
-    event_loader.create_event({1: "new 1"})
+    assert events is not None
+    assert event_id == {"new 1": 1}
+    assert len(events) == 1

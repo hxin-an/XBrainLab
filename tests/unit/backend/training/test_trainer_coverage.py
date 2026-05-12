@@ -45,8 +45,9 @@ class TestJobException:
         with patch.object(holders[0], "train", side_effect=RuntimeError("boom")):
             trainer.job()
 
-        assert trainer.progress_text.startswith("Error:")
-        assert "boom" in trainer.progress_text
+        progress_text = str(trainer.progress_text)
+        assert progress_text.startswith("Error:")
+        assert "boom" in progress_text
         assert trainer.job_thread is None
 
     def test_job_exception_preserves_error_in_finally(self, holders):
@@ -56,7 +57,7 @@ class TestJobException:
         with patch.object(holders[0], "train", side_effect=ValueError("bad")):
             trainer.job()
 
-        assert trainer.progress_text.startswith("Error:")
+        assert str(trainer.progress_text).startswith("Error:")
 
 
 # ---------------------------------------------------------------------------
@@ -103,8 +104,10 @@ class TestClean:
 
     def test_clean_no_force_when_idle_ok(self, holders):
         trainer = Trainer(holders)
-        # Should not raise
+
         trainer.clean(force_update=False)
+
+        assert trainer.job_thread is None
 
 
 # ---------------------------------------------------------------------------

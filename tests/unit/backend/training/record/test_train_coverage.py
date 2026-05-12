@@ -152,19 +152,23 @@ class TestExportLoadRoundTrip:
     def test_load_nonexistent_path(self, train_record):
         """Loading from nonexistent path should be a no-op."""
         train_record.target_path = "/nonexistent/path"
-        # Should not raise
+
         train_record.load()
+
+        assert train_record.epoch == 0
 
     def test_load_no_target_path(self, train_record):
         """Loading with None target_path should be a no-op."""
         train_record.target_path = None
         train_record.load()
+        assert train_record.epoch == 0
 
     def test_export_no_target_path(self, train_record):
         """Exporting with None target_path should be a no-op."""
         train_record.target_path = None
-        # Should not raise, just return early
+
         train_record.export_checkpoint()
+        assert train_record.target_path is None
 
     def test_export_with_eval_record(
         self,

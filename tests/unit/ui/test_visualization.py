@@ -46,8 +46,16 @@ class TestSaliency3DEngine:
             )
 
             engine = Saliency3DEngine()
-            # Should not raise on error result
-            engine._on_download_complete("Error: connection timeout")
+            with (
+                patch.object(engine, "_init_meshes") as init_meshes,
+                patch(
+                    "XBrainLab.backend.visualization.saliency_3d_engine.logger",
+                ) as logger,
+            ):
+                engine._on_download_complete("Error: connection timeout")
+
+        logger.error.assert_called_once_with("Error: connection timeout")
+        init_meshes.assert_not_called()
 
 
 # ============ SaliencyMapWidget ============

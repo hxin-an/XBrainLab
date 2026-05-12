@@ -298,7 +298,11 @@ class TestClose:
     def test_close_rag_error_ignored(self, ctrl):
         ctrl.rag_retriever.close.side_effect = RuntimeError("x")
         ctrl.worker_thread.isRunning.return_value = False
-        ctrl.close()  # Should not raise
+        ctrl.close()
+
+        ctrl.rag_retriever.close.assert_called_once()
+        ctrl.worker.shutdown.assert_called_once()
+        ctrl.worker_thread.quit.assert_not_called()
 
 
 # --- stop_generation ---

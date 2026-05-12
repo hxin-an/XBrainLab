@@ -361,7 +361,6 @@ class TestPlotEvents:
         mne.annotations = None
 
         plotter._plot_events(raw_obj, start_time=0.0, end_time=10.0)
-        # No crash, no addItem called
         mock_widget.plot_time.addItem.assert_not_called()
 
     def test_epochs_no_events_plotted(self, mock_widget, mock_controller):

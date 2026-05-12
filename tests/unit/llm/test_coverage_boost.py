@@ -78,12 +78,20 @@ class TestRetrieverEdgeCases:
 
         r = RAGRetriever()
 
-        with patch("pathlib.Path.exists", return_value=True):
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("XBrainLab.llm.rag.retriever.BM25Index") as mock_bm25_index,
+        ):
+            idx = MagicMock()
+            idx.doc_count = 2
+            mock_bm25_index.return_value = idx
             r._build_bm25_index()
-        # If gold_set.json actually exists the BM25 index is built; otherwise
-        # the patched Path.exists(True) makes it try and either succeed or fail.
-        # Just verify no crash and the attribute was set.
-        assert hasattr(r, "bm25_index")
+
+        idx.build_from_json.assert_called_once()
+        gold_set_path = idx.build_from_json.call_args.args[0]
+        assert gold_set_path.name == "gold_set.json"
+        assert gold_set_path.parent.name == "data"
+        assert r.bm25_index is idx
 
     def test_close_with_client(self):
         """L197: close() closes client."""
@@ -424,15 +432,12 @@ class TestWorkerEdgeCases:
 class TestLLMConfig:
     """Cover config.py gaps."""
 
-    def test_check_cuda_import_error(self):
-        """L21-22: _check_cuda returns False on ImportError."""
+    def test_cuda_available_returns_false_on_import_error(self):
+        """_cuda_available returns False when PyTorch cannot be imported."""
+        from XBrainLab.llm.core import config as config_module
 
-        with (
-            patch.dict("sys.modules", {"torch": None}),
-            patch("builtins.__import__", side_effect=ImportError),
-        ):
-            # Call directly — may already be cached; just ensure no crash
-            pass
+        with patch("builtins.__import__", side_effect=ImportError("torch missing")):
+            assert config_module._cuda_available() is False
 
     def test_save_to_file_default_path(self):
         """L129: save_to_file uses default path."""
@@ -451,8 +456,16 @@ class TestLLMConfig:
         from XBrainLab.llm.core.config import LLMConfig
 
         cfg = LLMConfig()
-        with patch("builtins.open", side_effect=OSError("disk full")):
-            cfg.save_to_file("bad_path.json")  # should not raise
+        with (
+            patch("builtins.open", side_effect=OSError("disk full")),
+            patch("logging.getLogger") as get_logger,
+        ):
+            cfg.save_to_file("bad_path.json")
+
+        get_logger.return_value.error.assert_called_once()
+        assert (
+            "Error saving settings" in get_logger.return_value.error.call_args.args[0]
+        )
 
 
 # ── engine.py ───────────────────────────────────────────────

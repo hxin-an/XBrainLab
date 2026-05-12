@@ -16221,3 +16221,37 @@
 - claims still not supported：
   - Not ready to physically delete `BackendFacade` in this slice.
   - The map is removal preparation; actual deletion still needs a separate small branch/slice.
+
+### 2026-05-12 Repo weak assertion cleanup
+
+- scope：
+  - Continued on `test/backend-ui-legacy-hygiene`.
+  - No answer UI redesign and no Data Import UX redesign.
+  - Converted remaining weak `no crash` / `should not raise` style tests into explicit state,
+    command, side-effect, warning, or no-op assertions across UI, LLM, backend, preprocessor,
+    load-data, and training integration tests.
+- implementation：
+  - Added lightweight type annotations to `EventLoader.label_list/events/event_id/annotations`,
+    `TimeEpoch` baseline/event-name arguments, and `WindowEpoch` UI-origin overlap handling so
+    strengthened tests can pass focused type checks without weakening product API contracts.
+  - Updated `.basedpyright/baseline.json`; focused basedpyright reduced the baseline for
+    `XBrainLab/backend/load_data/event_loader.py` by one stale error.
+- validation：
+  - Full weak-comment scan:
+    `rg -n -i "no crash|not crash|doesn't crash|does not crash|doesnt crash|just verify|just ensure|success if no error|should not raise|should not crash" tests --glob '*.py' --glob '!**/__pycache__/**'`
+    -> no matches.
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys
+    <touched UI/backend/LLM/preprocessor/load-data/training integration tests> -q`
+    -> `585 passed`.
+  - `poetry run ruff check <changed Python files>` -> PASS.
+  - `poetry run basedpyright <changed Python files>` -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `70 passed`.
+  - `poetry run mkdocs build --strict` -> PASS with existing MkDocs Material advisory and nav
+    notices.
+  - `git diff --check` -> PASS.
+- claims still not supported：
+  - This does not prove product complete or replace human Windows desktop acceptance.
+  - This removes weak assertion wording and improves behavior checks; it is not physical
+    `BackendFacade` deletion.

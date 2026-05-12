@@ -16,7 +16,7 @@ class TestTimeEpoch:
         n_channels = 1
         n_samples = 10000
         data = np.random.randn(n_channels, n_samples)
-        info = mne.create_info(ch_names=["EEG1"], sfreq=sfreq, ch_types=["eeg"])
+        info = mne.create_info(ch_names=["EEG1"], sfreq=sfreq, ch_types="eeg")
         mne_raw = mne.io.RawArray(data, info)
 
         # Add some events
@@ -75,7 +75,6 @@ class TestTimeEpoch:
 
         time_epoch = TimeEpoch([raw])
 
-        # Should not raise error due to event_repeated='drop'
         time_epoch._data_preprocess(
             raw, selected_event_names=["Event1"], tmin=-0.1, tmax=0.5, baseline=None
         )

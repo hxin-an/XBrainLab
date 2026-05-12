@@ -73,10 +73,10 @@ class EventLoader:
         """
         validate_type(raw, Raw, "raw")
         self.raw = raw
-        self.label_list = None
-        self.events = None
-        self.event_id = None
-        self.annotations = None
+        self.label_list: Any | None = None
+        self.events: np.ndarray | None = None
+        self.event_id: dict[str, int] | None = None
+        self.annotations: mne.Annotations | None = None
 
     def smart_filter(self, target_count: int) -> list[int]:
         """Suggest event IDs whose count best matches a target trial count.

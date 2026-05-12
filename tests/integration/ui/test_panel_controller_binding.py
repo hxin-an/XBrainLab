@@ -2,7 +2,8 @@
 Integration tests ensuring UI Panels correctly respond to Controller events.
 """
 
-from unittest.mock import MagicMock
+from typing import Any, cast
+from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtWidgets import QWidget
@@ -24,7 +25,7 @@ class TestPanelControllerBinding:
 
     @pytest.fixture
     def training_panel(self, qtbot, mock_study):
-        parent = QWidget()
+        parent = cast(Any, QWidget())
         parent.study = mock_study
 
         # Setup specific returns for get_controller
@@ -63,11 +64,33 @@ class TestPanelControllerBinding:
         training_panel.sidebar.on_training_started.assert_called_once()
         assert "started" in training_panel.log_text.toPlainText()
 
-    def test_training_update_event_refreshes_graph(self, training_panel):
-        """Test 'training_updated' event failsafe."""
-        # This test ensures that receiving the event doesn't crash the UI
-        # even if data is empty.
-        training_panel.update_loop()
+    def test_training_update_event_clears_empty_history(self, training_panel):
+        """Test 'training_updated' clears stale display state when history is empty."""
+        stale_record = object()
+        training_panel.current_plotting_record = stale_record
+        training_panel._last_epoch_count = 3
+        training_panel.history_table = MagicMock()
+        training_panel.tab_acc = MagicMock()
+        training_panel.tab_loss = MagicMock()
+        training_panel._history_from_application_query = MagicMock(return_value=[])
+        training_panel._legacy_history_for_render = MagicMock()
+
+        with patch(
+            "XBrainLab.ui.panels.training.panel.refresh_after_observer",
+        ) as refresh_after_observer:
+            training_panel._on_training_updated()
+
+        training_panel.history_table.clear_history.assert_called_once()
+        training_panel.history_table.update_table.assert_not_called()
+        training_panel.tab_acc.clear.assert_called_once()
+        training_panel.tab_loss.clear.assert_called_once()
+        assert training_panel.current_plotting_record is None
+        assert training_panel._last_epoch_count == -1
+        training_panel._legacy_history_for_render.assert_not_called()
+        refresh_after_observer.assert_called_once_with(
+            training_panel,
+            event_name="training_updated",
+        )
 
     def test_controller_resolution(self, training_panel, mock_study):
         """Verify panel correctly resolved the controller from study."""

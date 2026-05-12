@@ -34,8 +34,8 @@ class TimeEpoch(PreprocessBase):
 
     def get_preprocess_desc(
         self,
-        baseline: list,
-        selected_event_names: list,
+        baseline: list | tuple | None,
+        selected_event_names: list | None,
         tmin: float,
         tmax: float,
     ):
@@ -57,8 +57,8 @@ class TimeEpoch(PreprocessBase):
     def _data_preprocess(
         self,
         preprocessed_data: Raw,
-        baseline: list,
-        selected_event_names: list,
+        baseline: list | tuple | None,
+        selected_event_names: list | None,
         tmin: float,
         tmax: float,
     ):

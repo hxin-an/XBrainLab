@@ -119,7 +119,7 @@ class TestModelDownloader:
 
     def test_start_download_ignores_if_running(self, mock_multiprocessing, qtbot):
         """If a download thread is already running, start_download is a no-op."""
-        _, _, mock_queue = mock_multiprocessing
+        mock_mp, _, mock_queue = mock_multiprocessing
         messages = [("finished", "/path")]
 
         def get_msg():
@@ -132,9 +132,10 @@ class TestModelDownloader:
         downloader = ModelDownloader()
         downloader.start_download("repo/id", "/cache")
         qtbot.wait(200)
-        # Try to start again while thread may still be alive
+
         downloader.start_download("repo/other", "/cache")
-        # Should not crash
+
+        mock_mp.Process.assert_called_once()
 
     def test_start_download_deleted_thread_recovery(self, qtbot):
         """If previous thread's C++ object was deleted, treat as not-running."""
@@ -159,10 +160,19 @@ class TestModelDownloader:
         downloader._on_finished("/some/path")
         assert downloader._thread is None
 
-    def test_cancel_no_worker(self):
-        """cancel_download when no worker should not raise."""
+    def test_cancel_no_worker_keeps_thread_state(self):
+        """cancel_download only delegates to an active worker."""
         downloader = ModelDownloader()
-        downloader.cancel_download()  # no crash
+        thread = MagicMock()
+        downloader.worker = None
+        downloader._thread = thread
+
+        downloader.cancel_download()
+
+        assert downloader.worker is None
+        assert downloader._thread is thread
+        thread.quit.assert_not_called()
+        thread.wait.assert_not_called()
 
     def test_shutdown_cancels_worker_and_waits_for_running_thread(self):
         """Dialog teardown should have a bounded wait for download cleanup."""

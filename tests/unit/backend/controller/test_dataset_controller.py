@@ -156,8 +156,9 @@ def test_update_metadata(controller, mock_study):
 
 def test_update_metadata_invalid_index(controller, mock_study):
     mock_study.loaded_data_list = []
-    # Should not crash
+
     controller.update_metadata(0, subject="Sub1")
+
     mock_study.reset_preprocess.assert_not_called()
 
 

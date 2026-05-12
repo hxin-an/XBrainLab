@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,7 +13,7 @@ from PyQt6.QtWidgets import QMainWindow
 
 
 @pytest.fixture
-def agent_mgr(qtbot):
+def agent_mgr(qtbot) -> Any:
     with (
         patch("XBrainLab.ui.components.agent_manager.LLMController") as MockCtrl,
         patch("XBrainLab.ui.components.agent_manager.ChatController"),
@@ -23,13 +24,13 @@ def agent_mgr(qtbot):
         from XBrainLab.ui.components.agent_manager import AgentManager
 
         # main_window must be a real QWidget (parent in super().__init__)
-        main_window = QMainWindow()
+        main_window = cast(Any, QMainWindow())
         main_window.ai_btn = MagicMock()
         qtbot.addWidget(main_window)
 
         study = MagicMock()
         study.get_controller.return_value = MagicMock()
-        mgr = AgentManager(main_window, study)
+        mgr = cast(Any, AgentManager(main_window, study))
         mgr.agent_controller = MockCtrl.return_value
         yield mgr
 
@@ -37,7 +38,7 @@ def agent_mgr(qtbot):
 class TestAgentManagerInit:
     def test_creates_instance(self, agent_mgr):
         assert isinstance(agent_mgr, QObject)
-        assert agent_mgr.study is not None
+        assert cast(Any, agent_mgr).study is not None
 
     def test_not_initialized_by_default(self, agent_mgr):
         assert not agent_mgr.agent_initialized
@@ -50,7 +51,11 @@ class TestAgentManagerMethods:
 
     def test_toggle_float_no_dock(self, agent_mgr):
         agent_mgr.chat_dock = None
-        agent_mgr._toggle_float()  # should not raise
+        agent_mgr._place_floating_dock = MagicMock()
+
+        agent_mgr._toggle_float()
+
+        agent_mgr._place_floating_dock.assert_not_called()
 
     def test_handle_user_input(self, agent_mgr):
         agent_mgr.handle_user_input("hello")
@@ -135,14 +140,15 @@ class TestAgentManagerMethods:
             AssistantDockTitleBar,
         )
 
-        main_window = QMainWindow()
+        main_window = cast(Any, QMainWindow())
         main_window.ai_btn = MagicMock()
         qtbot.addWidget(main_window)
         study = MagicMock()
         study.get_controller.return_value = MagicMock()
-        manager = AgentManager(main_window, study)
+        manager = cast(Any, AgentManager(main_window, study))
 
         manager.init_ui()
+        assert manager.chat_dock is not None
 
         assert isinstance(manager.chat_dock.titleBarWidget(), AssistantDockTitleBar)
         features = manager.chat_dock.features()
@@ -309,7 +315,7 @@ class TestAgentManagerMethods:
         from XBrainLab.backend.study import Study
         from XBrainLab.ui.components.agent_manager import AgentManager
 
-        main_window = QMainWindow()
+        main_window = cast(Any, QMainWindow())
         main_window.ai_btn = MagicMock()
         qtbot.addWidget(main_window)
         study = Study()
@@ -323,8 +329,9 @@ class TestAgentManagerMethods:
             MockThread.return_value.isRunning.return_value = False
             MockThreading.return_value.start = MagicMock()
 
-            manager = AgentManager(main_window, study)
+            manager = cast(Any, AgentManager(main_window, study))
             manager.init_ui()
+            assert manager.chat_panel is not None
             manager.start_system()
             manager.agent_controller.execute_debug_tool("start_training", {})
 
@@ -392,11 +399,14 @@ class _FakeAgentController(QObject):
         return None
 
 
-def _make_real_manager_with_fake_controller(qtbot, mode: str):
+def _make_real_manager_with_fake_controller(
+    qtbot,
+    mode: str,
+) -> tuple[Any, _FakeAgentController]:
     from XBrainLab.backend.study import Study
     from XBrainLab.ui.components.agent_manager import AgentManager
 
-    main_window = QMainWindow()
+    main_window = cast(Any, QMainWindow())
     main_window.ai_btn = MagicMock()
     qtbot.addWidget(main_window)
     study = Study()
@@ -404,7 +414,7 @@ def _make_real_manager_with_fake_controller(qtbot, mode: str):
     with patch(
         "XBrainLab.ui.components.agent_manager.LLMController", return_value=fake
     ):
-        manager = AgentManager(main_window, study)
+        manager = cast(Any, AgentManager(main_window, study))
         manager.init_ui()
         manager.start_system()
     return manager, fake
@@ -506,11 +516,12 @@ class TestAgentManagerProductChatFlow:
         from XBrainLab.backend.study import Study
         from XBrainLab.ui.components.agent_manager import AgentManager
 
-        main_window = QMainWindow()
+        main_window = cast(Any, QMainWindow())
         main_window.ai_btn = MagicMock()
         qtbot.addWidget(main_window)
-        manager = AgentManager(main_window, Study())
+        manager = cast(Any, AgentManager(main_window, Study()))
         manager.init_ui()
+        assert manager.chat_dock is not None
 
         with (
             patch.object(manager, "_load_runtime_config", return_value=MagicMock()),

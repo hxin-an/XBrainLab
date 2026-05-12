@@ -5,6 +5,7 @@ These tests simulate real user interactions and verify that the complete
 training pipeline works correctly, including UI updates and state management.
 """
 
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -20,6 +21,11 @@ from XBrainLab.ui.panels.training.panel import MetricTab, TrainingPanel
 from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
 
 
+def _ui_text(value: str) -> Any:
+    """Represent text-field values passed through runtime validation."""
+    return cast(Any, value)
+
+
 @pytest.fixture
 def real_training_option():
     """Create a real TrainingOption with minimal epochs for testing."""
@@ -29,12 +35,12 @@ def real_training_option():
         optim_params={},
         use_cpu=True,
         gpu_idx=None,
-        epoch="2",  # Minimal epochs for fast testing
-        bs="4",
-        lr="0.001",
-        checkpoint_epoch="1",
+        epoch=_ui_text("2"),  # Minimal epochs for fast testing
+        bs=_ui_text("4"),
+        lr=_ui_text("0.001"),
+        checkpoint_epoch=_ui_text("1"),
         evaluation_option=TrainingEvaluation.TEST_ACC,
-        repeat_num="1",
+        repeat_num=_ui_text("1"),
     )
 
 
@@ -54,7 +60,7 @@ class TestTrainingPanelRealUsage:
         study.set_model_holder(model_holder)
 
         # Create panel
-        parent = QWidget()
+        parent = cast(Any, QWidget())
         parent.study = study
         panel = TrainingPanel(parent=parent)
         qtbot.addWidget(panel)
@@ -86,7 +92,7 @@ class TestTrainingPanelRealUsage:
         model_holder = ModelHolder(SCCNet, {})
         study.set_model_holder(model_holder)
 
-        parent = QWidget()
+        parent = cast(Any, QWidget())
         parent.study = study
 
         panel = TrainingPanel(parent=parent)
@@ -130,13 +136,14 @@ class TestTrainingPanelRealUsage:
 
         study.trainer = mock_trainer
 
-        # This should not raise any type errors
         panel.update_loop()
 
         # Verify progress bar was updated
         # Verify progress in history table
         assert panel.history_table.rowCount() > 0
-        progress_text = panel.history_table.item(0, 4).text()
+        progress_item = panel.history_table.item(0, 4)
+        assert progress_item is not None
+        progress_text = progress_item.text()
         assert "/" in progress_text
 
 
@@ -149,10 +156,9 @@ class TestEvaluationPanelIntegration:
         study = Study()
         # No trainer set
 
-        parent = QWidget()
+        parent = cast(Any, QWidget())
         parent.study = study
 
-        # Should not crash during initialization
         panel = EvaluationPanel(parent=parent)
         qtbot.addWidget(panel)
 
@@ -185,7 +191,7 @@ class TestEvaluationPanelIntegration:
         mock_trainer.get_training_plan_holders.return_value = [mock_plan]
         study.trainer = mock_trainer
 
-        parent = QWidget()
+        parent = cast(Any, QWidget())
         parent.study = study
 
         # The important thing is that get_trainers() method works
@@ -205,10 +211,9 @@ class TestVisualizationPanelIntegration:
 
         study = Study()
 
-        parent = QWidget()
+        parent = cast(Any, QWidget())
         parent.study = study
 
-        # Should not crash during initialization
         panel = VisualizationPanel(parent=parent)
         qtbot.addWidget(panel)
 
@@ -229,21 +234,22 @@ class TestTrainingWorkflowWithUI:
             optim_params={},
             use_cpu=True,
             gpu_idx=None,
-            epoch="10",  # String input
-            bs="4",
-            lr="0.001",
-            checkpoint_epoch="1",
+            epoch=_ui_text("10"),  # String input
+            bs=_ui_text("4"),
+            lr=_ui_text("0.001"),
+            checkpoint_epoch=_ui_text("1"),
             evaluation_option=TrainingEvaluation.TEST_ACC,
-            repeat_num="1",
+            repeat_num=_ui_text("1"),
         )
         study.set_training_option(option)
 
         # Verify epoch was converted to int
+        assert study.training_option is not None
         assert isinstance(study.training_option.epoch, int)
         assert study.training_option.epoch == 10
 
         # Create panel
-        parent = QWidget()
+        parent = cast(Any, QWidget())
         parent.study = study
         panel = TrainingPanel(parent=parent)
         qtbot.addWidget(panel)
@@ -288,7 +294,9 @@ class TestTrainingWorkflowWithUI:
         # Progress should be shown in history table
         # Row 0, Column 1 is Progress
         assert panel.history_table.rowCount() > 0
-        assert panel.history_table.item(0, 4).text() == "5/10"
+        progress_item = panel.history_table.item(0, 4)
+        assert progress_item is not None
+        assert progress_item.text() == "5/10"
 
     def test_metric_tab_accumulates_history(self, qtbot):
         """Test that MetricTab correctly accumulates training history."""
@@ -327,7 +335,7 @@ class TestTrainingWorkflowWithUI:
         model_holder = ModelHolder(SCCNet, {})
         study.set_model_holder(model_holder)
 
-        parent = QWidget()
+        parent = cast(Any, QWidget())
         parent.study = study
 
         panel = TrainingPanel(parent=parent)
@@ -375,8 +383,6 @@ class TestTrainingWorkflowWithUI:
         mock_plan.option.epoch = 10
         study.trainer = mock_trainer
 
-        # This should NOT raise TypeError about '>' comparison
-        # This should handle string metrics without raising TypeError
         panel.update_loop()
 
         # Verify metrics were converted to float and plotted

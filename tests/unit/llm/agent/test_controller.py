@@ -464,7 +464,11 @@ class TestClose:
     def test_close_rag_error_ignored(self, ctrl):
         ctrl.rag_retriever.close.side_effect = RuntimeError("x")
         ctrl.worker_thread.isRunning.return_value = False
-        ctrl.close()  # Should not raise
+        ctrl.close()
+
+        ctrl.rag_retriever.close.assert_called_once()
+        ctrl.worker.shutdown.assert_called_once()
+        ctrl.worker_thread.quit.assert_not_called()
 
 
 # --- stop_generation ---
@@ -557,7 +561,13 @@ class TestOnUserConfirmed:
     def test_no_pending_is_noop(self, ctrl):
         """If no pending confirmation, calling on_user_confirmed does nothing."""
         ctrl._pending_confirmation = None
-        ctrl.on_user_confirmed(True)  # Should not raise
+        history_before = list(ctrl.history)
+        ctrl._execute_tool_no_loop = MagicMock()
+
+        ctrl.on_user_confirmed(True)
+
+        assert ctrl.history == history_before
+        ctrl._execute_tool_no_loop.assert_not_called()
 
     def test_approved_failure_triggers_retry(self, ctrl):
         """If confirmed tool fails, it should trigger retry."""

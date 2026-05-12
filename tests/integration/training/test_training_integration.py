@@ -5,6 +5,7 @@ These tests use real objects (not mocks) to verify the bugs we fixed,
 catching issues that unit tests with heavy mocking might miss.
 """
 
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,6 +19,11 @@ from XBrainLab.ui.dialogs.training import TrainingSettingDialog
 from XBrainLab.ui.panels.training.panel import MetricTab
 
 
+def _ui_text(value: str) -> Any:
+    """Represent text-field values passed through runtime validation."""
+    return cast(Any, value)
+
+
 @pytest.fixture
 def real_training_option():
     """Create a real TrainingOption object (not a mock)."""
@@ -27,12 +33,12 @@ def real_training_option():
         optim_params={},  # Bug fix: lr should NOT be in optim_params
         use_cpu=True,
         gpu_idx=None,
-        epoch="5",
-        bs="4",
-        lr="0.001",  # lr is passed separately
-        checkpoint_epoch="1",
+        epoch=_ui_text("5"),
+        bs=_ui_text("4"),
+        lr=_ui_text("0.001"),  # lr is passed separately
+        checkpoint_epoch=_ui_text("1"),
         evaluation_option=TrainingEvaluation.TEST_ACC,
-        repeat_num="1",
+        repeat_num=_ui_text("1"),
     )
 
 
@@ -41,6 +47,7 @@ class TestTrainingOptionBugFix:
 
     def test_optim_params_should_not_contain_lr(self, real_training_option):
         """Verify optim_params doesn't contain 'lr' to avoid duplication."""
+        assert real_training_option.optim_params is not None
         assert "lr" not in real_training_option.optim_params
         assert real_training_option.lr == 0.001
 
@@ -48,7 +55,6 @@ class TestTrainingOptionBugFix:
         """Test that get_optim() doesn't pass lr twice."""
         model = torch.nn.Linear(10, 2)
 
-        # This should NOT raise "got multiple values for keyword argument 'lr'"
         optimizer = real_training_option.get_optim(model)
 
         assert optimizer is not None
@@ -62,12 +68,12 @@ class TestTrainingOptionBugFix:
             optim_params={"weight_decay": 0.01, "amsgrad": True},
             use_cpu=True,
             gpu_idx=None,
-            epoch="5",
-            bs="4",
-            lr="0.001",
-            checkpoint_epoch="1",
+            epoch=_ui_text("5"),
+            bs=_ui_text("4"),
+            lr=_ui_text("0.001"),
+            checkpoint_epoch=_ui_text("1"),
             evaluation_option=TrainingEvaluation.TEST_ACC,
-            repeat_num="1",
+            repeat_num=_ui_text("1"),
         )
 
         model = torch.nn.Linear(10, 2)
@@ -152,12 +158,12 @@ class TestCompleteTrainingWorkflow:
                 optim_params={},
                 use_cpu=True,
                 gpu_idx=None,
-                epoch="5",
-                bs="4",
-                lr="0.001",
-                checkpoint_epoch="1",
+                epoch=_ui_text("5"),
+                bs=_ui_text("4"),
+                lr=_ui_text("0.001"),
+                checkpoint_epoch=_ui_text("1"),
                 evaluation_option=TrainingEvaluation.TEST_ACC,
-                repeat_num="1",
+                repeat_num=_ui_text("1"),
             )
 
 
@@ -179,16 +185,17 @@ class TestUITrainingPanelIntegration:
             optim_params={},
             use_cpu=True,
             gpu_idx=None,
-            epoch="5",
-            bs="4",
-            lr="0.001",
-            checkpoint_epoch="1",
+            epoch=_ui_text("5"),
+            bs=_ui_text("4"),
+            lr=_ui_text("0.001"),
+            checkpoint_epoch=_ui_text("1"),
             evaluation_option=TrainingEvaluation.TEST_ACC,
-            repeat_num="1",
+            repeat_num=_ui_text("1"),
         )
         study.set_training_option(option)
 
         # UI code should be able to access this
+        assert study.training_option is not None
         assert study.training_option.epoch == 5
 
 
@@ -206,6 +213,11 @@ class TestTrainingSettingDefaultValues:
         qtbot.addWidget(window)
 
         # Verify default values are pre-filled
+        assert window.epoch_entry is not None
+        assert window.bs_entry is not None
+        assert window.lr_entry is not None
+        assert window.checkpoint_entry is not None
+        assert window.repeat_entry is not None
         assert window.epoch_entry.text() == "10"
         assert window.bs_entry.text() == "32"
         assert window.lr_entry.text() == "0.001"
@@ -236,6 +248,7 @@ class TestTrainingSettingDefaultValues:
         assert window.training_option is not None
         assert window.training_option.epoch == 10
         assert window.training_option.lr == 0.001
+        assert window.training_option.optim_params is not None
         assert "lr" not in window.training_option.optim_params
 
     def test_training_option_epoch_is_int(self, qtbot):
@@ -253,6 +266,7 @@ class TestTrainingSettingDefaultValues:
             window.accept()
 
         # Epoch should be int, not string
+        assert window.training_option is not None
         assert isinstance(window.training_option.epoch, int)
 
         # Should work in comparisons (this was the bug)

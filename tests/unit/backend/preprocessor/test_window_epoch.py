@@ -73,7 +73,9 @@ class TestWindowEpochCheckData:
 
     def test_accepts_single_event_raw(self):
         raw = _make_raw_with_single_event()
-        pp = WindowEpoch([raw])  # should not raise
+        pp = WindowEpoch([raw])
+
+        assert len(pp.get_preprocessed_data_list()) == 1
 
 
 class TestWindowEpochDesc:
@@ -125,4 +127,5 @@ class TestWindowEpochDataPreprocess:
         pp = WindowEpoch([raw])
         pp._data_preprocess(raw, duration=2.0, overlap=0.0)
         mne_data = raw.get_mne()
+        assert isinstance(mne_data, mne.BaseEpochs)
         assert "rest" in mne_data.event_id

@@ -50,7 +50,9 @@ class TestEditEventName:
     def test_check_data_accepts_epochs(self):
         epoch_raw = _make_epoch_raw()
         pp = EditEventName([epoch_raw])
-        pp.check_data()  # should not raise
+        pp.check_data()
+
+        assert len(pp.get_preprocessed_data_list()) == 1
 
     def test_get_preprocess_desc(self):
         epoch_raw = _make_epoch_raw()
@@ -98,7 +100,9 @@ class TestEditEventId:
     def test_check_data_accepts_epochs(self):
         epoch_raw = _make_epoch_raw()
         pp = EditEventId([epoch_raw])
-        pp.check_data()  # should not raise
+        pp.check_data()
+
+        assert len(pp.get_preprocessed_data_list()) == 1
 
     def test_get_preprocess_desc(self):
         epoch_raw = _make_epoch_raw()

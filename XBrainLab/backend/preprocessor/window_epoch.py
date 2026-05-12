@@ -49,7 +49,12 @@ class WindowEpoch(PreprocessBase):
         """
         return f"Epoching {duration}s ({overlap}s overlap) by sliding window"
 
-    def _data_preprocess(self, preprocessed_data: Raw, duration: float, overlap: float):
+    def _data_preprocess(
+        self,
+        preprocessed_data: Raw,
+        duration: float,
+        overlap: float | str,
+    ):
         """Segments a single raw data instance into sliding-window epochs.
 
         Args:

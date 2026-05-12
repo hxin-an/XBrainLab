@@ -91,8 +91,12 @@ class TestConfirm:
 
     def test_confirm_invalid_batch(self, dialog):
         dialog.bs_entry.setText("not_a_number")
-        dialog.confirm()
-        # Should show warning, not crash
+        with patch(
+            "XBrainLab.ui.panels.training.test_only_setting.QMessageBox.warning",
+        ) as warning:
+            dialog.confirm()
+
+        warning.assert_called_once()
         assert dialog.training_option is None
 
     def test_confirm_default_values(self, dialog):

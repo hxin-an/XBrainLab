@@ -209,6 +209,18 @@ Physical `BackendFacade` removal no longer depends on an unresolved montage fuzz
 It should still wait until remaining facade-only unit tests are either deleted as compatibility-only
 or moved to command/service/dialog/helper tests.
 
+## 2026-05-12 Repo Weak Assertion Cleanup
+
+| Command | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `rg -n -i "no crash|not crash|doesn't crash|does not crash|doesnt crash|just verify|just ensure|success if no error|should not raise|should not crash" tests --glob '*.py' --glob '!**/__pycache__/**'` | No matches. | The repo no longer has the scanned weak assertion wording in Python tests. | Test quality beyond this wording pattern. | Continue reviewing mock-heavy tests by behavior, not only by names/comments. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys <touched UI/backend/LLM/preprocessor/load-data/training integration tests> -q` | `585 passed`. | Strengthened tests remain green together after replacing weak no-crash/no-raise checks with explicit behavior assertions. | Full product runtime acceptance. | Keep using smaller focused subsets during future slices, then run a combined gate before commit. |
+| `poetry run ruff check <changed Python files>` | PASS. | Changed Python files pass lint after the weak-assertion cleanup and small type annotations. | Full repo lint by itself. | Run full lint near branch closure or if shared product code changes broaden. |
+| `poetry run basedpyright <changed Python files>` | `0 errors, 0 warnings, 0 notes`; `.basedpyright/baseline.json` reduced one stale `event_loader.py` baseline entry. | Changed files pass focused type checking, and the EventLoader annotation improvement reduced baseline debt. | Full repo type-debt removal. | Keep removing baseline entries only when the corresponding code is actually fixed. |
+| `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `70 passed`. | Existing architecture and weak-test-name guards remain green after the cleanup. | Product runtime acceptance by itself. | Keep extending guard examples when new product-evidence paths appear. |
+| `poetry run mkdocs build --strict` | PASS with the existing MkDocs Material advisory and nav notices. | Documentation edits build strictly. | Documentation content is automatically complete. | Keep validation records tied to executed commands. |
+| `git diff --check` | PASS. | Current diff has no whitespace errors. | Docs build or runtime behavior. | Re-run after docs edits and before commit. |
+
 ## 常用 docs gate
 
 ```bash
