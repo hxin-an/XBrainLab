@@ -37,6 +37,41 @@
 
 ## 2026-05-12
 
+### 18:24 Export saliency dialog test and import-cycle cleanup
+
+- 做了什麼：
+  - Fixed the `backend.visualization` / `backend.training.training_plan` circular import by moving
+    the saliency method list into lightweight `backend.visualization.saliency_methods`.
+  - Strengthened `test_export_saliency.py` from no-crash / wrong-patch smoke paths into explicit
+    combo-state, warning, export-cancel, success, and accept/no-accept assertions.
+  - The stronger success assertion caught two weak-test issues: the test patched the wrong
+    `QFileDialog` import path and did not actually select non-placeholder combo values.
+- baseline / red：
+  - `poetry run pytest --capture=sys tests/unit/ui/dialogs/test_export_saliency.py -q`
+    -> `17 errors` before the import-cycle fix; importing `ExportSaliencyDialog` raised
+    `ImportError: cannot import name 'supported_saliency_methods' from partially initialized module`.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/ui/dialogs/test_export_saliency.py -q`
+    -> `17 passed`.
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/dialogs/test_export_saliency.py tests/unit/ui/dialogs/test_saliency_setting.py tests/unit/ui/components/test_plot_figure_window.py -q`
+    -> `39 passed`.
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py -q`
+    -> `17 passed`.
+  - `poetry run python - <<'PY' ... import TrainingPlanHolder / supported_saliency_methods ... PY`
+    -> imported `TrainingPlanHolder`, public and direct saliency method lists matched.
+  - `poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `poetry run ruff check XBrainLab/backend/visualization/__init__.py XBrainLab/backend/visualization/saliency_methods.py XBrainLab/backend/training/training_plan.py tests/unit/ui/dialogs/test_export_saliency.py`
+    -> `All checks passed!`.
+  - `poetry run basedpyright XBrainLab/backend/visualization/__init__.py XBrainLab/backend/visualization/saliency_methods.py XBrainLab/backend/training/training_plan.py tests/unit/ui/dialogs/test_export_saliency.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run mkdocs build --strict`
+    -> PASS, with the existing MkDocs Material advisory.
+  - `git diff --check`
+    -> PASS.
+- 接續 / 本輪剩餘：
+  - Commit this cleanup.
+
 ### 18:14 Facade coverage naming clarification
 
 - 做了什麼：

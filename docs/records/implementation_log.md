@@ -6283,6 +6283,9 @@ mock-only sidebar tests explicit compatibility coverage.
   removing hidden state coupling around training prerequisites.
 - `test_facade_coverage.py` now labels itself as legacy facade compatibility coverage and uses
   behavior-specific names for montage, training-state, latest-result, and clear-data checks.
+- Export saliency dialog tests now run again after breaking the visualization/training circular
+  import with a lightweight saliency-method module, and their no-crash paths now assert concrete
+  combo state, warning, export-cancel, and accept/no-accept behavior.
 
 ### Evidence 入口
 

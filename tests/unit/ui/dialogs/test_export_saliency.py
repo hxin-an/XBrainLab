@@ -1,4 +1,4 @@
-"""Coverage tests for ExportSaliencyDialog - 79 uncovered lines."""
+"""Behavior tests for ExportSaliencyDialog selection and export paths."""
 
 from __future__ import annotations
 
@@ -41,38 +41,71 @@ class TestExportSaliencyInit:
 
 
 class TestExportSaliencyMethods:
-    def test_on_plan_change(self, dialog):
+    def test_on_plan_change_populates_repeat_options(self, dialog):
         dialog.on_plan_change("Plan_0")
         assert dialog.repeat_combo.count() >= 1
 
-    def test_on_plan_change_placeholder(self, dialog):
+    def test_on_plan_change_placeholder_clears_repeat_options(self, dialog):
+        dialog.on_plan_change("Plan_0")
+        assert dialog.repeat_combo.count() > 1
+
         dialog.on_plan_change("---")
 
-    def test_on_repeat_change(self, dialog):
+        assert dialog.repeat_combo.count() == 1
+        assert dialog.repeat_combo.itemText(0) == "---"
+        assert dialog.real_plan_opt == {}
+
+    def test_on_repeat_change_populates_method_options(self, dialog):
         dialog.on_plan_change("Plan_0")
         dialog.on_repeat_change("Plan_0_repeat_0")
 
-    def test_on_export_clicked_no_selection(self, dialog):
-        with patch("PyQt6.QtWidgets.QMessageBox.warning"):
-            dialog.on_export_clicked()
+        methods = [
+            dialog.method_combo.itemText(index)
+            for index in range(dialog.method_combo.count())
+        ]
+        assert methods == [
+            "---",
+            "Gradient",
+            "Gradient * Input",
+            "SmoothGrad",
+            "SmoothGrad_Squared",
+            "VarGrad",
+        ]
 
-    def test_on_export_clicked_success(self, dialog):
-        dialog.on_plan_change("Plan_0")
-        dialog.on_repeat_change("Plan_0_repeat_0")
-        # Select a saliency method
-        if hasattr(dialog, "method_combo") and dialog.method_combo is not None:
-            dialog.method_combo.setCurrentIndex(1)
+    def test_on_export_clicked_without_complete_selection_warns(self, dialog):
         with (
             patch(
-                "PyQt6.QtWidgets.QFileDialog.getExistingDirectory",
+                "XBrainLab.ui.dialogs.visualization.export_saliency_dialog.QMessageBox"
+            ) as mock_mb,
+            patch.object(dialog, "accept") as mock_accept,
+        ):
+            dialog.on_export_clicked()
+        mock_mb.warning.assert_called_once_with(
+            dialog,
+            "Warning",
+            "Please select all options.",
+        )
+        mock_accept.assert_not_called()
+
+    def test_on_export_clicked_success(self, dialog):
+        dialog.plan_combo.setCurrentText("Plan_0")
+        dialog.repeat_combo.setCurrentText("Plan_0_repeat_0")
+        dialog.method_combo.setCurrentIndex(1)
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.visualization.export_saliency_dialog.QFileDialog.getExistingDirectory",
                 return_value="/tmp/export",
             ),
             patch("builtins.open", MagicMock()),
             patch("pickle.dump"),
-            patch("PyQt6.QtWidgets.QDialog.accept"),
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch.object(dialog, "accept") as mock_accept,
+            patch(
+                "XBrainLab.ui.dialogs.visualization.export_saliency_dialog.QMessageBox"
+            ) as mock_mb,
         ):
             dialog.on_export_clicked()
+        mock_mb.information.assert_called_once()
+        mock_accept.assert_called_once()
 
 
 class TestExportSaliencyCascade:
@@ -84,19 +117,31 @@ class TestExportSaliencyCascade:
         dialog.on_plan_change("---")
         assert dialog.repeat_combo.count() < count_before
 
-    def test_on_repeat_change_no_combo(self, dialog):
-        """When method_combo is None (shouldn't happen but guard exists)."""
+    def test_on_repeat_change_missing_method_combo_returns_without_side_effect(
+        self, dialog
+    ):
         dialog.method_combo = None
-        dialog.on_repeat_change("anything")  # no crash
+
+        dialog.on_repeat_change("anything")
+
+        assert dialog.method_combo is None
 
     def test_on_repeat_change_placeholder(self, dialog):
         dialog.on_repeat_change("---")
         # method_combo should only have "---"
         assert dialog.method_combo.count() == 1
 
-    def test_on_plan_change_no_repeat_combo(self, dialog):
+    def test_on_plan_change_missing_repeat_combo_preserves_existing_plan_map(
+        self,
+        dialog,
+    ):
+        existing_plan = object()
+        dialog.real_plan_opt = {"existing": existing_plan}
         dialog.repeat_combo = None
-        dialog.on_plan_change("Plan_0")  # no crash
+
+        dialog.on_plan_change("Plan_0")
+
+        assert dialog.real_plan_opt == {"existing": existing_plan}
 
     def test_export_no_eval_record(self, dialog):
         """Export when plan has no eval record."""
@@ -125,16 +170,30 @@ class TestExportSaliencyCascade:
             dialog.on_export_clicked()
             mock_mb.warning.assert_called_once()
 
-    def test_export_cancelled_file_dialog(self, dialog):
-        """User cancels the directory picker."""
+    def test_export_cancelled_file_dialog_does_not_export_or_accept(self, dialog):
         dialog.plan_combo.setCurrentText("Plan_0")
         dialog.repeat_combo.setCurrentText("Plan_0_repeat_0")
         dialog.method_combo.setCurrentIndex(1)
-        with patch(
-            "XBrainLab.ui.dialogs.visualization.export_saliency_dialog.QFileDialog.getExistingDirectory",
-            return_value="",
+        eval_record = MagicMock()
+        dialog.real_plan_opt[
+            "Plan_0_repeat_0"
+        ].get_eval_record.return_value = eval_record
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.visualization.export_saliency_dialog.QFileDialog.getExistingDirectory",
+                return_value="",
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.visualization.export_saliency_dialog.QMessageBox"
+            ) as mock_mb,
+            patch.object(dialog, "accept") as mock_accept,
         ):
-            dialog.on_export_clicked()  # should return early, no crash
+            dialog.on_export_clicked()
+
+        eval_record.export_saliency.assert_not_called()
+        mock_mb.information.assert_not_called()
+        mock_mb.critical.assert_not_called()
+        mock_accept.assert_not_called()
 
     def test_export_write_failure(self, dialog):
         """Export when pickle.dump raises."""
@@ -180,7 +239,15 @@ class TestExportSaliencyCascade:
             dialog.on_export_clicked()
             mock_mb.information.assert_called_once()
 
-    def test_on_export_no_plan_combo(self, dialog):
-        """Guard: plan_combo is None."""
+    def test_on_export_missing_plan_combo_returns_before_warning(self, dialog):
         dialog.plan_combo = None
-        dialog.on_export_clicked()  # early return, no crash
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.visualization.export_saliency_dialog.QMessageBox"
+            ) as mock_mb,
+            patch.object(dialog, "accept") as mock_accept,
+        ):
+            dialog.on_export_clicked()
+
+        mock_mb.warning.assert_not_called()
+        mock_accept.assert_not_called()
