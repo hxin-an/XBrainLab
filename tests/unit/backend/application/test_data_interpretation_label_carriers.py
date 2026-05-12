@@ -36,6 +36,8 @@ def test_label_carrier_plan_uses_user_choices_for_bids_events(tmp_path):
             "selected_label_field": "trial_type",
             "selected_anchor": "onset",
             "selected_duration_field": "duration",
+            "label_row_count": 1,
+            "label_value_counts": {"left": 1},
             "time_model": "seconds",
             "granularity": "trial",
             "placement_method": "interval",
@@ -68,6 +70,37 @@ def test_normalize_label_carrier_choices_accepts_path_or_name_keys(tmp_path):
     assert choices[str(carrier)]["placement_method"] == "time_field"
     assert choices[str(carrier)]["duration_field"] == "duration"
     assert choices[carrier.name]["role"] == "artifact markers"
+
+
+def test_normalize_label_carrier_choices_accepts_event_code_placement(tmp_path):
+    carrier = tmp_path / "labels.csv"
+    choices = normalize_label_carrier_choices(
+        {
+            carrier.name: {
+                "label_field": "condition",
+                "anchor": "marker_code",
+                "placement_method": "event_code",
+            }
+        }
+    )
+
+    assert choices[carrier.name]["placement_method"] == "event_code"
+
+
+def test_label_carrier_plan_counts_label_rows_and_values(tmp_path):
+    labels = tmp_path / "labels.csv"
+    labels.write_text(
+        "sample,label\n128,left\n256,right\n384,\n512,left\n",
+        encoding="utf-8",
+    )
+
+    plan = build_label_carrier_plan(
+        [str(labels)],
+        {labels.name: {"label_field": "label", "anchor": "sample"}},
+    )
+
+    assert plan[0]["label_row_count"] == 3
+    assert plan[0]["label_value_counts"] == {"left": 2, "right": 1}
 
 
 def test_infer_class_map_from_tabular_label_carrier_plan(tmp_path):

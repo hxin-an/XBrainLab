@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+from collections import Counter
 from numbers import Real
 from pathlib import Path
 from typing import Any
@@ -112,6 +113,7 @@ def _label_carrier_plan_for_path(
         granularity=granularity,
         duration_field=selected_duration,
     )
+    label_stats = _observed_label_stats(path, selected_label)
     return {
         "path": source_path,
         "name": path.name,
@@ -126,6 +128,8 @@ def _label_carrier_plan_for_path(
         "selected_label_field": selected_label,
         "selected_anchor": selected_anchor,
         "selected_duration_field": selected_duration,
+        "label_row_count": label_stats["row_count"],
+        "label_value_counts": label_stats["value_counts"],
         "time_model": time_model,
         "granularity": granularity,
         "placement_method": placement_method,
@@ -290,7 +294,81 @@ def _observed_label_values(carrier: dict[str, Any], *, limit: int) -> list[str]:
         return _tabular_label_values(path, label_field, limit=limit)
     if path.suffix.lower() == ".mat":
         return _mat_label_values(path, label_field, limit=limit)
+    if path.suffix.lower() == ".txt":
+        return _text_label_values(path, limit=limit)
     return []
+
+
+def _observed_label_stats(path: Path, label_field: str) -> dict[str, Any]:
+    if not label_field:
+        return {"row_count": 0, "value_counts": {}}
+    suffix = path.suffix.lower()
+    if suffix in {".csv", ".tsv"} or _is_bids_events_file(path):
+        return _tabular_label_stats(path, label_field)
+    if suffix == ".mat":
+        return _mat_label_stats(path, label_field)
+    if suffix == ".txt":
+        return _text_label_stats(path)
+    return {"row_count": 0, "value_counts": {}}
+
+
+def _tabular_label_stats(path: Path, label_field: str) -> dict[str, Any]:
+    delimiter = (
+        "\t" if path.suffix.lower() == ".tsv" or _is_bids_events_file(path) else ","
+    )
+    counts: Counter[str] = Counter()
+    try:
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle, delimiter=delimiter)
+            if not reader.fieldnames or label_field not in reader.fieldnames:
+                return {"row_count": 0, "value_counts": {}}
+            for row in reader:
+                value = _clean_label_value(row.get(label_field))
+                if value:
+                    counts[value] += 1
+    except (OSError, UnicodeDecodeError, csv.Error):
+        return {"row_count": 0, "value_counts": {}}
+    return _label_stats_from_counts(counts)
+
+
+def _mat_label_stats(path: Path, label_field: str) -> dict[str, Any]:
+    try:
+        payload = loadmat(str(path), squeeze_me=True, struct_as_record=False)
+    except Exception:
+        return {"row_count": 0, "value_counts": {}}
+    value = _mat_variable(payload, label_field)
+    if value is None:
+        return {"row_count": 0, "value_counts": {}}
+    array = np.asarray(value)
+    if array.dtype.names is not None or array.dtype == object:
+        return {"row_count": 0, "value_counts": {}}
+    counts: Counter[str] = Counter()
+    for item in array.reshape(-1):
+        label = _clean_label_value(item.item() if hasattr(item, "item") else item)
+        if label:
+            counts[label] += 1
+    return _label_stats_from_counts(counts)
+
+
+def _text_label_stats(path: Path) -> dict[str, Any]:
+    counts: Counter[str] = Counter()
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                value = _clean_label_value(line)
+                if value:
+                    counts[value] += 1
+    except (OSError, UnicodeDecodeError):
+        return {"row_count": 0, "value_counts": {}}
+    return _label_stats_from_counts(counts)
+
+
+def _label_stats_from_counts(counts: Counter[str]) -> dict[str, Any]:
+    ordered = {
+        value: counts[value]
+        for value in sorted(counts, key=lambda item: (item.casefold(), item))
+    }
+    return {"row_count": sum(ordered.values()), "value_counts": ordered}
 
 
 def _observed_class_map_entries(
@@ -329,6 +407,22 @@ def _tabular_label_values(path: Path, label_field: str, *, limit: int) -> list[s
                 if len(values) >= limit:
                     break
     except (OSError, UnicodeDecodeError, csv.Error):
+        return []
+    return values
+
+
+def _text_label_values(path: Path, *, limit: int) -> list[str]:
+    values: list[str] = []
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                value = _clean_label_value(line)
+                if not value or value in values:
+                    continue
+                values.append(value)
+                if len(values) >= limit:
+                    break
+    except (OSError, UnicodeDecodeError):
         return []
     return values
 

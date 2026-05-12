@@ -490,7 +490,7 @@ def test_match_labels_pairing_board_applies_dataset_level_choices(qtbot):
             "role": "class cue labels",
         },
     }
-    assert "Target · Match EEG event at Cue onset" in dialog.rule_status_label.text()
+    assert "Target · EEG event order · at Cue onset" in dialog.rule_status_label.text()
 
 
 def test_match_labels_internal_source_hides_loaded_label_setup(qtbot):
@@ -938,6 +938,94 @@ def test_match_labels_loaded_label_files_use_discussed_rule_wording(qtbot):
     assert "Label field" not in visible_text
     assert "Target event / time" not in visible_text
     assert "Placement method" not in visible_text
+
+
+def test_match_labels_eeg_event_order_shows_target_event_check(qtbot):
+    label_path = "/tmp/labels/A01T.mat"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+            "label_carriers": [label_path],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+            "label_carrier_preview": [
+                {
+                    "path": label_path,
+                    "name": "A01T.mat",
+                    "format": "MAT",
+                    "target_file": "A01T.gdf",
+                    "label_candidates": ["classlabel"],
+                    "anchor_candidates": ["trial order"],
+                    "selected_label_field": "classlabel",
+                    "selected_anchor": "trial order",
+                    "label_row_count": 282,
+                    "label_value_counts": {"1": 72, "2": 70, "3": 70, "4": 70},
+                    "time_model": "trial_order",
+                    "granularity": "trial",
+                    "placement_method": "eeg_event",
+                    "role": "external labels",
+                },
+            ],
+            "internal_event_preview": {
+                "candidate_label_events": [
+                    {
+                        "event_code": "769",
+                        "use_as": "Class label",
+                        "event_count": 72,
+                    }
+                ],
+                "not_used_events": [
+                    {
+                        "event_code": "768",
+                        "use_as": "Trial timing",
+                        "event_count": 288,
+                        "reason": "Count matches candidate label group",
+                    },
+                    {
+                        "event_code": "1023",
+                        "use_as": "Artifact",
+                        "event_count": 6,
+                    },
+                ],
+            },
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Match Labels")
+    qtbot.wait(0)
+
+    assert dialog.rule_placement_method_combo.currentData() == "eeg_event"
+    assert "768" in [
+        dialog.rule_alignment_combo.itemData(index)
+        for index in range(dialog.rule_alignment_combo.count())
+    ]
+
+    dialog.rule_alignment_combo.setCurrentIndex(
+        dialog.rule_alignment_combo.findData("768")
+    )
+    qtbot.wait(0)
+
+    visible_text = _visible_step_text(dialog, "Match Labels")
+    assert "EEG event order" in visible_text
+    assert "Target EEG events" in visible_text
+    assert "768" in visible_text
+    assert "288 selected EEG events" in visible_text
+    assert "282 label rows" in visible_text
+    assert "6 unlabeled EEG events" in visible_text
+    assert "6 EEG events excluded" in visible_text
+
+    result = dialog.get_result()
+
+    assert result["choices"]["label_carrier_choices"][label_path]["anchor"] == "768"
+    assert (
+        result["choices"]["label_carrier_choices"][label_path]["placement_method"]
+        == "eeg_event"
+    )
 
 
 def test_data_interpretation_preview_dialog_records_attached_label_folder(

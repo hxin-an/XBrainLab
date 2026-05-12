@@ -108,6 +108,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.rule_label_unit_combo: QComboBox
         self.rule_use_as_combo: QComboBox
         self.label_values_status_label: QLabel
+        self.target_event_status_label: QLabel
         self.placement_status_label: QLabel
         self.rule_status_label: QLabel
         self.class_map_rows_widget: QWidget | None = None
@@ -151,6 +152,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._event_detail_widgets: list[QWidget] = []
         self._tree_column_specs: dict[int, tuple[int, ...]] = {}
         self._updating_label_rule = False
+        self._label_rule_controls_changed = False
         self._initial_label_sources = self._clean_label_sources(
             self.scan_result.get("label_sources")
         )
@@ -1399,6 +1401,53 @@ class DataInterpretationPreviewDialog(BaseDialog):
             return f"{total} events" if total >= 0 else ""
         return ""
 
+    def _target_eeg_event_choices(self) -> list[tuple[str, str]]:
+        rows = self._target_eeg_event_rows()
+        choices: list[tuple[str, str]] = []
+        for row in sorted(rows, key=self._target_event_sort_key):
+            code = self._internal_event_code_from_row(row)
+            if not code:
+                continue
+            count = self._event_count_text(row)
+            use_as = str(row.get("use_as") or row.get("reason") or "").strip()
+            detail = " · ".join(part for part in [use_as, count] if part)
+            display = f"{code} · {detail}" if detail else code
+            choices.append((display, code))
+        return choices
+
+    def _target_eeg_event_rows(self) -> list[dict[str, Any]]:
+        payload = self._internal_event_preview_payload()
+        rows: list[dict[str, Any]] = []
+        for key in ("not_used_events", "candidate_label_events", "candidate_events"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                rows.extend(item for item in value if isinstance(item, dict))
+        return rows
+
+    def _target_event_row(self, code: str) -> dict[str, Any]:
+        target = str(code or "").strip()
+        if not target:
+            return {}
+        for row in self._target_eeg_event_rows():
+            if self._internal_event_code_from_row(row) == target:
+                return row
+        return {}
+
+    def _target_event_sort_key(self, row: dict[str, Any]) -> tuple[int, str]:
+        use_as = str(row.get("use_as") or row.get("reason") or "").lower()
+        evidence = str(row.get("evidence") or "").lower()
+        if "trial timing" in use_as or "candidate total" in evidence:
+            rank = 0
+        elif "class label" in use_as:
+            rank = 1
+        elif any(
+            token in use_as for token in ("artifact", "boundary", "ignore", "system")
+        ):
+            rank = 3
+        else:
+            rank = 2
+        return (rank, self._internal_event_code_from_row(row).casefold())
+
     def _default_event_coverage_text(self) -> str:
         file_count = len(self._selected_eeg_file_names())
         return f"{file_count}/{file_count} files" if file_count else ""
@@ -1777,14 +1826,15 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
     def _build_placement_card(self, layout: QVBoxLayout) -> None:
         self._updating_label_rule = True
+        placement_method = self._default_placement_method()
         self.rule_placement_method_combo = self._rule_combo(
             self._placement_method_choices(),
-            self._default_placement_method(),
+            placement_method,
             "Choose how label rows are positioned on the EEG timeline.",
         )
         self.rule_alignment_combo = self._rule_combo(
-            self._alignment_rule_choices(),
-            self._common_carrier_value("selected_anchor"),
+            self._alignment_rule_choices(placement_method),
+            self._default_alignment_value(placement_method),
             "Choose the EEG event, trial order, or time field used to place labels.",
         )
         self.rule_label_unit_combo = self._rule_combo(
@@ -1823,14 +1873,20 @@ class DataInterpretationPreviewDialog(BaseDialog):
             0,
             3,
         )
+        self.target_event_status_label = QLabel(self._target_event_status_text())
+        self.target_event_status_label.setObjectName("DataImportRuleStatus")
+        self.target_event_status_label.setWordWrap(True)
+        placement_grid.addWidget(self.target_event_status_label, 1, 0, 1, 4)
         self.placement_status_label = QLabel(self._placement_status_text())
         self.placement_status_label.setObjectName("DataImportRuleStatus")
         self.placement_status_label.setWordWrap(True)
-        placement_grid.addWidget(self.placement_status_label, 1, 0, 1, 4)
+        placement_grid.addWidget(self.placement_status_label, 2, 0, 1, 4)
         layout.addLayout(placement_grid)
 
+        self.rule_placement_method_combo.currentIndexChanged.connect(
+            self._handle_placement_method_change
+        )
         for selector in (
-            self.rule_placement_method_combo,
             self.rule_alignment_combo,
             self.rule_label_unit_combo,
             self.rule_duration_field_combo,
@@ -1860,9 +1916,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
     def _placement_method_choices(self) -> list[tuple[str, str]]:
         return [
-            ("Match EEG event", "eeg_event"),
-            ("Use time field", "time_field"),
-            ("Use intervals", "interval"),
+            ("EEG event order", "eeg_event"),
+            ("Label time", "time_field"),
+            ("Label interval", "interval"),
+            ("Label event code", "event_code"),
         ]
 
     def _default_placement_method(self) -> str:
@@ -1897,16 +1954,47 @@ class DataInterpretationPreviewDialog(BaseDialog):
         use_as = self.rule_use_as_combo.currentText()
         if not field_value:
             return "Choose the field that contains the label values."
+        value_summary = self._label_value_count_summary()
+        if value_summary:
+            return (
+                f"{field}: {value_summary}. "
+                "Class names can be confirmed below when values are known."
+            )
         return (
             f"{field} values will be imported as {use_as.lower()}. "
             "Class names can be confirmed below when values are known."
         )
 
+    def _target_event_status_text(self) -> str:
+        if not self._label_carrier_items:
+            return "No loaded label files are available."
+        placement_method = self._combo_current_data(self.rule_placement_method_combo)
+        if placement_method != "eeg_event":
+            return ""
+        target = self._combo_current_data(self.rule_alignment_combo)
+        event = self._target_event_row(target)
+        if event:
+            count = self._event_count_text(event) or "unknown count"
+            meaning = str(event.get("use_as") or event.get("reason") or "").strip()
+            meaning_text = f" · {meaning}" if meaning else ""
+            return f"Target EEG events: {target}{meaning_text} · {count}."
+        return (
+            "Target EEG events: choose the event subset that this label series "
+            "should follow in order."
+        )
+
     def _placement_status_text(self) -> str:
         if not self._label_carrier_items:
             return "No loaded label files are available."
+        placement_method = self._combo_current_data(self.rule_placement_method_combo)
         method = self.rule_placement_method_combo.currentText()
         target = self.rule_alignment_combo.currentText()
+        if placement_method == "eeg_event":
+            return "Check: " + self._eeg_event_order_check_text(
+                self._matched_eeg_pair_count(),
+                len(self._selected_eeg_file_names()),
+                self.rule_label_field_combo.currentText(),
+            )
         duration = str(self.rule_duration_field_combo.currentData() or "").strip()
         duration_text = (
             f"Duration field {self.rule_duration_field_combo.currentText()} is saved "
@@ -1916,9 +2004,35 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         return f"{method} using {target}. {duration_text}"
 
+    def _label_value_count_summary(self) -> str:
+        row_count = self._active_label_row_count()
+        value_counts: dict[str, int] = {}
+        for _item, original in self._label_carrier_items:
+            raw_counts = original.get("label_value_counts")
+            if not isinstance(raw_counts, dict):
+                continue
+            for value, count in raw_counts.items():
+                text = str(value).strip()
+                if not text:
+                    continue
+                if isinstance(count, int):
+                    value_counts[text] = value_counts.get(text, 0) + count
+                    continue
+                count_text = str(count or "").strip()
+                if count_text.isdigit():
+                    value_counts[text] = value_counts.get(text, 0) + int(count_text)
+        parts: list[str] = []
+        if row_count is not None:
+            parts.append(f"{row_count} values")
+        if value_counts:
+            parts.append(f"{len(value_counts)} unique labels")
+        return " across ".join(parts)
+
     def _refresh_label_rule_status(self) -> None:
         if hasattr(self, "label_values_status_label"):
             self.label_values_status_label.setText(self._label_values_status_text())
+        if hasattr(self, "target_event_status_label"):
+            self.target_event_status_label.setText(self._target_event_status_text())
         if hasattr(self, "placement_status_label"):
             self.placement_status_label.setText(self._placement_status_text())
         if hasattr(self, "rule_status_label"):
@@ -1988,11 +2102,61 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         return choices or [("Needs review", "")]
 
-    def _alignment_rule_choices(self) -> list[tuple[str, str]]:
+    def _default_alignment_value(self, placement_method: str) -> str:
+        current = self._common_carrier_value("selected_anchor")
+        if placement_method == "eeg_event" and current in {"", "trial order"}:
+            event_choices = self._target_eeg_event_choices()
+            if event_choices:
+                return event_choices[0][1]
+        return current
+
+    def _alignment_rule_choices(
+        self,
+        placement_method: str | None = None,
+    ) -> list[tuple[str, str]]:
+        method = placement_method or self._combo_current_data(
+            self.rule_placement_method_combo
+        )
+        if method == "eeg_event":
+            event_choices = self._target_eeg_event_choices()
+            if event_choices:
+                return event_choices
         choices = self._carrier_choice_values("selected_anchor", "anchor_candidates")
         if "trial order" not in {value for _display, value in choices}:
             choices.append(("Trial order", "trial order"))
         return choices or [("Needs review", "")]
+
+    def _handle_placement_method_change(self) -> None:
+        if self._updating_label_rule:
+            return
+        self._refresh_alignment_choices_for_placement()
+        self._apply_label_rule_to_preview()
+
+    def _refresh_alignment_choices_for_placement(self) -> None:
+        placement_method = self._combo_current_data(self.rule_placement_method_combo)
+        previous = self._combo_current_data(self.rule_alignment_combo)
+        choices = self._alignment_rule_choices(placement_method)
+        values = {value for _display, value in choices}
+        current = (
+            previous
+            if previous in values
+            else self._default_alignment_value(placement_method)
+        )
+        was_blocked = self.rule_alignment_combo.blockSignals(True)
+        self.rule_alignment_combo.clear()
+        for display, value in choices:
+            self.rule_alignment_combo.addItem(display, value)
+        if current and current not in values:
+            self.rule_alignment_combo.addItem(
+                self._label_choice_display(current),
+                current,
+            )
+        index = self.rule_alignment_combo.findData(current)
+        if index >= 0:
+            self.rule_alignment_combo.setCurrentIndex(index)
+        elif self.rule_alignment_combo.count() > 0:
+            self.rule_alignment_combo.setCurrentIndex(0)
+        self.rule_alignment_combo.blockSignals(was_blocked)
 
     def _carrier_choice_values(
         self,
@@ -2047,6 +2211,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
     def _apply_label_rule_to_preview(self) -> None:
         if self._updating_label_rule:
             return
+        self._label_rule_controls_changed = True
         if not self._label_carrier_items:
             self._refresh_label_rule_status()
             return
@@ -2114,6 +2279,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         needs_review = max(total - matched, 0)
         field = self.rule_label_field_combo.currentText()
         alignment = self.rule_alignment_combo.currentText()
+        placement_method = self._combo_current_data(self.rule_placement_method_combo)
+        if placement_method == "eeg_event":
+            return self._eeg_event_order_check_text(matched, total, field)
         placement = self.rule_placement_method_combo.currentText()
         use_as = self.rule_use_as_combo.currentText()
         duration = str(self.rule_duration_field_combo.currentData() or "").strip()
@@ -2123,6 +2291,92 @@ class DataInterpretationPreviewDialog(BaseDialog):
             f"{matched}/{total} paired · {field} · {placement} at {alignment} · "
             f"{use_as} · {duration_text} · {suffix}"
         )
+
+    def _eeg_event_order_check_text(
+        self,
+        matched_file_count: int,
+        total_file_count: int,
+        field: str,
+    ) -> str:
+        label_rows = self._active_label_row_count()
+        target_count = self._selected_target_event_count()
+        excluded = self._excluded_eeg_event_count()
+        parts = [
+            f"{matched_file_count}/{total_file_count} paired",
+            f"{field}",
+            "EEG event order",
+        ]
+        if target_count is None:
+            alignment = self.rule_alignment_combo.currentText().strip()
+            if alignment and alignment != "Needs review":
+                parts.append(f"at {alignment}")
+        if label_rows is not None:
+            parts.append(f"{label_rows} label rows")
+        if target_count is not None:
+            parts.append(f"{target_count} selected EEG events")
+        if label_rows is not None and target_count is not None:
+            matched = min(label_rows, target_count)
+            parts.append(f"{matched} matched")
+            if target_count > label_rows:
+                parts.append(f"{target_count - label_rows} unlabeled EEG events")
+            if label_rows > target_count:
+                parts.append(f"{label_rows - target_count} unmatched label rows")
+        if excluded:
+            parts.append(f"{excluded} EEG events excluded")
+        return " · ".join(parts)
+
+    def _active_label_row_count(self) -> int | None:
+        total = 0
+        has_count = False
+        for item, original in self._label_carrier_items:
+            carrier_key = self._label_carrier_key(item, original)
+            if carrier_key and self._is_label_carrier_excluded(carrier_key):
+                continue
+            value = original.get("label_row_count")
+            if isinstance(value, int) and value >= 0:
+                total += value
+                has_count = True
+                continue
+            value_text = str(value or "").strip()
+            if value_text.isdigit():
+                total += int(value_text)
+                has_count = True
+        return total if has_count else None
+
+    def _selected_target_event_count(self) -> int | None:
+        row = self._target_event_row(
+            self._combo_current_data(self.rule_alignment_combo)
+        )
+        if not row:
+            return None
+        for key in ("event_count", "total_events", "count", "total_count"):
+            value = row.get(key)
+            if isinstance(value, int) and value >= 0:
+                return value
+            value_text = str(value or "").strip()
+            if value_text.isdigit():
+                return int(value_text)
+        return None
+
+    def _excluded_eeg_event_count(self) -> int:
+        total = 0
+        for row in self._target_eeg_event_rows():
+            use_as = str(row.get("use_as") or row.get("reason") or "").lower()
+            if not any(
+                token in use_as
+                for token in ("artifact", "boundary", "ignore", "system")
+            ):
+                continue
+            for key in ("event_count", "total_events", "count", "total_count"):
+                value = row.get(key)
+                if isinstance(value, int) and value >= 0:
+                    total += value
+                    break
+                value_text = str(value or "").strip()
+                if value_text.isdigit():
+                    total += int(value_text)
+                    break
+        return total
 
     def _add_label_source_rows(self, layout: QVBoxLayout) -> None:
         carriers = self._label_carrier_preview_rows()
@@ -4098,6 +4352,12 @@ class DataInterpretationPreviewDialog(BaseDialog):
             ("granularity", "granularity", 4),
             ("role", "role", 5),
         )
+        global_rule_values = {
+            "label_field": self._combo_current_data(self.rule_label_field_combo),
+            "anchor": self._combo_current_data(self.rule_alignment_combo),
+            "granularity": self._combo_current_data(self.rule_label_unit_combo),
+            "role": self._combo_current_data(self.rule_use_as_combo),
+        }
         for item, original in self._label_carrier_items:
             carrier_key = str(
                 original.get("path") or original.get("name") or ""
@@ -4112,6 +4372,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
                     choice_key,
                     self._label_carrier_item_text(item, column),
                 )
+                if self._should_use_global_label_rule(choice_key, original):
+                    current = global_rule_values.get(choice_key) or current
                 original_value = str(original.get(original_key) or "").strip()
                 if current and current != original_value:
                     changed[choice_key] = current
@@ -4141,6 +4403,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
                         choice_key,
                         self._label_carrier_item_text(item, column),
                     )
+                    if self._should_use_global_label_rule(choice_key, original):
+                        current = global_rule_values.get(choice_key) or current
                     if current and choice_key not in changed:
                         changed[choice_key] = current
                 placement_method = self._combo_current_data(
@@ -4155,6 +4419,26 @@ class DataInterpretationPreviewDialog(BaseDialog):
                     changed["duration_field"] = duration_field
                 choices[carrier_key] = changed
         return choices
+
+    def _should_use_global_label_rule(
+        self,
+        choice_key: str,
+        original: dict[str, Any],
+    ) -> bool:
+        if choice_key == "target_file":
+            return False
+        if self._label_rule_controls_changed:
+            return True
+        if choice_key != "anchor":
+            return False
+        if self._combo_current_data(self.rule_placement_method_combo) != "eeg_event":
+            return False
+        current = self._combo_current_data(self.rule_alignment_combo)
+        original_anchor = str(original.get("selected_anchor") or "").strip()
+        return bool(self._target_event_row(current)) and original_anchor in {
+            "",
+            "trial order",
+        }
 
     @staticmethod
     def _combo_current_data(selector: QComboBox) -> str:
