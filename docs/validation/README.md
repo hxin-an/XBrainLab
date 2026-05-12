@@ -87,9 +87,12 @@ for sibling EEG files and service apply. Follow-up tests verify that class maps 
 external label carriers are not shown or saved when the user chooses `Labels inside EEG files`.
 Offscreen screenshots include:
 
+- `artifacts/ui/data-import-wizard-steps/01-choose-eeg-data.png`
+- `artifacts/ui/data-import-wizard-steps/02-load-labels-many.png`
+- `artifacts/ui/data-import-wizard-steps/03-review-metadata.png`
+- `artifacts/ui/data-import-wizard-steps/04-match-labels-internal-suggested-events-full.png`
 - `artifacts/ui/data-import-wizard-steps/04-match-labels-final-loaded-label-files.png`
-- `artifacts/ui/data-import-wizard-steps/04-match-labels-final-many-labels.png`
-- `artifacts/ui/data-import-wizard-steps/04-match-labels-final-internal-events.png`
+- `artifacts/ui/data-import-wizard-steps/05-review-and-import.png`
 
 ## Backend Test Hygiene Inventory
 
