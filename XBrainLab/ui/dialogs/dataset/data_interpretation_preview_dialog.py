@@ -2280,6 +2280,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 len(self._selected_eeg_file_names()),
                 self.rule_label_field_combo.currentText(),
             )
+        review_text = self._backend_placement_review_text(placement_method)
+        if review_text:
+            return review_text
         duration = str(self.rule_duration_field_combo.currentData() or "").strip()
         label_rows = self._active_label_row_count()
         label_rows_text = (
@@ -2297,6 +2300,77 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if placement_method == "event_code":
             return f"Check: {method} · code field {target}{label_rows_text}."
         return f"Check: {method} · time field {target}{label_rows_text}."
+
+    def _backend_placement_review_text(self, placement_method: str) -> str:
+        reviews = self._active_backend_placement_reviews(placement_method)
+        if not reviews:
+            return ""
+        if len(reviews) == 1:
+            return self._single_backend_placement_review_text(reviews[0])
+        ready = sum(1 for review in reviews if review.get("status") == "ready")
+        needs_review = sum(
+            1 for review in reviews if review.get("status") == "needs_review"
+        )
+        blocked = sum(1 for review in reviews if review.get("status") == "blocked")
+        parts = [f"Check: {ready}/{len(reviews)} label file(s) ready"]
+        if needs_review:
+            parts.append(f"{needs_review} need review")
+        if blocked:
+            parts.append(f"{blocked} blocked")
+        return " · ".join(parts) + "."
+
+    def _active_backend_placement_reviews(
+        self,
+        placement_method: str,
+    ) -> list[dict[str, Any]]:
+        reviews: list[dict[str, Any]] = []
+        for item, original in self._label_carrier_items:
+            carrier_key = self._label_carrier_key(item, original)
+            if carrier_key and self._is_label_carrier_excluded(carrier_key):
+                continue
+            raw_reviews = original.get("placement_reviews")
+            review = None
+            if isinstance(raw_reviews, dict):
+                review = raw_reviews.get(placement_method)
+            if not isinstance(review, dict):
+                raw_review = original.get("placement_review")
+                if (
+                    isinstance(raw_review, dict)
+                    and raw_review.get("method") == placement_method
+                ):
+                    review = raw_review
+            if isinstance(review, dict):
+                reviews.append(review)
+        return reviews
+
+    def _single_backend_placement_review_text(self, review: dict[str, Any]) -> str:
+        method = str(review.get("method") or "").strip()
+        summary = str(review.get("summary") or "").strip().rstrip(".")
+        status = str(review.get("status") or "needs_review").replace("_", " ")
+        if method == "time_field":
+            field = str(review.get("time_field") or "").strip()
+            prefix = f"Check: Label time · {field}" if field else "Check: Label time"
+        elif method == "interval":
+            start = str(review.get("time_field") or "").strip()
+            duration = str(review.get("duration_field") or "").strip()
+            fields = " + ".join(part for part in (start, duration) if part)
+            prefix = (
+                f"Check: Label interval · {fields}"
+                if fields
+                else "Check: Label interval"
+            )
+        elif method == "event_code":
+            field = str(review.get("event_code_field") or "").strip()
+            prefix = (
+                f"Check: Label event code · {field}"
+                if field
+                else "Check: Label event code"
+            )
+        else:
+            prefix = "Check"
+        if summary:
+            return f"{prefix} · {summary} · {status}."
+        return f"{prefix} · {status}."
 
     def _label_value_count_summary(self) -> str:
         row_count = self._active_label_row_count()
@@ -2404,6 +2478,12 @@ class DataInterpretationPreviewDialog(BaseDialog):
             event_choices = self._target_eeg_event_choices()
             if event_choices:
                 return event_choices[0][1]
+        choices = self._alignment_rule_choices(placement_method)
+        values = {value for _display, value in choices}
+        if current and current in values:
+            return current
+        if choices:
+            return choices[0][1]
         return current
 
     def _alignment_rule_choices(
@@ -2417,9 +2497,18 @@ class DataInterpretationPreviewDialog(BaseDialog):
             event_choices = self._target_eeg_event_choices()
             if event_choices:
                 return event_choices
-        choices = self._carrier_choice_values("selected_anchor", "anchor_candidates")
+        candidate_key = {
+            "time_field": "time_field_candidates",
+            "interval": "interval_start_candidates",
+            "event_code": "event_code_candidates",
+        }.get(method, "anchor_candidates")
+        choices = self._carrier_choice_values("selected_anchor", candidate_key)
         if "trial order" not in {value for _display, value in choices}:
             choices.append(("Trial order", "trial order"))
+        if method in {"time_field", "interval", "event_code"}:
+            choices = [
+                (display, value) for display, value in choices if value != "trial order"
+            ]
         return choices or [("Needs review", "")]
 
     def _handle_placement_method_change(self) -> None:
@@ -2651,16 +2740,18 @@ class DataInterpretationPreviewDialog(BaseDialog):
         duration = str(self.rule_duration_field_combo.currentData() or "").strip()
         duration_text = "duration saved" if duration else "duration set later"
         suffix = f"{needs_review} need review" if needs_review else "all covered"
+        parts = [f"{matched}/{total} paired", field]
         if placement_method == "interval":
             placement_text = f"{placement} · start {alignment}"
+            parts.extend([placement_text, use_as, duration_text])
         elif placement_method == "event_code":
             placement_text = f"{placement} · code field {alignment}"
+            parts.extend([placement_text, use_as])
         else:
             placement_text = f"{placement} · time field {alignment}"
-        return (
-            f"{matched}/{total} paired · {field} · {placement_text} · "
-            f"{use_as} · {duration_text} · {suffix}"
-        )
+            parts.extend([placement_text, use_as])
+        parts.append(suffix)
+        return " · ".join(parts)
 
     def _eeg_event_order_check_text(
         self,

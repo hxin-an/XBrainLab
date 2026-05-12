@@ -21,6 +21,12 @@ from .data_interpretation_metadata import (
     FileMetadataResolution,
     MetadataFieldResolution,
 )
+from .data_interpretation_placement import (
+    annotate_label_carrier_placements as _annotate_label_carrier_placements,
+)
+from .data_interpretation_placement import (
+    placement_confirmation_items as _placement_confirmation_items,
+)
 from .data_interpretation_scan import ScanResult
 
 
@@ -153,6 +159,12 @@ def build_interpretation_candidate(
                 "Confirm which events are trial anchors, class cues, responses, "
                 "artifacts, or boundaries.",
             )
+
+    label_carrier_plan = _annotate_label_carrier_placements(
+        label_carrier_plan,
+        internal_event_preview,
+    )
+    confirmation_items.extend(_placement_confirmation_items(label_carrier_plan))
 
     event_roles.update(_string_mapping(choices.get("event_roles")))
 

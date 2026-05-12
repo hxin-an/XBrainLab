@@ -21,7 +21,7 @@ OUTPUT_DIR = (
     / "data-import-wizard-steps"
     / "match-label-placement-modes"
 )
-WINDOW_SIZE = QSize(1220, 1120)
+WINDOW_SIZE = QSize(1220, 1320)
 
 
 MODE_OUTPUTS = {
@@ -93,16 +93,42 @@ def preview_payload(method: str) -> dict[str, Any]:
                 "target_file": "A01T.gdf",
                 "label_candidates": ["classlabel", "trial_type", "value"],
                 "anchor_candidates": ["trial order", "onset", "sample", "event_code"],
+                "time_field_candidates": ["onset", "sample"],
+                "interval_start_candidates": ["onset", "sample"],
+                "event_code_candidates": ["event_code", "value"],
                 "duration_candidates": ["duration", "end"],
                 "selected_label_field": "classlabel",
                 "selected_anchor": selected_anchor,
                 "selected_duration_field": "duration" if method == "interval" else "",
                 "label_row_count": 282,
                 "label_value_counts": {"1": 72, "2": 70, "3": 70, "4": 70},
+                "selected_anchor_stats": {
+                    "row_count": 282,
+                    "value_counts": {
+                        "769": 72,
+                        "770": 70,
+                        "771": 70,
+                        "772": 70,
+                    }
+                    if method == "event_code"
+                    else {},
+                    "numeric_count": 282,
+                    "min": 0.0,
+                    "max": 719.5,
+                },
+                "selected_duration_stats": {
+                    "row_count": 282,
+                    "value_counts": {},
+                    "numeric_count": 282,
+                    "min": 0.5,
+                    "max": 0.5,
+                },
                 "time_model": "trial_order" if method == "eeg_event" else "seconds",
                 "granularity": "trial",
                 "placement_method": method,
                 "role": "external labels",
+                "placement_reviews": placement_reviews(),
+                "placement_review": placement_reviews()[method],
             }
         ],
         "internal_event_preview": {
@@ -112,6 +138,24 @@ def preview_payload(method: str) -> dict[str, Any]:
                     "event_code": "769",
                     "use_as": "Class label",
                     "event_count": 72,
+                    "evidence": "Occurs as one of four balanced label events",
+                },
+                {
+                    "event_code": "770",
+                    "use_as": "Class label",
+                    "event_count": 70,
+                    "evidence": "Occurs as one of four balanced label events",
+                },
+                {
+                    "event_code": "771",
+                    "use_as": "Class label",
+                    "event_count": 70,
+                    "evidence": "Occurs as one of four balanced label events",
+                },
+                {
+                    "event_code": "772",
+                    "use_as": "Class label",
+                    "event_count": 70,
                     "evidence": "Occurs as one of four balanced label events",
                 },
             ],
@@ -129,6 +173,58 @@ def preview_payload(method: str) -> dict[str, Any]:
                     "evidence": "Rejected trial marker",
                 },
             ],
+        },
+    }
+
+
+def placement_reviews() -> dict[str, dict[str, Any]]:
+    return {
+        "eeg_event": {
+            "method": "eeg_event",
+            "status": "needs_review",
+            "label_field": "classlabel",
+            "target_event": "768",
+            "label_rows": 282,
+            "selected_eeg_events": 288,
+            "matched": 282,
+            "unlabeled_eeg_events": 6,
+            "unmatched_label_rows": 0,
+            "excluded_eeg_events": 6,
+            "summary": "282 rows match; 6 EEG events unlabeled; 0 label rows unmatched.",
+        },
+        "time_field": {
+            "method": "time_field",
+            "status": "ready",
+            "label_field": "classlabel",
+            "time_field": "onset",
+            "label_rows": 282,
+            "numeric_rows": 282,
+            "time_min": 0.0,
+            "time_max": 719.5,
+            "summary": "onset: 282/282 numeric rows, range 0 to 719.5.",
+        },
+        "interval": {
+            "method": "interval",
+            "status": "ready",
+            "label_field": "classlabel",
+            "time_field": "onset",
+            "duration_field": "duration",
+            "label_rows": 282,
+            "numeric_rows": 282,
+            "duration_numeric_rows": 282,
+            "summary": "282 interval rows using onset and duration.",
+        },
+        "event_code": {
+            "method": "event_code",
+            "status": "ready",
+            "label_field": "classlabel",
+            "event_code_field": "event_code",
+            "label_rows": 282,
+            "label_code_count": 4,
+            "matched_code_count": 4,
+            "matched_codes": ["769", "770", "771", "772"],
+            "missing_codes": [],
+            "summary": "All 4 label event codes match EEG events.",
         },
     }
 

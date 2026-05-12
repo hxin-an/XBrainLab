@@ -1054,6 +1054,9 @@ def test_match_labels_placement_methods_use_mode_specific_panels(qtbot):
                     "target_file": "sub-01_task-mi_raw.fif",
                     "label_candidates": ["trial_type", "value"],
                     "anchor_candidates": ["onset", "event_code"],
+                    "time_field_candidates": ["onset"],
+                    "interval_start_candidates": ["onset"],
+                    "event_code_candidates": ["event_code"],
                     "duration_candidates": ["duration", "end"],
                     "selected_label_field": "trial_type",
                     "selected_anchor": "onset",
@@ -1064,6 +1067,27 @@ def test_match_labels_placement_methods_use_mode_specific_panels(qtbot):
                     "granularity": "event",
                     "placement_method": "time_field",
                     "role": "external labels",
+                    "placement_reviews": {
+                        "time_field": {
+                            "method": "time_field",
+                            "status": "ready",
+                            "time_field": "onset",
+                            "summary": "12/12 numeric rows, range 0 to 11.",
+                        },
+                        "interval": {
+                            "method": "interval",
+                            "status": "ready",
+                            "time_field": "onset",
+                            "duration_field": "duration",
+                            "summary": "12 interval rows using onset and duration.",
+                        },
+                        "event_code": {
+                            "method": "event_code",
+                            "status": "needs_review",
+                            "event_code_field": "event_code",
+                            "summary": "1/2 label event codes were found in EEG events.",
+                        },
+                    },
                 },
             ],
             "internal_event_preview": {
@@ -1097,6 +1121,10 @@ def test_match_labels_placement_methods_use_mode_specific_panels(qtbot):
         assert included in visible_text
         assert excluded not in visible_text
         assert "Align to" not in visible_text
+        if method == "event_code":
+            assert "1/2 label event codes were found" in (
+                dialog.placement_status_label.text()
+            )
 
     target_buttons = [
         button

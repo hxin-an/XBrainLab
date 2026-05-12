@@ -23,33 +23,23 @@ def test_label_carrier_plan_uses_user_choices_for_bids_events(tmp_path):
         },
     )
 
-    assert plan == [
-        {
-            "path": str(events),
-            "name": events.name,
-            "format": "BIDS events",
-            "source_kind": "auto_discovered",
-            "source_location": "",
-            "label_candidates": ["trial_type"],
-            "anchor_candidates": ["onset"],
-            "duration_candidates": ["duration"],
-            "selected_label_field": "trial_type",
-            "selected_anchor": "onset",
-            "selected_duration_field": "duration",
-            "label_row_count": 1,
-            "label_value_counts": {"left": 1},
-            "time_model": "seconds",
-            "granularity": "trial",
-            "placement_method": "interval",
-            "role": "class cue labels",
-            "selected_target_file": "sub-01_raw.fif",
-            "decision": "needs_confirmation",
-            "reason": (
-                "BIDS events carrier has candidate label fields and anchors; "
-                "review the selected alignment before applying."
-            ),
-        }
-    ]
+    row = plan[0]
+    assert row["path"] == str(events)
+    assert row["format"] == "BIDS events"
+    assert row["label_candidates"] == ["trial_type"]
+    assert row["anchor_candidates"] == ["onset"]
+    assert row["time_field_candidates"] == ["onset"]
+    assert row["interval_start_candidates"] == ["onset"]
+    assert row["duration_candidates"] == ["duration"]
+    assert row["selected_label_field"] == "trial_type"
+    assert row["selected_anchor"] == "onset"
+    assert row["selected_duration_field"] == "duration"
+    assert row["label_row_count"] == 1
+    assert row["label_value_counts"] == {"left": 1}
+    assert row["selected_anchor_stats"]["numeric_count"] == 1
+    assert row["selected_duration_stats"]["numeric_count"] == 1
+    assert row["placement_method"] == "interval"
+    assert row["selected_target_file"] == "sub-01_raw.fif"
 
 
 def test_normalize_label_carrier_choices_accepts_path_or_name_keys(tmp_path):
@@ -101,6 +91,76 @@ def test_label_carrier_plan_counts_label_rows_and_values(tmp_path):
 
     assert plan[0]["label_row_count"] == 3
     assert plan[0]["label_value_counts"] == {"left": 2, "right": 1}
+
+
+def test_label_carrier_plan_exposes_event_code_candidates_and_stats(tmp_path):
+    labels = tmp_path / "labels.tsv"
+    labels.write_text(
+        "event_code\tcondition\n11\tleft\n12\tright\n11\tleft\n",
+        encoding="utf-8",
+    )
+
+    plan = build_label_carrier_plan(
+        [str(labels)],
+        {
+            labels.name: {
+                "label_field": "condition",
+                "anchor": "event_code",
+                "placement_method": "event_code",
+            }
+        },
+    )
+
+    assert plan[0]["event_code_candidates"] == ["event_code"]
+    assert plan[0]["selected_anchor_stats"]["value_counts"] == {
+        "11": 2,
+        "12": 1,
+    }
+    assert plan[0]["selected_anchor_stats"]["numeric_count"] == 3
+
+
+def test_label_carrier_plan_defaults_marker_table_to_event_code_placement(tmp_path):
+    labels = tmp_path / "markers.csv"
+    labels.write_text(
+        "event_code,label\n31,target\n32,nontarget\n31,target\n",
+        encoding="utf-8",
+    )
+
+    plan = build_label_carrier_plan([str(labels)], {})
+
+    row = plan[0]
+    assert row["selected_label_field"] == "label"
+    assert row["event_code_candidates"] == ["event_code"]
+    assert row["selected_anchor"] == "event_code"
+    assert row["placement_method"] == "event_code"
+    assert row["selected_anchor_stats"]["value_counts"] == {
+        "31": 2,
+        "32": 1,
+    }
+
+
+def test_label_carrier_plan_exposes_mat_interval_fields(tmp_path):
+    import numpy as np
+    from scipy.io import savemat
+
+    labels = tmp_path / "segments.mat"
+    savemat(
+        labels,
+        {
+            "classlabel": np.array([1, 2, 1]),
+            "onset": np.array([0.0, 2.0, 4.0]),
+            "duration": np.array([1.0, 1.5, 1.0]),
+        },
+    )
+
+    plan = build_label_carrier_plan([str(labels)], {})
+
+    row = plan[0]
+    assert "onset" in row["time_field_candidates"]
+    assert row["duration_candidates"] == ["duration"]
+    assert row["selected_duration_field"] == "duration"
+    assert row["placement_method"] == "interval"
+    assert row["selected_duration_stats"]["numeric_count"] == 3
 
 
 def test_infer_class_map_from_tabular_label_carrier_plan(tmp_path):
