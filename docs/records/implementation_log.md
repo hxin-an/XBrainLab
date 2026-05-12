@@ -6264,6 +6264,9 @@ mock-only sidebar tests explicit compatibility coverage.
 - `tests/unit/backend/test_facade_headless.py` now uses the same explicit `BackendFacade(study=...)`
   pattern; headless facade compatibility and shared `ApplicationService` runtime tests pass
   together.
+- Architecture compliance now quarantines `BackendFacade` test usage: new tests outside explicit
+  facade compatibility/runtime/guard files must use `ApplicationService / Command API` replacement
+  coverage instead of reintroducing facade workflow truth.
 
 ### Evidence 入口
 

@@ -1,4 +1,5 @@
 from tests.architecture_compliance import (
+    check_backend_facade_test_quarantine,
     check_product_runtime_backend_facade_usage,
     check_product_success_backend_facade_tests,
     check_product_success_legacy_fallback_tests,
@@ -102,6 +103,44 @@ def test_facade_compatibility():
     )
 
     assert check_product_success_backend_facade_tests(tmp_path) == []
+
+
+def test_backend_facade_test_quarantine_flags_new_unit_facade_usage(tmp_path):
+    path = tmp_path / "tests" / "unit" / "llm" / "test_demo.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+from XBrainLab.backend.facade import BackendFacade
+
+
+def test_tool_path(study):
+    return BackendFacade(study).get_capabilities()
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_backend_facade_test_quarantine(tmp_path)
+
+    assert len(violations) == 2
+    assert "tests/unit/llm/test_demo.py" in violations[0]
+    assert "facade quarantine" in violations[0]
+
+
+def test_backend_facade_test_quarantine_allows_explicit_compatibility_files(tmp_path):
+    path = tmp_path / "tests" / "unit" / "backend" / "test_facade_coverage.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+from XBrainLab.backend.facade import BackendFacade
+
+
+def test_facade_compatibility(study):
+    return BackendFacade(study).get_capabilities()
+""",
+        encoding="utf-8",
+    )
+
+    assert check_backend_facade_test_quarantine(tmp_path) == []
 
 
 def test_product_success_legacy_fallback_test_guard_flags_integration_fallback(

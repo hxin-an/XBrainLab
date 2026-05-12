@@ -135,6 +135,12 @@ PRODUCT_SUCCESS_BACKEND_FACADE_TEST_DIRS = (
     Path("tests/integration/pipeline"),
     Path("tests/integration/ui"),
 )
+BACKEND_FACADE_TEST_QUARANTINE_ALLOWED_FILES = (
+    Path("tests/unit/backend/test_facade_coverage.py"),
+    Path("tests/unit/backend/test_facade_headless.py"),
+    Path("tests/unit/backend/application/test_runtime.py"),
+    Path("tests/unit/test_architecture_compliance.py"),
+)
 PRODUCT_SUCCESS_LEGACY_FALLBACK_SYMBOLS = (
     "get_legacy_controller_from_study",
     "run_legacy_controller_fallback",
@@ -235,6 +241,13 @@ def check_architecture(root_dir: str) -> int:
     if facade_test_violations:
         print("\nProduct Success BackendFacade Test Violations Found:")
         for violation in facade_test_violations:
+            print(f" - {violation}")
+        return 1
+
+    facade_quarantine_violations = check_backend_facade_test_quarantine(Path(root_dir))
+    if facade_quarantine_violations:
+        print("\nBackendFacade Test Quarantine Violations Found:")
+        for violation in facade_quarantine_violations:
             print(f" - {violation}")
         return 1
 
@@ -458,6 +471,37 @@ def check_product_success_backend_facade_tests(root_dir: Path) -> list[str]:
                 "coverage into explicit facade-only unit tests."
                 for node in visitor.violations
             )
+    return violations
+
+
+def check_backend_facade_test_quarantine(root_dir: Path) -> list[str]:
+    """Return tests that use BackendFacade outside explicit compatibility files."""
+    violations: list[str] = []
+    tests_dir = root_dir / "tests"
+    if not tests_dir.exists():
+        return violations
+
+    for py_file in tests_dir.rglob("*.py"):
+        if py_file.name == "__init__.py":
+            continue
+        relative_path = py_file.relative_to(root_dir)
+        if relative_path in BACKEND_FACADE_TEST_QUARANTINE_ALLOWED_FILES:
+            continue
+
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+        visitor = _BackendFacadeRuntimeUsageVisitor()
+        visitor.visit(tree)
+        violations.extend(
+            f"{relative_path}:{getattr(node, 'lineno', 0)} uses BackendFacade "
+            "outside the facade quarantine; move replacement coverage to "
+            "ApplicationService / Command API tests or add an explicit quarantine "
+            "allowance with validation."
+            for node in visitor.violations
+        )
     return violations
 
 

@@ -37,6 +37,34 @@
 
 ## 2026-05-12
 
+### 17:25 BackendFacade test quarantine guard
+
+- 做了什麼：
+  - Added `check_backend_facade_test_quarantine()` to `tests/architecture_compliance.py`.
+  - The guard scans `tests/**/*.py` and rejects `BackendFacade` imports / construction outside the
+    explicit allowlist: facade compatibility tests, headless facade compatibility, shared runtime
+    cache tests, and architecture guard self-tests.
+  - Added red/green guard tests so new unit tests cannot quietly reintroduce `BackendFacade` as a
+    normal backend workflow entry.
+- TDD red：
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> failed on missing `check_backend_facade_test_quarantine` before implementation.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `66 passed`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `poetry run ruff check tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> `All checks passed!`.
+  - `poetry run basedpyright tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run mkdocs build --strict`
+    -> PASS, with the existing MkDocs Material advisory.
+  - `git diff --check`
+    -> PASS.
+- 接續 / 本輪剩餘：
+  - Commit the quarantine guard, then continue with remaining backend test cleanup.
+
 ### 17:21 Facade headless mocked-study fixture correction
 
 - 做了什麼：
