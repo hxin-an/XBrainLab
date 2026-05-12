@@ -37,6 +37,28 @@
 
 ## 2026-05-12
 
+### 18:38 Message bubble file-link test cleanup
+
+- 做了什麼：
+  - Replaced `test_file_link_handling()`'s generic no-crash branch with two explicit tests:
+    Windows file links open Explorer selection, and non-Windows file links use
+    `QDesktopServices.openUrl`.
+  - The tests now patch the module-local platform / subprocess / desktop-service paths and assert
+    exact side effects instead of accepting either branch.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/chat/test_message_bubble.py -q`
+    -> `9 passed`.
+  - `poetry run ruff check tests/unit/ui/chat/test_message_bubble.py`
+    -> `All checks passed!`.
+  - `poetry run basedpyright tests/unit/ui/chat/test_message_bubble.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run mkdocs build --strict`
+    -> PASS, with the existing MkDocs Material advisory.
+  - `git diff --check`
+    -> PASS.
+- 接續 / 本輪剩餘：
+  - Commit this cleanup.
+
 ### 18:35 Saliency map widget no-crash test cleanup
 
 - 做了什麼：

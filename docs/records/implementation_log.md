@@ -6288,6 +6288,8 @@ mock-only sidebar tests explicit compatibility coverage.
   combo state, warning, export-cancel, and accept/no-accept behavior.
 - Saliency map widget coverage no longer swallows generic matplotlib exceptions; the data-path test
   now asserts visualizer invocation, figure replacement, canvas ownership, and hidden error state.
+- MessageBubble file-link coverage now asserts Windows Explorer selection and non-Windows
+  `QDesktopServices.openUrl` side effects separately instead of accepting either branch as no-crash.
 
 ### Evidence 入口
 

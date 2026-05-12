@@ -51,20 +51,44 @@ class TestMessageBubble:
             bubble._on_link_clicked(url)
             mock_open.assert_called_with(url)
 
-    def test_file_link_handling(self, qtbot):
+    def test_file_link_windows_opens_explorer_selection(self, qtbot):
         bubble = MessageBubble("[File](file:///C:/test.txt)", is_user=False)
         qtbot.addWidget(bubble)
 
-        with patch("subprocess.Popen") as mock_popen:
+        with (
+            patch(
+                "XBrainLab.ui.chat.message_bubble.platform.system",
+                return_value="Windows",
+            ),
+            patch("XBrainLab.ui.chat.message_bubble.subprocess.Popen") as mock_popen,
+            patch(
+                "XBrainLab.ui.chat.message_bubble.QDesktopServices.openUrl"
+            ) as mock_open_url,
+        ):
             url = QUrl("file:///C:/test.txt")
             bubble._on_link_clicked(url)
-            # Should either open via subprocess (Windows) or fall back to openUrl
-            # At minimum, verify no crash and one of the two paths was taken
-            if not mock_popen.called:
-                # Fallback path was used (openUrl), which is acceptable
-                pass
-            else:
-                mock_popen.assert_called_once()
+
+        mock_popen.assert_called_once_with(["explorer", "/select,", "/C:/test.txt"])
+        mock_open_url.assert_not_called()
+
+    def test_file_link_non_windows_uses_desktop_services(self, qtbot):
+        bubble = MessageBubble("[File](file:///tmp/test.txt)", is_user=False)
+        qtbot.addWidget(bubble)
+
+        with (
+            patch(
+                "XBrainLab.ui.chat.message_bubble.platform.system", return_value="Linux"
+            ),
+            patch("XBrainLab.ui.chat.message_bubble.subprocess.Popen") as mock_popen,
+            patch(
+                "XBrainLab.ui.chat.message_bubble.QDesktopServices.openUrl"
+            ) as mock_open_url,
+        ):
+            url = QUrl("file:///tmp/test.txt")
+            bubble._on_link_clicked(url)
+
+        mock_popen.assert_not_called()
+        mock_open_url.assert_called_once_with(url)
 
     def test_dynamic_resizing(self, qtbot):
         """Verify bubble adapts when container width changes (simulating resize)."""
