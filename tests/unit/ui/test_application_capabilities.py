@@ -23,6 +23,7 @@ from XBrainLab.ui.application_capabilities import (
     get_command_capability,
     run_legacy_controller_fallback,
 )
+from XBrainLab.ui.refresh_coordinator import refresh_after_observer
 
 
 def test_ui_capability_helper_returns_application_policy(qtbot):
@@ -99,6 +100,76 @@ def test_execute_application_command_triggers_changed_state_refresh(
 
     assert command_result is result
     assert refresh_calls == [(widget, result)]
+
+
+def test_execute_application_command_suppresses_observer_refresh_until_result_refresh(
+    qtbot,
+    monkeypatch,
+):
+    study = Study()
+    widget = QWidget()
+    qtbot.addWidget(widget)
+
+    class _PanelSpy:
+        def __init__(self) -> None:
+            self.update_calls = 0
+
+        def update_panel(self) -> None:
+            self.update_calls += 1
+
+    class _AgentSpy:
+        def __init__(self) -> None:
+            self.refresh_calls = 0
+
+        def refresh_backend_status(self) -> None:
+            self.refresh_calls += 1
+
+    main_window = SimpleNamespace(
+        study=study,
+        dataset_panel=_PanelSpy(),
+        preprocess_panel=_PanelSpy(),
+        training_panel=_PanelSpy(),
+        evaluation_panel=_PanelSpy(),
+        visualization_panel=_PanelSpy(),
+        agent_manager=_AgentSpy(),
+        update_info_calls=0,
+    )
+
+    def update_info_panel() -> None:
+        main_window.update_info_calls += 1
+
+    main_window.update_info_panel = update_info_panel
+    cast(Any, widget).main_window = main_window
+
+    result = CommandResult.success_result(
+        command_name="load_data",
+        message="ok",
+        state=None,
+        changed_state=ChangedState(raw_changed=True),
+    )
+
+    class _Service:
+        def execute(self, command):
+            assert isinstance(command, QueryStateCommand)
+            assert refresh_after_observer(widget, event_name="data_changed") is False
+            return result
+
+    monkeypatch.setattr(
+        application_capabilities,
+        "get_application_service",
+        lambda provided_study: _Service(),
+    )
+
+    command_result = execute_application_command(widget, QueryStateCommand())
+
+    assert command_result is result
+    assert main_window.dataset_panel.update_calls == 1
+    assert main_window.preprocess_panel.update_calls == 1
+    assert main_window.training_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+    assert main_window.update_info_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
 
 
 def test_execute_application_command_can_skip_refresh(qtbot, monkeypatch):

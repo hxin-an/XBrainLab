@@ -14,7 +14,10 @@ from XBrainLab.backend.application import (
 )
 from XBrainLab.backend.application.capabilities import CommandCapability
 from XBrainLab.backend.study import Study
-from XBrainLab.ui.refresh_coordinator import refresh_after_command
+from XBrainLab.ui.refresh_coordinator import (
+    refresh_after_command,
+    suppress_observer_refresh_during_command,
+)
 
 _FallbackResult = TypeVar("_FallbackResult")
 LEGACY_FALLBACK_UNAVAILABLE_MESSAGE = (
@@ -97,7 +100,8 @@ def execute_application_command(
     study = find_study(context)
     if study is None or not isinstance(study, Study) or isinstance(study, Mock):
         return None
-    result = get_application_service(study).execute(command)
+    with suppress_observer_refresh_during_command(context):
+        result = get_application_service(study).execute(command)
     if refresh:
         refresh_after_command(context, result)
     return result

@@ -42,7 +42,7 @@ UI / assistant / MCP / scripts
 | Risk | 為什麼重要 | 處理方向 |
 | --- | --- | --- |
 | legacy controller path | 桌面操作可能繞過 command spine，測試也可能保護舊路徑。 | real `Study` product path 不再 hidden fallback。 |
-| UI refresh split truth | backend state 正確但畫面顯示舊狀態。 | command result / changed state 驅動 refresh。 |
+| UI refresh split truth | backend state 正確但畫面顯示舊狀態。 | command result / changed state 驅動 refresh；command 執行期間的 observer refresh 會被暫停，避免先用 stale controller state 重刷。 |
 | `BackendFacade` scope creep | wrapper 若回到 product runtime，就會和 UI / MCP 分裂。 | Architecture guard blocks `BackendFacade` use in product UI / assistant / MCP packages. |
 | Data Interpretation maturity | 資料語意錯會污染後續 training / evidence。 | MVP 先處理代表性 ambiguity，不誇大 final support。 |
 | MCP session confusion | headless session 容易被誤解成桌面 UI 控制。 | Phase 4 明確 session ownership 和 client matrix。 |

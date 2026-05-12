@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from XBrainLab.backend.application import ChangedState, CommandResult
 from XBrainLab.backend.utils.logger import logger
 
 _REFRESHING_MAIN_WINDOWS: set[int] = set()
+_COMMAND_EXECUTING_MAIN_WINDOWS: dict[int, int] = {}
 _PANEL_NAMES_BY_INDEX = (
     "dataset_panel",
     "preprocess_panel",
@@ -84,6 +87,8 @@ def refresh_after_observer(context: Any, *, event_name: str | None = None) -> bo
         return refresh_panel(context)
 
     main_window_id = id(main_window)
+    if _COMMAND_EXECUTING_MAIN_WINDOWS.get(main_window_id, 0) > 0:
+        return False
     if main_window_id in _REFRESHING_MAIN_WINDOWS:
         return False
 
@@ -124,6 +129,28 @@ def refresh_shared_status(context: Any) -> bool:
         return _refresh_shared_status(main_window)
     finally:
         _REFRESHING_MAIN_WINDOWS.discard(main_window_id)
+
+
+@contextmanager
+def suppress_observer_refresh_during_command(context: Any) -> Iterator[None]:
+    """Skip observer-driven refreshes until command result refresh can run."""
+    main_window = find_main_window(context)
+    if main_window is None:
+        yield
+        return
+
+    main_window_id = id(main_window)
+    _COMMAND_EXECUTING_MAIN_WINDOWS[main_window_id] = (
+        _COMMAND_EXECUTING_MAIN_WINDOWS.get(main_window_id, 0) + 1
+    )
+    try:
+        yield
+    finally:
+        active_count = _COMMAND_EXECUTING_MAIN_WINDOWS.get(main_window_id, 0)
+        if active_count <= 1:
+            _COMMAND_EXECUTING_MAIN_WINDOWS.pop(main_window_id, None)
+        else:
+            _COMMAND_EXECUTING_MAIN_WINDOWS[main_window_id] = active_count - 1
 
 
 def refresh_panel(panel: Any) -> bool:

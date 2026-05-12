@@ -10,6 +10,7 @@ from XBrainLab.ui.refresh_coordinator import (
     refresh_after_navigation,
     refresh_after_observer,
     refresh_panel,
+    suppress_observer_refresh_during_command,
 )
 
 
@@ -208,6 +209,67 @@ def test_refresh_is_not_reentrant_for_same_main_window():
     assert refreshed is True
     assert main_window.dataset_panel.update_calls == 1
     assert nested_results == [False]
+
+
+def test_observer_refresh_is_suppressed_while_command_is_executing():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    panel = main_window.dataset_panel
+    panel.main_window = main_window
+
+    with suppress_observer_refresh_during_command(panel):
+        refreshed = refresh_after_observer(panel, event_name="data_changed")
+
+    assert refreshed is False
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 0
+    assert main_window.agent_manager.refresh_calls == 0
+
+
+def test_observer_refresh_resumes_after_command_execution_scope():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    panel = main_window.dataset_panel
+    panel.main_window = main_window
+
+    with suppress_observer_refresh_during_command(panel):
+        assert refresh_after_observer(panel, event_name="data_changed") is False
+
+    refreshed = refresh_after_observer(panel, event_name="data_changed")
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 1
+    assert main_window.preprocess_panel.update_calls == 1
+    assert main_window.training_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
+def test_nested_command_execution_scopes_keep_observer_refresh_suppressed():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    panel = main_window.dataset_panel
+    panel.main_window = main_window
+
+    with suppress_observer_refresh_during_command(panel):
+        with suppress_observer_refresh_during_command(panel):
+            assert refresh_after_observer(panel, event_name="data_changed") is False
+
+        assert refresh_after_observer(panel, event_name="data_changed") is False
+
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 0
+    assert main_window.agent_manager.refresh_calls == 0
 
 
 def test_navigation_refreshes_selected_panel_and_shared_status():

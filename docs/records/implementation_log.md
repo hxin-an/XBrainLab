@@ -6189,3 +6189,48 @@ Product runtime paths now enter the backend through `ApplicationService / Comman
 
 - This does not remove all controller compatibility paths or complete human Windows desktop
   acceptance.
+
+## 2026-05-12 Backend Command-Spine Hardening Follow-Up
+
+### 狀態
+
+Command-spine runtime cleanup continued without Data Import UX redesign. This slice focused on
+contract holes found after the zero-legacy pass: observer refresh ordering, read-only command
+purity, unsupported command result envelopes, and walkthrough test evidence alignment.
+
+### 已可宣稱
+
+- UI command execution now wraps `ApplicationService.execute(...)` with
+  `suppress_observer_refresh_during_command(...)`; synchronous controller observer events fired
+  inside command handlers no longer trigger a stale duplicate refresh before
+  `CommandResult.changed_state` is available.
+- `QueryStateCommand`, `EvaluateCommand`, `VisualizeCommand`, and no-parameter
+  `SaliencyCommand` no longer clear `ApplicationService.last_error`; read-only commands that may
+  be called with `refresh=False` remain state-preserving.
+- Unsupported command objects passed to `ApplicationService.execute(...)` now return a structured
+  `unsupported_command` `CommandResult` instead of leaking a raw `TypeError` / `ValueError`.
+- Architecture compliance now also blocks UI code that directly calls
+  `get_application_service(...).execute(...)` outside `execute_application_command()`.
+- The product walkthrough now simulates Start Training confirmation and its fake training hook
+  accepts the current `TrainCommand.append` / `interactive` kwargs.
+
+### Evidence 入口
+
+- Source:
+  - `XBrainLab/backend/application/service.py`
+  - `XBrainLab/ui/application_capabilities.py`
+  - `XBrainLab/ui/refresh_coordinator.py`
+  - `tests/architecture_compliance.py`
+- Tests:
+  - `tests/unit/backend/application/test_application_service.py`
+  - `tests/unit/ui/test_refresh_coordinator.py`
+  - `tests/unit/ui/test_application_capabilities.py`
+  - `tests/unit/test_architecture_compliance.py`
+  - `tests/integration/ui/test_product_walkthrough.py`
+- Detailed validation: `docs/records/worklog.md` and `docs/validation/README.md`.
+
+### 不能宣稱完成
+
+- This is not product complete and does not replace human Windows desktop acceptance.
+- Controller compatibility code remains present for mock / legacy non-`Study` contexts, guarded
+  from product runtime rather than deleted wholesale.

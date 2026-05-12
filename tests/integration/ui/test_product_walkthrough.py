@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from matplotlib.figure import Figure
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QAbstractButton, QLabel, QWidget
+from PyQt6.QtWidgets import QAbstractButton, QLabel, QMessageBox, QWidget
 
 from XBrainLab.backend.dataset import (
     DataSplitter,
@@ -397,7 +397,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
 
     training_controller = test_app.study.get_controller("training")
 
-    def fake_start_training():
+    def fake_start_training(*_args, **_kwargs):
         eval_record = SimpleNamespace(
             get_per_class_metrics=lambda: {
                 0: {"precision": 1.0, "recall": 1.0, "f1-score": 1.0, "support": 2},
@@ -445,8 +445,17 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         training_controller.notify("training_started")
         training_controller.notify("training_stopped")
 
-    with patch.object(
-        training_controller, "start_training", side_effect=fake_start_training
+    with (
+        patch.object(
+            QMessageBox,
+            "question",
+            return_value=QMessageBox.StandardButton.Yes,
+        ),
+        patch.object(
+            training_controller,
+            "start_training",
+            side_effect=fake_start_training,
+        ),
     ):
         _click(qtbot, test_app.training_panel.sidebar.btn_start)
 

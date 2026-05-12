@@ -15654,3 +15654,51 @@
   - Not human Windows desktop acceptance.
   - Not Data Import UX redesign or final format/label support.
   - Not tool-call thesis accuracy or MCP client certification.
+
+### 2026-05-12 Backend command-spine hardening follow-up
+
+- scope：
+  - Continued backend cleanup on `refactor/backend-command-spine-hardening` without Data Import UX
+    redesign.
+  - Fixed command-time UI refresh ordering, read-only command state mutation, unsupported command
+    result envelopes, and a product walkthrough test-evidence gap around `TrainCommand`.
+- fixes：
+  - Added `refresh_coordinator.suppress_observer_refresh_during_command()` and used it in
+    `execute_application_command()`. Observer-driven refreshes for the same MainWindow are skipped
+    while a command is executing; command result refresh remains driven by
+    `CommandResult.changed_state`.
+  - Added architecture guard coverage for the new bypass class: UI code outside
+    `application_capabilities.py` cannot call `get_application_service(...).execute(...)`
+    directly, and `execute_application_command()` must keep the observer-suppression scope around
+    ApplicationService execution.
+  - Made read-only ApplicationService commands state-preserving for `last_error`:
+    `QueryStateCommand`, `EvaluateCommand`, `VisualizeCommand`, and no-parameter
+    `SaliencyCommand` no longer clear prior errors. Mutating successful commands still clear prior
+    errors.
+  - Unsupported command objects now return `CommandResult(status=failed,
+    error_type=unsupported_command)` instead of leaking raw Python exceptions from
+    `command_name(...)`.
+  - Updated the product walkthrough to simulate Start Training confirmation and accept
+    `TrainingController.start_training(append=..., interactive=...)` kwargs in its dry-run hook.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_application_capabilities.py tests/unit/test_architecture_compliance.py -q`
+    -> `146 passed`.
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/unit/llm/tools/real/test_real_tools.py tests/unit/mcp/test_server.py tests/unit/mcp/test_http_server.py tests/unit/backend/application/test_automation.py -q`
+    -> `68 passed`.
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py tests/integration/ui/test_epoch_runtime.py tests/integration/ui/test_product_walkthrough.py::test_pipeline_product_walkthrough_uses_user_facing_actions -q`
+    -> initially failed because the walkthrough did not model training confirmation / kwargs,
+    then `10 passed` after aligning the test with the command contract.
+  - `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet -q`
+    -> `2 passed`.
+  - `poetry run ruff check .` -> `All checks passed!`.
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `git diff --check` -> PASS.
+  - `poetry run mkdocs build --strict` -> PASS.
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py`
+    -> Dashboard `PASS`, generated `2026-05-12 14:30:33 UTC+08:00`.
+- claims still not supported：
+  - Not product complete.
+  - Not human Windows desktop acceptance.
+  - Not a deletion of all controller compatibility code; remaining fallback is guarded and
+    compatibility-only.

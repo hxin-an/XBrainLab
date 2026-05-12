@@ -137,16 +137,20 @@ class ApplicationService:
         """Return command capabilities for the current state."""
         return build_capability_policy(self.get_state())
 
-    def execute(self, command: Command) -> CommandResult:
+    def execute(self, command: Command | Any) -> CommandResult:
         """Execute a command and return a result envelope."""
         before = self.get_state()
-        name = command_name(command)
+        try:
+            name = command_name(command)
+        except Exception as exc:
+            return self._unsupported_command_result(before, exc)
         try:
             self._ensure_command_allowed(command, before)
             message, diagnostics = self._normalize_handler_result(
                 self._execute_allowed(command, name),
             )
-            self._last_error = None
+            if not self._is_read_only_command(command, name):
+                self._last_error = None
             after = self.get_state()
             return CommandResult.success_result(
                 command_name=name.value,
@@ -412,6 +416,43 @@ class ApplicationService:
         if isinstance(result, tuple):
             return result
         return result, {}
+
+    def _unsupported_command_result(
+        self,
+        before: ApplicationStateSnapshot,
+        exc: Exception,
+    ) -> CommandResult:
+        self._last_error = ErrorSnapshot(
+            error_type=ErrorType.UNSUPPORTED_COMMAND.value,
+            message=str(exc),
+            recoverable=True,
+        )
+        after = self.get_state()
+        return CommandResult.failure_result(
+            command_name=ErrorType.UNSUPPORTED_COMMAND.value,
+            message=str(exc),
+            state=after,
+            changed_state=self._changed_state(before, after),
+            error_type=ErrorType.UNSUPPORTED_COMMAND,
+            recoverable=True,
+            error_message=str(exc),
+            diagnostics={"exception_type": exc.__class__.__name__},
+        )
+
+    @staticmethod
+    def _is_read_only_command(command: Command, name: CommandName) -> bool:
+        if name in {
+            CommandName.QUERY_STATE,
+            CommandName.EVALUATE,
+            CommandName.VISUALIZE,
+        }:
+            return True
+        return (
+            name == CommandName.SALIENCY
+            and isinstance(command, SaliencyCommand)
+            and command.method is None
+            and command.params is None
+        )
 
     @staticmethod
     def _changed_state(

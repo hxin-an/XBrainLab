@@ -130,6 +130,18 @@ also now passes `append` and `interactive` through `TrainingCommandService` to
 `TrainingController`, so synchronous test/product smoke training does not bypass the
 command contract.
 
+Follow-up command-spine hardening on 2026-05-12 fixed three product-runtime contract
+gaps. UI command execution now suppresses controller observer-driven refresh while
+`ApplicationService.execute(...)` is running, so synchronous controller notifications wait for
+the returned `CommandResult.changed_state` refresh scope instead of causing a stale duplicate UI
+refresh first. Read-only commands that product UI may call with `refresh=False`
+(`QueryStateCommand`, `EvaluateCommand`, `VisualizeCommand`, and no-parameter
+`SaliencyCommand`) no longer clear `last_error`, keeping those queries state-preserving.
+Unsupported command objects passed to `ApplicationService.execute(...)` now return a structured
+`unsupported_command` failure `CommandResult` instead of leaking a raw Python exception. The
+architecture guard now also rejects UI code that bypasses `execute_application_command()` by
+calling `get_application_service(...).execute(...)` directly.
+
 ## 一句話架構
 
 XBrainLab backend 目前是以 `Study` 作為中心狀態容器，`DataManager` 和

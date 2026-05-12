@@ -2,6 +2,7 @@ from tests.architecture_compliance import (
     check_product_runtime_backend_facade_usage,
     check_product_success_backend_facade_tests,
     check_ui_capability_gated_controller_readiness,
+    check_ui_command_execution_suppresses_observer_refresh,
     check_ui_controller_fallbacks,
     check_ui_controller_render_fallbacks,
     check_ui_controller_study_get_controller_fallbacks,
@@ -119,6 +120,25 @@ def run(self, study):
     assert "execute_application_command" in violations[0]
 
 
+def test_direct_backend_service_execute_guard_flags_get_application_service_ui_bypass(
+    tmp_path,
+):
+    _write_ui_file(
+        tmp_path,
+        """
+def run(self, study):
+    result = get_application_service(study).execute(QueryStateCommand())
+    return result
+""",
+    )
+
+    violations = check_ui_direct_backend_service_execute(tmp_path)
+
+    assert len(violations) == 1
+    assert "ApplicationService.execute" in violations[0]
+    assert "execute_application_command" in violations[0]
+
+
 def test_direct_backend_service_execute_guard_allows_application_helper(tmp_path):
     path = tmp_path / "XBrainLab" / "ui" / "application_capabilities.py"
     path.parent.mkdir(parents=True)
@@ -131,6 +151,42 @@ def execute_application_command(study, command):
     )
 
     assert check_ui_direct_backend_service_execute(tmp_path) == []
+
+
+def test_command_execution_suppression_guard_flags_missing_scope(tmp_path):
+    path = tmp_path / "XBrainLab" / "ui" / "application_capabilities.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def execute_application_command(context, command):
+    result = get_application_service(study).execute(command)
+    refresh_after_command(context, result)
+    return result
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_ui_command_execution_suppresses_observer_refresh(tmp_path)
+
+    assert len(violations) == 1
+    assert "suppress_observer_refresh_during_command" in violations[0]
+
+
+def test_command_execution_suppression_guard_allows_scoped_execute(tmp_path):
+    path = tmp_path / "XBrainLab" / "ui" / "application_capabilities.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def execute_application_command(context, command):
+    with suppress_observer_refresh_during_command(context):
+        result = get_application_service(study).execute(command)
+    refresh_after_command(context, result)
+    return result
+""",
+        encoding="utf-8",
+    )
+
+    assert check_ui_command_execution_suppresses_observer_refresh(tmp_path) == []
 
 
 def test_post_command_refresh_guard_flags_direct_local_refresh(tmp_path):

@@ -37,8 +37,11 @@ guard、ApplicationService real-data / pipeline replacement coverage、dataset s
 regression、agent stage snapshot cleanup、full type/lint/docs/dashboard PASS。Epoch UI freeze/hang
 reality gap 也已補上 command-backed real-GDF offscreen smoke：A01T/A02T/A03T epoching 回到 UI、
 不開 blocking success modal，且 epoched preview 會取消 queued plot redraw。下一個不能跳過的
-缺口仍是更完整的 human-observable desktop product smoke；不能用 dashboard PASS 或單一 offscreen
-smoke 取代。
+follow-up backend hardening 已補 command-time observer refresh suppression、read-only query
+state preservation、unsupported command structured result，以及 product walkthrough 對
+`TrainCommand` confirmation / `append` / `interactive` contract 的測試對齊。下一個不能跳過的缺口
+仍是更完整的 human-observable desktop product smoke；不能用 dashboard PASS 或單一 offscreen smoke
+取代。
 
 ## 接下來才做
 

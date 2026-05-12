@@ -1115,6 +1115,20 @@ def test_command_result_classifies_unsupported_load(tmp_path):
     assert result.changed_state.error_changed is True
 
 
+def test_execute_returns_failure_result_for_unsupported_command_object():
+    service = ApplicationService(Study())
+
+    result = service.execute(cast(Any, object()))
+
+    assert result.failed is True
+    assert result.command_name == "unsupported_command"
+    assert result.error_type == ErrorType.UNSUPPORTED_COMMAND
+    assert "Unsupported command object" in result.message
+    assert result.state.last_error is not None
+    assert result.state.last_error.error_type == "unsupported_command"
+    assert result.changed_state.error_changed is True
+
+
 def test_successful_command_clears_previous_last_error():
     service = ApplicationService(Study())
 
@@ -1127,6 +1141,20 @@ def test_successful_command_clears_previous_last_error():
     assert reset_result.ok is True
     assert reset_result.state.last_error is None
     assert reset_result.changed_state.error_changed is True
+
+
+def test_read_only_query_does_not_clear_previous_last_error():
+    service = ApplicationService(Study())
+
+    failed_result = service.execute(TrainCommand())
+    assert failed_result.failed is True
+    assert failed_result.state.last_error is not None
+
+    query_result = service.execute(QueryStateCommand(query="state"))
+
+    assert query_result.ok is True
+    assert query_result.state.last_error == failed_result.state.last_error
+    assert query_result.changed_state.error_changed is False
 
 
 def test_train_command_blocked_until_backend_ready():

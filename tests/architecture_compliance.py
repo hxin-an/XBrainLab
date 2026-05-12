@@ -273,6 +273,15 @@ def check_architecture(root_dir: str) -> int:
             print(f" - {violation}")
         return 1
 
+    command_suppression_violations = (
+        check_ui_command_execution_suppresses_observer_refresh(Path(root_dir))
+    )
+    if command_suppression_violations:
+        print("\nUI Command Observer Suppression Violations Found:")
+        for violation in command_suppression_violations:
+            print(f" - {violation}")
+        return 1
+
     loader_apply_violations = check_ui_direct_loader_apply(Path(root_dir))
     if loader_apply_violations:
         print("\nUI Direct Loader Apply Violations Found:")
@@ -723,10 +732,10 @@ def check_ui_direct_backend_service_execute(root_dir: Path) -> list[str]:
         visitor.visit(tree)
         violations.extend(
             f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
-            "BackendFacade(...).service.execute() directly; UI command/query "
-            "execution must go through execute_application_command() so the "
-            "shared Study detection, mock/legacy boundary, and refresh policy "
-            "stay centralized."
+            "BackendFacade(...).service.execute() or ApplicationService.execute() "
+            "directly; UI command/query execution must go through "
+            "execute_application_command() so the shared Study detection, "
+            "mock/legacy boundary, and refresh policy stay centralized."
             for call in visitor.violations
         )
     return violations
@@ -737,7 +746,9 @@ class _DirectBackendServiceExecuteVisitor(ast.NodeVisitor):
         self.violations: list[ast.Call] = []
 
     def visit_Call(self, node: ast.Call) -> None:
-        if _is_backend_facade_service_execute_call(node):
+        if _is_backend_facade_service_execute_call(
+            node
+        ) or _call_invokes_application_service(node):
             self.violations.append(node)
             return
         self.generic_visit(node)
@@ -756,6 +767,77 @@ def _is_backend_facade_service_execute_call(node: ast.Call) -> bool:
         isinstance(receiver, ast.Call)
         and isinstance(receiver.func, ast.Name)
         and receiver.func.id == "BackendFacade"
+    )
+
+
+def check_ui_command_execution_suppresses_observer_refresh(root_dir: Path) -> list[str]:
+    """Return command helper executions not protected from observer refresh."""
+    helper_file = root_dir / "XBrainLab" / "ui" / "application_capabilities.py"
+    if not helper_file.exists():
+        return []
+
+    source = helper_file.read_text(encoding="utf-8")
+    try:
+        tree = ast.parse(source, filename=str(helper_file))
+    except SyntaxError:
+        return []
+
+    violations: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if node.name != "execute_application_command":
+            continue
+        visitor = _CommandExecutionObserverSuppressionVisitor()
+        visitor.visit(node)
+        violations.extend(
+            f"{helper_file.relative_to(root_dir)}:{call.lineno} executes "
+            "ApplicationService without suppress_observer_refresh_during_command(); "
+            "controller observer events fired inside command handlers must wait "
+            "for CommandResult.changed_state refresh."
+            for call in visitor.violations
+        )
+    return violations
+
+
+class _CommandExecutionObserverSuppressionVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.violations: list[ast.Call] = []
+        self._suppression_depth = 0
+
+    def visit_With(self, node: ast.With) -> None:
+        suppresses = any(
+            _call_name(item.context_expr.func)
+            == "suppress_observer_refresh_during_command"
+            for item in node.items
+            if isinstance(item.context_expr, ast.Call)
+        )
+        if suppresses:
+            self._suppression_depth += 1
+            for statement in node.body:
+                self.visit(statement)
+            self._suppression_depth -= 1
+            return
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if (
+            _call_name(node.func) == "execute"
+            and _call_invokes_application_service(node)
+            and self._suppression_depth == 0
+        ):
+            self.violations.append(node)
+            return
+        self.generic_visit(node)
+
+
+def _call_invokes_application_service(node: ast.Call) -> bool:
+    if not isinstance(node.func, ast.Attribute):
+        return False
+    receiver = node.func.value
+    return (
+        isinstance(receiver, ast.Call)
+        and _call_name(receiver.func) == "get_application_service"
     )
 
 
