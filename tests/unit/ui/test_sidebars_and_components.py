@@ -220,15 +220,28 @@ class TestPreprocessSidebar:
         assert mock_warning.call_args.args[1] == "Warning"
         assert "could not safely complete" in mock_warning.call_args.args[2]
 
-    def test_open_filtering_accepted(self, sidebar):
+    def test_open_filtering_legacy_mock_context_applies_controller_fallback(
+        self,
+        sidebar,
+    ):
         with (
             patch("XBrainLab.ui.panels.preprocess.sidebar.FilteringDialog") as MockDlg,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
+                return_value=None,
+            ) as mock_execute,
             patch("PyQt6.QtWidgets.QMessageBox.information"),
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = (1.0, 40.0, [50.0])
             sidebar.open_filtering()
-            sidebar.panel.controller.apply_filter.assert_called_once()
+
+        mock_execute.assert_called_once()
+        sidebar.panel.controller.apply_filter.assert_called_once_with(
+            1.0,
+            40.0,
+            [50.0],
+        )
 
     def test_open_filtering_refuses_real_study_controller_fallback(self, sidebar):
         from XBrainLab.backend.study import Study
@@ -260,27 +273,53 @@ class TestPreprocessSidebar:
         mock_critical.assert_not_called()
         mock_info.assert_not_called()
 
-    def test_open_resample_accepted(self, sidebar):
+    def test_open_resample_legacy_mock_context_applies_controller_fallback(
+        self,
+        sidebar,
+    ):
         with (
             patch("XBrainLab.ui.panels.preprocess.sidebar.ResampleDialog") as MockDlg,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
+                return_value=None,
+            ) as mock_execute,
             patch("PyQt6.QtWidgets.QMessageBox.information"),
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = 256
             sidebar.open_resample()
-            sidebar.panel.controller.apply_resample.assert_called_once()
 
-    def test_open_rereference_accepted(self, sidebar):
+        mock_execute.assert_called_once()
+        sidebar.panel.controller.apply_resample.assert_called_once_with(256)
+
+    def test_open_rereference_legacy_mock_context_applies_controller_fallback(
+        self,
+        sidebar,
+    ):
+        from XBrainLab.backend.application import (
+            PreprocessCommand,
+            QueryStateCommand,
+        )
+
         with (
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.RereferenceDialog"
             ) as MockDlg,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
+                return_value=None,
+            ) as mock_execute,
             patch("PyQt6.QtWidgets.QMessageBox.information"),
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = ["Cz"]
             sidebar.open_rereference()
-            sidebar.panel.controller.apply_rereference.assert_called_once()
+
+        assert isinstance(mock_execute.call_args_list[0].args[1], QueryStateCommand)
+        command = mock_execute.call_args_list[1].args[1]
+        assert isinstance(command, PreprocessCommand)
+        assert command.channels == ["Cz"]
+        sidebar.panel.controller.apply_rereference.assert_called_once_with(["Cz"])
 
     def test_open_rereference_uses_query_data_list_before_stale_controller(
         self,
@@ -329,15 +368,24 @@ class TestPreprocessSidebar:
         sidebar.panel.controller.get_preprocessed_data_list.assert_not_called()
         sidebar.panel.controller.apply_rereference.assert_not_called()
 
-    def test_open_normalize_accepted(self, sidebar):
+    def test_open_normalize_legacy_mock_context_applies_controller_fallback(
+        self,
+        sidebar,
+    ):
         with (
             patch("XBrainLab.ui.panels.preprocess.sidebar.NormalizeDialog") as MockDlg,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
+                return_value=None,
+            ) as mock_execute,
             patch("PyQt6.QtWidgets.QMessageBox.information"),
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = "z-score"
             sidebar.open_normalize()
-            sidebar.panel.controller.apply_normalization.assert_called_once()
+
+        mock_execute.assert_called_once()
+        sidebar.panel.controller.apply_normalization.assert_called_once_with("z-score")
 
     def test_open_normalize_service_success_uses_coordinator_refresh(self, sidebar):
         from XBrainLab.backend.application import PreprocessCommand
@@ -358,9 +406,18 @@ class TestPreprocessSidebar:
         sidebar.panel.controller.apply_normalization.assert_not_called()
         sidebar.panel.update_panel.assert_not_called()
 
-    def test_open_epoching_accepted(self, sidebar):
+    def test_open_epoching_legacy_mock_context_applies_controller_fallback(
+        self,
+        sidebar,
+    ):
+        from XBrainLab.backend.application import CreateEpochCommand, QueryStateCommand
+
         with (
             patch("XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog") as MockDlg,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
+                return_value=None,
+            ) as mock_execute,
             patch("PyQt6.QtWidgets.QMessageBox.information"),
         ):
             MockDlg.return_value.exec.return_value = True
@@ -372,7 +429,20 @@ class TestPreprocessSidebar:
             )
             sidebar.panel.controller.apply_epoching.return_value = True
             sidebar.open_epoching()
-            sidebar.panel.controller.apply_epoching.assert_called_once()
+
+        assert isinstance(mock_execute.call_args_list[0].args[1], QueryStateCommand)
+        command = mock_execute.call_args_list[1].args[1]
+        assert isinstance(command, CreateEpochCommand)
+        assert command.t_min == -0.5
+        assert command.t_max == 1.0
+        assert command.baseline == (None, 0)
+        assert command.event_ids == ["left", "right"]
+        sidebar.panel.controller.apply_epoching.assert_called_once_with(
+            (None, 0),
+            ["left", "right"],
+            -0.5,
+            1.0,
+        )
 
     def test_open_epoching_legacy_result_refreshes_shared_status(self, sidebar):
         sidebar.panel.main_window.update_info_panel = MagicMock()

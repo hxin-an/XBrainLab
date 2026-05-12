@@ -6251,6 +6251,9 @@ mock-only sidebar tests explicit compatibility coverage.
   product workflow success.
 - Ambiguous TrainingSidebar tests for split generation and start training were renamed and
   strengthened so they explicitly assert legacy mock-context controller fallback behavior.
+- Ambiguous PreprocessSidebar tests for filtering, resample, rereference, normalization, and
+  epoching were renamed and strengthened so they explicitly assert command attempts and
+  legacy mock-context controller fallback parameters.
 
 ### Evidence 入口
 

@@ -15752,3 +15752,37 @@
   - Not human Windows desktop acceptance.
   - Not a wholesale removal of controller compatibility code; this slice prevents product-success
     tests from blessing that compatibility layer.
+
+### 2026-05-12 PreprocessSidebar weak-test cleanup
+
+- scope：
+  - Continued on `test/backend-ui-legacy-hygiene` after commit
+    `8fc23fb1 test: guard legacy fallback product evidence`.
+  - Did not touch answer UI, Data Import UX, or product implementation.
+  - Goal of this slice: convert ambiguous PreprocessSidebar `accepted` tests into explicit
+    legacy mock-context compatibility tests.
+- test cleanup：
+  - Renamed filtering/resample/rereference/normalize/epoching tests from `*_accepted` to
+    `*_legacy_mock_context_applies_controller_fallback`.
+  - Patched `execute_application_command(..., return_value=None)` in these tests so the intended
+    compatibility boundary is explicit.
+  - Strengthened assertions from generic `assert_called_once()` to command-attempt plus exact
+    legacy controller fallback parameters.
+- red / fix：
+  - Focused run first failed for rereference and epoching because those flows legitimately call
+    `QueryStateCommand(query="data_lists")` before the mutating command.
+  - Updated assertions to verify the query command first, then the `PreprocessCommand` /
+    `CreateEpochCommand`, then the legacy fallback parameters.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_filtering_legacy_mock_context_applies_controller_fallback tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_resample_legacy_mock_context_applies_controller_fallback tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_rereference_legacy_mock_context_applies_controller_fallback tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_normalize_legacy_mock_context_applies_controller_fallback tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_legacy_mock_context_applies_controller_fallback -q`
+    -> red first (`2 failed, 3 passed`) due to missing query-command assertions, then
+    `5 passed`.
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py -q`
+    -> `96 passed`.
+  - `poetry run ruff check tests/unit/ui/test_sidebars_and_components.py` ->
+    `All checks passed!`.
+  - `poetry run basedpyright tests/unit/ui/test_sidebars_and_components.py` ->
+    `0 errors, 0 warnings, 0 notes`.
+- claims still not supported：
+  - These remain legacy mock-context compatibility tests, not product command success evidence.
+  - Not human Windows desktop acceptance.
