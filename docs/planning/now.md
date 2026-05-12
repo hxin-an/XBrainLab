@@ -1,12 +1,12 @@
 # XBrainLab Now
 
-最後更新：`2026-05-10`
+最後更新：`2026-05-12`
 
 這頁只放下一輪施工焦點。
 
 ## 目前焦點
 
-**Phase 1A：Backend Command Spine / Legacy / UI Refresh / Test Cleanup。**
+**Phase 1A 收尾：Backend Command Spine / Legacy / UI Refresh / Test Cleanup。**
 
 要先做這件事，因為 MVP 前最大的風險不是功能不夠多，而是 UI、backend、assistant、MCP
 各自保存一套 workflow truth。
@@ -28,9 +28,14 @@ acceptance。
 | Test cleanup | 測試不再把 legacy fallback 當作預期成功路徑；mock 只隔離外部依賴。 |
 | Validation reality-gap audit | 盤點現有 tests / artifacts / smoke 的 claim boundary，補上 human-observable product smoke，避免 dashboard PASS 但實機 workflow 仍不可用。 |
 | Data Import UX alignment | task-oriented step-panel wizard baseline 和第一輪 task-panel visual polish 已交付；後續不再以 debug-style preview 為目標。 |
-| BackendFacade boundary | Product runtime packages use `get_application_service(study)` / `ApplicationService`; `BackendFacade` is legacy compatibility only. |
-| Architecture guard | 新增或維持 guard，防止 product path 繞過 command spine。 |
+| BackendFacade boundary | Product runtime packages and product-success tests use `get_application_service(study)` / `ApplicationService`; `BackendFacade` is legacy compatibility only. |
+| Architecture guard | 新增或維持 guard，防止 product runtime 和 product-success tests 繞過 command spine。 |
 | Docs alignment | `current`、`roadmap`、`architecture` 不互相矛盾。 |
+
+2026-05-12 狀態：backend command spine cleanup 已補上 product-success `BackendFacade`
+guard、ApplicationService real-data / pipeline replacement coverage、dataset split default
+regression、agent stage snapshot cleanup、full type/lint/docs/dashboard PASS。下一個不能跳過的
+缺口是 human-observable desktop product smoke；不能用 dashboard PASS 取代。
 
 ## 接下來才做
 

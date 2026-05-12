@@ -15453,3 +15453,165 @@
   - This does not remove `XBrainLab/backend/facade.py`; it remains non-product compatibility.
   - This does not claim Windows human desktop acceptance or complete removal of all historical
     facade-specific compatibility tests.
+
+### 2026-05-12 Backend product runtime zero-legacy inventory
+
+- scope：
+  - Work from the product runtime target state backward: UI / agent / MCP / headless product
+    evidence must use `ApplicationService / Command API`; `BackendFacade` and controller
+    fallback are compatibility-only and cannot be product success evidence.
+  - Data Import UX is out of scope for redesign; the Load Labels / Match Labels interaction and
+    copy are intentionally untouched.
+- baseline validation before production code edits：
+  - `poetry run python tests/architecture_compliance.py` -> PASS, with current guards checking
+    product-runtime `BackendFacade` imports/construction, UI controller fallback gates, direct
+    Study/controller readiness reads, post-command controller echoes, refresh suppression, and
+    observer refresh ownership.
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` ->
+    `56 passed`.
+- current command-backed product paths：
+  - UI command execution and capability checks are centralized in
+    `XBrainLab/ui/application_capabilities.py`.
+  - UI refresh ownership is centralized through `XBrainLab/ui/refresh_coordinator.py` and the
+    architecture guard rejects service-backed local refresh / controller echo patterns.
+  - LLM real workflow tools and mapped tool execution use `get_application_service(...)` /
+    `execute_application_tool_command(...)` in `XBrainLab/llm/tools/application_surface.py` and
+    `XBrainLab/llm/tools/real/*`.
+  - MCP stdio/HTTP routes own `ApplicationService` sessions and expose command specs from
+    `XBrainLab/backend/application/automation.py`.
+  - Current product walkthrough scripts contain only forbidden-visible-text assertions for
+    `BackendFacade`, not runtime `BackendFacade` use.
+- remaining legacy / compatibility inventory：
+  - `XBrainLab/backend/facade.py` remains as a compatibility wrapper only.
+  - UI still has 15 files containing `run_legacy_controller_fallback` /
+    `get_legacy_controller_from_study`; current guard results classify these as mock / legacy
+    gates rather than product mutation paths.
+  - Agent stage selection still goes through `XBrainLab/llm/pipeline_state.py`, where
+    `compute_pipeline_stage(study)` reads mutable `Study` state directly before the assembler
+    intersects tools with ApplicationService capability policy. This is a product-runtime policy
+    boundary to clean up.
+- tests that still bless legacy product success and must be rewritten or removed with replacement
+  coverage：
+  - `tests/integration/pipeline/test_public_cross_source_training_smoke.py` builds a
+    `BackendFacade`, generates datasets through facade methods, then trains through direct
+    `Study` calls.
+  - `tests/integration/pipeline/test_checked_in_real_dataset_validation.py` builds a
+    `BackendFacade` for label-attached dataset generation and training smoke success.
+  - `tests/integration/io/test_io_integration.py` has real-format import checks named around
+    facade import. These are IO compatibility evidence, not product command evidence, and need
+    ApplicationService replacement coverage for product import success.
+  - `tests/unit/backend/test_facade_headless.py`, `tests/unit/backend/test_facade_coverage.py`,
+    and `tests/unit/backend/application/test_runtime.py` are compatibility coverage only if
+    retained; they cannot be cited as product runtime success.
+- dataset split / generation blocker inventory：
+  - Product command handler is `DatasetGenerationCommandService.handle_generate_dataset()` via
+    `ApplicationService.execute(GenerateDatasetCommand(...))`.
+  - Focused unit coverage currently checks config build, split audit summary, failed-audit rollback,
+    and clear-dataset state cleanup.
+  - The user-reported split/generation failure still needs reproduction through the
+    ApplicationService command path and a downstream readiness / training smoke, not through
+    `BackendFacade`.
+- next repair direction：
+  - Convert product-like IO and pipeline tests to `ApplicationService` command sequences.
+  - Reproduce/fix dataset split failure through `GenerateDatasetCommand`; retain rollback
+    coverage for failed generation and prove training readiness after successful generation.
+  - Move agent stage/readiness truth onto ApplicationService state snapshot/capability policy, with
+    legacy direct Study reads only for mock/non-product compatibility tests.
+  - Add or strengthen an architecture/test guard so future product-success tests cannot introduce
+    `BackendFacade` as the main workflow entry.
+
+### 2026-05-12 Backend product runtime zero-legacy closure
+
+- scope：
+  - Completed the zero-legacy product runtime cleanup without Data Import UX redesign.
+  - Product runtime target: UI / agent / MCP / current headless evidence enters backend through
+    `ApplicationService / Command API`; compatibility code is explicit, guarded, and not counted
+    as product success.
+- inventory summary by path class：
+  - command-backed product workflow groups: 17 (`load/import`, Data Interpretation scan/preview/
+    validate/apply/save/reload, metadata/smart parse/remove, label import/attach, preprocess,
+    epoch, dataset split/generate/reset, training configure/start/stop/clear, evaluation,
+    visualization, saliency, reset/new session, assistant tools, MCP, current headless evidence).
+  - backend-owned read-only query / state groups: 4 (`ApplicationService.get_state()`,
+    `QueryStateCommand`, capability policy, training history / data summary query evidence).
+  - UI read-only rendering / population clusters: 6 (dataset, preprocess, training, evaluation,
+    visualization, info panel).
+  - mock-only compatibility clusters: 2 (mock/non-`Study` UI fallback tests and mock LLM/tool tests).
+  - legacy compatibility unreachable from product runtime: 3 (`XBrainLab/backend/facade.py`,
+    `run_legacy_controller_fallback()` / `get_legacy_controller_from_study()` in
+    `XBrainLab/ui/application_capabilities.py`, and legacy direct Study-shaped stage reads in
+    `XBrainLab/llm/pipeline_state.py` for mock/non-product callers).
+  - real `Study` product legacy mutation fallback: 0 known reachable paths after this slice and
+    the existing architecture guards.
+  - obsolete/dead paths deleted in this slice: 0; weak product-success tests were rewritten with
+    command-backed replacement coverage instead of deleted.
+- dataset split / generation blocker：
+  - Reproduced through `tests/unit/ui/dialogs/test_data_splitting.py`:
+    the Data Splitting dialog defaulted Testing Set and Validation Set to `Disable`, producing a
+    generator that ApplicationService split audit can reject/rollback as empty test/validation
+    splits.
+  - Fixed defaults in `XBrainLab/ui/dialogs/dataset/data_splitting_dialog.py` to trial splitters.
+  - Added `tests/integration/backend/test_application_service_workflow.py` coverage proving a
+    dialog-like generator succeeds through `GenerateDatasetCommand`, yields non-empty train/val/test
+    split counts, and unlocks backend `TRAIN` readiness after training configuration.
+- backend / agent responsibility cleanup：
+  - `TrainCommand.append` and `TrainCommand.interactive` now pass through
+    `TrainingCommandService` to `TrainingController.start_training(...)`; sync training smokes no
+    longer call `Study.generate_plan()` / `Study.train()` directly.
+  - `StateSnapshotService` derives `pipeline_stage` from active dataset/training snapshots instead
+    of mutable `study.pipeline_stage`.
+  - `XBrainLab/llm/pipeline_state.py` now uses cached `ApplicationService.get_state()` for real
+    `Study` sessions; direct Study-shaped reads remain only for mock / legacy non-product callers.
+- tests rewritten / added：
+  - Rewritten product evidence off `BackendFacade`: `tests/integration/io/test_io_integration.py`,
+    `tests/integration/pipeline/test_checked_in_real_dataset_validation.py`, and
+    `tests/integration/pipeline/test_public_cross_source_training_smoke.py`.
+  - Added/strengthened guards:
+    `tests/architecture_compliance.py::check_product_success_backend_facade_tests` and unit guard
+    examples in `tests/unit/test_architecture_compliance.py`.
+  - Added regression coverage for dataset split defaults, ApplicationService dialog generator path,
+    sync `TrainCommand` options, and real Study agent stage snapshot use.
+  - Retained compatibility-only facade tests: `tests/unit/backend/test_facade_headless.py`,
+    `tests/unit/backend/test_facade_coverage.py`, and
+    `tests/unit/backend/application/test_runtime.py`; they are not product completion evidence.
+- remaining compatibility and removal criteria：
+  - `XBrainLab/backend/facade.py`: keep only while legacy callers need old method names/return
+    shapes; product runtime and product-success tests are guarded against using it.
+  - `XBrainLab/ui/application_capabilities.py::run_legacy_controller_fallback()` and
+    `get_legacy_controller_from_study()`: keep for mock / legacy non-`Study` contexts; remove once
+    UI tests and standalone dialogs all use injectable command/state adapters.
+  - `XBrainLab/llm/pipeline_state.py::_legacy_study_pipeline_stage()`: keep for mock compatibility;
+    remove once agent tests use ApplicationService snapshots instead of bare Study-shaped mocks.
+- validation：
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `poetry run pytest --capture=sys tests/architecture_compliance.py -q` -> `1 passed`.
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` -> `58 passed`.
+  - `poetry run pytest --capture=sys tests/unit/backend/application -q` -> `142 passed`.
+  - `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py -q`
+    -> `8 passed`.
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/dialogs/test_data_splitting.py tests/unit/ui/test_sidebars_and_components.py -k split_data -q`
+    -> `13 passed, 113 deselected`.
+  - `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/llm/test_pipeline_state.py tests/unit/backend/application/test_state_service.py tests/unit/llm/agent/test_context_assembler.py tests/unit/llm/agent/test_assembler_stage.py tests/unit/llm/tools tests/unit/mcp -q`
+    -> `281 passed`.
+  - `MNE_DONTWRITE_HOME=true poetry run python scripts/agent/benchmarks/validate_headless.py` ->
+    `33/33 passed`.
+  - `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q`
+    -> `31 passed, 8 warnings`.
+  - `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/pipeline/test_checked_in_real_dataset_validation.py tests/integration/pipeline/test_public_cross_source_training_smoke.py -q`
+    -> `10 passed, 3 warnings`.
+  - `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet -q`
+    -> `2 passed`.
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_dataset_generation_service.py -q`
+    -> `3 passed`.
+  - `poetry run ruff check <changed Python files>` -> `All checks passed!`.
+  - `poetry run basedpyright <changed Python files>` -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run mkdocs build --strict` -> PASS after docs closure.
+  - `poetry run python scripts/dev/update_quality_dashboard.py` -> `PASS`, generated at
+    `2026-05-12 12:23:48 UTC+08:00`.
+  - `git diff --check` -> PASS.
+- claims still not supported：
+  - Not product complete.
+  - Not human Windows desktop acceptance.
+  - Not Data Import UX redesign or final format/label support.
+  - Not tool-call thesis accuracy or MCP client certification.

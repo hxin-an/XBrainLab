@@ -119,6 +119,17 @@ adapters, and current dev walkthrough scripts enter the backend through
 compatibility wrapper in `XBrainLab/backend/facade.py` and legacy tests / compatibility
 fixtures; it is not a product runtime layer.
 
+2026-05-12 zero-legacy runtime cleanup tightened the evidence boundary: product-success
+IO and pipeline integration tests now execute `ApplicationService` command sequences
+instead of `BackendFacade` or direct `Study.train(...)`, and architecture compliance
+rejects `BackendFacade` usage in product-success integration suites. The dataset split
+blocker was traced to the Data Splitting dialog defaulting test/validation splitters to
+`Disable`; the dialog now defaults both to trial splits and an ApplicationService
+regression proves generated train/val/test splits unlock `TRAIN` readiness. `TrainCommand`
+also now passes `append` and `interactive` through `TrainingCommandService` to
+`TrainingController`, so synchronous test/product smoke training does not bypass the
+command contract.
+
 ## 一句話架構
 
 XBrainLab backend 目前是以 `Study` 作為中心狀態容器，`DataManager` 和
@@ -592,7 +603,9 @@ readiness 判斷；需要狀態或 blocked reason 時使用 `ApplicationService.
 - 快取 controllers，確保同一個 `Study` 內 controller 是 singleton-like。
 - 提供舊屬性相容層，例如 `study.loaded_data_list` 實際委派到 `study.data_manager.loaded_data_list`。
 - 提供清理 cascade，例如清 raw data 時也清 datasets / trainer。
-- 提供 `pipeline_stage` computed property，狀態由 `XBrainLab/llm/pipeline_state.py` 即時計算，不是手動儲存。
+- 提供 `pipeline_stage` computed property；real `Study` 會透過 cached
+  `ApplicationService.get_state().pipeline_stage` 取得 shared snapshot truth，mock /
+  legacy non-product callers 才 fallback 到 direct Study-shaped reads。
 
 重要判斷：`Study` 仍是新舊架構混合點。它已經把資料與訓練狀態拆給 manager，但仍保留大量 delegation property 來維持 UI 和 tests 相容。
 
