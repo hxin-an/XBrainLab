@@ -51,6 +51,47 @@ Recommended branch names:
 - `docs/<area>` for docs-only work.
 - `wip/<area>` for checkpoints not ready for PR.
 
+## MVP Stabilization Branch Strategy
+
+When the product is not yet runnable or MVP-stable, do not merge the unstable
+state into `main`. Use a stabilization branch as the integration line:
+
+```text
+main
+  |
+  +-- codex/stabilization-autopilot or stabilize/<mvp-area>
+        |
+        +-- fix/<one-blocker>
+        +-- test/<one-evidence-gap>
+        +-- refactor/<one-boundary>
+```
+
+Rules for this mode:
+
+- `main` should only receive states that are runnable and validated enough to be
+  better than the previous baseline.
+- The stabilization branch may hold the MVP integration state, but do not keep
+  piling unrelated work directly onto it.
+- Create small branches from the stabilization branch for one blocker, one test
+  gap, or one boundary cleanup; merge them back into the stabilization branch
+  after focused validation.
+- Merge the stabilization branch into `main` only after the agreed MVP minimum
+  works end to end and the required dashboard / docs / smoke gates pass.
+- If a branch cannot start the app, complete the representative product flow, or
+  explain its known blockers, it may be a draft integration branch but it is not
+  ready for `main`.
+
+Recommended minimum before merging a stabilization branch to `main`:
+
+- app launches through the intended launcher or `run.py`;
+- `MainWindow` is visible;
+- representative Data Import can scan, preview, and apply one fixture or agreed
+  local sample;
+- local LLM unavailable state is visible and non-crashing;
+- fast quality dashboard is `PASS`;
+- `mkdocs build --strict` is `PASS`;
+- worktree is clean and remaining risks are documented.
+
 ## Scope Separation
 
 Keep these apart unless the user explicitly asks to combine them:
