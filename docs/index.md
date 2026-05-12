@@ -97,6 +97,7 @@ artifact 是 evidence，不是 current truth；claim 要回到 Current / Validat
 | `artifacts/agent_evals/dashboard.md` | Tool-call benchmark slice for selected local models and deterministic baseline。 | EEG training accuracy、UI usability、product completion。 |
 | `artifacts/mcp/http-walkthrough.md` | Headless MCP HTTP transport、tools/list、scan/preview、train job status/cancel baseline。 | Full MCP client certification、desktop UI refresh、persistent recovery。 |
 | `artifacts/data_interpretation/format-capability-matrix.md` | Representative Data Interpretation scan/preview/validation format boundaries。 | Full manual certification for every real dataset or XDF / LSL parser support。 |
+| `artifacts/ui/data-import-wizard-steps/README.md` | Current Data Import wizard screenshots, including the four loaded-label placement mode panels。 | Final Match Labels / Review and Import UX approval。 |
 | `artifacts/launcher/windows-launcher-walkthrough.md` | Automated Windows launcher command/startup smoke。 | Human click-through release approval。 |
 
 Artifact governance lives in `artifacts/README.md`; artifacts are evidence outputs, not canonical

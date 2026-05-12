@@ -1,6 +1,6 @@
 # Backend 目前架構
 
-最後更新：`2026-05-05`
+最後更新：`2026-05-13`
 
 ## 可信度
 
@@ -9,7 +9,7 @@
 這份文件已對照目前 source code：
 
 - `XBrainLab/backend/application/*.py`
-- `XBrainLab/backend/facade.py`
+- `XBrainLab/backend/runtime.py`
 - `XBrainLab/backend/study.py`
 - `XBrainLab/backend/data_manager.py`
 - `XBrainLab/backend/training_manager.py`

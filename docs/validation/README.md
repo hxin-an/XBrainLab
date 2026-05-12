@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-05-12`
+最後更新：`2026-05-13`
 
 這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
@@ -93,6 +93,19 @@ Offscreen screenshots include:
 - `artifacts/ui/data-import-wizard-steps/04-match-labels-internal-suggested-events-full.png`
 - `artifacts/ui/data-import-wizard-steps/04-match-labels-final-loaded-label-files.png`
 - `artifacts/ui/data-import-wizard-steps/05-review-and-import.png`
+
+## 2026-05-13 Data Import Runtime Integration Checkpoint
+
+| Command | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `72 passed` | Product runtime and product-success tests still do not contain guarded `BackendFacade` or legacy fallback regressions after the Data Import UX checkpoint integration. | Semantic proof for code outside guarded paths or human runtime acceptance. | Keep extending guard examples when new UI/backend adapters appear. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_review.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q` | `98 passed` | Data Interpretation preview/review/service contracts and current Data Import dialog behavior remain green with the placement-evidence checkpoint. | Final Match Labels UX or human desktop acceptance. | Keep remaining Match Labels / Review and Import UX debt explicit. |
+| `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/backend/application -q` | `170 passed` | Focused ApplicationService and command-service contracts remain green after integration. | Full product acceptance. | Keep command-service tests as the main backend regression floor. |
+| `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/llm/tools tests/unit/mcp -q` | `238 passed` | Agent tool and MCP command surfaces remain aligned with ApplicationService command truth. | Tool-call benchmark accuracy or external client certification. | Run tool-call eval only after product stabilization. |
+| `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py -q` | `8 passed` | Non-mocked ApplicationService workflow coverage remains green. | All data formats or human UI workflow acceptance. | Keep real workflow tests paired with UI smoke evidence. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_application_capabilities.py tests/unit/ui/test_sidebars_and_components.py tests/unit/ui/test_ui_misc.py -q` | `275 passed` | UI command/refresh helpers and sidebar command-route coverage remain green. | Final desktop UX or full read-only controller removal. | Continue human-observable desktop smoke work after docs/site closure. |
+| `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS | Canonical docs and artifact index edits build strictly and have clean whitespace. | Documentation content is automatically correct. | Keep docs tied to runtime validation evidence. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 01:16:05 UTC+08:00`. | Fast engineering dashboard is green after integration, including full lint/type, architecture, startup, UI baseline, UI unit suite, and real-data IO. | Product complete or human Windows acceptance. | Human-observable desktop product smoke remains required before release claims. |
 
 ## Backend Test Hygiene Inventory
 

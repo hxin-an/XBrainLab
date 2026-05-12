@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-05-12`
+最後更新：`2026-05-13`
 
 這頁只放下一輪施工焦點。
 
@@ -41,9 +41,11 @@ follow-up backend hardening 已補 command-time observer refresh suppression、r
 state preservation、unsupported command structured result，以及 product walkthrough 對
 `TrainCommand` confirmation / `append` / `interactive` contract 的測試對齊。最新 refactor slice
 已物理移除 `BackendFacade` module 和 facade compatibility-only tests，architecture guard 現在
-拒絕任何 test 使用 facade。下一個不能跳過的缺口
-仍是更完整的 human-observable desktop product smoke；不能用 dashboard PASS 或單一 offscreen smoke
-取代。
+拒絕任何 test 使用 facade。2026-05-13 runtime integration branch 已整合 current Data Import UX
+checkpoint，並以 focused ApplicationService、agent/MCP、UI command-refresh、architecture
+guards 驗證。下一個不能跳過的缺口仍是 docs truth / artifact hygiene closure、private docs site
+polish，以及更完整的 human-observable desktop product smoke；不能用 dashboard PASS 或單一
+offscreen smoke 取代。
 
 ## 接下來才做
 
