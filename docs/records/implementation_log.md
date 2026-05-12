@@ -6273,6 +6273,8 @@ mock-only sidebar tests explicit compatibility coverage.
 - `tests/unit/ui/test_sidebars_and_components.py` has no remaining `accepted` / `no_crash` test
   names; the former smoke tests now assert info-panel service boundaries and command-plus-legacy
   channel-selection behavior.
+- A repo-level weak-name scan for `accepted`, `no_crash`, and `does_not_crash` test names across
+  unit/integration tests now returns no matches after tightening the remaining focused UI tests.
 
 ### Evidence 入口
 

@@ -68,9 +68,8 @@ class TestApplyMatplotlibDarkTheme:
         assert ax.get_facecolor() != (1.0, 1.0, 1.0, 1.0)
         plt.close(fig)
 
-    def test_none_fig_no_crash(self):
-        # fig=None shouldn't crash
-        Theme.apply_matplotlib_dark_theme(None)
+    def test_none_figure_is_ignored(self):
+        assert Theme.apply_matplotlib_dark_theme(None) is None
 
     def test_legend_styled(self):
         fig, ax = plt.subplots()

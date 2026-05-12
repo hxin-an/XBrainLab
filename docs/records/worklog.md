@@ -37,6 +37,34 @@
 
 ## 2026-05-12
 
+### 17:42 Remaining weak UI test-name cleanup
+
+- 做了什麼：
+  - Removed the remaining `accepted` / `no_crash` test names found by the weak-name scan across
+    unit/integration tests.
+  - Theme test now asserts `None` matplotlib figures are ignored.
+  - Data splitting dialog test now asserts accepted preview result propagation.
+  - Test-only training device dialog test now asserts accepted device result and label update.
+  - AgentManager montage test now explicitly describes mock-context controller fallback and asserts
+    the command attempts, fallback call, and user-confirmation handoff.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/styles/test_theme.py tests/unit/ui/test_data_splitting.py tests/unit/ui/training/test_test_only_setting.py tests/unit/ui/test_ui_misc.py::TestAgentManagerDeep::test_open_montage_legacy_mock_context_applies_controller_fallback -q`
+    -> `78 passed`.
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py -q`
+    -> `143 passed`.
+  - `poetry run ruff check tests/unit/ui/styles/test_theme.py tests/unit/ui/test_data_splitting.py tests/unit/ui/training/test_test_only_setting.py tests/unit/ui/test_ui_misc.py`
+    -> `All checks passed!`.
+  - `poetry run basedpyright tests/unit/ui/styles/test_theme.py tests/unit/ui/test_data_splitting.py tests/unit/ui/training/test_test_only_setting.py tests/unit/ui/test_ui_misc.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `rg -n "def test_.*(accepted|no_crash|does_not_crash)" tests/unit tests/integration --glob '!**/__pycache__/**'`
+    -> no matches.
+  - `poetry run mkdocs build --strict`
+    -> PASS, with the existing MkDocs Material advisory.
+  - `git diff --check`
+    -> PASS.
+- 接續 / 本輪剩餘：
+  - Commit this weak-name cleanup.
+
 ### 17:36 Final sidebars ambiguous-name cleanup
 
 - 做了什麼：

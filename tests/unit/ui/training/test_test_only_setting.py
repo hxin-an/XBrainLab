@@ -35,7 +35,7 @@ class TestTestOnlySettingInit:
 
 
 class TestSetDevice:
-    def test_set_device_accepted(self, dialog):
+    def test_set_device_accepts_dialog_result(self, dialog):
         with patch(
             "XBrainLab.ui.panels.training.test_only_setting.DeviceSettingDialog"
         ) as MockDev:
@@ -45,6 +45,7 @@ class TestSetDevice:
             dialog.set_device()
             assert dialog.use_cpu is True
             assert dialog.gpu_idx == 0
+            assert dialog.dev_label.text() == "cpu"
 
     def test_set_device_cancelled(self, dialog):
         with patch(

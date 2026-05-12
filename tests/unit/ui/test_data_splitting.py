@@ -201,13 +201,17 @@ class TestDataSplittingDialog:
         dlg.val_combo.setCurrentText("By Subject")
         dlg.update_preview()
 
-    def test_confirm_accepted(self, dlg):
+    def test_confirm_accepts_preview_result(self, dlg):
+        generator = MagicMock()
         with patch(
             "XBrainLab.ui.dialogs.dataset.data_splitting_dialog.DataSplittingPreviewDialog"
         ) as MockDlg:
             MockDlg.return_value.exec.return_value = True
-            MockDlg.return_value.get_result.return_value = MagicMock()
+            MockDlg.return_value.get_result.return_value = generator
             dlg.confirm()
+
+        MockDlg.assert_called_once()
+        assert dlg.get_result() is generator
 
     def test_confirm_rejected(self, dlg):
         with patch(

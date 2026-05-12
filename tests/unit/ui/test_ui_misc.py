@@ -2670,7 +2670,11 @@ class TestAgentManagerDeep:
         mock_dlg.assert_not_called()
 
     @patch("XBrainLab.ui.components.agent_manager.PickMontageDialog")
-    def test_open_montage_accepted(self, mock_dlg_cls, mgr):
+    def test_open_montage_legacy_mock_context_applies_controller_fallback(
+        self,
+        mock_dlg_cls,
+        mgr,
+    ):
         mgr.study.epoch_data = MagicMock()
         mgr.study.epoch_data.get_mne.return_value.info = {"ch_names": ["C3", "C4"]}
         dlg = MagicMock()
@@ -2680,8 +2684,25 @@ class TestAgentManagerDeep:
         mgr.chat_panel = MagicMock()
         mgr.chat_panel.debug_mode = False
         mgr.agent_controller = MagicMock()
-        mgr.open_montage_picker_dialog({"montage_name": "standard_1020"})
-        mgr.preprocess_controller.apply_montage.assert_called()
+        with (
+            patch(
+                "XBrainLab.ui.components.agent_manager.get_command_capability",
+                return_value=None,
+            ),
+            patch(
+                "XBrainLab.ui.components.agent_manager.execute_application_command",
+                side_effect=[None, None],
+            ) as mock_execute,
+            patch.object(mgr, "handle_user_input") as mock_handle_user_input,
+        ):
+            mgr.open_montage_picker_dialog({"montage_name": "standard_1020"})
+
+        assert mock_execute.call_count == 2
+        mgr.preprocess_controller.apply_montage.assert_called_once_with(
+            ["C3", "C4"],
+            [[0, 0, 0], [1, 0, 0]],
+        )
+        mock_handle_user_input.assert_called_once_with("Montage Confirmed.")
 
 
 # ====================================================================
