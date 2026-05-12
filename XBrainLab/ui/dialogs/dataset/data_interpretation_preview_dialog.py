@@ -1573,9 +1573,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         layout = QHBoxLayout(header)
         layout.setContentsMargins(10, 0, 10, 0)
         layout.setSpacing(10)
-        layout.addWidget(self._pairing_header_label("EEG file"), stretch=3)
-        layout.addWidget(self._pairing_header_label("", 20))
         layout.addWidget(self._pairing_header_label("Label file"), stretch=3)
+        layout.addWidget(self._pairing_header_label("EEG file"), stretch=3)
         layout.addWidget(self._pairing_header_label("Status", 92))
         return header
 
@@ -1593,17 +1592,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
         layout.setContentsMargins(10, 5, 10, 5)
         layout.setSpacing(10)
 
-        eeg_label = QLabel(eeg_file)
-        eeg_label.setObjectName("DataImportPairingFile")
-        eeg_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        layout.addWidget(eeg_label, stretch=3)
-
-        arrow = QLabel("<-")
-        arrow.setObjectName("DataImportPairingArrow")
-        arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        arrow.setFixedWidth(20)
-        layout.addWidget(arrow)
-
         selector = self._label_file_selector(eeg_file)
         self._eeg_label_widgets[eeg_file] = selector
         selector.currentIndexChanged.connect(
@@ -1613,6 +1601,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
             )
         )
         layout.addWidget(selector, stretch=3)
+
+        eeg_label = QLabel(eeg_file)
+        eeg_label.setObjectName("DataImportPairingFile")
+        eeg_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(eeg_label, stretch=3)
 
         matched = bool(selector.currentData())
         badge = QLabel("Matched" if matched else "Needs label")
@@ -1857,6 +1850,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         for hidden_selector in (
             self.rule_placement_method_combo,
             self.rule_alignment_combo,
+            self.rule_label_unit_combo,
             self.rule_duration_field_combo,
         ):
             hidden_selector.setVisible(False)
@@ -1871,19 +1865,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         self._build_placement_detail_pages()
         layout.addWidget(self.placement_detail_stack)
-
-        unit_grid = QGridLayout()
-        unit_grid.setContentsMargins(0, 0, 0, 0)
-        unit_grid.setHorizontalSpacing(10)
-        unit_grid.setVerticalSpacing(8)
-        unit_grid.addWidget(
-            self._rule_control("Label unit", self.rule_label_unit_combo),
-            0,
-            0,
-        )
-        unit_grid.setColumnStretch(0, 1)
-        unit_grid.setColumnStretch(1, 2)
-        layout.addLayout(unit_grid)
 
         self.placement_status_label = QLabel(self._placement_status_text())
         self.placement_status_label.setObjectName("DataImportRuleStatus")
@@ -2005,6 +1986,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.target_event_option_frames = {}
         choices = self._target_eeg_event_choices()
         if choices:
+            layout.addWidget(self._target_event_header_row())
             for display, value in choices:
                 layout.addWidget(self._target_event_option_row(display, value))
         else:
@@ -2051,17 +2033,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
             0,
             0,
         )
-        controls.addWidget(
-            self._placement_fact_box(
-                "Epoch window",
-                "Set later in epoch setup",
-            ),
-            0,
-            1,
-        )
-        controls.setColumnStretch(0, 2)
-        controls.setColumnStretch(1, 1)
+        controls.setColumnStretch(0, 1)
         layout.addLayout(controls)
+        layout.addWidget(
+            self._placement_note("Epoch window will be set later in epoch setup.")
+        )
         layout.addStretch(1)
         return page
 
@@ -2142,17 +2118,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
             0,
             0,
         )
-        controls.addWidget(
-            self._placement_fact_box(
-                "Match against",
-                "EEG event codes",
-            ),
-            0,
-            1,
-        )
-        controls.setColumnStretch(0, 2)
-        controls.setColumnStretch(1, 1)
+        controls.setColumnStretch(0, 1)
         layout.addLayout(controls)
+        layout.addWidget(self._placement_note("Matches against EEG event codes."))
         layout.addStretch(1)
         return page
 
@@ -2179,21 +2147,24 @@ class DataInterpretationPreviewDialog(BaseDialog):
         layout.addWidget(detail_label)
         return block
 
-    def _placement_fact_box(self, title: str, value: str) -> QFrame:
-        box = QFrame()
-        box.setObjectName("DataImportPlacementFact")
-        box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        layout = QVBoxLayout(box)
-        layout.setContentsMargins(10, 6, 10, 7)
-        layout.setSpacing(3)
-        title_label = QLabel(title)
-        title_label.setObjectName("DataImportRuleLabel")
-        value_label = QLabel(value)
-        value_label.setObjectName("DataImportPairingFile")
-        value_label.setWordWrap(True)
-        layout.addWidget(title_label)
-        layout.addWidget(value_label)
-        return box
+    def _placement_note(self, text: str) -> QLabel:
+        label = QLabel(text)
+        label.setObjectName("DataImportSourceDetail")
+        label.setWordWrap(True)
+        return label
+
+    def _target_event_header_row(self) -> QFrame:
+        header = QFrame()
+        header.setObjectName("DataImportPairingHeader")
+        layout = QHBoxLayout(header)
+        layout.setContentsMargins(10, 0, 10, 0)
+        layout.setSpacing(10)
+        layout.addWidget(self._pairing_header_label("Target", 64))
+        layout.addWidget(self._pairing_header_label("Event", 58))
+        layout.addWidget(self._pairing_header_label("Use as"), stretch=2)
+        layout.addWidget(self._pairing_header_label("Evidence"), stretch=3)
+        layout.addWidget(self._pairing_header_label("Count", 92))
+        return header
 
     def _target_event_option_row(self, display: str, value: str) -> QFrame:
         event = self._target_event_row(value)
@@ -2205,9 +2176,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
         layout = QHBoxLayout(row)
         layout.setContentsMargins(10, 7, 10, 7)
         layout.setSpacing(10)
-        radio = QRadioButton()
+        radio = QRadioButton("Use")
         radio.setObjectName("DataImportTargetEventRadio")
         radio.setChecked(selected)
+        radio.setFixedWidth(64)
         radio.toggled.connect(
             lambda checked, target=value: (
                 self._select_target_event(target) if checked else None
@@ -3630,11 +3602,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 border: 1px solid #343434;
                 border-radius: 5px;
             }}
-            QFrame#DataImportPlacementFact {{
-                background-color: #1b1b1b;
-                border: 1px solid #303030;
-                border-radius: 5px;
-            }}
             QFrame#DataImportTargetEventRow {{
                 background-color: #1b1b1b;
                 border: 1px solid #303030;
@@ -3948,7 +3915,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 color: #eeeeee;
                 background-color: transparent;
                 border: none;
-                spacing: 0;
+                font-size: 11px;
+                font-weight: 600;
+                spacing: 6px;
             }}
             QRadioButton::indicator {{
                 width: 12px;

@@ -937,6 +937,8 @@ def test_match_labels_loaded_label_files_use_discussed_rule_wording(qtbot):
     assert "Use as" in visible_text
     assert "Label field" not in visible_text
     assert "Align to" not in visible_text
+    assert "Label unit" not in visible_text
+    assert "<-" not in visible_text
     assert "Target event / time" not in visible_text
     assert "Placement method" not in visible_text
 
@@ -1014,6 +1016,10 @@ def test_match_labels_eeg_event_order_shows_target_event_check(qtbot):
     visible_text = _visible_step_text(dialog, "Match Labels")
     assert "EEG event order" in visible_text
     assert "Target EEG events" in visible_text
+    assert "Target" in visible_text
+    assert "Event" in visible_text
+    assert "Evidence" in visible_text
+    assert "Use" in visible_text
     assert "768" in visible_text
     assert "288 selected EEG events" in visible_text
     assert "282 label rows" in visible_text
