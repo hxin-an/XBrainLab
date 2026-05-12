@@ -1,7 +1,7 @@
-"""Extended tests for BackendFacade to cover uncovered paths.
+"""Legacy BackendFacade compatibility tests.
 
-Covers: attach_labels, set_montage (fuzzy matching), generate_dataset
-(all split strategies), stop_training, is_training, get_latest_results.
+These tests preserve old facade API shapes while product runtime uses
+ApplicationService / Command API directly.
 """
 
 import os
@@ -22,7 +22,7 @@ pytestmark = pytest.mark.facade_compatibility
 
 
 def _make_facade():
-    """Create a BackendFacade with a mocked Study."""
+    """Create a legacy compatibility facade with a mocked Study."""
     with patch("XBrainLab.backend.facade.Study") as MockStudy:
         mock_study = MockStudy.return_value
         controllers = {
@@ -234,7 +234,7 @@ class TestAttachLabels:
 
 
 class TestSetMontage:
-    def test_full_match_delegates_to_application_service(self):
+    def test_montage_full_channel_match_delegates_to_application_service(self):
         facade, _ = _make_facade()
         epoch_mock = MagicMock()
         epoch_mock.get_mne.return_value.info = {"ch_names": ["Fp1", "Fp2", "Cz"]}
@@ -275,7 +275,7 @@ class TestSetMontage:
         ]
         legacy_set_channels.assert_not_called()
 
-    def test_no_data_loaded(self):
+    def test_montage_without_epochs_returns_command_failure_message(self):
         facade, _ = _make_facade()
         facade.training.has_epoch_data = MagicMock(return_value=False)
         facade.service.execute = MagicMock(
@@ -289,7 +289,9 @@ class TestSetMontage:
         assert "Create epochs" in result
         facade.service.execute.assert_called_once()
 
-    def test_full_match(self):
+    def test_montage_full_channel_match_executes_command_without_legacy_mutation(
+        self,
+    ):
         facade, mock_study = _make_facade()
         epoch_mock = MagicMock()
         epoch_mock.get_mne.return_value.info = {"ch_names": ["Fp1", "Fp2", "Cz"]}
@@ -320,7 +322,7 @@ class TestSetMontage:
         facade.service.execute.assert_called_once()
         mock_study.set_channels.assert_not_called()
 
-    def test_partial_match(self):
+    def test_montage_partial_match_requires_user_verification(self):
         facade, mock_study = _make_facade()
         epoch_mock = MagicMock()
         epoch_mock.get_mne.return_value.info = {"ch_names": ["Fp1", "Fp2", "Cz"]}
@@ -345,7 +347,7 @@ class TestSetMontage:
         facade.service.execute.assert_not_called()
         mock_study.set_channels.assert_not_called()
 
-    def test_no_match(self):
+    def test_montage_no_channel_match_requires_user_verification(self):
         facade, _mock_study = _make_facade()
         epoch_mock = MagicMock()
         epoch_mock.get_mne.return_value.info = {"ch_names": ["Fp1", "Fp2", "Cz"]}
@@ -398,7 +400,7 @@ class TestSetMontage:
         assert command.channels == ["EEGFp1", "EEGFp2", "EEGCz"]
         mock_study.set_channels.assert_not_called()
 
-    def test_empty_montage_positions(self):
+    def test_unknown_montage_returns_error_message(self):
         facade, _ = _make_facade()
         epoch_mock = MagicMock()
         epoch_mock.get_mne.return_value.info = {"ch_names": ["Fp1", "Fp2", "Cz"]}
@@ -413,7 +415,7 @@ class TestSetMontage:
 
         assert "Error" in result or "Failed" in result
 
-    def test_exception_handling(self):
+    def test_montage_lookup_exception_returns_failed_message(self):
         facade, _ = _make_facade()
         epoch_mock = MagicMock()
         epoch_mock.get_mne.return_value.info = {"ch_names": ["Fp1", "Fp2", "Cz"]}
@@ -428,7 +430,7 @@ class TestSetMontage:
 
         assert "failed" in result.lower()
 
-    def test_epoch_data_info_used(self):
+    def test_montage_uses_epoch_channel_info_before_raw_info(self):
         """When epoch data exists, use its info instead of raw data."""
         facade, _mock_study = _make_facade()
         raw = _make_raw_mock("/data/sub01.set")
@@ -533,7 +535,7 @@ class TestTrainingControl:
         assert "Reset the session before loading new raw data" in errors[0]
         facade.dataset.import_files.assert_not_called()
 
-    def test_stop_training(self):
+    def test_stop_training_delegates_when_controller_reports_active_training(self):
         facade, mock_study = _make_facade()
         mock_study.trainer = MagicMock()
         facade.training.is_training.return_value = True
@@ -541,7 +543,7 @@ class TestTrainingControl:
         facade.stop_training()
         facade.training.stop_training.assert_called_once()
 
-    def test_is_training(self):
+    def test_is_training_reflects_training_controller_state(self):
         facade, _ = _make_facade()
         facade.training.is_training = MagicMock(return_value=True)
         assert facade.is_training() is True
@@ -565,13 +567,13 @@ class TestTrainingControl:
 
 
 class TestGetLatestResults:
-    def test_no_plans(self):
+    def test_latest_results_returns_no_results_when_no_plans_exist(self):
         facade, _ = _make_facade()
         facade.evaluation.get_plans = MagicMock(return_value=[])
         result = facade.get_latest_results()
         assert result == {"status": "no_plans"}
 
-    def test_with_plans(self):
+    def test_latest_results_reports_active_plan_progress(self):
         facade, _ = _make_facade()
 
         run1 = MagicMock()
@@ -779,7 +781,7 @@ class TestDelegation:
             call_kwargs = MockTO.call_args[1]
             assert call_kwargs["optim"] == torch.optim.AdamW
 
-    def test_clear_data(self):
+    def test_clear_data_delegates_to_legacy_dataset_clean(self):
         facade, _ = _make_facade()
         facade.dataset.clean_dataset = MagicMock()
         facade.clear_data()

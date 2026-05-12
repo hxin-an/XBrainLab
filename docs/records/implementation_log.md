@@ -6281,6 +6281,8 @@ mock-only sidebar tests explicit compatibility coverage.
   marker, making allowed facade-only compatibility evidence explicit instead of silently product-like.
 - The old monolithic facade headless test was split into focused compatibility tests, exposing and
   removing hidden state coupling around training prerequisites.
+- `test_facade_coverage.py` now labels itself as legacy facade compatibility coverage and uses
+  behavior-specific names for montage, training-state, latest-result, and clear-data checks.
 
 ### Evidence 入口
 

@@ -37,6 +37,33 @@
 
 ## 2026-05-12
 
+### 18:14 Facade coverage naming clarification
+
+- 做了什麼：
+  - Rewrote `test_facade_coverage.py`'s module docstring to call it legacy
+    `BackendFacade` compatibility coverage, not product workflow evidence.
+  - Renamed ambiguous montage compatibility tests such as `test_full_match`,
+    `test_partial_match`, `test_no_match`, `test_empty_montage_positions`,
+    and `test_exception_handling` to behavior-specific names.
+  - Clarified several generic facade compatibility test names for training state,
+    latest-results summaries, and clear-data delegation.
+- baseline：
+  - `poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py -q`
+    -> `43 passed` before naming cleanup.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py -q`
+    -> `43 passed`.
+  - `poetry run ruff check tests/unit/backend/test_facade_coverage.py`
+    -> `All checks passed!`.
+  - `poetry run basedpyright tests/unit/backend/test_facade_coverage.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run mkdocs build --strict`
+    -> PASS, with the existing MkDocs Material advisory.
+  - `git diff --check`
+    -> PASS.
+- 接續 / 本輪剩餘：
+  - Commit this naming cleanup.
+
 ### 18:09 Facade headless compatibility test split
 
 - 做了什麼：
