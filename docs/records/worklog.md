@@ -15786,3 +15786,43 @@
 - claims still not supported：
   - These remain legacy mock-context compatibility tests, not product command success evidence.
   - Not human Windows desktop acceptance.
+
+### 2026-05-12 BackendFacade compatibility replacement map
+
+- scope：
+  - Continued on `test/backend-ui-legacy-hygiene`.
+  - Worktree was clean after `a9650f7d test: clarify preprocess legacy sidebar coverage`.
+  - Goal of this slice: map remaining `BackendFacade` compatibility tests to ApplicationService /
+    command replacement coverage before attempting physical facade removal.
+- inventory：
+  - Remaining product package `BackendFacade` reference is `XBrainLab/backend/facade.py` itself.
+    Architecture guard already blocks UI / LLM / MCP product runtime usage and product-success
+    test usage.
+  - Remaining facade test files:
+    `tests/unit/backend/test_facade_headless.py`,
+    `tests/unit/backend/test_facade_coverage.py`, and
+    `tests/unit/backend/application/test_runtime.py`.
+- replacement map summary：
+  - Runtime construction / shared service cache: product replacement is
+    `get_application_service(study)` plus startup smoke; facade test is compatibility-only.
+  - Load / attach labels / import labels: covered by `DataCompatibilityCommandService`,
+    ApplicationService IO tests, and checked-in label-attached pipeline smokes.
+  - Metadata / smart parse / remove files: covered by data-table command and UI command-route
+    tests.
+  - Preprocess / epoch wrappers: covered by `PreprocessCommandService`, `ApplicationService`, UI
+    command-route tests, and real-data pipeline smokes.
+  - Dataset generation / clear datasets: covered by dataset generation service tests,
+    ApplicationService workflow tests, and real-data pipeline smokes.
+  - Training configure / start / stop / clear history: covered by training command service,
+    ApplicationService tests, and pipeline smokes.
+  - Evaluate / visualize / saliency: covered by analysis command service and ApplicationService
+    tests.
+  - Montage fuzzy matching: highest-risk remaining facade-specific behavior. Product paths use
+    `PickMontageDialog`, `ApplyMontageCommand`, AgentManager montage confirmation, and UI/LLM tool
+    tests, but facade removal should wait until fuzzy matching ownership is explicitly settled or
+    extracted into a shared helper with direct tests.
+- docs：
+  - Added `BackendFacade Compatibility Replacement Map` to `docs/validation/README.md`.
+- claims still not supported：
+  - Not ready to physically delete `BackendFacade` in this slice.
+  - The map is removal preparation; actual deletion still needs a separate small branch/slice.

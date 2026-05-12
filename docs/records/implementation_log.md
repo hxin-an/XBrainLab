@@ -6254,6 +6254,9 @@ mock-only sidebar tests explicit compatibility coverage.
 - Ambiguous PreprocessSidebar tests for filtering, resample, rereference, normalization, and
   epoching were renamed and strengthened so they explicitly assert command attempts and
   legacy mock-context controller fallback parameters.
+- `docs/validation/README.md` now records a `BackendFacade` compatibility replacement map. Most
+  facade clusters have ApplicationService / command replacement coverage; montage fuzzy matching is
+  the remaining high-risk facade-specific behavior to settle before physical deletion.
 
 ### Evidence 入口
 

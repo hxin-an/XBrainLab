@@ -162,6 +162,25 @@ Offscreen screenshots include:
 | `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py -q` | `96 passed` after PreprocessSidebar cleanup. | PreprocessSidebar filtering/resample/rereference/normalize/epoching mock-context tests now explicitly assert attempted command routing plus legacy controller fallback parameters. | Product command success or human desktop acceptance. | Continue with remaining ambiguous `accepted` / `no_crash` UI unit tests. |
 | `poetry run ruff check tests/unit/ui/test_sidebars_and_components.py` / `poetry run basedpyright tests/unit/ui/test_sidebars_and_components.py` | PASS / `0 errors, 0 warnings, 0 notes` | The focused UI test cleanup passes lint/type gates. | Full repo health by itself. | Run docs gate before committing this slice. |
 
+## BackendFacade Compatibility Replacement Map
+
+2026-05-12 status for eventual physical facade removal:
+
+| Facade compatibility cluster | Current facade-only tests | Replacement coverage status | Removal note |
+| --- | --- | --- | --- |
+| Runtime construction / shared service cache | `tests/unit/backend/test_facade_headless.py`, `tests/unit/backend/application/test_runtime.py` | Covered for product runtime by `get_application_service(study)` tests, startup smoke, and architecture guard. | Remove with facade; keep `get_application_service` runtime tests. |
+| Load data / attach labels / import labels | `TestLoadData`, `TestAttachLabels` in `test_facade_coverage.py` | Covered by `DataCompatibilityCommandService`, ApplicationService IO integration, and checked-in label-attached pipeline smokes. | Facade tests are compatibility-only. |
+| Metadata / smart parse / remove files | Thin facade methods, broader UI/action tests | Covered by data table command tests and UI command-route tests. | No product reason to keep facade entry once legacy callers are gone. |
+| Preprocess / epoch wrappers | `TestDelegation` preprocess methods | Covered by `PreprocessCommandService`, `ApplicationService`, UI command-route, and real-data pipeline smokes. | Facade wrapper tests can be deleted after compatibility removal. |
+| Dataset generation / clear datasets | `TestGenerateDataset`, clear dataset tests | Covered by dataset generation service tests, ApplicationService workflow tests, and real-data pipeline smokes. | Keep service tests; do not preserve facade API as product evidence. |
+| Training configure / start / stop / clear history | `test_backend_facade_headless`, `TestTrainingControl`, `TestDelegation` | Covered by training command service tests, ApplicationService tests, and pipeline smokes. | Facade tests only prove old method names. |
+| Evaluate / visualize / saliency summaries | `TestGetLatestResults` and summary helpers | Covered by analysis command service and ApplicationService tests. | Preserve command result semantics, not facade shape. |
+| Montage fuzzy matching | `TestSetMontage` in `test_facade_coverage.py` | Partly replaced by `PickMontageDialog`, `ApplyMontageCommand`, AgentManager montage confirmation, and UI/LLM tool tests. | Highest-risk facade-specific logic. Before deleting facade, either prove dialog/tool coverage fully owns fuzzy matching or extract a shared helper with direct tests. |
+
+Physical `BackendFacade` removal should wait until the montage fuzzy-matching ownership decision is
+settled and any remaining facade-only unit tests are either deleted as compatibility-only or moved
+to command/service/dialog helper tests.
+
 ## 常用 docs gate
 
 ```bash
