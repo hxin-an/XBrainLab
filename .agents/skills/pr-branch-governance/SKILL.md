@@ -81,6 +81,30 @@ Rules for this mode:
   explain its known blockers, it may be a draft integration branch but it is not
   ready for `main`.
 
+## Long-Running MVP Checkpoints
+
+Important progress must not stay local-only during long-running MVP work. After
+each validated checkpoint:
+
+1. Run `git status --short --branch`.
+2. Confirm no unrelated local files are staged, especially `.vscode/settings.json`.
+3. Commit the checkpoint with a focused message.
+4. Push the current branch to `origin`.
+5. If the branch has no upstream, use `git push -u origin <branch-name>`.
+
+Do not push directly to `main` unless the user explicitly approves it.
+
+A checkpoint report should include:
+
+- branch name
+- commit hash
+- validation commands and results
+- remaining dirty files
+- whether the branch was pushed
+
+Local commit is not enough for important work. A checkpoint is only backed up
+when it is pushed.
+
 Recommended minimum before merging a stabilization branch to `main`:
 
 - app launches through the intended launcher or `run.py`;
