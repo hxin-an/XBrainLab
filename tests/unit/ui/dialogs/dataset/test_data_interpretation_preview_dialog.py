@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QPlainTextEdit,
     QPushButton,
+    QRadioButton,
     QScrollArea,
 )
 
@@ -888,9 +889,8 @@ def test_match_labels_preserves_placement_and_duration_for_epoch_handoff(qtbot):
             "role": "external labels",
         }
     }
-    assert "Duration field End is saved for epoch setup." in (
-        dialog.placement_status_label.text()
-    )
+    assert "Label interval" in dialog.placement_status_label.text()
+    assert "duration/end field End" in dialog.placement_status_label.text()
 
 
 def test_match_labels_loaded_label_files_use_discussed_rule_wording(qtbot):
@@ -933,9 +933,10 @@ def test_match_labels_loaded_label_files_use_discussed_rule_wording(qtbot):
     assert "Label values and placement" in visible_text
     assert "Read labels from" in visible_text
     assert "Place labels by" in visible_text
-    assert "Align to" in visible_text
+    assert "Target EEG events" in visible_text
     assert "Use as" in visible_text
     assert "Label field" not in visible_text
+    assert "Align to" not in visible_text
     assert "Target event / time" not in visible_text
     assert "Placement method" not in visible_text
 
@@ -1026,6 +1027,77 @@ def test_match_labels_eeg_event_order_shows_target_event_check(qtbot):
         result["choices"]["label_carrier_choices"][label_path]["placement_method"]
         == "eeg_event"
     )
+
+
+def test_match_labels_placement_methods_use_mode_specific_panels(qtbot):
+    label_path = "/tmp/labels/sub-01_events.tsv"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/sub-01_task-mi_raw.fif"],
+            "label_carriers": [label_path],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+            "label_carrier_preview": [
+                {
+                    "path": label_path,
+                    "name": "sub-01_events.tsv",
+                    "format": "TSV",
+                    "target_file": "sub-01_task-mi_raw.fif",
+                    "label_candidates": ["trial_type", "value"],
+                    "anchor_candidates": ["onset", "event_code"],
+                    "duration_candidates": ["duration", "end"],
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                    "selected_duration_field": "duration",
+                    "label_row_count": 12,
+                    "label_value_counts": {"left": 6, "right": 6},
+                    "time_model": "seconds",
+                    "granularity": "event",
+                    "placement_method": "time_field",
+                    "role": "external labels",
+                },
+            ],
+            "internal_event_preview": {
+                "not_used_events": [
+                    {
+                        "event_code": "768",
+                        "use_as": "Trial timing",
+                        "event_count": 12,
+                    },
+                ],
+            },
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Match Labels")
+    qtbot.wait(0)
+
+    expectations = {
+        "eeg_event": ("Target EEG events", "Label time field"),
+        "time_field": ("Label time field", "Target EEG events"),
+        "interval": ("Start field", "Label event code field"),
+        "event_code": ("Label event code field", "Start field"),
+    }
+    for method, (included, excluded) in expectations.items():
+        dialog.placement_method_buttons[method].click()
+        qtbot.wait(0)
+        visible_text = _visible_step_text(dialog, "Match Labels")
+        assert dialog.rule_placement_method_combo.currentData() == method
+        assert included in visible_text
+        assert excluded not in visible_text
+        assert "Align to" not in visible_text
+
+    target_buttons = [
+        button
+        for button in dialog.findChildren(QRadioButton)
+        if button.objectName() == "DataImportTargetEventRadio"
+    ]
+    assert target_buttons
 
 
 def test_data_interpretation_preview_dialog_records_attached_label_folder(

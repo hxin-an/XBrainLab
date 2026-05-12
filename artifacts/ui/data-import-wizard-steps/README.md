@@ -12,3 +12,11 @@ Exploratory drafts and superseded discussion variants should not be kept here.
 
 Step 4 intentionally has two images because the product has two different label
 source modes to review: labels inside EEG files and loaded label files.
+
+Loaded label file placement-mode review images live under
+`match-label-placement-modes/`:
+
+- `eeg-event-order-full.png`
+- `label-time-full.png`
+- `label-interval-full.png`
+- `label-event-code-full.png`

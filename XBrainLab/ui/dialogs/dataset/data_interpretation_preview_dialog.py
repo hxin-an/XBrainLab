@@ -10,6 +10,7 @@ from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtGui import QColor, QPalette, QWheelEvent
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QDialogButtonBox,
@@ -21,6 +22,7 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QLabel,
     QPushButton,
+    QRadioButton,
     QScrollArea,
     QSizePolicy,
     QStackedWidget,
@@ -111,6 +113,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.target_event_status_label: QLabel
         self.placement_status_label: QLabel
         self.rule_status_label: QLabel
+        self.placement_detail_stack: QStackedWidget
+        self.placement_method_buttons: dict[str, QRadioButton]
+        self.placement_method_option_frames: dict[str, QFrame]
+        self.target_event_buttons: dict[str, QRadioButton]
+        self.target_event_option_frames: dict[str, QFrame]
         self.class_map_rows_widget: QWidget | None = None
         self.save_recipe_check: QCheckBox
         self.file_tree: QTreeWidget
@@ -1847,41 +1854,41 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self._common_carrier_value("selected_duration_field"),
             "Choose a duration or end-time field to pass to epoch setup.",
         )
+        for hidden_selector in (
+            self.rule_placement_method_combo,
+            self.rule_alignment_combo,
+            self.rule_duration_field_combo,
+        ):
+            hidden_selector.setVisible(False)
         self._updating_label_rule = False
 
-        placement_grid = QGridLayout()
-        placement_grid.setContentsMargins(0, 0, 0, 0)
-        placement_grid.setHorizontalSpacing(10)
-        placement_grid.setVerticalSpacing(8)
-        placement_grid.addWidget(
-            self._rule_control("Place labels by", self.rule_placement_method_combo),
-            0,
-            0,
+        layout.addWidget(self._placement_method_selector())
+        self.placement_detail_stack = QStackedWidget()
+        self.placement_detail_stack.setObjectName("DataImportPlacementDetailStack")
+        self.placement_detail_stack.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
         )
-        placement_grid.addWidget(
-            self._rule_control("Align to", self.rule_alignment_combo),
-            0,
-            1,
-        )
-        placement_grid.addWidget(
+        self._build_placement_detail_pages()
+        layout.addWidget(self.placement_detail_stack)
+
+        unit_grid = QGridLayout()
+        unit_grid.setContentsMargins(0, 0, 0, 0)
+        unit_grid.setHorizontalSpacing(10)
+        unit_grid.setVerticalSpacing(8)
+        unit_grid.addWidget(
             self._rule_control("Label unit", self.rule_label_unit_combo),
             0,
-            2,
-        )
-        placement_grid.addWidget(
-            self._rule_control("Duration field", self.rule_duration_field_combo),
             0,
-            3,
         )
-        self.target_event_status_label = QLabel(self._target_event_status_text())
-        self.target_event_status_label.setObjectName("DataImportRuleStatus")
-        self.target_event_status_label.setWordWrap(True)
-        placement_grid.addWidget(self.target_event_status_label, 1, 0, 1, 4)
+        unit_grid.setColumnStretch(0, 1)
+        unit_grid.setColumnStretch(1, 2)
+        layout.addLayout(unit_grid)
+
         self.placement_status_label = QLabel(self._placement_status_text())
         self.placement_status_label.setObjectName("DataImportRuleStatus")
         self.placement_status_label.setWordWrap(True)
-        placement_grid.addWidget(self.placement_status_label, 2, 0, 1, 4)
-        layout.addLayout(placement_grid)
+        layout.addWidget(self.placement_status_label)
 
         self.rule_placement_method_combo.currentIndexChanged.connect(
             self._handle_placement_method_change
@@ -1901,6 +1908,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self.rule_duration_field_combo,
         ):
             selector.setEnabled(has_label_rows)
+        self._sync_placement_method_buttons()
+        self._sync_placement_detail_stack()
 
     def _build_match_check_card(self, layout: QVBoxLayout) -> None:
         self.rule_status_label = QLabel(self._label_rule_status_text())
@@ -1921,6 +1930,310 @@ class DataInterpretationPreviewDialog(BaseDialog):
             ("Label interval", "interval"),
             ("Label event code", "event_code"),
         ]
+
+    def _placement_method_selector(self) -> QFrame:
+        frame = QFrame()
+        frame.setObjectName("DataImportPlacementSelector")
+        layout = QGridLayout(frame)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setHorizontalSpacing(8)
+        layout.setVerticalSpacing(8)
+        title = QLabel("Place labels by")
+        title.setObjectName("DataImportRuleLabel")
+        layout.addWidget(title, 0, 0, 1, 4)
+        self.placement_method_buttons = {}
+        self.placement_method_option_frames = {}
+        group = QButtonGroup(frame)
+        group.setExclusive(True)
+        copy = {
+            "eeg_event": "Use label rows in order on selected EEG events.",
+            "time_field": "Use a time column from the label file.",
+            "interval": "Use onset plus duration or end time.",
+            "event_code": "Match label rows by event code values.",
+        }
+        current = self._combo_current_data(self.rule_placement_method_combo)
+        for column, (title, value) in enumerate(self._placement_method_choices()):
+            option = QFrame()
+            option.setObjectName("DataImportPlacementOption")
+            option.setProperty("selected", value == current)
+            option_layout = QVBoxLayout(option)
+            option_layout.setContentsMargins(10, 8, 10, 9)
+            option_layout.setSpacing(4)
+            radio = QRadioButton(title)
+            radio.setObjectName("DataImportPlacementRadio")
+            radio.setChecked(value == current)
+            radio.toggled.connect(
+                lambda checked, method=value: (
+                    self._select_placement_method(method) if checked else None
+                )
+            )
+            group.addButton(radio)
+            option_layout.addWidget(radio)
+            detail = QLabel(copy[value])
+            detail.setObjectName("DataImportPlacementOptionDetail")
+            detail.setWordWrap(True)
+            option_layout.addWidget(detail)
+            layout.addWidget(option, 1, column)
+            self.placement_method_buttons[value] = radio
+            self.placement_method_option_frames[value] = option
+        return frame
+
+    def _build_placement_detail_pages(self) -> None:
+        pages = [
+            ("eeg_event", self._placement_eeg_event_order_page()),
+            ("time_field", self._placement_time_field_page()),
+            ("interval", self._placement_interval_page()),
+            ("event_code", self._placement_event_code_page()),
+        ]
+        self._placement_detail_page_indexes = {}
+        for index, (method, page) in enumerate(pages):
+            self.placement_detail_stack.addWidget(page)
+            self._placement_detail_page_indexes[method] = index
+
+    def _placement_eeg_event_order_page(self) -> QFrame:
+        page = self._placement_detail_frame()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(12, 10, 12, 11)
+        layout.setSpacing(8)
+        layout.addWidget(
+            self._placement_section_title(
+                "Target EEG events",
+                "Label rows are assigned in file order only to the selected EEG event.",
+            )
+        )
+        self.target_event_buttons = {}
+        self.target_event_option_frames = {}
+        choices = self._target_eeg_event_choices()
+        if choices:
+            for display, value in choices:
+                layout.addWidget(self._target_event_option_row(display, value))
+        else:
+            layout.addWidget(
+                self._empty_state(
+                    "No EEG event candidates are available yet. Review labels after "
+                    "the recording exposes event markers.",
+                )
+            )
+        self.target_event_status_label = QLabel(self._target_event_status_text())
+        self.target_event_status_label.setObjectName("DataImportRuleStatus")
+        self.target_event_status_label.setWordWrap(True)
+        layout.addWidget(self.target_event_status_label)
+        return page
+
+    def _placement_time_field_page(self) -> QFrame:
+        page = self._placement_detail_frame()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(12, 10, 12, 11)
+        layout.setSpacing(8)
+        layout.addWidget(
+            self._placement_section_title(
+                "Label time",
+                "Use one time field from each label row to place labels on the "
+                "EEG timeline.",
+            )
+        )
+        controls = QGridLayout()
+        controls.setContentsMargins(0, 0, 0, 0)
+        controls.setHorizontalSpacing(10)
+        controls.setVerticalSpacing(8)
+        time_field_combo = self._rule_combo(
+            self._alignment_rule_choices("time_field"),
+            self._default_alignment_value("time_field"),
+            "Choose the label-file time field.",
+        )
+        time_field_combo.currentIndexChanged.connect(
+            lambda _index, selector=time_field_combo: (
+                self._sync_alignment_from_visible_combo(selector)
+            )
+        )
+        controls.addWidget(
+            self._rule_control("Label time field", time_field_combo),
+            0,
+            0,
+        )
+        controls.addWidget(
+            self._placement_fact_box(
+                "Epoch window",
+                "Set later in epoch setup",
+            ),
+            0,
+            1,
+        )
+        controls.setColumnStretch(0, 2)
+        controls.setColumnStretch(1, 1)
+        layout.addLayout(controls)
+        layout.addStretch(1)
+        return page
+
+    def _placement_interval_page(self) -> QFrame:
+        page = self._placement_detail_frame()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(12, 10, 12, 11)
+        layout.setSpacing(8)
+        layout.addWidget(
+            self._placement_section_title(
+                "Label interval",
+                "Use a start field plus duration or end time from the label file.",
+            )
+        )
+        controls = QGridLayout()
+        controls.setContentsMargins(0, 0, 0, 0)
+        controls.setHorizontalSpacing(10)
+        controls.setVerticalSpacing(8)
+        start_combo = self._rule_combo(
+            self._alignment_rule_choices("interval"),
+            self._default_alignment_value("interval"),
+            "Choose the interval start field.",
+        )
+        duration_combo = self._rule_combo(
+            self._duration_field_choices(),
+            self._combo_current_data(self.rule_duration_field_combo),
+            "Choose a duration or end-time field.",
+        )
+        start_combo.currentIndexChanged.connect(
+            lambda _index, selector=start_combo: (
+                self._sync_alignment_from_visible_combo(selector)
+            )
+        )
+        duration_combo.currentIndexChanged.connect(
+            lambda _index, selector=duration_combo: (
+                self._sync_duration_from_visible_combo(selector)
+            )
+        )
+        controls.addWidget(self._rule_control("Start field", start_combo), 0, 0)
+        controls.addWidget(
+            self._rule_control("Duration / end field", duration_combo),
+            0,
+            1,
+        )
+        controls.setColumnStretch(0, 1)
+        controls.setColumnStretch(1, 1)
+        layout.addLayout(controls)
+        layout.addStretch(1)
+        return page
+
+    def _placement_event_code_page(self) -> QFrame:
+        page = self._placement_detail_frame()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(12, 10, 12, 11)
+        layout.setSpacing(8)
+        layout.addWidget(
+            self._placement_section_title(
+                "Label event code",
+                "Use a code field in the label file to match EEG event codes.",
+            )
+        )
+        controls = QGridLayout()
+        controls.setContentsMargins(0, 0, 0, 0)
+        controls.setHorizontalSpacing(10)
+        controls.setVerticalSpacing(8)
+        code_combo = self._rule_combo(
+            self._alignment_rule_choices("event_code"),
+            self._default_alignment_value("event_code"),
+            "Choose the label-file event code field.",
+        )
+        code_combo.currentIndexChanged.connect(
+            lambda _index, selector=code_combo: (
+                self._sync_alignment_from_visible_combo(selector)
+            )
+        )
+        controls.addWidget(
+            self._rule_control("Label event code field", code_combo),
+            0,
+            0,
+        )
+        controls.addWidget(
+            self._placement_fact_box(
+                "Match against",
+                "EEG event codes",
+            ),
+            0,
+            1,
+        )
+        controls.setColumnStretch(0, 2)
+        controls.setColumnStretch(1, 1)
+        layout.addLayout(controls)
+        layout.addStretch(1)
+        return page
+
+    @staticmethod
+    def _placement_detail_frame() -> QFrame:
+        frame = QFrame()
+        frame.setObjectName("DataImportPlacementDetail")
+        frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        return frame
+
+    def _placement_section_title(self, title: str, detail: str) -> QWidget:
+        block = QFrame()
+        block.setObjectName("DataImportPlacementSectionTitle")
+        block.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout = QVBoxLayout(block)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+        title_label = QLabel(title)
+        title_label.setObjectName("DataImportSourceTitle")
+        detail_label = QLabel(detail)
+        detail_label.setObjectName("DataImportSourceDetail")
+        detail_label.setWordWrap(True)
+        layout.addWidget(title_label)
+        layout.addWidget(detail_label)
+        return block
+
+    def _placement_fact_box(self, title: str, value: str) -> QFrame:
+        box = QFrame()
+        box.setObjectName("DataImportPlacementFact")
+        box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout = QVBoxLayout(box)
+        layout.setContentsMargins(10, 6, 10, 7)
+        layout.setSpacing(3)
+        title_label = QLabel(title)
+        title_label.setObjectName("DataImportRuleLabel")
+        value_label = QLabel(value)
+        value_label.setObjectName("DataImportPairingFile")
+        value_label.setWordWrap(True)
+        layout.addWidget(title_label)
+        layout.addWidget(value_label)
+        return box
+
+    def _target_event_option_row(self, display: str, value: str) -> QFrame:
+        event = self._target_event_row(value)
+        row = QFrame()
+        row.setObjectName("DataImportTargetEventRow")
+        row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        selected = value == self._combo_current_data(self.rule_alignment_combo)
+        row.setProperty("selected", selected)
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(10, 7, 10, 7)
+        layout.setSpacing(10)
+        radio = QRadioButton()
+        radio.setObjectName("DataImportTargetEventRadio")
+        radio.setChecked(selected)
+        radio.toggled.connect(
+            lambda checked, target=value: (
+                self._select_target_event(target) if checked else None
+            )
+        )
+        layout.addWidget(radio)
+        code = QLabel(value)
+        code.setObjectName("DataImportTargetEventCode")
+        code.setFixedWidth(58)
+        layout.addWidget(code)
+        meaning = QLabel(str(event.get("use_as") or event.get("reason") or display))
+        meaning.setObjectName("DataImportSourceTitle")
+        meaning.setWordWrap(True)
+        layout.addWidget(meaning, stretch=2)
+        evidence = QLabel(str(event.get("evidence") or event.get("reason") or ""))
+        evidence.setObjectName("DataImportSourceDetail")
+        evidence.setWordWrap(True)
+        layout.addWidget(evidence, stretch=3)
+        count = QLabel(self._event_count_text(event) or "")
+        count.setObjectName("DataImportPairingBadge")
+        count.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        count.setFixedWidth(92)
+        layout.addWidget(count)
+        self.target_event_buttons[value] = radio
+        self.target_event_option_frames[value] = row
+        return row
 
     def _default_placement_method(self) -> str:
         values = {
@@ -1996,13 +2309,22 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 self.rule_label_field_combo.currentText(),
             )
         duration = str(self.rule_duration_field_combo.currentData() or "").strip()
-        duration_text = (
-            f"Duration field {self.rule_duration_field_combo.currentText()} is saved "
-            "for epoch setup."
-            if duration
-            else "Epoch length will be chosen later in the epoch step."
+        label_rows = self._active_label_row_count()
+        label_rows_text = (
+            f" · {label_rows} label rows" if label_rows is not None else ""
         )
-        return f"{method} using {target}. {duration_text}"
+        if placement_method == "interval":
+            duration_text = (
+                f"duration/end field {self.rule_duration_field_combo.currentText()}"
+                if duration
+                else "duration/end field needs review"
+            )
+            return (
+                f"Check: {method} · start {target} · {duration_text}{label_rows_text}."
+            )
+        if placement_method == "event_code":
+            return f"Check: {method} · code field {target}{label_rows_text}."
+        return f"Check: {method} · time field {target}{label_rows_text}."
 
     def _label_value_count_summary(self) -> str:
         row_count = self._active_label_row_count()
@@ -2037,6 +2359,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self.placement_status_label.setText(self._placement_status_text())
         if hasattr(self, "rule_status_label"):
             self.rule_status_label.setText(self._label_rule_status_text())
+        if hasattr(self, "placement_detail_stack"):
+            self._sync_placement_detail_stack()
 
     def _rule_control(self, label: str, selector: QComboBox) -> QFrame:
         frame = QFrame()
@@ -2130,6 +2454,74 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if self._updating_label_rule:
             return
         self._refresh_alignment_choices_for_placement()
+        self._sync_placement_method_buttons()
+        self._sync_placement_detail_stack()
+        self._apply_label_rule_to_preview()
+
+    def _select_placement_method(self, method: str) -> None:
+        index = self.rule_placement_method_combo.findData(method)
+        if index >= 0 and index != self.rule_placement_method_combo.currentIndex():
+            self.rule_placement_method_combo.setCurrentIndex(index)
+            return
+        self._sync_placement_method_buttons()
+        self._sync_placement_detail_stack()
+        self._apply_label_rule_to_preview()
+
+    def _sync_placement_method_buttons(self) -> None:
+        method = self._combo_current_data(self.rule_placement_method_combo)
+        for value, button in getattr(self, "placement_method_buttons", {}).items():
+            was_blocked = button.blockSignals(True)
+            button.setChecked(value == method)
+            button.blockSignals(was_blocked)
+        for value, frame in getattr(
+            self,
+            "placement_method_option_frames",
+            {},
+        ).items():
+            frame.setProperty("selected", value == method)
+            style = frame.style()
+            if style is not None:
+                style.unpolish(frame)
+                style.polish(frame)
+
+    def _sync_placement_detail_stack(self) -> None:
+        if not hasattr(self, "placement_detail_stack"):
+            return
+        method = self._combo_current_data(self.rule_placement_method_combo)
+        index = getattr(self, "_placement_detail_page_indexes", {}).get(method)
+        if index is not None:
+            self.placement_detail_stack.setCurrentIndex(index)
+            page = self.placement_detail_stack.widget(index)
+            if page is not None:
+                self.placement_detail_stack.setFixedHeight(page.sizeHint().height())
+        self._sync_target_event_buttons()
+
+    def _select_target_event(self, target: str) -> None:
+        self._set_combo_current_data(self.rule_alignment_combo, target)
+        self._sync_target_event_buttons()
+        self._apply_label_rule_to_preview()
+
+    def _sync_target_event_buttons(self) -> None:
+        current = self._combo_current_data(self.rule_alignment_combo)
+        for value, button in getattr(self, "target_event_buttons", {}).items():
+            was_blocked = button.blockSignals(True)
+            button.setChecked(value == current)
+            button.blockSignals(was_blocked)
+        for value, frame in getattr(self, "target_event_option_frames", {}).items():
+            frame.setProperty("selected", value == current)
+            style = frame.style()
+            if style is not None:
+                style.unpolish(frame)
+                style.polish(frame)
+
+    def _sync_alignment_from_visible_combo(self, selector: QComboBox) -> None:
+        value = str(selector.currentData() or "")
+        self._set_combo_current_data(self.rule_alignment_combo, value)
+        self._apply_label_rule_to_preview()
+
+    def _sync_duration_from_visible_combo(self, selector: QComboBox) -> None:
+        value = str(selector.currentData() or "")
+        self._set_combo_current_data(self.rule_duration_field_combo, value)
         self._apply_label_rule_to_preview()
 
     def _refresh_alignment_choices_for_placement(self) -> None:
@@ -2287,8 +2679,14 @@ class DataInterpretationPreviewDialog(BaseDialog):
         duration = str(self.rule_duration_field_combo.currentData() or "").strip()
         duration_text = "duration saved" if duration else "duration set later"
         suffix = f"{needs_review} need review" if needs_review else "all covered"
+        if placement_method == "interval":
+            placement_text = f"{placement} · start {alignment}"
+        elif placement_method == "event_code":
+            placement_text = f"{placement} · code field {alignment}"
+        else:
+            placement_text = f"{placement} · time field {alignment}"
         return (
-            f"{matched}/{total} paired · {field} · {placement} at {alignment} · "
+            f"{matched}/{total} paired · {field} · {placement_text} · "
             f"{use_as} · {duration_text} · {suffix}"
         )
 
@@ -3213,6 +3611,39 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 background-color: transparent;
                 border: none;
             }}
+            QFrame#DataImportPlacementSelector,
+            QFrame#DataImportPlacementSectionTitle {{
+                background-color: transparent;
+                border: none;
+            }}
+            QFrame#DataImportPlacementOption {{
+                background-color: #202020;
+                border: 1px solid #343434;
+                border-radius: 5px;
+            }}
+            QFrame#DataImportPlacementOption[selected="true"] {{
+                background-color: #17354b;
+                border: 1px solid #2f6690;
+            }}
+            QFrame#DataImportPlacementDetail {{
+                background-color: #202020;
+                border: 1px solid #343434;
+                border-radius: 5px;
+            }}
+            QFrame#DataImportPlacementFact {{
+                background-color: #1b1b1b;
+                border: 1px solid #303030;
+                border-radius: 5px;
+            }}
+            QFrame#DataImportTargetEventRow {{
+                background-color: #1b1b1b;
+                border: 1px solid #303030;
+                border-radius: 5px;
+            }}
+            QFrame#DataImportTargetEventRow[selected="true"] {{
+                background-color: #1e2f3d;
+                border: 1px solid #3b79a5;
+            }}
             QFrame#DataImportPairingHeader {{
                 background-color: transparent;
                 border: none;
@@ -3267,6 +3698,21 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 color: #eeeeee;
                 font-size: 13px;
                 font-weight: 600;
+            }}
+            QLabel#DataImportPlacementOptionDetail {{
+                color: {Theme.TEXT_SECONDARY};
+                background-color: transparent;
+                border: none;
+                font-size: 11px;
+            }}
+            QLabel#DataImportTargetEventCode {{
+                color: #eeeeee;
+                background-color: #191919;
+                border: 1px solid #303030;
+                border-radius: 4px;
+                padding: 3px 0;
+                font-size: 12px;
+                font-weight: 700;
             }}
             QLabel#DataImportPairingArrow {{
                 color: {Theme.TEXT_SECONDARY};
@@ -3489,6 +3935,24 @@ class DataInterpretationPreviewDialog(BaseDialog):
             QCheckBox {{
                 color: {Theme.TEXT_SECONDARY};
                 spacing: 8px;
+            }}
+            QRadioButton#DataImportPlacementRadio {{
+                color: #eeeeee;
+                background-color: transparent;
+                border: none;
+                font-size: 12px;
+                font-weight: 700;
+                spacing: 7px;
+            }}
+            QRadioButton#DataImportTargetEventRadio {{
+                color: #eeeeee;
+                background-color: transparent;
+                border: none;
+                spacing: 0;
+            }}
+            QRadioButton::indicator {{
+                width: 12px;
+                height: 12px;
             }}
             QTreeWidget {{
                 background-color: #1f1f1f;

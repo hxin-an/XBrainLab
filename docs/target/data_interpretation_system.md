@@ -451,7 +451,11 @@ Match Labels 第一層應先問 `Label source`：
   `Name needed` 充當資料值。
 - `Loaded label files`：顯示 `File pairing`、`Label values and placement`、`Class names`
   和 `Check`。使用者應先看到哪個 EEG 對哪個 label file，再設定 `Read labels from`、
-  `Use as`、`Place labels by`、`Align to`、`Label unit` 和 `Duration field`。
+  `Use as`、`Place labels by`、`Label unit`，以及 mode-specific placement 欄位。
+  `Place labels by` 不應只是通用下拉選單；四種 placement method 應切換成各自的
+  task panel：`EEG event order` 顯示 target EEG event 列表，`Label time` 顯示
+  label time field，`Label interval` 顯示 start field 與 duration / end field，
+  `Label event code` 顯示 label event code field 與 EEG event code matching 目標。
   若 `Place labels by` 是 `EEG event order`，第一層 UI 必須顯示 `Target EEG events`
   和 count check：label rows、selected EEG events、matched、unmatched / unlabeled、
   excluded EEG events。
