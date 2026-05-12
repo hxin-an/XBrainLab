@@ -6279,6 +6279,8 @@ mock-only sidebar tests explicit compatibility coverage.
   vague `accepted` / `no_crash` / `does_not_crash` test names cannot be reintroduced silently.
 - `BackendFacade` quarantine tests now must carry the registered `facade_compatibility` pytest
   marker, making allowed facade-only compatibility evidence explicit instead of silently product-like.
+- The old monolithic facade headless test was split into focused compatibility tests, exposing and
+  removing hidden state coupling around training prerequisites.
 
 ### Evidence 入口
 

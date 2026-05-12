@@ -37,6 +37,37 @@
 
 ## 2026-05-12
 
+### 18:09 Facade headless compatibility test split
+
+- 做了什麼：
+  - Split the old all-in-one `test_backend_facade_headless()` into focused facade
+    compatibility tests for construction, load tuple shape, preprocess command
+    delegation, training setup, training start, and lifecycle reset/clear methods.
+  - Removed stale inline commentary from the old monolithic test.
+  - The split exposed hidden state coupling: the training-start check depended on
+    earlier loaded/preprocessed state. That prerequisite is now explicit in the
+    training-start test.
+- baseline：
+  - `poetry run pytest --capture=sys tests/unit/backend/test_facade_headless.py -q`
+    -> `1 passed` before the split.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/backend/test_facade_headless.py -q`
+    -> `6 passed`.
+  - `poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py tests/unit/backend/test_facade_headless.py tests/unit/backend/application/test_runtime.py -q`
+    -> `52 passed`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `poetry run ruff check tests/unit/backend/test_facade_headless.py tests/unit/backend/test_facade_coverage.py tests/unit/backend/application/test_runtime.py`
+    -> `All checks passed!`.
+  - `poetry run basedpyright tests/unit/backend/test_facade_headless.py tests/unit/backend/test_facade_coverage.py tests/unit/backend/application/test_runtime.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run mkdocs build --strict`
+    -> PASS, with the existing MkDocs Material advisory.
+  - `git diff --check`
+    -> PASS.
+- 接續 / 本輪剩餘：
+  - Commit this test split.
+
 ### 17:59 BackendFacade compatibility marker guard
 
 - 做了什麼：
