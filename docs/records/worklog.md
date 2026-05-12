@@ -16476,3 +16476,45 @@
     -> `0 errors, 0 warnings, 0 notes`.
 - claims still not supported：
   - This is wording hygiene only, not UI acceptance evidence.
+
+### 2026-05-12 Backend/test hygiene completion audit
+
+- scope：
+  - Continued on `test/backend-ui-legacy-hygiene`.
+  - No answer UI redesign and no Data Import UX redesign.
+  - Audited the active goal against concrete evidence before marking it complete.
+- checklist：
+  - Branch / worktree: active branch is `test/backend-ui-legacy-hygiene`; worktree clean before
+    the final audit entry.
+  - Weak UI tests: weak wording scan has no matches; weak test-name scan only reports the
+    architecture guard's intentional forbidden examples; UI unit tests have no broad `accepted`
+    wording.
+  - BackendFacade replacement map: `docs/validation/README.md` maps every remaining
+    facade-compatibility cluster to direct command/service/helper/query coverage.
+  - BackendFacade quarantine: architecture guard treats product `BackendFacade` evidence as a
+    violation and allows only explicit compatibility/runtime/guard tests.
+  - UX separation: this lane changed backend tests, UI test wording, and docs; it did not redesign
+    Data Import or answer UI.
+- final validation：
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `70 passed`.
+  - `poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `160 passed`.
+  - `poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py
+    tests/unit/backend/test_facade_headless.py tests/unit/backend/application/test_runtime.py
+    tests/unit/backend/utils/test_montage_mapping.py -q`
+    -> `59 passed`.
+  - `rg -n -i "no crash|not crash|doesn't crash|does not crash|doesnt crash|just verify|just ensure|success if no error|should not raise|should not crash" tests --glob '*.py' --glob '!**/__pycache__/**'`
+    -> no matches.
+  - `rg -n "accepted" tests/unit/ui -g '*.py'` -> no matches.
+  - `rg -n "def test_.*(accepted|no_crash|does_not_crash)" tests/unit tests/integration -g '*.py'`
+    -> only intentional architecture-compliance forbidden examples remain.
+  - `poetry run mkdocs build --strict` -> PASS with existing MkDocs Material advisory and nav
+    notices.
+  - `git diff --check` -> PASS.
+- claims still not supported：
+  - This completion is for the background backend/test/validation hygiene lane, not physical
+    `BackendFacade` removal.
+  - It is not human Windows desktop acceptance, full product runtime acceptance, Data Import UX
+    approval, or answer UI approval.

@@ -294,6 +294,16 @@ or moved to command/service/dialog/helper tests.
 | `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker::test_montage_no_valid_config tests/unit/ui/test_ui_components.py::TestFilteringDialog::test_get_params_default -q` | `2 passed`. | The touched UI tests still pass after wording cleanup. | Broad UI acceptance. | No UX changes were made. |
 | `poetry run ruff check tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/test_ui_components.py` / `poetry run basedpyright tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/test_ui_components.py` | PASS / `0 errors, 0 warnings, 0 notes`. | Touched UI test files pass focused lint/type gates. | Full repo quality by itself. | Run broader gates before branch closure. |
 
+## 2026-05-12 Backend/Test Hygiene Completion Audit
+
+| Command | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `70 passed`. | Product-success tests do not bless `BackendFacade` or legacy fallback as product evidence, and architecture guard examples remain covered. | Runtime behavior outside scanned architecture rules. | Extend the guard when new product evidence paths are introduced. |
+| `poetry run pytest --capture=sys tests/unit/backend/application -q` | `160 passed`. | Direct ApplicationService/command-service/query-service replacement coverage is green after the hygiene lane. | Product UI acceptance or full external dataset coverage. | Keep adding command-service tests for new backend behavior. |
+| `poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py tests/unit/backend/test_facade_headless.py tests/unit/backend/application/test_runtime.py tests/unit/backend/utils/test_montage_mapping.py -q` | `59 passed`. | Legacy facade compatibility remains quarantined and green beside direct replacement coverage. | Product runtime usage of facade or physical facade removal. | Delete facade compatibility tests only in a separate physical-removal slice. |
+| Weak wording / weak-name scans | Weak wording scan has no matches; UI `accepted` scan has no matches; weak test-name scan only reports intentional architecture-compliance forbidden examples. | Weak UI/product test wording is cleaned into explicit behavior, command-route, or compatibility evidence. | Test quality beyond the scanned wording patterns. | Continue reviewing mock-heavy tests by behavior. |
+| `poetry run mkdocs build --strict` / `git diff --check` | PASS with existing MkDocs Material advisory and nav notices / PASS. | Validation/worklog docs build and current diff has no whitespace errors. | Documentation content is automatically complete. | Keep validation records tied to executed commands. |
+
 ## 常用 docs gate
 
 ```bash
