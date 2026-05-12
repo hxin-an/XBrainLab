@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from XBrainLab.backend.application import data_interpretation_internal_events
 from XBrainLab.backend.application.data_interpretation_candidate import (
     InterpretationCandidate,
     build_interpretation_candidate,
@@ -106,9 +107,22 @@ def test_build_interpretation_candidate_previews_tabular_label_class_values(tmp_
 
 def test_build_interpretation_candidate_uses_inside_eeg_labels_instead_of_carrier(
     tmp_path,
+    monkeypatch,
 ):
     events = tmp_path / "A01T.mat"
     events.write_text("not parsed when embedded events are selected", encoding="utf-8")
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "768": {"count": 36, "description": "768"},
+                "769": {"count": 18, "description": "769"},
+                "770": {"count": 18, "description": "770"},
+                "1023": {"count": 6, "description": "1023"},
+            }
+        },
+    )
 
     candidate = build_interpretation_candidate(
         candidate_id="candidate-1",
@@ -135,6 +149,16 @@ def test_build_interpretation_candidate_uses_inside_eeg_labels_instead_of_carrie
     assert candidate.label_carrier_plan == []
     assert candidate.class_map == {}
     assert candidate.event_roles["internal_events"] == "event role candidates"
+    assert [
+        row["event_code"]
+        for row in candidate.internal_event_preview["candidate_label_events"]
+    ] == ["769", "770"]
+    assert candidate.internal_event_preview["candidate_label_events"][0][
+        "evidence"
+    ].startswith("Repeated group")
+    assert [
+        row["event_code"] for row in candidate.internal_event_preview["not_used_events"]
+    ] == ["768", "1023"]
     assert all(
         "label carrier alignment" not in item for item in candidate.confirmation_items
     )
@@ -233,6 +257,41 @@ def test_build_interpretation_candidate_previews_mat_label_class_values(tmp_path
         in candidate.confirmation_items
     )
     assert "choices:class_map" not in candidate.recipe_trace
+
+
+def test_build_interpretation_candidate_reviews_bids_interval_placement(tmp_path):
+    events = tmp_path / "sub-01_task-mi_events.tsv"
+    events.write_text(
+        "onset\tduration\ttrial_type\n0.0\t1.0\tleft\n2.0\t1.0\tright\n",
+        encoding="utf-8",
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            label_carriers=[str(events)],
+            bids={"is_bids": True, "events_files": [str(events)]},
+        ),
+        choices={
+            "label_carrier_choices": {
+                str(events): {
+                    "label_field": "trial_type",
+                    "anchor": "onset",
+                    "duration_field": "duration",
+                    "placement_method": "interval",
+                }
+            }
+        },
+    )
+
+    review = candidate.label_carrier_plan[0]["placement_review"]
+
+    assert review["method"] == "interval"
+    assert review["status"] == "ready"
+    assert review["label_rows"] == 2
+    assert review["numeric_rows"] == 2
+    assert review["duration_numeric_rows"] == 2
+    assert review["summary"] == "2 interval rows using onset and duration."
 
 
 def test_build_interpretation_candidate_blocks_empty_selection():
@@ -498,3 +557,236 @@ def test_build_interpretation_candidate_preserves_user_added_label_sources():
     assert plans["/external/sub-01_task-mi_labels.tsv"]["source_location"] == (
         "/external"
     )
+
+
+def test_build_interpretation_candidate_uses_real_internal_event_evidence(
+    monkeypatch,
+):
+    def fake_read(path: str):
+        name = Path(path).name
+        counts_by_file = {
+            "A01T.gdf": {"768": 108, "769": 36, "770": 36, "772": 36, "1023": 2},
+            "A02T.gdf": {"768": 108, "769": 36, "770": 36, "772": 36, "1023": 2},
+            "A03T.gdf": {"768": 72, "769": 36, "770": 36, "1023": 2},
+        }
+        return {
+            "events": {
+                code: {"count": count, "description": code}
+                for code, count in counts_by_file[name].items()
+            }
+        }
+
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        fake_read,
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            source_kind="folder",
+            eeg_files=["/data/A01T.gdf", "/data/A02T.gdf", "/data/A03T.gdf"],
+            label_carriers=[],
+            label_carrier_sources={},
+            bids={"is_bids": False, "events_files": []},
+        ),
+        choices={
+            "selected_eeg_files": [
+                "/data/A01T.gdf",
+                "/data/A02T.gdf",
+                "/data/A03T.gdf",
+            ],
+            "label_carrier": "embedded_events",
+        },
+    )
+
+    preview = candidate.internal_event_preview
+    rows_by_code = {row["event_code"]: row for row in preview["candidate_label_events"]}
+    other_by_code = {row["event_code"]: row for row in preview["not_used_events"]}
+
+    assert preview["source"] == "mne_internal_events"
+    assert preview["file_count"] == 3
+    assert list(rows_by_code) == ["769", "770", "772"]
+    assert rows_by_code["769"]["event_count"] == 108
+    assert rows_by_code["769"]["coverage"] == "3/3 files"
+    assert "stable count" in rows_by_code["769"]["evidence"]
+    assert rows_by_code["772"]["coverage"] == "2/3 files"
+    assert rows_by_code["772"]["missing_files"] == ["A03T.gdf"]
+    assert "missing in A03T.gdf" in rows_by_code["772"]["evidence"]
+    assert other_by_code["768"]["use_as"] == "Trial timing"
+    assert other_by_code["1023"]["reason"] == "Event role needs review"
+    assert candidate.class_map == {}
+    assert candidate.class_map_source == ""
+
+
+def test_build_interpretation_candidate_reviews_external_event_order_placement(
+    tmp_path,
+    monkeypatch,
+):
+    from scipy.io import savemat
+
+    label_path = tmp_path / "A01T.mat"
+    savemat(label_path, {"classlabel": [1, 2, 1, 2]})
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "768": {"count": 4, "description": "768"},
+                "1023": {"count": 1, "description": "artifact"},
+            }
+        },
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            eeg_files=["/data/A01T.gdf"],
+            label_carriers=[str(label_path)],
+            bids={"is_bids": False, "events_files": []},
+        ),
+        choices={
+            "label_carrier_choices": {
+                str(label_path): {
+                    "label_field": "classlabel",
+                    "anchor": "768",
+                    "placement_method": "eeg_event",
+                }
+            }
+        },
+    )
+
+    review = candidate.label_carrier_plan[0]["placement_review"]
+
+    assert review["method"] == "eeg_event"
+    assert review["status"] == "ready"
+    assert review["label_rows"] == 4
+    assert review["selected_eeg_events"] == 4
+    assert review["matched"] == 4
+    assert review["excluded_eeg_events"] == 1
+
+
+def test_build_interpretation_candidate_reviews_event_code_placement(
+    tmp_path,
+    monkeypatch,
+):
+    labels = tmp_path / "labels.tsv"
+    labels.write_text(
+        "event_code\tcondition\n11\tleft\n12\tright\n11\tleft\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "11": {"count": 2, "description": "11"},
+                "12": {"count": 1, "description": "12"},
+            }
+        },
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            eeg_files=["/data/session.edf"],
+            label_carriers=[str(labels)],
+            bids={"is_bids": False, "events_files": []},
+        ),
+        choices={
+            "label_carrier_choices": {
+                str(labels): {
+                    "label_field": "condition",
+                    "anchor": "event_code",
+                    "placement_method": "event_code",
+                }
+            }
+        },
+    )
+
+    review = candidate.label_carrier_plan[0]["placement_review"]
+
+    assert review["method"] == "event_code"
+    assert review["status"] == "ready"
+    assert review["matched_codes"] == ["11", "12"]
+    assert review["missing_codes"] == []
+    assert review["summary"] == "All 2 label event codes match EEG events."
+
+
+def test_build_interpretation_candidate_defaults_marker_table_to_event_code_placement(
+    tmp_path,
+    monkeypatch,
+):
+    labels = tmp_path / "markers.csv"
+    labels.write_text(
+        "event_code,label\n31,target\n32,nontarget\n31,target\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "31": {"count": 2, "description": "target marker"},
+                "32": {"count": 1, "description": "nontarget marker"},
+            }
+        },
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            source_kind="folder",
+            eeg_files=["/data/sub-01.gdf"],
+            label_carriers=[str(labels)],
+            label_carrier_sources={str(labels): "user_added"},
+            bids={"is_bids": False, "events_files": []},
+        ),
+    )
+
+    plan = candidate.label_carrier_plan[0]
+    review = plan["placement_review"]
+
+    assert plan["selected_label_field"] == "label"
+    assert plan["placement_method"] == "event_code"
+    assert plan["selected_anchor"] == "event_code"
+    assert review["method"] == "event_code"
+    assert review["status"] == "ready"
+    assert review["matched_codes"] == ["31", "32"]
+
+
+def test_build_interpretation_candidate_uses_format_neutral_event_pattern(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "1": {"count": 40, "description": "1"},
+                "11": {"count": 20, "description": "11"},
+                "12": {"count": 20, "description": "12"},
+            }
+        },
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            source_kind="folder",
+            eeg_files=["/data/session.edf"],
+            label_carriers=[],
+            label_carrier_sources={},
+            bids={"is_bids": False, "events_files": []},
+        ),
+        choices={"label_carrier": "embedded_events"},
+    )
+
+    preview = candidate.internal_event_preview
+    candidate_codes = [row["event_code"] for row in preview["candidate_label_events"]]
+    other_by_code = {row["event_code"]: row for row in preview["not_used_events"]}
+
+    assert candidate_codes == ["11", "12"]
+    assert preview["candidate_label_events"][0]["evidence"].startswith("Repeated group")
+    assert other_by_code["1"]["use_as"] == "Trial timing"

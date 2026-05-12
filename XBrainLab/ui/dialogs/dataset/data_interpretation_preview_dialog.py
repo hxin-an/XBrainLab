@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,7 @@ from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtGui import QColor, QPalette, QWheelEvent
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QDialogButtonBox,
@@ -20,6 +22,7 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QLabel,
     QPushButton,
+    QRadioButton,
     QScrollArea,
     QSizePolicy,
     QStackedWidget,
@@ -107,8 +110,14 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.rule_label_unit_combo: QComboBox
         self.rule_use_as_combo: QComboBox
         self.label_values_status_label: QLabel
+        self.target_event_status_label: QLabel
         self.placement_status_label: QLabel
         self.rule_status_label: QLabel
+        self.placement_detail_stack: QStackedWidget
+        self.placement_method_buttons: dict[str, QRadioButton]
+        self.placement_method_option_frames: dict[str, QFrame]
+        self.target_event_buttons: dict[str, QRadioButton]
+        self.target_event_option_frames: dict[str, QFrame]
         self.class_map_rows_widget: QWidget | None = None
         self.save_recipe_check: QCheckBox
         self.file_tree: QTreeWidget
@@ -145,9 +154,12 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._event_role_items: list[tuple[QTreeWidgetItem, str, str]] = []
         self._class_map_items: list[tuple[QTreeWidgetItem, str, str]] = []
         self._class_map_widgets: dict[int, QComboBox] = {}
+        self._internal_event_user_roles: dict[str, str] = {}
+        self._internal_class_name_edits: dict[str, str] = {}
         self._event_detail_widgets: list[QWidget] = []
         self._tree_column_specs: dict[int, tuple[int, ...]] = {}
         self._updating_label_rule = False
+        self._label_rule_controls_changed = False
         self._initial_label_sources = self._clean_label_sources(
             self.scan_result.get("label_sources")
         )
@@ -673,13 +685,12 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self._default_label_source_mode(),
             "Choose whether labels come from the EEG files or from loaded label files.",
         )
-        row.addWidget(
-            self._inline_rule_control("Use labels from", self.label_source_mode_combo)
-        )
+        row.addWidget(self._label_source_mode_control())
         self.label_source_status_label = QLabel(self._label_source_status_text())
         self.label_source_status_label.setObjectName("DataImportRuleStatus")
         self.label_source_status_label.setWordWrap(True)
-        row.addWidget(self.label_source_status_label, stretch=1)
+        self.label_source_status_label.setVisible(False)
+        row.addStretch(1)
         layout.addLayout(row)
         self.label_source_mode_combo.currentIndexChanged.connect(
             self._refresh_label_source_mode
@@ -707,7 +718,35 @@ class DataInterpretationPreviewDialog(BaseDialog):
             if not self._label_carrier_items:
                 return "No label files are loaded. Load a label file or switch source."
             return "Pair each label file, then choose how label values are placed."
-        return "Use EEG event codes as labels, then confirm which codes become classes."
+        return (
+            "Use events inside the EEG files, then confirm which events become classes."
+        )
+
+    def _label_source_mode_control(self) -> QFrame:
+        frame = QFrame()
+        frame.setObjectName("DataImportLabelSourceModeControl")
+        frame.setFixedWidth(280)
+        frame.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        layout = QHBoxLayout(frame)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(7)
+        title = QLabel("Source")
+        title.setObjectName("DataImportLabelSourceChoiceLabel")
+        title.setFixedWidth(48)
+        title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(title, alignment=Qt.AlignmentFlag.AlignVCenter)
+        self.label_source_mode_combo.setMinimumContentsLength(24)
+        self.label_source_mode_combo.setMinimumWidth(225)
+        self.label_source_mode_combo.setMaximumWidth(225)
+        self.label_source_mode_combo.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed,
+        )
+        layout.addWidget(
+            self.label_source_mode_combo,
+            alignment=Qt.AlignmentFlag.AlignVCenter,
+        )
+        return frame
 
     def _refresh_label_source_mode(self) -> None:
         if not hasattr(self, "label_source_mode_combo"):
@@ -731,6 +770,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         ):
             if widget is not None:
                 widget.setVisible(use_loaded)
+        if hasattr(self, "match_check_card"):
+            self.match_check_card.setVisible(use_loaded)
         if hasattr(self, "internal_event_card"):
             internal_details_available = bool(
                 self._internal_candidate_label_event_rows()
@@ -800,56 +841,67 @@ class DataInterpretationPreviewDialog(BaseDialog):
             pass
 
     def _build_internal_event_rules_view(self) -> None:
-        self.event_group.setTitle("Labels inside EEG files")
-        summary = QLabel(self._internal_event_summary_text())
-        summary.setObjectName("DataImportRuleStatus")
-        summary.setWordWrap(True)
-        self.event_layout.insertWidget(0, summary)
-        self._event_detail_widgets.append(summary)
+        self.event_group.setTitle("")
+        group_title = QLabel("Labels inside EEG files")
+        group_title.setObjectName("DataImportInternalGroupTitle")
+        self.event_layout.insertWidget(0, group_title)
+        self._event_detail_widgets.append(group_title)
 
         candidate_rows = self._internal_candidate_label_event_rows()
+        not_used_rows = self._internal_not_used_event_rows()
+
+        summary = QLabel(self._internal_event_summary_text())
+        summary.setObjectName("DataImportInternalSummaryLine")
+        summary.setWordWrap(True)
+        self.event_layout.insertWidget(1, summary)
+        self._event_detail_widgets.append(summary)
+
         if candidate_rows:
-            self._add_event_section_title("Candidate label events")
-            candidate_table = self._event_rules_table(
-                ["Code", "Use as", "Coverage"],
-                [
-                    (
-                        str(row.get("code") or ""),
-                        str(row.get("use_as") or "Class label"),
-                        str(row.get("coverage") or ""),
-                    )
-                    for row in candidate_rows
-                ],
+            self._add_event_section_spacing(7)
+            self._add_event_section_title("Suggested training labels")
+            candidate_help = self._event_section_help(
+                "Confirm which EEG events become training labels.",
             )
-            self.event_layout.addWidget(candidate_table)
-            self._event_detail_widgets.append(candidate_table)
             self._ensure_class_name_items_from_event_rows(candidate_rows)
-            self._add_event_section_title("Class names")
-            class_map_rows_widget = self._build_class_map_rows_widget()
-            self.class_map_rows_widget = class_map_rows_widget
-            self.event_layout.addWidget(class_map_rows_widget)
-            self._event_detail_widgets.append(class_map_rows_widget)
+            candidate_table = self._internal_training_labels_table(candidate_rows)
+            self.event_layout.addWidget(candidate_table)
+            self._event_detail_widgets.extend([candidate_help, candidate_table])
             self.event_tree.setVisible(False)
         else:
             self.event_tree.setVisible(bool(self._event_role_items))
 
         not_used_rows = self._internal_not_used_event_rows()
         if not_used_rows:
-            self._add_event_section_title("Not used as labels")
-            not_used_table = self._event_rules_table(
-                ["Code", "Use as", "Reason"],
-                [
-                    (
-                        str(row.get("code") or ""),
-                        str(row.get("use_as") or ""),
-                        str(row.get("reason") or ""),
-                    )
-                    for row in not_used_rows
-                ],
+            self._add_event_section_spacing(9)
+            self._add_event_section_title("Other EEG events")
+            other_help = self._event_section_help(
+                "These events are available in the EEG files but are not currently "
+                "used as class labels.",
             )
+            not_used_table = self._internal_other_events_table(not_used_rows)
             self.event_layout.addWidget(not_used_table)
-            self._event_detail_widgets.append(not_used_table)
+            self._event_detail_widgets.extend([other_help, not_used_table])
+        if candidate_rows or not_used_rows:
+            self._add_event_section_spacing(7)
+            selection_preview = QLabel(
+                self._internal_event_selection_preview_text(
+                    candidate_rows,
+                    not_used_rows,
+                )
+            )
+            selection_preview.setObjectName("DataImportInternalCheckLine")
+            selection_preview.setWordWrap(True)
+            self.event_layout.addWidget(selection_preview)
+            self._event_detail_widgets.append(selection_preview)
         self.event_group.setMaximumHeight(16777215)
+
+    def _add_event_section_spacing(self, height: int) -> QWidget:
+        spacer = QWidget()
+        spacer.setObjectName("DataImportEventSectionSpacer")
+        spacer.setFixedHeight(max(height, 0))
+        self.event_layout.addWidget(spacer)
+        self._event_detail_widgets.append(spacer)
+        return spacer
 
     def _add_event_section_title(self, text: str) -> QLabel:
         label = QLabel(text)
@@ -858,6 +910,220 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.event_layout.addWidget(label)
         self._event_detail_widgets.append(label)
         return label
+
+    def _event_section_help(self, text: str) -> QLabel:
+        label = QLabel(text)
+        label.setObjectName("DataImportSourceDetail")
+        label.setWordWrap(True)
+        self.event_layout.addWidget(label)
+        return label
+
+    def _internal_training_labels_table(
+        self,
+        rows: list[dict[str, str]],
+    ) -> QWidget:
+        table = QFrame()
+        table.setObjectName("DataImportInternalLabelsTable")
+        table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        table.setMinimumHeight(42 + max(len(rows), 1) * 38)
+        grid = QGridLayout(table)
+        grid.setContentsMargins(13, 12, 13, 13)
+        grid.setHorizontalSpacing(18)
+        grid.setVerticalSpacing(11)
+        headers = [
+            "Event",
+            "Use as",
+            "Evidence",
+            "Count / coverage",
+            "Class name",
+            "",
+        ]
+        for column, header in enumerate(headers):
+            label = QLabel(header)
+            label.setObjectName("DataImportPairingHeaderLabel")
+            grid.addWidget(label, 0, column)
+
+        item_by_code = {code: item for item, code, _original in self._class_map_items}
+        for row_index, row in enumerate(rows, start=1):
+            code = str(row.get("code") or "").strip()
+            self._grid_text(grid, row_index, 0, code, primary=True)
+            self._grid_text(grid, row_index, 1, str(row.get("use_as") or "Class label"))
+            self._grid_text(
+                grid,
+                row_index,
+                2,
+                str(row.get("evidence") or "Suggested by event pattern"),
+            )
+            self._grid_text(grid, row_index, 3, str(row.get("coverage") or ""))
+            item = item_by_code.get(code)
+            if item is not None:
+                selector = self._clone_class_map_selector(item, table)
+                selector.setMinimumHeight(28)
+                grid.addWidget(selector, row_index, 4)
+            else:
+                self._grid_text(grid, row_index, 4, "")
+            button = self._internal_event_action_button(
+                "Not a label",
+                code,
+                "not a label",
+                table,
+            )
+            grid.addWidget(button, row_index, 5)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(2, 4)
+        grid.setColumnStretch(3, 2)
+        grid.setColumnStretch(4, 3)
+        grid.setColumnStretch(5, 0)
+        return table
+
+    def _internal_other_events_table(self, rows: list[dict[str, str]]) -> QWidget:
+        table = QFrame()
+        table.setObjectName("DataImportInternalOtherEventsTable")
+        table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        table.setMinimumHeight(42 + max(len(rows), 1) * 36)
+        grid = QGridLayout(table)
+        grid.setContentsMargins(13, 12, 13, 13)
+        grid.setHorizontalSpacing(18)
+        grid.setVerticalSpacing(10)
+        headers = [
+            "Event",
+            "Suggested use",
+            "Evidence / reason",
+            "Count / coverage",
+            "",
+        ]
+        for column, header in enumerate(headers):
+            label = QLabel(header)
+            label.setObjectName("DataImportPairingHeaderLabel")
+            grid.addWidget(label, 0, column)
+
+        for row_index, row in enumerate(rows, start=1):
+            code = str(row.get("code") or "").strip()
+            self._grid_text(grid, row_index, 0, code, primary=True)
+            self._grid_text(grid, row_index, 1, str(row.get("use_as") or "Ignore"))
+            self._grid_text(grid, row_index, 2, str(row.get("reason") or ""))
+            self._grid_text(grid, row_index, 3, str(row.get("coverage") or ""))
+            button = self._internal_event_action_button(
+                "Use as label",
+                code,
+                "class label",
+                table,
+            )
+            grid.addWidget(button, row_index, 4)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 2)
+        grid.setColumnStretch(2, 4)
+        grid.setColumnStretch(3, 2)
+        grid.setColumnStretch(4, 0)
+        return table
+
+    def _grid_text(
+        self,
+        grid: QGridLayout,
+        row: int,
+        column: int,
+        text: str,
+        *,
+        primary: bool = False,
+    ) -> QLabel:
+        label = QLabel(text)
+        label.setObjectName(
+            "DataImportPairingFile" if primary else "DataImportSourceDetail"
+        )
+        label.setWordWrap(column in {1, 2})
+        label.setMinimumHeight(24)
+        grid.addWidget(label, row, column)
+        return label
+
+    def _internal_event_action_button(
+        self,
+        text: str,
+        code: str,
+        role: str,
+        parent: QWidget,
+    ) -> QPushButton:
+        button = QPushButton(text, parent)
+        button.setObjectName("DataImportInlineAction")
+        button.setProperty("event_code", code)
+        button.setFlat(True)
+        button.setMinimumHeight(24)
+        button.setMaximumWidth(82)
+        button.setToolTip(
+            "Move this EEG event into training labels."
+            if role == "class label"
+            else "Keep this EEG event, but do not use it as a training label."
+        )
+        button.clicked.connect(
+            lambda _checked=False, event_code=code, event_role=role: (
+                self._set_internal_event_role(event_code, event_role)
+            )
+        )
+        return button
+
+    def _set_internal_event_role(self, code: str, role: str) -> None:
+        code = str(code).strip()
+        if not code:
+            return
+        self._remember_internal_class_name_edits()
+        self._internal_event_user_roles[code] = role
+        self._refresh_event_detail_view()
+        if hasattr(self, "event_group"):
+            self.event_group.setVisible(True)
+        if hasattr(self, "rule_status_label"):
+            self.rule_status_label.setText(self._label_rule_status_text())
+        self._sync_scroll_policy()
+
+    def _remember_internal_class_name_edits(self) -> None:
+        for tree_item, code, _original in self._class_map_items:
+            value = self._class_map_item_text(tree_item).strip()
+            if value:
+                self._internal_class_name_edits[code] = value
+
+    def _internal_event_check_text(
+        self,
+        candidate_rows: list[dict[str, str]],
+        not_used_rows: list[dict[str, str]],
+    ) -> str:
+        label_count = len(candidate_rows)
+        other_count = len(not_used_rows)
+        if label_count:
+            label_text = f"{label_count} EEG event(s) will be used as training labels."
+        else:
+            label_text = "No EEG events are currently selected as training labels."
+        other_text = (
+            f"{other_count} other EEG event(s) are kept out of training labels."
+            if other_count
+            else "No other EEG events are listed for this preview."
+        )
+        return f"{label_text} {other_text}"
+
+    def _internal_event_selection_preview_text(
+        self,
+        candidate_rows: list[dict[str, str]],
+        not_used_rows: list[dict[str, str]],
+    ) -> str:
+        training = self._event_code_list_text(row["code"] for row in candidate_rows)
+        excluded = self._event_code_list_text(row["code"] for row in not_used_rows)
+        if training and excluded:
+            return f"Selection preview: train on {training}; not used: {excluded}."
+        if training:
+            return f"Selection preview: train on {training}."
+        if excluded:
+            return (
+                f"Selection preview: no training labels selected; not used: {excluded}."
+            )
+        return "Selection preview: no EEG events are selected yet."
+
+    @staticmethod
+    def _event_code_list_text(codes: Iterable[str], *, limit: int = 6) -> str:
+        values = [str(code).strip() for code in codes if str(code).strip()]
+        if not values:
+            return ""
+        if len(values) <= limit:
+            return ", ".join(values)
+        visible = ", ".join(values[:limit])
+        return f"{visible} +{len(values) - limit} more"
 
     def _event_rules_table(
         self,
@@ -942,21 +1208,38 @@ class DataInterpretationPreviewDialog(BaseDialog):
             for raw in raw_rows:
                 if not isinstance(raw, dict):
                     continue
-                code = str(
-                    raw.get("code") or raw.get("event_code") or raw.get("value") or ""
-                ).strip()
+                code = self._internal_event_code_from_row(raw)
                 if not code:
+                    continue
+                if self._internal_event_user_roles.get(code) == "not a label":
                     continue
                 rows.append(
                     {
                         "code": code,
                         "use_as": str(raw.get("use_as") or "Class label"),
                         "coverage": self._event_coverage_text(raw),
-                        "class_name": self._event_class_name(raw, payload),
+                        "class_name": self._internal_event_class_name(raw, payload),
+                        "evidence": self._event_evidence_text(
+                            raw,
+                            "Suggested by event pattern",
+                        ),
                     }
                 )
+        for row in self._base_not_used_event_rows():
+            code = str(row.get("code") or "").strip()
+            if self._internal_event_user_roles.get(code) != "class label":
+                continue
+            rows.append(
+                {
+                    "code": code,
+                    "use_as": "Class label",
+                    "coverage": str(row.get("coverage") or ""),
+                    "class_name": self._internal_class_name_edits.get(code, ""),
+                    "evidence": "Changed by user",
+                }
+            )
         if rows:
-            return rows
+            return sorted(rows, key=self._event_code_sort_key)
         class_map = self._class_map_for_current_label_source()
         if class_map:
             return [
@@ -964,7 +1247,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
                     "code": str(code),
                     "use_as": "Class label",
                     "coverage": self._default_event_coverage_text(),
-                    "class_name": str(label),
+                    "class_name": self._internal_class_name_edits.get(
+                        str(code),
+                        str(label),
+                    ),
+                    "evidence": "Existing class map",
                 }
                 for code, label in sorted(
                     class_map.items(),
@@ -974,6 +1261,54 @@ class DataInterpretationPreviewDialog(BaseDialog):
         return []
 
     def _internal_not_used_event_rows(self) -> list[dict[str, str]]:
+        rows = []
+        for row in self._base_not_used_event_rows():
+            code = str(row.get("code") or "").strip()
+            if self._internal_event_user_roles.get(code) == "class label":
+                continue
+            rows.append(row)
+        for row in self._base_candidate_label_event_rows():
+            code = str(row.get("code") or "").strip()
+            if self._internal_event_user_roles.get(code) != "not a label":
+                continue
+            rows.append(
+                {
+                    "code": code,
+                    "use_as": "Not used",
+                    "reason": "Changed by user",
+                    "coverage": str(row.get("coverage") or ""),
+                }
+            )
+        return sorted(rows, key=self._event_code_sort_key)
+
+    @staticmethod
+    def _event_code_sort_key(item: dict[str, str]) -> tuple[int, int | str]:
+        code = str(item.get("code") or "").strip()
+        return (0, int(code)) if code.isdigit() else (1, code.casefold())
+
+    def _base_candidate_label_event_rows(self) -> list[dict[str, str]]:
+        payload = self._internal_event_preview_payload()
+        raw_rows = payload.get("candidate_label_events") or payload.get(
+            "candidate_events"
+        )
+        rows: list[dict[str, str]] = []
+        if not isinstance(raw_rows, list):
+            return rows
+        for raw in raw_rows:
+            if not isinstance(raw, dict):
+                continue
+            code = self._internal_event_code_from_row(raw)
+            if not code:
+                continue
+            rows.append(
+                {
+                    "code": code,
+                    "coverage": self._event_coverage_text(raw),
+                }
+            )
+        return rows
+
+    def _base_not_used_event_rows(self) -> list[dict[str, str]]:
         payload = self._internal_event_preview_payload()
         raw_rows = (
             payload.get("not_used_events")
@@ -987,9 +1322,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         for raw in raw_rows:
             if not isinstance(raw, dict):
                 continue
-            code = str(
-                raw.get("code") or raw.get("event_code") or raw.get("value") or ""
-            ).strip()
+            code = self._internal_event_code_from_row(raw)
             if not code:
                 continue
             rows.append(
@@ -997,6 +1330,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
                     "code": code,
                     "use_as": str(raw.get("use_as") or raw.get("role") or "Ignore"),
                     "reason": str(raw.get("reason") or raw.get("meaning") or ""),
+                    "coverage": self._event_coverage_text(raw),
                 }
             )
         return rows
@@ -1007,29 +1341,139 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         return dict(payload) if isinstance(payload, dict) else {}
 
+    @staticmethod
+    def _internal_event_code_from_row(row: dict[str, Any]) -> str:
+        for key in (
+            "event_code",
+            "original_event_code",
+            "original_code",
+            "original_label",
+            "value",
+            "raw_value",
+            "code",
+            "label",
+            "event_label",
+        ):
+            value = str(row.get(key) or "").strip()
+            if value:
+                return value
+        return ""
+
     def _event_coverage_text(self, row: dict[str, Any]) -> str:
         coverage = str(row.get("coverage") or "").strip()
+        event_count = self._event_count_text(row)
+        if coverage and event_count:
+            return f"{event_count} · {coverage}"
         if coverage:
             return coverage
         file_count = len(self._selected_eeg_file_names())
         present = row.get("present_files")
         total = row.get("total_files")
         if isinstance(present, int) and isinstance(total, int) and total > 0:
-            return f"{present}/{total} files"
+            file_coverage = f"{present}/{total} files"
+            return f"{event_count} · {file_coverage}" if event_count else file_coverage
         missing = row.get("missing_files")
         if isinstance(missing, list) and file_count:
-            return f"{max(file_count - len(missing), 0)}/{file_count} files"
-        return self._default_event_coverage_text()
+            file_coverage = f"{max(file_count - len(missing), 0)}/{file_count} files"
+            return f"{event_count} · {file_coverage}" if event_count else file_coverage
+        default_coverage = self._default_event_coverage_text()
+        if event_count and default_coverage:
+            return f"{event_count} · {default_coverage}"
+        return event_count or default_coverage
+
+    @staticmethod
+    def _event_count_text(row: dict[str, Any]) -> str:
+        for key in (
+            "event_count",
+            "total_events",
+            "occurrence_count",
+            "occurrences",
+            "count",
+            "total_count",
+        ):
+            value = row.get(key)
+            if isinstance(value, int) and value >= 0:
+                return f"{value} events"
+            value_text = str(value or "").strip()
+            if value_text.isdigit():
+                return f"{value_text} events"
+        file_counts = row.get("file_counts") or row.get("per_file_counts")
+        if isinstance(file_counts, dict):
+            total = sum(
+                value for value in file_counts.values() if isinstance(value, int)
+            )
+            return f"{total} events" if total >= 0 else ""
+        if isinstance(file_counts, list):
+            total = sum(value for value in file_counts if isinstance(value, int))
+            return f"{total} events" if total >= 0 else ""
+        return ""
+
+    def _target_eeg_event_choices(self) -> list[tuple[str, str]]:
+        rows = self._target_eeg_event_rows()
+        choices: list[tuple[str, str]] = []
+        for row in sorted(rows, key=self._target_event_sort_key):
+            code = self._internal_event_code_from_row(row)
+            if not code:
+                continue
+            count = self._event_count_text(row)
+            use_as = str(row.get("use_as") or row.get("reason") or "").strip()
+            detail = " · ".join(part for part in [use_as, count] if part)
+            display = f"{code} · {detail}" if detail else code
+            choices.append((display, code))
+        return choices
+
+    def _target_eeg_event_rows(self) -> list[dict[str, Any]]:
+        payload = self._internal_event_preview_payload()
+        rows: list[dict[str, Any]] = []
+        for key in ("not_used_events", "candidate_label_events", "candidate_events"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                rows.extend(item for item in value if isinstance(item, dict))
+        return rows
+
+    def _target_event_row(self, code: str) -> dict[str, Any]:
+        target = str(code or "").strip()
+        if not target:
+            return {}
+        for row in self._target_eeg_event_rows():
+            if self._internal_event_code_from_row(row) == target:
+                return row
+        return {}
+
+    def _target_event_sort_key(self, row: dict[str, Any]) -> tuple[int, str]:
+        use_as = str(row.get("use_as") or row.get("reason") or "").lower()
+        evidence = str(row.get("evidence") or "").lower()
+        if "trial timing" in use_as or "candidate total" in evidence:
+            rank = 0
+        elif "class label" in use_as:
+            rank = 1
+        elif any(
+            token in use_as for token in ("artifact", "boundary", "ignore", "system")
+        ):
+            rank = 3
+        else:
+            rank = 2
+        return (rank, self._internal_event_code_from_row(row).casefold())
 
     def _default_event_coverage_text(self) -> str:
         file_count = len(self._selected_eeg_file_names())
         return f"{file_count}/{file_count} files" if file_count else ""
 
-    @staticmethod
-    def _event_class_name(row: dict[str, Any], payload: dict[str, Any]) -> str:
+    def _internal_event_class_name(
+        self,
+        row: dict[str, Any],
+        payload: dict[str, Any],
+    ) -> str:
+        code = self._internal_event_code_from_row(row)
+        if code in self._internal_class_name_edits:
+            return self._internal_class_name_edits[code]
         if payload.get("names_reliable") is False:
             return ""
         return str(row.get("class_name") or row.get("name") or "").strip()
+
+    @staticmethod
+    def _event_evidence_text(row: dict[str, Any], fallback: str) -> str:
+        return str(row.get("evidence") or row.get("reason") or fallback).strip()
 
     def _ensure_class_name_items_from_event_rows(
         self,
@@ -1129,9 +1573,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         layout = QHBoxLayout(header)
         layout.setContentsMargins(10, 0, 10, 0)
         layout.setSpacing(10)
-        layout.addWidget(self._pairing_header_label("EEG file"), stretch=3)
-        layout.addWidget(self._pairing_header_label("", 20))
         layout.addWidget(self._pairing_header_label("Label file"), stretch=3)
+        layout.addWidget(self._pairing_header_label("EEG file"), stretch=3)
         layout.addWidget(self._pairing_header_label("Status", 92))
         return header
 
@@ -1149,17 +1592,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
         layout.setContentsMargins(10, 5, 10, 5)
         layout.setSpacing(10)
 
-        eeg_label = QLabel(eeg_file)
-        eeg_label.setObjectName("DataImportPairingFile")
-        eeg_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        layout.addWidget(eeg_label, stretch=3)
-
-        arrow = QLabel("<-")
-        arrow.setObjectName("DataImportPairingArrow")
-        arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        arrow.setFixedWidth(20)
-        layout.addWidget(arrow)
-
         selector = self._label_file_selector(eeg_file)
         self._eeg_label_widgets[eeg_file] = selector
         selector.currentIndexChanged.connect(
@@ -1169,6 +1601,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
             )
         )
         layout.addWidget(selector, stretch=3)
+
+        eeg_label = QLabel(eeg_file)
+        eeg_label.setObjectName("DataImportPairingFile")
+        eeg_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(eeg_label, stretch=3)
 
         matched = bool(selector.currentData())
         badge = QLabel("Matched" if matched else "Needs label")
@@ -1389,14 +1826,15 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
     def _build_placement_card(self, layout: QVBoxLayout) -> None:
         self._updating_label_rule = True
+        placement_method = self._default_placement_method()
         self.rule_placement_method_combo = self._rule_combo(
             self._placement_method_choices(),
-            self._default_placement_method(),
+            placement_method,
             "Choose how label rows are positioned on the EEG timeline.",
         )
         self.rule_alignment_combo = self._rule_combo(
-            self._alignment_rule_choices(),
-            self._common_carrier_value("selected_anchor"),
+            self._alignment_rule_choices(placement_method),
+            self._default_alignment_value(placement_method),
             "Choose the EEG event, trial order, or time field used to place labels.",
         )
         self.rule_label_unit_combo = self._rule_combo(
@@ -1409,40 +1847,34 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self._common_carrier_value("selected_duration_field"),
             "Choose a duration or end-time field to pass to epoch setup.",
         )
+        for hidden_selector in (
+            self.rule_placement_method_combo,
+            self.rule_alignment_combo,
+            self.rule_label_unit_combo,
+            self.rule_duration_field_combo,
+        ):
+            hidden_selector.setVisible(False)
         self._updating_label_rule = False
 
-        placement_grid = QGridLayout()
-        placement_grid.setContentsMargins(0, 0, 0, 0)
-        placement_grid.setHorizontalSpacing(10)
-        placement_grid.setVerticalSpacing(8)
-        placement_grid.addWidget(
-            self._rule_control("Place labels by", self.rule_placement_method_combo),
-            0,
-            0,
+        layout.addWidget(self._placement_method_selector())
+        self.placement_detail_stack = QStackedWidget()
+        self.placement_detail_stack.setObjectName("DataImportPlacementDetailStack")
+        self.placement_detail_stack.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
         )
-        placement_grid.addWidget(
-            self._rule_control("Align to", self.rule_alignment_combo),
-            0,
-            1,
-        )
-        placement_grid.addWidget(
-            self._rule_control("Label unit", self.rule_label_unit_combo),
-            0,
-            2,
-        )
-        placement_grid.addWidget(
-            self._rule_control("Duration field", self.rule_duration_field_combo),
-            0,
-            3,
-        )
+        self._build_placement_detail_pages()
+        layout.addWidget(self.placement_detail_stack)
+
         self.placement_status_label = QLabel(self._placement_status_text())
         self.placement_status_label.setObjectName("DataImportRuleStatus")
         self.placement_status_label.setWordWrap(True)
-        placement_grid.addWidget(self.placement_status_label, 1, 0, 1, 4)
-        layout.addLayout(placement_grid)
+        layout.addWidget(self.placement_status_label)
 
+        self.rule_placement_method_combo.currentIndexChanged.connect(
+            self._handle_placement_method_change
+        )
         for selector in (
-            self.rule_placement_method_combo,
             self.rule_alignment_combo,
             self.rule_label_unit_combo,
             self.rule_duration_field_combo,
@@ -1457,6 +1889,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self.rule_duration_field_combo,
         ):
             selector.setEnabled(has_label_rows)
+        self._sync_placement_method_buttons()
+        self._sync_placement_detail_stack()
 
     def _build_match_check_card(self, layout: QVBoxLayout) -> None:
         self.rule_status_label = QLabel(self._label_rule_status_text())
@@ -1472,10 +1906,306 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
     def _placement_method_choices(self) -> list[tuple[str, str]]:
         return [
-            ("Match EEG event", "eeg_event"),
-            ("Use time field", "time_field"),
-            ("Use intervals", "interval"),
+            ("EEG event order", "eeg_event"),
+            ("Label time", "time_field"),
+            ("Label interval", "interval"),
+            ("Label event code", "event_code"),
         ]
+
+    def _placement_method_selector(self) -> QFrame:
+        frame = QFrame()
+        frame.setObjectName("DataImportPlacementSelector")
+        layout = QGridLayout(frame)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setHorizontalSpacing(8)
+        layout.setVerticalSpacing(8)
+        title = QLabel("Place labels by")
+        title.setObjectName("DataImportRuleLabel")
+        layout.addWidget(title, 0, 0, 1, 4)
+        self.placement_method_buttons = {}
+        self.placement_method_option_frames = {}
+        group = QButtonGroup(frame)
+        group.setExclusive(True)
+        copy = {
+            "eeg_event": "Use label rows in order on selected EEG events.",
+            "time_field": "Use a time column from the label file.",
+            "interval": "Use onset plus duration or end time.",
+            "event_code": "Match label rows by event code values.",
+        }
+        current = self._combo_current_data(self.rule_placement_method_combo)
+        for column, (title, value) in enumerate(self._placement_method_choices()):
+            option = QFrame()
+            option.setObjectName("DataImportPlacementOption")
+            option.setProperty("selected", value == current)
+            option_layout = QVBoxLayout(option)
+            option_layout.setContentsMargins(10, 8, 10, 9)
+            option_layout.setSpacing(4)
+            radio = QRadioButton(title)
+            radio.setObjectName("DataImportPlacementRadio")
+            radio.setChecked(value == current)
+            radio.toggled.connect(
+                lambda checked, method=value: (
+                    self._select_placement_method(method) if checked else None
+                )
+            )
+            group.addButton(radio)
+            option_layout.addWidget(radio)
+            detail = QLabel(copy[value])
+            detail.setObjectName("DataImportPlacementOptionDetail")
+            detail.setWordWrap(True)
+            option_layout.addWidget(detail)
+            layout.addWidget(option, 1, column)
+            self.placement_method_buttons[value] = radio
+            self.placement_method_option_frames[value] = option
+        return frame
+
+    def _build_placement_detail_pages(self) -> None:
+        pages = [
+            ("eeg_event", self._placement_eeg_event_order_page()),
+            ("time_field", self._placement_time_field_page()),
+            ("interval", self._placement_interval_page()),
+            ("event_code", self._placement_event_code_page()),
+        ]
+        self._placement_detail_page_indexes = {}
+        for index, (method, page) in enumerate(pages):
+            self.placement_detail_stack.addWidget(page)
+            self._placement_detail_page_indexes[method] = index
+
+    def _placement_eeg_event_order_page(self) -> QFrame:
+        page = self._placement_detail_frame()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(12, 10, 12, 11)
+        layout.setSpacing(8)
+        layout.addWidget(
+            self._placement_section_title(
+                "Target EEG events",
+                "Label rows are assigned in file order only to the selected EEG event.",
+            )
+        )
+        self.target_event_buttons = {}
+        self.target_event_option_frames = {}
+        choices = self._target_eeg_event_choices()
+        if choices:
+            layout.addWidget(self._target_event_header_row())
+            for display, value in choices:
+                layout.addWidget(self._target_event_option_row(display, value))
+        else:
+            layout.addWidget(
+                self._empty_state(
+                    "No EEG event candidates are available yet. Review labels after "
+                    "the recording exposes event markers.",
+                )
+            )
+        self.target_event_status_label = QLabel(self._target_event_status_text())
+        self.target_event_status_label.setObjectName("DataImportRuleStatus")
+        self.target_event_status_label.setWordWrap(True)
+        layout.addWidget(self.target_event_status_label)
+        return page
+
+    def _placement_time_field_page(self) -> QFrame:
+        page = self._placement_detail_frame()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(12, 10, 12, 11)
+        layout.setSpacing(8)
+        layout.addWidget(
+            self._placement_section_title(
+                "Label time",
+                "Use one time field from each label row to place labels on the "
+                "EEG timeline.",
+            )
+        )
+        controls = QGridLayout()
+        controls.setContentsMargins(0, 0, 0, 0)
+        controls.setHorizontalSpacing(10)
+        controls.setVerticalSpacing(8)
+        time_field_combo = self._rule_combo(
+            self._alignment_rule_choices("time_field"),
+            self._default_alignment_value("time_field"),
+            "Choose the label-file time field.",
+        )
+        time_field_combo.currentIndexChanged.connect(
+            lambda _index, selector=time_field_combo: (
+                self._sync_alignment_from_visible_combo(selector)
+            )
+        )
+        controls.addWidget(
+            self._rule_control("Label time field", time_field_combo),
+            0,
+            0,
+        )
+        controls.setColumnStretch(0, 1)
+        layout.addLayout(controls)
+        layout.addWidget(
+            self._placement_note("Epoch window will be set later in epoch setup.")
+        )
+        layout.addStretch(1)
+        return page
+
+    def _placement_interval_page(self) -> QFrame:
+        page = self._placement_detail_frame()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(12, 10, 12, 11)
+        layout.setSpacing(8)
+        layout.addWidget(
+            self._placement_section_title(
+                "Label interval",
+                "Use a start field plus duration or end time from the label file.",
+            )
+        )
+        controls = QGridLayout()
+        controls.setContentsMargins(0, 0, 0, 0)
+        controls.setHorizontalSpacing(10)
+        controls.setVerticalSpacing(8)
+        start_combo = self._rule_combo(
+            self._alignment_rule_choices("interval"),
+            self._default_alignment_value("interval"),
+            "Choose the interval start field.",
+        )
+        duration_combo = self._rule_combo(
+            self._duration_field_choices(),
+            self._combo_current_data(self.rule_duration_field_combo),
+            "Choose a duration or end-time field.",
+        )
+        start_combo.currentIndexChanged.connect(
+            lambda _index, selector=start_combo: (
+                self._sync_alignment_from_visible_combo(selector)
+            )
+        )
+        duration_combo.currentIndexChanged.connect(
+            lambda _index, selector=duration_combo: (
+                self._sync_duration_from_visible_combo(selector)
+            )
+        )
+        controls.addWidget(self._rule_control("Start field", start_combo), 0, 0)
+        controls.addWidget(
+            self._rule_control("Duration / end field", duration_combo),
+            0,
+            1,
+        )
+        controls.setColumnStretch(0, 1)
+        controls.setColumnStretch(1, 1)
+        layout.addLayout(controls)
+        layout.addStretch(1)
+        return page
+
+    def _placement_event_code_page(self) -> QFrame:
+        page = self._placement_detail_frame()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(12, 10, 12, 11)
+        layout.setSpacing(8)
+        layout.addWidget(
+            self._placement_section_title(
+                "Label event code",
+                "Use a code field in the label file to match EEG event codes.",
+            )
+        )
+        controls = QGridLayout()
+        controls.setContentsMargins(0, 0, 0, 0)
+        controls.setHorizontalSpacing(10)
+        controls.setVerticalSpacing(8)
+        code_combo = self._rule_combo(
+            self._alignment_rule_choices("event_code"),
+            self._default_alignment_value("event_code"),
+            "Choose the label-file event code field.",
+        )
+        code_combo.currentIndexChanged.connect(
+            lambda _index, selector=code_combo: (
+                self._sync_alignment_from_visible_combo(selector)
+            )
+        )
+        controls.addWidget(
+            self._rule_control("Label event code field", code_combo),
+            0,
+            0,
+        )
+        controls.setColumnStretch(0, 1)
+        layout.addLayout(controls)
+        layout.addWidget(self._placement_note("Matches against EEG event codes."))
+        layout.addStretch(1)
+        return page
+
+    @staticmethod
+    def _placement_detail_frame() -> QFrame:
+        frame = QFrame()
+        frame.setObjectName("DataImportPlacementDetail")
+        frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        return frame
+
+    def _placement_section_title(self, title: str, detail: str) -> QWidget:
+        block = QFrame()
+        block.setObjectName("DataImportPlacementSectionTitle")
+        block.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout = QVBoxLayout(block)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+        title_label = QLabel(title)
+        title_label.setObjectName("DataImportSourceTitle")
+        detail_label = QLabel(detail)
+        detail_label.setObjectName("DataImportSourceDetail")
+        detail_label.setWordWrap(True)
+        layout.addWidget(title_label)
+        layout.addWidget(detail_label)
+        return block
+
+    def _placement_note(self, text: str) -> QLabel:
+        label = QLabel(text)
+        label.setObjectName("DataImportSourceDetail")
+        label.setWordWrap(True)
+        return label
+
+    def _target_event_header_row(self) -> QFrame:
+        header = QFrame()
+        header.setObjectName("DataImportPairingHeader")
+        layout = QHBoxLayout(header)
+        layout.setContentsMargins(10, 0, 10, 0)
+        layout.setSpacing(10)
+        layout.addWidget(self._pairing_header_label("Target", 64))
+        layout.addWidget(self._pairing_header_label("Event", 58))
+        layout.addWidget(self._pairing_header_label("Use as"), stretch=2)
+        layout.addWidget(self._pairing_header_label("Evidence"), stretch=3)
+        layout.addWidget(self._pairing_header_label("Count", 92))
+        return header
+
+    def _target_event_option_row(self, display: str, value: str) -> QFrame:
+        event = self._target_event_row(value)
+        row = QFrame()
+        row.setObjectName("DataImportTargetEventRow")
+        row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        selected = value == self._combo_current_data(self.rule_alignment_combo)
+        row.setProperty("selected", selected)
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(10, 7, 10, 7)
+        layout.setSpacing(10)
+        radio = QRadioButton("Use")
+        radio.setObjectName("DataImportTargetEventRadio")
+        radio.setChecked(selected)
+        radio.setFixedWidth(64)
+        radio.toggled.connect(
+            lambda checked, target=value: (
+                self._select_target_event(target) if checked else None
+            )
+        )
+        layout.addWidget(radio)
+        code = QLabel(value)
+        code.setObjectName("DataImportTargetEventCode")
+        code.setFixedWidth(58)
+        layout.addWidget(code)
+        meaning = QLabel(str(event.get("use_as") or event.get("reason") or display))
+        meaning.setObjectName("DataImportSourceTitle")
+        meaning.setWordWrap(True)
+        layout.addWidget(meaning, stretch=2)
+        evidence = QLabel(str(event.get("evidence") or event.get("reason") or ""))
+        evidence.setObjectName("DataImportSourceDetail")
+        evidence.setWordWrap(True)
+        layout.addWidget(evidence, stretch=3)
+        count = QLabel(self._event_count_text(event) or "")
+        count.setObjectName("DataImportPairingBadge")
+        count.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        count.setFixedWidth(92)
+        layout.addWidget(count)
+        self.target_event_buttons[value] = radio
+        self.target_event_option_frames[value] = row
+        return row
 
     def _default_placement_method(self) -> str:
         values = {
@@ -1509,32 +2239,174 @@ class DataInterpretationPreviewDialog(BaseDialog):
         use_as = self.rule_use_as_combo.currentText()
         if not field_value:
             return "Choose the field that contains the label values."
+        value_summary = self._label_value_count_summary()
+        if value_summary:
+            return (
+                f"{field}: {value_summary}. "
+                "Class names can be confirmed below when values are known."
+            )
         return (
             f"{field} values will be imported as {use_as.lower()}. "
             "Class names can be confirmed below when values are known."
         )
 
+    def _target_event_status_text(self) -> str:
+        if not self._label_carrier_items:
+            return "No loaded label files are available."
+        placement_method = self._combo_current_data(self.rule_placement_method_combo)
+        if placement_method != "eeg_event":
+            return ""
+        target = self._combo_current_data(self.rule_alignment_combo)
+        event = self._target_event_row(target)
+        if event:
+            count = self._event_count_text(event) or "unknown count"
+            meaning = str(event.get("use_as") or event.get("reason") or "").strip()
+            meaning_text = f" · {meaning}" if meaning else ""
+            return f"Target EEG events: {target}{meaning_text} · {count}."
+        return (
+            "Target EEG events: choose the event subset that this label series "
+            "should follow in order."
+        )
+
     def _placement_status_text(self) -> str:
         if not self._label_carrier_items:
             return "No loaded label files are available."
+        placement_method = self._combo_current_data(self.rule_placement_method_combo)
         method = self.rule_placement_method_combo.currentText()
         target = self.rule_alignment_combo.currentText()
+        if placement_method == "eeg_event":
+            return "Check: " + self._eeg_event_order_check_text(
+                self._matched_eeg_pair_count(),
+                len(self._selected_eeg_file_names()),
+                self.rule_label_field_combo.currentText(),
+            )
+        review_text = self._backend_placement_review_text(placement_method)
+        if review_text:
+            return review_text
         duration = str(self.rule_duration_field_combo.currentData() or "").strip()
-        duration_text = (
-            f"Duration field {self.rule_duration_field_combo.currentText()} is saved "
-            "for epoch setup."
-            if duration
-            else "Epoch length will be chosen later in the epoch step."
+        label_rows = self._active_label_row_count()
+        label_rows_text = (
+            f" · {label_rows} label rows" if label_rows is not None else ""
         )
-        return f"{method} using {target}. {duration_text}"
+        if placement_method == "interval":
+            duration_text = (
+                f"duration/end field {self.rule_duration_field_combo.currentText()}"
+                if duration
+                else "duration/end field needs review"
+            )
+            return (
+                f"Check: {method} · start {target} · {duration_text}{label_rows_text}."
+            )
+        if placement_method == "event_code":
+            return f"Check: {method} · code field {target}{label_rows_text}."
+        return f"Check: {method} · time field {target}{label_rows_text}."
+
+    def _backend_placement_review_text(self, placement_method: str) -> str:
+        reviews = self._active_backend_placement_reviews(placement_method)
+        if not reviews:
+            return ""
+        if len(reviews) == 1:
+            return self._single_backend_placement_review_text(reviews[0])
+        ready = sum(1 for review in reviews if review.get("status") == "ready")
+        needs_review = sum(
+            1 for review in reviews if review.get("status") == "needs_review"
+        )
+        blocked = sum(1 for review in reviews if review.get("status") == "blocked")
+        parts = [f"Check: {ready}/{len(reviews)} label file(s) ready"]
+        if needs_review:
+            parts.append(f"{needs_review} need review")
+        if blocked:
+            parts.append(f"{blocked} blocked")
+        return " · ".join(parts) + "."
+
+    def _active_backend_placement_reviews(
+        self,
+        placement_method: str,
+    ) -> list[dict[str, Any]]:
+        reviews: list[dict[str, Any]] = []
+        for item, original in self._label_carrier_items:
+            carrier_key = self._label_carrier_key(item, original)
+            if carrier_key and self._is_label_carrier_excluded(carrier_key):
+                continue
+            raw_reviews = original.get("placement_reviews")
+            review = None
+            if isinstance(raw_reviews, dict):
+                review = raw_reviews.get(placement_method)
+            if not isinstance(review, dict):
+                raw_review = original.get("placement_review")
+                if (
+                    isinstance(raw_review, dict)
+                    and raw_review.get("method") == placement_method
+                ):
+                    review = raw_review
+            if isinstance(review, dict):
+                reviews.append(review)
+        return reviews
+
+    def _single_backend_placement_review_text(self, review: dict[str, Any]) -> str:
+        method = str(review.get("method") or "").strip()
+        summary = str(review.get("summary") or "").strip().rstrip(".")
+        status = str(review.get("status") or "needs_review").replace("_", " ")
+        if method == "time_field":
+            field = str(review.get("time_field") or "").strip()
+            prefix = f"Check: Label time · {field}" if field else "Check: Label time"
+        elif method == "interval":
+            start = str(review.get("time_field") or "").strip()
+            duration = str(review.get("duration_field") or "").strip()
+            fields = " + ".join(part for part in (start, duration) if part)
+            prefix = (
+                f"Check: Label interval · {fields}"
+                if fields
+                else "Check: Label interval"
+            )
+        elif method == "event_code":
+            field = str(review.get("event_code_field") or "").strip()
+            prefix = (
+                f"Check: Label event code · {field}"
+                if field
+                else "Check: Label event code"
+            )
+        else:
+            prefix = "Check"
+        if summary:
+            return f"{prefix} · {summary} · {status}."
+        return f"{prefix} · {status}."
+
+    def _label_value_count_summary(self) -> str:
+        row_count = self._active_label_row_count()
+        value_counts: dict[str, int] = {}
+        for _item, original in self._label_carrier_items:
+            raw_counts = original.get("label_value_counts")
+            if not isinstance(raw_counts, dict):
+                continue
+            for value, count in raw_counts.items():
+                text = str(value).strip()
+                if not text:
+                    continue
+                if isinstance(count, int):
+                    value_counts[text] = value_counts.get(text, 0) + count
+                    continue
+                count_text = str(count or "").strip()
+                if count_text.isdigit():
+                    value_counts[text] = value_counts.get(text, 0) + int(count_text)
+        parts: list[str] = []
+        if row_count is not None:
+            parts.append(f"{row_count} values")
+        if value_counts:
+            parts.append(f"{len(value_counts)} unique labels")
+        return " across ".join(parts)
 
     def _refresh_label_rule_status(self) -> None:
         if hasattr(self, "label_values_status_label"):
             self.label_values_status_label.setText(self._label_values_status_text())
+        if hasattr(self, "target_event_status_label"):
+            self.target_event_status_label.setText(self._target_event_status_text())
         if hasattr(self, "placement_status_label"):
             self.placement_status_label.setText(self._placement_status_text())
         if hasattr(self, "rule_status_label"):
             self.rule_status_label.setText(self._label_rule_status_text())
+        if hasattr(self, "placement_detail_stack"):
+            self._sync_placement_detail_stack()
 
     def _rule_control(self, label: str, selector: QComboBox) -> QFrame:
         frame = QFrame()
@@ -1600,11 +2472,144 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         return choices or [("Needs review", "")]
 
-    def _alignment_rule_choices(self) -> list[tuple[str, str]]:
-        choices = self._carrier_choice_values("selected_anchor", "anchor_candidates")
+    def _default_alignment_value(self, placement_method: str) -> str:
+        current = self._common_carrier_value("selected_anchor")
+        if placement_method == "eeg_event" and current in {"", "trial order"}:
+            event_choices = self._target_eeg_event_choices()
+            if event_choices:
+                return event_choices[0][1]
+        choices = self._alignment_rule_choices(placement_method)
+        values = {value for _display, value in choices}
+        if current and current in values:
+            return current
+        if choices:
+            return choices[0][1]
+        return current
+
+    def _alignment_rule_choices(
+        self,
+        placement_method: str | None = None,
+    ) -> list[tuple[str, str]]:
+        method = placement_method or self._combo_current_data(
+            self.rule_placement_method_combo
+        )
+        if method == "eeg_event":
+            event_choices = self._target_eeg_event_choices()
+            if event_choices:
+                return event_choices
+        candidate_key = {
+            "time_field": "time_field_candidates",
+            "interval": "interval_start_candidates",
+            "event_code": "event_code_candidates",
+        }.get(method, "anchor_candidates")
+        choices = self._carrier_choice_values("selected_anchor", candidate_key)
         if "trial order" not in {value for _display, value in choices}:
             choices.append(("Trial order", "trial order"))
+        if method in {"time_field", "interval", "event_code"}:
+            choices = [
+                (display, value) for display, value in choices if value != "trial order"
+            ]
         return choices or [("Needs review", "")]
+
+    def _handle_placement_method_change(self) -> None:
+        if self._updating_label_rule:
+            return
+        self._refresh_alignment_choices_for_placement()
+        self._sync_placement_method_buttons()
+        self._sync_placement_detail_stack()
+        self._apply_label_rule_to_preview()
+
+    def _select_placement_method(self, method: str) -> None:
+        index = self.rule_placement_method_combo.findData(method)
+        if index >= 0 and index != self.rule_placement_method_combo.currentIndex():
+            self.rule_placement_method_combo.setCurrentIndex(index)
+            return
+        self._sync_placement_method_buttons()
+        self._sync_placement_detail_stack()
+        self._apply_label_rule_to_preview()
+
+    def _sync_placement_method_buttons(self) -> None:
+        method = self._combo_current_data(self.rule_placement_method_combo)
+        for value, button in getattr(self, "placement_method_buttons", {}).items():
+            was_blocked = button.blockSignals(True)
+            button.setChecked(value == method)
+            button.blockSignals(was_blocked)
+        for value, frame in getattr(
+            self,
+            "placement_method_option_frames",
+            {},
+        ).items():
+            frame.setProperty("selected", value == method)
+            style = frame.style()
+            if style is not None:
+                style.unpolish(frame)
+                style.polish(frame)
+
+    def _sync_placement_detail_stack(self) -> None:
+        if not hasattr(self, "placement_detail_stack"):
+            return
+        method = self._combo_current_data(self.rule_placement_method_combo)
+        index = getattr(self, "_placement_detail_page_indexes", {}).get(method)
+        if index is not None:
+            self.placement_detail_stack.setCurrentIndex(index)
+            page = self.placement_detail_stack.widget(index)
+            if page is not None:
+                self.placement_detail_stack.setFixedHeight(page.sizeHint().height())
+        self._sync_target_event_buttons()
+
+    def _select_target_event(self, target: str) -> None:
+        self._set_combo_current_data(self.rule_alignment_combo, target)
+        self._sync_target_event_buttons()
+        self._apply_label_rule_to_preview()
+
+    def _sync_target_event_buttons(self) -> None:
+        current = self._combo_current_data(self.rule_alignment_combo)
+        for value, button in getattr(self, "target_event_buttons", {}).items():
+            was_blocked = button.blockSignals(True)
+            button.setChecked(value == current)
+            button.blockSignals(was_blocked)
+        for value, frame in getattr(self, "target_event_option_frames", {}).items():
+            frame.setProperty("selected", value == current)
+            style = frame.style()
+            if style is not None:
+                style.unpolish(frame)
+                style.polish(frame)
+
+    def _sync_alignment_from_visible_combo(self, selector: QComboBox) -> None:
+        value = str(selector.currentData() or "")
+        self._set_combo_current_data(self.rule_alignment_combo, value)
+        self._apply_label_rule_to_preview()
+
+    def _sync_duration_from_visible_combo(self, selector: QComboBox) -> None:
+        value = str(selector.currentData() or "")
+        self._set_combo_current_data(self.rule_duration_field_combo, value)
+        self._apply_label_rule_to_preview()
+
+    def _refresh_alignment_choices_for_placement(self) -> None:
+        placement_method = self._combo_current_data(self.rule_placement_method_combo)
+        previous = self._combo_current_data(self.rule_alignment_combo)
+        choices = self._alignment_rule_choices(placement_method)
+        values = {value for _display, value in choices}
+        current = (
+            previous
+            if previous in values
+            else self._default_alignment_value(placement_method)
+        )
+        was_blocked = self.rule_alignment_combo.blockSignals(True)
+        self.rule_alignment_combo.clear()
+        for display, value in choices:
+            self.rule_alignment_combo.addItem(display, value)
+        if current and current not in values:
+            self.rule_alignment_combo.addItem(
+                self._label_choice_display(current),
+                current,
+            )
+        index = self.rule_alignment_combo.findData(current)
+        if index >= 0:
+            self.rule_alignment_combo.setCurrentIndex(index)
+        elif self.rule_alignment_combo.count() > 0:
+            self.rule_alignment_combo.setCurrentIndex(0)
+        self.rule_alignment_combo.blockSignals(was_blocked)
 
     def _carrier_choice_values(
         self,
@@ -1659,6 +2664,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
     def _apply_label_rule_to_preview(self) -> None:
         if self._updating_label_rule:
             return
+        self._label_rule_controls_changed = True
         if not self._label_carrier_items:
             self._refresh_label_rule_status()
             return
@@ -1726,15 +2732,112 @@ class DataInterpretationPreviewDialog(BaseDialog):
         needs_review = max(total - matched, 0)
         field = self.rule_label_field_combo.currentText()
         alignment = self.rule_alignment_combo.currentText()
+        placement_method = self._combo_current_data(self.rule_placement_method_combo)
+        if placement_method == "eeg_event":
+            return self._eeg_event_order_check_text(matched, total, field)
         placement = self.rule_placement_method_combo.currentText()
         use_as = self.rule_use_as_combo.currentText()
         duration = str(self.rule_duration_field_combo.currentData() or "").strip()
         duration_text = "duration saved" if duration else "duration set later"
         suffix = f"{needs_review} need review" if needs_review else "all covered"
-        return (
-            f"{matched}/{total} paired · {field} · {placement} at {alignment} · "
-            f"{use_as} · {duration_text} · {suffix}"
+        parts = [f"{matched}/{total} paired", field]
+        if placement_method == "interval":
+            placement_text = f"{placement} · start {alignment}"
+            parts.extend([placement_text, use_as, duration_text])
+        elif placement_method == "event_code":
+            placement_text = f"{placement} · code field {alignment}"
+            parts.extend([placement_text, use_as])
+        else:
+            placement_text = f"{placement} · time field {alignment}"
+            parts.extend([placement_text, use_as])
+        parts.append(suffix)
+        return " · ".join(parts)
+
+    def _eeg_event_order_check_text(
+        self,
+        matched_file_count: int,
+        total_file_count: int,
+        field: str,
+    ) -> str:
+        label_rows = self._active_label_row_count()
+        target_count = self._selected_target_event_count()
+        excluded = self._excluded_eeg_event_count()
+        parts = [
+            f"{matched_file_count}/{total_file_count} paired",
+            f"{field}",
+            "EEG event order",
+        ]
+        if target_count is None:
+            alignment = self.rule_alignment_combo.currentText().strip()
+            if alignment and alignment != "Needs review":
+                parts.append(f"at {alignment}")
+        if label_rows is not None:
+            parts.append(f"{label_rows} label rows")
+        if target_count is not None:
+            parts.append(f"{target_count} selected EEG events")
+        if label_rows is not None and target_count is not None:
+            matched = min(label_rows, target_count)
+            parts.append(f"{matched} matched")
+            if target_count > label_rows:
+                parts.append(f"{target_count - label_rows} unlabeled EEG events")
+            if label_rows > target_count:
+                parts.append(f"{label_rows - target_count} unmatched label rows")
+        if excluded:
+            parts.append(f"{excluded} EEG events excluded")
+        return " · ".join(parts)
+
+    def _active_label_row_count(self) -> int | None:
+        total = 0
+        has_count = False
+        for item, original in self._label_carrier_items:
+            carrier_key = self._label_carrier_key(item, original)
+            if carrier_key and self._is_label_carrier_excluded(carrier_key):
+                continue
+            value = original.get("label_row_count")
+            if isinstance(value, int) and value >= 0:
+                total += value
+                has_count = True
+                continue
+            value_text = str(value or "").strip()
+            if value_text.isdigit():
+                total += int(value_text)
+                has_count = True
+        return total if has_count else None
+
+    def _selected_target_event_count(self) -> int | None:
+        row = self._target_event_row(
+            self._combo_current_data(self.rule_alignment_combo)
         )
+        if not row:
+            return None
+        for key in ("event_count", "total_events", "count", "total_count"):
+            value = row.get(key)
+            if isinstance(value, int) and value >= 0:
+                return value
+            value_text = str(value or "").strip()
+            if value_text.isdigit():
+                return int(value_text)
+        return None
+
+    def _excluded_eeg_event_count(self) -> int:
+        total = 0
+        for row in self._target_eeg_event_rows():
+            use_as = str(row.get("use_as") or row.get("reason") or "").lower()
+            if not any(
+                token in use_as
+                for token in ("artifact", "boundary", "ignore", "system")
+            ):
+                continue
+            for key in ("event_count", "total_events", "count", "total_count"):
+                value = row.get(key)
+                if isinstance(value, int) and value >= 0:
+                    total += value
+                    break
+                value_text = str(value or "").strip()
+                if value_text.isdigit():
+                    total += int(value_text)
+                    break
+        return total
 
     def _add_label_source_rows(self, layout: QVBoxLayout) -> None:
         carriers = self._label_carrier_preview_rows()
@@ -2534,13 +3637,35 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 font-size: 12px;
                 font-weight: 600;
             }}
+            QLabel#DataImportInternalGroupTitle {{
+                color: #f0f0f0;
+                background-color: transparent;
+                border: none;
+                padding: 0 0 4px 0;
+                font-size: 13px;
+                font-weight: 700;
+            }}
+            QLabel#DataImportInternalSummaryLine,
+            QLabel#DataImportInternalCheckLine {{
+                color: {Theme.TEXT_SECONDARY};
+                background-color: transparent;
+                border: none;
+                padding: 0 0 2px 0;
+                font-size: 12px;
+            }}
+            QWidget#DataImportEventSectionSpacer {{
+                background-color: transparent;
+                border: none;
+            }}
             QFrame#DataImportSourceRow,
             QFrame#DataImportActionCard,
             QFrame#DataImportRuleControl,
             QFrame#DataImportInlineRuleControl,
             QFrame#DataImportPairingRow,
             QFrame#DataImportEventRulesTable,
-            QFrame#DataImportClassMapTable {{
+            QFrame#DataImportClassMapTable,
+            QFrame#DataImportInternalLabelsTable,
+            QFrame#DataImportInternalOtherEventsTable {{
                 background-color: #202020;
                 border: 1px solid #343434;
                 border-radius: 5px;
@@ -2548,6 +3673,34 @@ class DataInterpretationPreviewDialog(BaseDialog):
             QFrame#DataImportPairingBlock {{
                 background-color: transparent;
                 border: none;
+            }}
+            QFrame#DataImportPlacementSelector,
+            QFrame#DataImportPlacementSectionTitle {{
+                background-color: transparent;
+                border: none;
+            }}
+            QFrame#DataImportPlacementOption {{
+                background-color: #202020;
+                border: 1px solid #343434;
+                border-radius: 5px;
+            }}
+            QFrame#DataImportPlacementOption[selected="true"] {{
+                background-color: #17354b;
+                border: 1px solid #2f6690;
+            }}
+            QFrame#DataImportPlacementDetail {{
+                background-color: #202020;
+                border: 1px solid #343434;
+                border-radius: 5px;
+            }}
+            QFrame#DataImportTargetEventRow {{
+                background-color: #1b1b1b;
+                border: 1px solid #303030;
+                border-radius: 5px;
+            }}
+            QFrame#DataImportTargetEventRow[selected="true"] {{
+                background-color: #1e2f3d;
+                border: 1px solid #3b79a5;
             }}
             QFrame#DataImportPairingHeader {{
                 background-color: transparent;
@@ -2572,6 +3725,18 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 font-size: 11px;
                 font-weight: 600;
             }}
+            QFrame#DataImportLabelSourceModeControl {{
+                background-color: transparent;
+                border: none;
+            }}
+            QLabel#DataImportLabelSourceChoiceLabel {{
+                color: {Theme.TEXT_SECONDARY};
+                background-color: transparent;
+                border: none;
+                padding: 0;
+                font-size: 11px;
+                font-weight: 600;
+            }}
             QLabel#DataImportPairingSummary {{
                 color: #eeeeee;
                 font-size: 13px;
@@ -2591,6 +3756,21 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 color: #eeeeee;
                 font-size: 13px;
                 font-weight: 600;
+            }}
+            QLabel#DataImportPlacementOptionDetail {{
+                color: {Theme.TEXT_SECONDARY};
+                background-color: transparent;
+                border: none;
+                font-size: 11px;
+            }}
+            QLabel#DataImportTargetEventCode {{
+                color: #eeeeee;
+                background-color: #191919;
+                border: 1px solid #303030;
+                border-radius: 4px;
+                padding: 3px 0;
+                font-size: 12px;
+                font-weight: 700;
             }}
             QLabel#DataImportPairingArrow {{
                 color: {Theme.TEXT_SECONDARY};
@@ -2761,6 +3941,24 @@ class DataInterpretationPreviewDialog(BaseDialog):
             QPushButton#DataImportTertiaryButton:pressed {{
                 background-color: {Theme.BACKGROUND_MID};
             }}
+            QPushButton#DataImportInlineAction {{
+                background-color: transparent;
+                color: {Theme.TEXT_SECONDARY};
+                border: 1px solid transparent;
+                border-radius: 4px;
+                padding: 2px 4px;
+                min-height: 16px;
+                font-size: 11px;
+                font-weight: 500;
+            }}
+            QPushButton#DataImportInlineAction:hover {{
+                color: #d8ecff;
+                border-color: #3d4d58;
+                background-color: #242a2e;
+            }}
+            QPushButton#DataImportInlineAction:pressed {{
+                background-color: #1a1f22;
+            }}
             QDialogButtonBox QPushButton {{
                 background-color: {Theme.BACKGROUND_MID};
                 color: {Theme.TEXT_MUTED};
@@ -2795,6 +3993,26 @@ class DataInterpretationPreviewDialog(BaseDialog):
             QCheckBox {{
                 color: {Theme.TEXT_SECONDARY};
                 spacing: 8px;
+            }}
+            QRadioButton#DataImportPlacementRadio {{
+                color: #eeeeee;
+                background-color: transparent;
+                border: none;
+                font-size: 12px;
+                font-weight: 700;
+                spacing: 7px;
+            }}
+            QRadioButton#DataImportTargetEventRadio {{
+                color: #eeeeee;
+                background-color: transparent;
+                border: none;
+                font-size: 11px;
+                font-weight: 600;
+                spacing: 6px;
+            }}
+            QRadioButton::indicator {{
+                width: 12px;
+                height: 12px;
             }}
             QTreeWidget {{
                 background-color: #1f1f1f;
@@ -3473,6 +4691,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if class_map:
             choices["class_map"] = class_map
         event_roles = self._event_role_overrides()
+        if self._label_source_mode() == "internal_events":
+            event_roles.update(self._internal_event_role_overrides())
         if event_roles:
             choices["event_roles"] = event_roles
         eeg_file_remap = self._eeg_file_remap_choices()
@@ -3599,6 +4819,16 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         return current if changed else {}
 
+    def _internal_event_role_overrides(self) -> dict[str, str]:
+        return {
+            code: role
+            for code, role in sorted(
+                self._internal_event_user_roles.items(),
+                key=lambda item: item[0].casefold(),
+            )
+            if role in {"class label", "not a label"}
+        }
+
     def _install_event_role_selector(
         self,
         item: QTreeWidgetItem,
@@ -3646,6 +4876,12 @@ class DataInterpretationPreviewDialog(BaseDialog):
             ("granularity", "granularity", 4),
             ("role", "role", 5),
         )
+        global_rule_values = {
+            "label_field": self._combo_current_data(self.rule_label_field_combo),
+            "anchor": self._combo_current_data(self.rule_alignment_combo),
+            "granularity": self._combo_current_data(self.rule_label_unit_combo),
+            "role": self._combo_current_data(self.rule_use_as_combo),
+        }
         for item, original in self._label_carrier_items:
             carrier_key = str(
                 original.get("path") or original.get("name") or ""
@@ -3660,6 +4896,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
                     choice_key,
                     self._label_carrier_item_text(item, column),
                 )
+                if self._should_use_global_label_rule(choice_key, original):
+                    current = global_rule_values.get(choice_key) or current
                 original_value = str(original.get(original_key) or "").strip()
                 if current and current != original_value:
                     changed[choice_key] = current
@@ -3689,6 +4927,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
                         choice_key,
                         self._label_carrier_item_text(item, column),
                     )
+                    if self._should_use_global_label_rule(choice_key, original):
+                        current = global_rule_values.get(choice_key) or current
                     if current and choice_key not in changed:
                         changed[choice_key] = current
                 placement_method = self._combo_current_data(
@@ -3703,6 +4943,26 @@ class DataInterpretationPreviewDialog(BaseDialog):
                     changed["duration_field"] = duration_field
                 choices[carrier_key] = changed
         return choices
+
+    def _should_use_global_label_rule(
+        self,
+        choice_key: str,
+        original: dict[str, Any],
+    ) -> bool:
+        if choice_key == "target_file":
+            return False
+        if self._label_rule_controls_changed:
+            return True
+        if choice_key != "anchor":
+            return False
+        if self._combo_current_data(self.rule_placement_method_combo) != "eeg_event":
+            return False
+        current = self._combo_current_data(self.rule_alignment_combo)
+        original_anchor = str(original.get("selected_anchor") or "").strip()
+        return bool(self._target_event_row(current)) and original_anchor in {
+            "",
+            "trial order",
+        }
 
     @staticmethod
     def _combo_current_data(selector: QComboBox) -> str:

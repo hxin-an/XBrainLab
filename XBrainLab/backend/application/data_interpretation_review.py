@@ -30,6 +30,7 @@ class InterpretationPreview:
     event_roles: dict[str, str] = dc_field(default_factory=dict)
     class_map: dict[str, str] = dc_field(default_factory=dict)
     class_map_source: str = ""
+    internal_event_preview: dict[str, Any] = dc_field(default_factory=dict)
     recipe_reload_summary: dict[str, Any] = dc_field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -101,6 +102,9 @@ def build_interpretation_preview(
         event_roles=dict(candidate.event_roles),
         class_map=dict(candidate.class_map),
         class_map_source=str(getattr(candidate, "class_map_source", "") or ""),
+        internal_event_preview=dict(
+            getattr(candidate, "internal_event_preview", {}) or {}
+        ),
         recipe_reload_summary=_recipe_reload_summary(
             getattr(candidate, "choices", {}),
             scan=scan,
