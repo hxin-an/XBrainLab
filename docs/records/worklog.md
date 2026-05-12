@@ -16280,3 +16280,33 @@
   - `git diff --check` -> PASS.
 - claims still not supported：
   - This is a unit command-route guard, not human montage-dialog acceptance.
+
+### 2026-05-12 Dataset generation facade-replacement guard
+
+- scope：
+  - Continued on `test/backend-ui-legacy-hygiene`.
+  - No answer UI redesign and no Data Import UX redesign.
+  - Moved `BackendFacade` dataset split strategy / training mode behavior into direct
+    dataset-generation command-service replacement coverage.
+- test cleanup：
+  - Added command-service tests for `GenerateDatasetCommand` split strategies:
+    `trial`, `session`, and `subject`.
+  - Added command-service tests for `GenerateDatasetCommand` training modes:
+    `individual` and `group`.
+  - Strengthened the focused dataset fixture with epoch subject/session/label metadata so
+    session-wise and subject-wise split audit paths run through the real audit contract.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_dataset_generation_service.py -q`
+    -> `8 passed`.
+  - `poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py
+    tests/unit/backend/application/test_dataset_generation_service.py -q`
+    -> `51 passed`.
+  - `poetry run ruff check tests/unit/backend/application/test_dataset_generation_service.py`
+    -> PASS.
+  - `poetry run basedpyright tests/unit/backend/application/test_dataset_generation_service.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+- claims still not supported：
+  - This is replacement coverage for facade compatibility behavior, not physical
+    `BackendFacade` removal.
+  - It does not prove full product runtime acceptance or every external split fixture.

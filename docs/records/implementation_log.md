@@ -6367,3 +6367,28 @@ available.
 - This is not human montage-dialog acceptance.
 - Legacy fallback remains for mock / non-real-`Study` compatibility paths; the new guard prevents
   that fallback test from being the only montage evidence.
+
+## 2026-05-12 Dataset Generation Facade-Replacement Guard
+
+### 狀態
+
+Continued the backend/test hygiene lane on `test/backend-ui-legacy-hygiene`. This slice did not
+touch answer UI layout or Data Import UX. It moved the `BackendFacade` split strategy / training
+mode compatibility behavior into direct `GenerateDatasetCommand` service tests.
+
+### 已可宣稱
+
+- Dataset generation command-service coverage now checks `trial`, `session`, and `subject` split
+  strategy mapping without entering through `BackendFacade`.
+- Dataset generation command-service coverage now checks `individual` and `group` training mode
+  mapping without entering through `BackendFacade`.
+- The focused dataset fixture now carries epoch subject/session/label metadata, so subject-wise and
+  session-wise replacement tests exercise the real split-audit contract.
+- Focused validation is green: dataset-generation service `8 passed`, facade compatibility plus
+  replacement coverage `51 passed`, ruff PASS, basedpyright `0 errors`, architecture compliant.
+
+### 不能宣稱完成
+
+- This does not physically remove `BackendFacade`.
+- This is command-service replacement evidence for one facade cluster, not full desktop runtime
+  acceptance or full external-dataset coverage.

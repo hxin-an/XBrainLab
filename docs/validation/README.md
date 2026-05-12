@@ -200,7 +200,7 @@ Offscreen screenshots include:
 | Load data / attach labels / import labels | `TestLoadData`, `TestAttachLabels` in `test_facade_coverage.py` | Covered by `DataCompatibilityCommandService`, ApplicationService IO integration, and checked-in label-attached pipeline smokes. | Facade tests are compatibility-only. |
 | Metadata / smart parse / remove files | Thin facade methods, broader UI/action tests | Covered by data table command tests and UI command-route tests. | No product reason to keep facade entry once legacy callers are gone. |
 | Preprocess / epoch wrappers | `TestDelegation` preprocess methods | Covered by `PreprocessCommandService`, `ApplicationService`, UI command-route, and real-data pipeline smokes. | Facade wrapper tests can be deleted after compatibility removal. |
-| Dataset generation / clear datasets | `TestGenerateDataset`, clear dataset tests | Covered by dataset generation service tests, ApplicationService workflow tests, and real-data pipeline smokes. | Keep service tests; do not preserve facade API as product evidence. |
+| Dataset generation / clear datasets | `TestGenerateDataset`, clear dataset tests | Covered by dataset generation service tests, including direct `GenerateDatasetCommand` split-strategy (`trial` / `session` / `subject`) and training-mode (`individual` / `group`) mapping checks, ApplicationService workflow tests, and real-data pipeline smokes. | Keep service tests; do not preserve facade API as product evidence. |
 | Training configure / start / stop / clear history | `test_backend_facade_headless`, `TestTrainingControl`, `TestDelegation` | Covered by training command service tests, ApplicationService tests, and pipeline smokes. | Facade tests only prove old method names. |
 | Evaluate / visualize / saliency summaries | `TestGetLatestResults` and summary helpers | Covered by analysis command service and ApplicationService tests. | Preserve command result semantics, not facade shape. |
 | Montage fuzzy matching | `TestSetMontage` in `test_facade_coverage.py` plus `tests/unit/backend/utils/test_montage_mapping.py` | Fuzzy cleanup now lives in `XBrainLab.backend.utils.montage_mapping` with direct helper tests. `BackendFacade.set_montage()` delegates to that helper before issuing `ApplyMontageCommand`; UI/dialog/tool paths still own interactive confirmation. | The highest-risk facade-specific logic is now outside the facade. Keep helper tests when deleting facade compatibility tests. |
@@ -229,6 +229,15 @@ or moved to command/service/dialog/helper tests.
 | `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py -q` | `144 passed`. | Broader UI misc coverage remains green after the montage guard. | Full product UI acceptance. | Run broader UI/dashboard gates at branch closure. |
 | `poetry run ruff check tests/unit/ui/test_ui_misc.py` / `poetry run basedpyright tests/unit/ui/test_ui_misc.py` | PASS / `0 errors, 0 warnings, 0 notes`. | The focused test file remains lint/type clean. | Runtime behavior by itself. | Continue adding command-route assertions beside compatibility fallbacks. |
 | `git diff --check` | PASS. | Current diff has no whitespace errors. | Docs build. | Re-run after docs edits and before commit. |
+
+## 2026-05-12 Dataset Generation Facade-Replacement Guard
+
+| Command | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `poetry run pytest --capture=sys tests/unit/backend/application/test_dataset_generation_service.py -q` | `8 passed`. | Dataset-generation command service directly covers split strategy and training mode mapping that used to be represented in facade compatibility tests. | Product runtime acceptance or all external dataset variations. | Keep adding direct command/service replacement coverage before deleting facade tests. |
+| `poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py tests/unit/backend/application/test_dataset_generation_service.py -q` | `51 passed`. | Legacy facade compatibility and direct replacement coverage remain green together. | Product runtime usage of facade; facade tests remain compatibility-only evidence. | Continue quarantining facade coverage until physical removal. |
+| `poetry run ruff check tests/unit/backend/application/test_dataset_generation_service.py` / `poetry run basedpyright tests/unit/backend/application/test_dataset_generation_service.py` | PASS / `0 errors, 0 warnings, 0 notes`. | Changed replacement tests pass focused lint/type gates. | Full repo quality by itself. | Run broader gates before branch closure. |
+| `poetry run python tests/architecture_compliance.py` | `Architecture compliant!`. | Product runtime and product-success test architecture guards remain clean after the replacement test slice. | Human Windows desktop acceptance. | Keep this gate in each backend/test hygiene slice. |
 
 ## 常用 docs gate
 
