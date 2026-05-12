@@ -66,8 +66,13 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
     assert "Review Metadata" in panel_titles
     assert "Match Labels" in panel_titles
     assert "Review and Import" in panel_titles
-    group_titles = {group.title() for group in dialog.findChildren(QGroupBox)}
-    assert "Labels inside EEG files" in group_titles
+    assert dialog.event_group.title() == ""
+    event_group_text = "\n".join(
+        label.text()
+        for label in dialog.event_group.findChildren(QLabel)
+        if label.text().strip()
+    )
+    assert "Labels inside EEG files" in event_group_text
     assert "Found 1 EEG file" in dialog.summary_label.text()
     assert "Review and confirm" in dialog.decision_label.text()
     review_text = _tree_text(dialog.review_tree)
@@ -510,9 +515,23 @@ def test_match_labels_internal_source_hides_loaded_label_setup(qtbot):
     qtbot.wait(0)
 
     assert dialog.label_source_mode_combo.currentData() == "internal_events"
+    assert dialog.label_source_mode_combo.width() == 225
+    assert dialog.label_source_mode_combo.maximumWidth() == 225
+    assert "Use labels from" not in _visible_step_text(dialog, "Match Labels")
+    assert "Source" in _visible_step_text(dialog, "Match Labels")
+    assert "Use events inside the EEG files" not in _visible_step_text(
+        dialog,
+        "Match Labels",
+    )
     assert not dialog.internal_event_card.isVisible()
     assert dialog.event_group.isVisible()
-    assert dialog.event_group.title() == "Labels inside EEG files"
+    assert dialog.event_group.title() == ""
+    event_group_text = "\n".join(
+        label.text()
+        for label in dialog.event_group.findChildren(QLabel)
+        if label.text().strip()
+    )
+    assert "Labels inside EEG files" in event_group_text
     assert not dialog.pairing_card.isVisible()
     assert not dialog.label_values_card.isVisible()
     assert not dialog.placement_card.isVisible()
@@ -651,7 +670,7 @@ def test_match_labels_can_toggle_source_after_class_map_widget_rebuild(qtbot):
     assert "class_map" not in dialog.get_result()["choices"]
 
 
-def test_match_labels_internal_source_uses_discussed_event_layout(qtbot):
+def test_match_labels_internal_source_uses_task_panel_for_suggested_events(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,
         scan_result={
@@ -668,19 +687,35 @@ def test_match_labels_internal_source_uses_discussed_event_layout(qtbot):
                 "pattern_status": "Shared event pattern detected",
                 "names_reliable": False,
                 "candidate_label_events": [
-                    {"code": "1", "use_as": "Class label", "coverage": "3/3 files"},
-                    {"code": "2", "use_as": "Class label", "coverage": "3/3 files"},
+                    {
+                        "code": "1",
+                        "event_code": "769",
+                        "use_as": "Class label",
+                        "coverage": "3/3 files",
+                        "event_count": 288,
+                        "evidence": "Repeats once per trial",
+                    },
+                    {
+                        "code": "2",
+                        "event_code": "770",
+                        "use_as": "Class label",
+                        "coverage": "3/3 files",
+                        "event_count": 288,
+                        "evidence": "Repeats once per trial",
+                    },
                 ],
                 "not_used_events": [
                     {
                         "code": "768",
                         "use_as": "Epoch anchor",
                         "reason": "Trial start event",
+                        "event_count": 288,
                     },
                     {
                         "code": "1023",
                         "use_as": "Exclude",
                         "reason": "Rejected trial / artifact",
+                        "event_count": 6,
                     },
                 ],
             },
@@ -692,20 +727,31 @@ def test_match_labels_internal_source_uses_discussed_event_layout(qtbot):
     _show_step(dialog, "Match Labels")
     qtbot.wait(0)
 
-    visible_text = _visible_step_text(dialog, "Match Labels")
-    assert "Candidate label events" in visible_text
-    assert "Class names" in visible_text
-    assert "Not used as labels" in visible_text
+    visible_text = "\n".join(
+        label.text()
+        for label in dialog.event_group.findChildren(QLabel)
+        if label.text().strip()
+    )
+    assert "Suggested training labels" in visible_text
+    assert "Use this when class labels are stored as EEG events." not in visible_text
+    assert "Other EEG events" in visible_text
+    assert "not currently used as class labels" in visible_text
+    assert "Selection preview: train on 769, 770" in visible_text
+    assert "not used: 768, 1023" in visible_text
     assert "Event names need review" in visible_text
-    assert "1" in visible_text
+    assert "769" in visible_text
+    assert "770" in visible_text
     assert "Class label" in visible_text
-    assert "3/3 files" in visible_text
+    assert "Repeats once per trial" in visible_text
+    assert "288 events · 3/3 files" in visible_text
+    assert "6 events · 3/3 files" in visible_text
     assert "768" in visible_text
     assert "Epoch anchor" in visible_text
     assert "Trial start event" in visible_text
+    assert dialog.event_group.title() == ""
     assert dialog.event_group.maximumHeight() > 1000
 
-    assert [item[1] for item in dialog._class_map_items] == ["1", "2"]
+    assert [item[1] for item in dialog._class_map_items] == ["769", "770"]
     first_item = dialog.event_tree.topLevelItem(0)
     assert first_item is not None
     class_selector = dialog.event_tree.itemWidget(first_item, 2)
@@ -714,7 +760,60 @@ def test_match_labels_internal_source_uses_discussed_event_layout(qtbot):
 
     class_selector.setCurrentText("Left hand")
 
-    assert dialog.get_result()["choices"]["class_map"] == {"1": "left hand"}
+    assert dialog.get_result()["choices"]["class_map"] == {"769": "left hand"}
+
+
+def test_match_labels_internal_source_moves_events_between_sections(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf", "/tmp/source/A02T.gdf"],
+        },
+        preview={
+            "summary": "Found 2 EEG file(s).",
+            "internal_event_preview": {
+                "pattern_status": "Shared event pattern detected",
+                "candidate_label_events": [
+                    {"code": "1", "event_code": "769", "coverage": "2/2 files"},
+                    {"code": "2", "event_code": "770", "coverage": "2/2 files"},
+                ],
+                "not_used_events": [
+                    {
+                        "code": "768",
+                        "use_as": "Trial timing",
+                        "reason": "Trial start marker",
+                        "coverage": "2/2 files",
+                    },
+                ],
+            },
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Match Labels")
+    qtbot.wait(0)
+
+    assert [item[1] for item in dialog._class_map_items] == ["769", "770"]
+
+    _click_button(dialog, "Not a label", event_code="769")
+    qtbot.wait(0)
+
+    visible_text = "\n".join(
+        label.text()
+        for label in dialog.event_group.findChildren(QLabel)
+        if label.text().strip()
+    )
+    assert "Changed by user" in visible_text
+    assert [item[1] for item in dialog._class_map_items] == ["770"]
+    assert dialog.get_result()["choices"]["event_roles"] == {"769": "not a label"}
+
+    _click_button(dialog, "Use as label", event_code="769")
+    qtbot.wait(0)
+
+    assert [item[1] for item in dialog._class_map_items] == ["769", "770"]
+    assert dialog.get_result()["choices"]["event_roles"] == {"769": "class label"}
 
 
 def test_match_labels_class_names_are_sorted_by_code(qtbot):
@@ -2399,8 +2498,25 @@ def _visible_step_text(dialog, title: str) -> str:
     return "\n".join(
         label.text()
         for label in panel.findChildren(QLabel)
-        if label.text().strip() and label.isVisible()
+        if label.text().strip() and label.isVisibleTo(panel)
     )
+
+
+def _click_button(dialog, text: str, *, event_code: str | None = None) -> None:
+    panel = dialog.step_stack.currentWidget()
+    fallback: QPushButton | None = None
+    for button in panel.findChildren(QPushButton):
+        if button.text() == text:
+            if event_code is not None and button.property("event_code") != event_code:
+                continue
+            if button.isVisibleTo(panel):
+                button.click()
+                return
+            fallback = button
+    if fallback is not None:
+        fallback.click()
+        return
+    raise AssertionError(f"No visible button with text {text!r}")
 
 
 def _panel_titles(dialog) -> list[str]:

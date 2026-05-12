@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -145,6 +146,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._event_role_items: list[tuple[QTreeWidgetItem, str, str]] = []
         self._class_map_items: list[tuple[QTreeWidgetItem, str, str]] = []
         self._class_map_widgets: dict[int, QComboBox] = {}
+        self._internal_event_user_roles: dict[str, str] = {}
+        self._internal_class_name_edits: dict[str, str] = {}
         self._event_detail_widgets: list[QWidget] = []
         self._tree_column_specs: dict[int, tuple[int, ...]] = {}
         self._updating_label_rule = False
@@ -673,13 +676,12 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self._default_label_source_mode(),
             "Choose whether labels come from the EEG files or from loaded label files.",
         )
-        row.addWidget(
-            self._inline_rule_control("Use labels from", self.label_source_mode_combo)
-        )
+        row.addWidget(self._label_source_mode_control())
         self.label_source_status_label = QLabel(self._label_source_status_text())
         self.label_source_status_label.setObjectName("DataImportRuleStatus")
         self.label_source_status_label.setWordWrap(True)
-        row.addWidget(self.label_source_status_label, stretch=1)
+        self.label_source_status_label.setVisible(False)
+        row.addStretch(1)
         layout.addLayout(row)
         self.label_source_mode_combo.currentIndexChanged.connect(
             self._refresh_label_source_mode
@@ -707,7 +709,35 @@ class DataInterpretationPreviewDialog(BaseDialog):
             if not self._label_carrier_items:
                 return "No label files are loaded. Load a label file or switch source."
             return "Pair each label file, then choose how label values are placed."
-        return "Use EEG event codes as labels, then confirm which codes become classes."
+        return (
+            "Use events inside the EEG files, then confirm which events become classes."
+        )
+
+    def _label_source_mode_control(self) -> QFrame:
+        frame = QFrame()
+        frame.setObjectName("DataImportLabelSourceModeControl")
+        frame.setFixedWidth(280)
+        frame.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        layout = QHBoxLayout(frame)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(7)
+        title = QLabel("Source")
+        title.setObjectName("DataImportLabelSourceChoiceLabel")
+        title.setFixedWidth(48)
+        title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(title, alignment=Qt.AlignmentFlag.AlignVCenter)
+        self.label_source_mode_combo.setMinimumContentsLength(24)
+        self.label_source_mode_combo.setMinimumWidth(225)
+        self.label_source_mode_combo.setMaximumWidth(225)
+        self.label_source_mode_combo.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed,
+        )
+        layout.addWidget(
+            self.label_source_mode_combo,
+            alignment=Qt.AlignmentFlag.AlignVCenter,
+        )
+        return frame
 
     def _refresh_label_source_mode(self) -> None:
         if not hasattr(self, "label_source_mode_combo"):
@@ -731,6 +761,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         ):
             if widget is not None:
                 widget.setVisible(use_loaded)
+        if hasattr(self, "match_check_card"):
+            self.match_check_card.setVisible(use_loaded)
         if hasattr(self, "internal_event_card"):
             internal_details_available = bool(
                 self._internal_candidate_label_event_rows()
@@ -800,56 +832,67 @@ class DataInterpretationPreviewDialog(BaseDialog):
             pass
 
     def _build_internal_event_rules_view(self) -> None:
-        self.event_group.setTitle("Labels inside EEG files")
-        summary = QLabel(self._internal_event_summary_text())
-        summary.setObjectName("DataImportRuleStatus")
-        summary.setWordWrap(True)
-        self.event_layout.insertWidget(0, summary)
-        self._event_detail_widgets.append(summary)
+        self.event_group.setTitle("")
+        group_title = QLabel("Labels inside EEG files")
+        group_title.setObjectName("DataImportInternalGroupTitle")
+        self.event_layout.insertWidget(0, group_title)
+        self._event_detail_widgets.append(group_title)
 
         candidate_rows = self._internal_candidate_label_event_rows()
+        not_used_rows = self._internal_not_used_event_rows()
+
+        summary = QLabel(self._internal_event_summary_text())
+        summary.setObjectName("DataImportInternalSummaryLine")
+        summary.setWordWrap(True)
+        self.event_layout.insertWidget(1, summary)
+        self._event_detail_widgets.append(summary)
+
         if candidate_rows:
-            self._add_event_section_title("Candidate label events")
-            candidate_table = self._event_rules_table(
-                ["Code", "Use as", "Coverage"],
-                [
-                    (
-                        str(row.get("code") or ""),
-                        str(row.get("use_as") or "Class label"),
-                        str(row.get("coverage") or ""),
-                    )
-                    for row in candidate_rows
-                ],
+            self._add_event_section_spacing(7)
+            self._add_event_section_title("Suggested training labels")
+            candidate_help = self._event_section_help(
+                "Confirm which EEG events become training labels.",
             )
-            self.event_layout.addWidget(candidate_table)
-            self._event_detail_widgets.append(candidate_table)
             self._ensure_class_name_items_from_event_rows(candidate_rows)
-            self._add_event_section_title("Class names")
-            class_map_rows_widget = self._build_class_map_rows_widget()
-            self.class_map_rows_widget = class_map_rows_widget
-            self.event_layout.addWidget(class_map_rows_widget)
-            self._event_detail_widgets.append(class_map_rows_widget)
+            candidate_table = self._internal_training_labels_table(candidate_rows)
+            self.event_layout.addWidget(candidate_table)
+            self._event_detail_widgets.extend([candidate_help, candidate_table])
             self.event_tree.setVisible(False)
         else:
             self.event_tree.setVisible(bool(self._event_role_items))
 
         not_used_rows = self._internal_not_used_event_rows()
         if not_used_rows:
-            self._add_event_section_title("Not used as labels")
-            not_used_table = self._event_rules_table(
-                ["Code", "Use as", "Reason"],
-                [
-                    (
-                        str(row.get("code") or ""),
-                        str(row.get("use_as") or ""),
-                        str(row.get("reason") or ""),
-                    )
-                    for row in not_used_rows
-                ],
+            self._add_event_section_spacing(9)
+            self._add_event_section_title("Other EEG events")
+            other_help = self._event_section_help(
+                "These events are available in the EEG files but are not currently "
+                "used as class labels.",
             )
+            not_used_table = self._internal_other_events_table(not_used_rows)
             self.event_layout.addWidget(not_used_table)
-            self._event_detail_widgets.append(not_used_table)
+            self._event_detail_widgets.extend([other_help, not_used_table])
+        if candidate_rows or not_used_rows:
+            self._add_event_section_spacing(7)
+            selection_preview = QLabel(
+                self._internal_event_selection_preview_text(
+                    candidate_rows,
+                    not_used_rows,
+                )
+            )
+            selection_preview.setObjectName("DataImportInternalCheckLine")
+            selection_preview.setWordWrap(True)
+            self.event_layout.addWidget(selection_preview)
+            self._event_detail_widgets.append(selection_preview)
         self.event_group.setMaximumHeight(16777215)
+
+    def _add_event_section_spacing(self, height: int) -> QWidget:
+        spacer = QWidget()
+        spacer.setObjectName("DataImportEventSectionSpacer")
+        spacer.setFixedHeight(max(height, 0))
+        self.event_layout.addWidget(spacer)
+        self._event_detail_widgets.append(spacer)
+        return spacer
 
     def _add_event_section_title(self, text: str) -> QLabel:
         label = QLabel(text)
@@ -858,6 +901,220 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.event_layout.addWidget(label)
         self._event_detail_widgets.append(label)
         return label
+
+    def _event_section_help(self, text: str) -> QLabel:
+        label = QLabel(text)
+        label.setObjectName("DataImportSourceDetail")
+        label.setWordWrap(True)
+        self.event_layout.addWidget(label)
+        return label
+
+    def _internal_training_labels_table(
+        self,
+        rows: list[dict[str, str]],
+    ) -> QWidget:
+        table = QFrame()
+        table.setObjectName("DataImportInternalLabelsTable")
+        table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        table.setMinimumHeight(42 + max(len(rows), 1) * 38)
+        grid = QGridLayout(table)
+        grid.setContentsMargins(13, 12, 13, 13)
+        grid.setHorizontalSpacing(18)
+        grid.setVerticalSpacing(11)
+        headers = [
+            "Event",
+            "Use as",
+            "Evidence",
+            "Count / coverage",
+            "Class name",
+            "",
+        ]
+        for column, header in enumerate(headers):
+            label = QLabel(header)
+            label.setObjectName("DataImportPairingHeaderLabel")
+            grid.addWidget(label, 0, column)
+
+        item_by_code = {code: item for item, code, _original in self._class_map_items}
+        for row_index, row in enumerate(rows, start=1):
+            code = str(row.get("code") or "").strip()
+            self._grid_text(grid, row_index, 0, code, primary=True)
+            self._grid_text(grid, row_index, 1, str(row.get("use_as") or "Class label"))
+            self._grid_text(
+                grid,
+                row_index,
+                2,
+                str(row.get("evidence") or "Suggested by event pattern"),
+            )
+            self._grid_text(grid, row_index, 3, str(row.get("coverage") or ""))
+            item = item_by_code.get(code)
+            if item is not None:
+                selector = self._clone_class_map_selector(item, table)
+                selector.setMinimumHeight(28)
+                grid.addWidget(selector, row_index, 4)
+            else:
+                self._grid_text(grid, row_index, 4, "")
+            button = self._internal_event_action_button(
+                "Not a label",
+                code,
+                "not a label",
+                table,
+            )
+            grid.addWidget(button, row_index, 5)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 2)
+        grid.setColumnStretch(2, 2)
+        grid.setColumnStretch(3, 2)
+        grid.setColumnStretch(4, 3)
+        grid.setColumnStretch(5, 0)
+        return table
+
+    def _internal_other_events_table(self, rows: list[dict[str, str]]) -> QWidget:
+        table = QFrame()
+        table.setObjectName("DataImportInternalOtherEventsTable")
+        table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        table.setMinimumHeight(42 + max(len(rows), 1) * 36)
+        grid = QGridLayout(table)
+        grid.setContentsMargins(13, 12, 13, 13)
+        grid.setHorizontalSpacing(18)
+        grid.setVerticalSpacing(10)
+        headers = [
+            "Event",
+            "Suggested use",
+            "Evidence / reason",
+            "Count / coverage",
+            "",
+        ]
+        for column, header in enumerate(headers):
+            label = QLabel(header)
+            label.setObjectName("DataImportPairingHeaderLabel")
+            grid.addWidget(label, 0, column)
+
+        for row_index, row in enumerate(rows, start=1):
+            code = str(row.get("code") or "").strip()
+            self._grid_text(grid, row_index, 0, code, primary=True)
+            self._grid_text(grid, row_index, 1, str(row.get("use_as") or "Ignore"))
+            self._grid_text(grid, row_index, 2, str(row.get("reason") or ""))
+            self._grid_text(grid, row_index, 3, str(row.get("coverage") or ""))
+            button = self._internal_event_action_button(
+                "Use as label",
+                code,
+                "class label",
+                table,
+            )
+            grid.addWidget(button, row_index, 4)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 2)
+        grid.setColumnStretch(2, 2)
+        grid.setColumnStretch(3, 2)
+        grid.setColumnStretch(4, 0)
+        return table
+
+    def _grid_text(
+        self,
+        grid: QGridLayout,
+        row: int,
+        column: int,
+        text: str,
+        *,
+        primary: bool = False,
+    ) -> QLabel:
+        label = QLabel(text)
+        label.setObjectName(
+            "DataImportPairingFile" if primary else "DataImportSourceDetail"
+        )
+        label.setWordWrap(column in {1, 2})
+        label.setMinimumHeight(24)
+        grid.addWidget(label, row, column)
+        return label
+
+    def _internal_event_action_button(
+        self,
+        text: str,
+        code: str,
+        role: str,
+        parent: QWidget,
+    ) -> QPushButton:
+        button = QPushButton(text, parent)
+        button.setObjectName("DataImportInlineAction")
+        button.setProperty("event_code", code)
+        button.setFlat(True)
+        button.setMinimumHeight(24)
+        button.setMaximumWidth(82)
+        button.setToolTip(
+            "Move this EEG event into training labels."
+            if role == "class label"
+            else "Keep this EEG event, but do not use it as a training label."
+        )
+        button.clicked.connect(
+            lambda _checked=False, event_code=code, event_role=role: (
+                self._set_internal_event_role(event_code, event_role)
+            )
+        )
+        return button
+
+    def _set_internal_event_role(self, code: str, role: str) -> None:
+        code = str(code).strip()
+        if not code:
+            return
+        self._remember_internal_class_name_edits()
+        self._internal_event_user_roles[code] = role
+        self._refresh_event_detail_view()
+        if hasattr(self, "event_group"):
+            self.event_group.setVisible(True)
+        if hasattr(self, "rule_status_label"):
+            self.rule_status_label.setText(self._label_rule_status_text())
+        self._sync_scroll_policy()
+
+    def _remember_internal_class_name_edits(self) -> None:
+        for tree_item, code, _original in self._class_map_items:
+            value = self._class_map_item_text(tree_item).strip()
+            if value:
+                self._internal_class_name_edits[code] = value
+
+    def _internal_event_check_text(
+        self,
+        candidate_rows: list[dict[str, str]],
+        not_used_rows: list[dict[str, str]],
+    ) -> str:
+        label_count = len(candidate_rows)
+        other_count = len(not_used_rows)
+        if label_count:
+            label_text = f"{label_count} EEG event(s) will be used as training labels."
+        else:
+            label_text = "No EEG events are currently selected as training labels."
+        other_text = (
+            f"{other_count} other EEG event(s) are kept out of training labels."
+            if other_count
+            else "No other EEG events are listed for this preview."
+        )
+        return f"{label_text} {other_text}"
+
+    def _internal_event_selection_preview_text(
+        self,
+        candidate_rows: list[dict[str, str]],
+        not_used_rows: list[dict[str, str]],
+    ) -> str:
+        training = self._event_code_list_text(row["code"] for row in candidate_rows)
+        excluded = self._event_code_list_text(row["code"] for row in not_used_rows)
+        if training and excluded:
+            return f"Selection preview: train on {training}; not used: {excluded}."
+        if training:
+            return f"Selection preview: train on {training}."
+        if excluded:
+            return (
+                f"Selection preview: no training labels selected; not used: {excluded}."
+            )
+        return "Selection preview: no EEG events are selected yet."
+
+    @staticmethod
+    def _event_code_list_text(codes: Iterable[str], *, limit: int = 6) -> str:
+        values = [str(code).strip() for code in codes if str(code).strip()]
+        if not values:
+            return ""
+        if len(values) <= limit:
+            return ", ".join(values)
+        visible = ", ".join(values[:limit])
+        return f"{visible} +{len(values) - limit} more"
 
     def _event_rules_table(
         self,
@@ -942,21 +1199,38 @@ class DataInterpretationPreviewDialog(BaseDialog):
             for raw in raw_rows:
                 if not isinstance(raw, dict):
                     continue
-                code = str(
-                    raw.get("code") or raw.get("event_code") or raw.get("value") or ""
-                ).strip()
+                code = self._internal_event_code_from_row(raw)
                 if not code:
+                    continue
+                if self._internal_event_user_roles.get(code) == "not a label":
                     continue
                 rows.append(
                     {
                         "code": code,
                         "use_as": str(raw.get("use_as") or "Class label"),
                         "coverage": self._event_coverage_text(raw),
-                        "class_name": self._event_class_name(raw, payload),
+                        "class_name": self._internal_event_class_name(raw, payload),
+                        "evidence": self._event_evidence_text(
+                            raw,
+                            "Suggested by event pattern",
+                        ),
                     }
                 )
+        for row in self._base_not_used_event_rows():
+            code = str(row.get("code") or "").strip()
+            if self._internal_event_user_roles.get(code) != "class label":
+                continue
+            rows.append(
+                {
+                    "code": code,
+                    "use_as": "Class label",
+                    "coverage": str(row.get("coverage") or ""),
+                    "class_name": self._internal_class_name_edits.get(code, ""),
+                    "evidence": "Changed by user",
+                }
+            )
         if rows:
-            return rows
+            return sorted(rows, key=self._event_code_sort_key)
         class_map = self._class_map_for_current_label_source()
         if class_map:
             return [
@@ -964,7 +1238,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
                     "code": str(code),
                     "use_as": "Class label",
                     "coverage": self._default_event_coverage_text(),
-                    "class_name": str(label),
+                    "class_name": self._internal_class_name_edits.get(
+                        str(code),
+                        str(label),
+                    ),
+                    "evidence": "Existing class map",
                 }
                 for code, label in sorted(
                     class_map.items(),
@@ -974,6 +1252,54 @@ class DataInterpretationPreviewDialog(BaseDialog):
         return []
 
     def _internal_not_used_event_rows(self) -> list[dict[str, str]]:
+        rows = []
+        for row in self._base_not_used_event_rows():
+            code = str(row.get("code") or "").strip()
+            if self._internal_event_user_roles.get(code) == "class label":
+                continue
+            rows.append(row)
+        for row in self._base_candidate_label_event_rows():
+            code = str(row.get("code") or "").strip()
+            if self._internal_event_user_roles.get(code) != "not a label":
+                continue
+            rows.append(
+                {
+                    "code": code,
+                    "use_as": "Not used",
+                    "reason": "Changed by user",
+                    "coverage": str(row.get("coverage") or ""),
+                }
+            )
+        return sorted(rows, key=self._event_code_sort_key)
+
+    @staticmethod
+    def _event_code_sort_key(item: dict[str, str]) -> tuple[int, int | str]:
+        code = str(item.get("code") or "").strip()
+        return (0, int(code)) if code.isdigit() else (1, code.casefold())
+
+    def _base_candidate_label_event_rows(self) -> list[dict[str, str]]:
+        payload = self._internal_event_preview_payload()
+        raw_rows = payload.get("candidate_label_events") or payload.get(
+            "candidate_events"
+        )
+        rows: list[dict[str, str]] = []
+        if not isinstance(raw_rows, list):
+            return rows
+        for raw in raw_rows:
+            if not isinstance(raw, dict):
+                continue
+            code = self._internal_event_code_from_row(raw)
+            if not code:
+                continue
+            rows.append(
+                {
+                    "code": code,
+                    "coverage": self._event_coverage_text(raw),
+                }
+            )
+        return rows
+
+    def _base_not_used_event_rows(self) -> list[dict[str, str]]:
         payload = self._internal_event_preview_payload()
         raw_rows = (
             payload.get("not_used_events")
@@ -987,9 +1313,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         for raw in raw_rows:
             if not isinstance(raw, dict):
                 continue
-            code = str(
-                raw.get("code") or raw.get("event_code") or raw.get("value") or ""
-            ).strip()
+            code = self._internal_event_code_from_row(raw)
             if not code:
                 continue
             rows.append(
@@ -997,6 +1321,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
                     "code": code,
                     "use_as": str(raw.get("use_as") or raw.get("role") or "Ignore"),
                     "reason": str(raw.get("reason") or raw.get("meaning") or ""),
+                    "coverage": self._event_coverage_text(raw),
                 }
             )
         return rows
@@ -1007,29 +1332,92 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         return dict(payload) if isinstance(payload, dict) else {}
 
+    @staticmethod
+    def _internal_event_code_from_row(row: dict[str, Any]) -> str:
+        for key in (
+            "event_code",
+            "original_event_code",
+            "original_code",
+            "original_label",
+            "value",
+            "raw_value",
+            "code",
+            "label",
+            "event_label",
+        ):
+            value = str(row.get(key) or "").strip()
+            if value:
+                return value
+        return ""
+
     def _event_coverage_text(self, row: dict[str, Any]) -> str:
         coverage = str(row.get("coverage") or "").strip()
+        event_count = self._event_count_text(row)
+        if coverage and event_count:
+            return f"{event_count} · {coverage}"
         if coverage:
             return coverage
         file_count = len(self._selected_eeg_file_names())
         present = row.get("present_files")
         total = row.get("total_files")
         if isinstance(present, int) and isinstance(total, int) and total > 0:
-            return f"{present}/{total} files"
+            file_coverage = f"{present}/{total} files"
+            return f"{event_count} · {file_coverage}" if event_count else file_coverage
         missing = row.get("missing_files")
         if isinstance(missing, list) and file_count:
-            return f"{max(file_count - len(missing), 0)}/{file_count} files"
-        return self._default_event_coverage_text()
+            file_coverage = f"{max(file_count - len(missing), 0)}/{file_count} files"
+            return f"{event_count} · {file_coverage}" if event_count else file_coverage
+        default_coverage = self._default_event_coverage_text()
+        if event_count and default_coverage:
+            return f"{event_count} · {default_coverage}"
+        return event_count or default_coverage
+
+    @staticmethod
+    def _event_count_text(row: dict[str, Any]) -> str:
+        for key in (
+            "event_count",
+            "total_events",
+            "occurrence_count",
+            "occurrences",
+            "count",
+            "total_count",
+        ):
+            value = row.get(key)
+            if isinstance(value, int) and value >= 0:
+                return f"{value} events"
+            value_text = str(value or "").strip()
+            if value_text.isdigit():
+                return f"{value_text} events"
+        file_counts = row.get("file_counts") or row.get("per_file_counts")
+        if isinstance(file_counts, dict):
+            total = sum(
+                value for value in file_counts.values() if isinstance(value, int)
+            )
+            return f"{total} events" if total >= 0 else ""
+        if isinstance(file_counts, list):
+            total = sum(value for value in file_counts if isinstance(value, int))
+            return f"{total} events" if total >= 0 else ""
+        return ""
 
     def _default_event_coverage_text(self) -> str:
         file_count = len(self._selected_eeg_file_names())
         return f"{file_count}/{file_count} files" if file_count else ""
 
-    @staticmethod
-    def _event_class_name(row: dict[str, Any], payload: dict[str, Any]) -> str:
+    def _internal_event_class_name(
+        self,
+        row: dict[str, Any],
+        payload: dict[str, Any],
+    ) -> str:
+        code = self._internal_event_code_from_row(row)
+        if code in self._internal_class_name_edits:
+            return self._internal_class_name_edits[code]
         if payload.get("names_reliable") is False:
             return ""
         return str(row.get("class_name") or row.get("name") or "").strip()
+
+    @staticmethod
+    def _event_evidence_text(row: dict[str, Any], fallback: str) -> str:
+        return str(row.get("evidence") or row.get("reason") or fallback).strip()
 
     def _ensure_class_name_items_from_event_rows(
         self,
@@ -2534,13 +2922,35 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 font-size: 12px;
                 font-weight: 600;
             }}
+            QLabel#DataImportInternalGroupTitle {{
+                color: #f0f0f0;
+                background-color: transparent;
+                border: none;
+                padding: 0 0 4px 0;
+                font-size: 13px;
+                font-weight: 700;
+            }}
+            QLabel#DataImportInternalSummaryLine,
+            QLabel#DataImportInternalCheckLine {{
+                color: {Theme.TEXT_SECONDARY};
+                background-color: transparent;
+                border: none;
+                padding: 0 0 2px 0;
+                font-size: 12px;
+            }}
+            QWidget#DataImportEventSectionSpacer {{
+                background-color: transparent;
+                border: none;
+            }}
             QFrame#DataImportSourceRow,
             QFrame#DataImportActionCard,
             QFrame#DataImportRuleControl,
             QFrame#DataImportInlineRuleControl,
             QFrame#DataImportPairingRow,
             QFrame#DataImportEventRulesTable,
-            QFrame#DataImportClassMapTable {{
+            QFrame#DataImportClassMapTable,
+            QFrame#DataImportInternalLabelsTable,
+            QFrame#DataImportInternalOtherEventsTable {{
                 background-color: #202020;
                 border: 1px solid #343434;
                 border-radius: 5px;
@@ -2569,6 +2979,18 @@ class DataInterpretationPreviewDialog(BaseDialog):
             }}
             QLabel#DataImportRuleLabel {{
                 color: {Theme.TEXT_SECONDARY};
+                font-size: 11px;
+                font-weight: 600;
+            }}
+            QFrame#DataImportLabelSourceModeControl {{
+                background-color: transparent;
+                border: none;
+            }}
+            QLabel#DataImportLabelSourceChoiceLabel {{
+                color: {Theme.TEXT_SECONDARY};
+                background-color: transparent;
+                border: none;
+                padding: 0;
                 font-size: 11px;
                 font-weight: 600;
             }}
@@ -2760,6 +3182,24 @@ class DataInterpretationPreviewDialog(BaseDialog):
             }}
             QPushButton#DataImportTertiaryButton:pressed {{
                 background-color: {Theme.BACKGROUND_MID};
+            }}
+            QPushButton#DataImportInlineAction {{
+                background-color: transparent;
+                color: {Theme.TEXT_SECONDARY};
+                border: 1px solid transparent;
+                border-radius: 4px;
+                padding: 2px 4px;
+                min-height: 16px;
+                font-size: 11px;
+                font-weight: 500;
+            }}
+            QPushButton#DataImportInlineAction:hover {{
+                color: #d8ecff;
+                border-color: #3d4d58;
+                background-color: #242a2e;
+            }}
+            QPushButton#DataImportInlineAction:pressed {{
+                background-color: #1a1f22;
             }}
             QDialogButtonBox QPushButton {{
                 background-color: {Theme.BACKGROUND_MID};
@@ -3473,6 +3913,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if class_map:
             choices["class_map"] = class_map
         event_roles = self._event_role_overrides()
+        if self._label_source_mode() == "internal_events":
+            event_roles.update(self._internal_event_role_overrides())
         if event_roles:
             choices["event_roles"] = event_roles
         eeg_file_remap = self._eeg_file_remap_choices()
@@ -3598,6 +4040,16 @@ class DataInterpretationPreviewDialog(BaseDialog):
             for _tree_item, name, original in self._event_role_items
         )
         return current if changed else {}
+
+    def _internal_event_role_overrides(self) -> dict[str, str]:
+        return {
+            code: role
+            for code, role in sorted(
+                self._internal_event_user_roles.items(),
+                key=lambda item: item[0].casefold(),
+            )
+            if role in {"class label", "not a label"}
+        }
 
     def _install_event_role_selector(
         self,
