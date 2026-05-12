@@ -65,6 +65,33 @@
   padding: 0.65rem 0.75rem;
 }
 
+.xlb-dashboard-grid {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  margin: 1rem 0 1.25rem;
+}
+
+.xlb-dashboard-grid > div {
+  border-top: 0.16rem solid var(--xlb-info);
+  background: var(--xlb-surface);
+  padding: 0.7rem 0.75rem;
+}
+
+.xlb-signal-list {
+  border-top: 0.16rem solid var(--xlb-info);
+  display: grid;
+  gap: 1px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 1rem 0 1.25rem;
+}
+
+.xlb-signal-list > div {
+  background: var(--xlb-surface);
+  min-height: 4.2rem;
+  padding: 0.55rem 0.65rem;
+}
+
 .xlb-kicker {
   color: var(--md-default-fg-color--light);
   display: block;
@@ -104,7 +131,13 @@
 
 .xlb-artifact-path {
   color: var(--md-default-fg-color--light);
+  display: block;
   font-size: 0.68rem;
+  margin-top: 0.45rem;
+}
+
+.xlb-artifact-grid p {
+  margin-bottom: 0;
 }
 
 .md-typeset .mermaid {
@@ -124,8 +157,29 @@
 }
 
 @media screen and (max-width: 760px) {
+  .md-typeset h1 {
+    font-size: 1.55rem;
+  }
+
   .xlb-status-panel {
     padding: 0.55rem 0.65rem;
+  }
+
+  .xlb-dashboard-grid {
+    gap: 0.45rem;
+  }
+
+  .xlb-dashboard-grid > div {
+    padding: 0.5rem 0.6rem;
+  }
+
+  .xlb-signal-list {
+    grid-template-columns: 1fr;
+  }
+
+  .xlb-signal-list > div {
+    min-height: auto;
+    padding: 0.42rem 0.55rem;
   }
 
   .md-typeset table:not([class]) {

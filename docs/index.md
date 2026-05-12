@@ -1,52 +1,94 @@
 # XBrainLab 專案控制室
 
-XBrainLab 是本地優先的 EEG / BCI 桌面分析工具，目前正在產品化整理中。
-這個網站是專案入口：用來快速看懂目前狀態、下一步、架構邊界和證據，不用先翻流水帳。
+XBrainLab 是本地優先的 EEG / BCI 桌面分析工具，目前正在做 MVP 穩定化；下一步是 private docs review 與 human Windows smoke。這個私有入口用來快速判斷現況、缺口和證據。
 
 !!! warning "目前邊界"
-    XBrainLab 還不能宣稱 product complete。CI 綠燈、automated UI walkthrough、MCP
-    walkthrough、tool-call eval 都是有用證據，但不能取代 human Windows desktop acceptance、
-    長時間 local-model desktop session，或正式 release approval。
+    Not product complete；automated evidence 不能取代 human Windows acceptance。
 
-<div class="xlb-status-panel" markdown>
-
-<div class="xlb-evidence-strip" markdown>
+<div class="xlb-signal-list" markdown>
 
 <div markdown>
-<span class="xlb-kicker">目前階段</span>
-Windows Desktop MVP baseline：backend、Data Interpretation、tool-call、desktop acceptance。
+<span class="xlb-kicker">Product Status</span>
+MVP stabilization；not product complete.
 </div>
 
 <div markdown>
-<span class="xlb-kicker">主要缺口</span>
-Phase 1A 要清掉 product legacy path，收斂 UI page refresh，並同步清理測試。
+<span class="xlb-kicker">Readiness Blocker</span>
+Windows acceptance pending.
 </div>
 
 <div markdown>
-<span class="xlb-kicker">目標 vs 現況</span>
-`target/` 是目標態；`architecture/` 是目前實作和風險。
+<span class="xlb-kicker">Data Import</span>
+Wizard + 4 placement modes; not final UX.
 </div>
 
 <div markdown>
-<span class="xlb-kicker">證據邊界</span>
-artifact 是 evidence，不是 current truth；claim 要回到 Current / Validation 判讀。
+<span class="xlb-kicker">Latest Evidence</span>
+`fast` dashboard PASS；see [Validation](validation/README.md).
+</div>
+
+<div markdown>
+<span class="xlb-kicker">Artifacts</span>
+`quality/latest.md`; screenshot index.
+</div>
+
+<div markdown>
+<span class="xlb-kicker">Next Work</span>
+Private docs review; human smoke; no `main` merge.
 </div>
 
 </div>
 
+## Review Board
+
+| Area | Current Read | Best Evidence | Next Work |
+| --- | --- | --- | --- |
+| Product readiness | Baseline exists; not product complete. | [Current](current.md), [Roadmap](planning/roadmap.md) | Human-observable desktop smoke. |
+| Backend architecture | `ApplicationService / Command API` is the shared backend spine; `BackendFacade` is physically removed. | [Architecture](architecture/README.md), [Validation](validation/README.md) | Keep guards green while UX continues. |
+| Data Import | `scan -> preview -> validate -> apply -> recipe` works as baseline; placement evidence covers four mainstream modes. | [Data Interpretation target](target/data_interpretation_system.md), `artifacts/ui/data-import-wizard-steps/README.md` | Record UX debt; do not redesign tonight. |
+| Validation | Architecture, backend, agent/MCP, UI refresh, split regression, docs, and dashboard gates are green for current branch. | `artifacts/quality/latest.md`, [Validation](validation/README.md) | Add human Windows acceptance evidence. |
+
+## Evidence Shortcuts
+
+<div class="grid cards xlb-artifact-grid" markdown>
+
+- **Quality dashboard**
+
+    Latest fast health gate: lint, type, architecture, startup, UI baseline, UI unit suite, real-data IO.
+
+    <span class="xlb-artifact-path">`artifacts/quality/latest.md`</span>
+
+- **Data Import screenshots**
+
+    Current wizard steps and Match Labels placement mode review images.
+
+    <span class="xlb-artifact-path">`artifacts/ui/data-import-wizard-steps/README.md`</span>
+
+- **Human-like walkthrough**
+
+    Automated PyQt replay with screenshots and visible-state snapshots.
+
+    <span class="xlb-artifact-path">`artifacts/ui/human-like-walkthrough/human-like-walkthrough.md`</span>
+
+- **Internal event evidence**
+
+    Backend generated event-evidence preview for A01T/A02T/A03T.
+
+    <span class="xlb-artifact-path">`artifacts/data_interpretation/internal-event-preview-backend.png`</span>
+
 </div>
 
-## 先看這裡
+## Primary Paths
 
 <div class="grid cards" markdown>
 
-- **目前真相**
+- **Current truth**
 
     看現在能 claim 什麼、不能 claim 什麼，以及 roadmap 是否和 source code 對齊。
 
     [打開 Current](current.md)
 
-- **下一步**
+- **Next work**
 
     看下一輪施工焦點：Backend Command Spine / Legacy / Test / UI Refresh Cleanup。
 
@@ -58,19 +100,19 @@ artifact 是 evidence，不是 current truth；claim 要回到 Current / Validat
 
     [打開 Roadmap](planning/roadmap.md)
 
-- **目標架構**
+- **Target architecture**
 
     看理想狀態：UI、agent、MCP、scripts 共用 Application Service / Command API。
 
     [打開目標架構](target/architecture.md)
 
-- **目前架構**
+- **Current architecture**
 
     看目前 source code 實際狀態、已落地的 command spine，以及仍存在的架構風險。
 
     [打開目前架構](architecture/README.md)
 
-- **驗證策略**
+- **Validation strategy**
 
     看測試和 artifact 能支撐什麼 claim，哪些不能被過度解讀。
 

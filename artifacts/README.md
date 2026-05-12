@@ -39,6 +39,7 @@
 | `data_interpretation/internal-event-preview-backend.png` | 想看 backend internal-event evidence preview 的人眼截圖。 |
 | `data_interpretation/internal-event-evidence-A01T-A03T.json` | 想看 A01T/A02T/A03T internal-event evidence payload。 |
 | `ui/data-import-wizard-steps/README.md` | 想看目前 Data Import wizard 和 Match Labels placement mode 截圖索引。 |
+| `docs-site/data-import-private-portal/visual-review.md` | 想看 private docs portal 首頁 desktop/mobile visual review。 |
 | `launcher/windows-launcher-walkthrough.md` | 想看 launcher smoke。 |
 
 ## 新 artifact 要寫清楚
