@@ -6270,6 +6270,9 @@ mock-only sidebar tests explicit compatibility coverage.
 - TrainingSidebar model-selection and training-setting unit tests no longer use ambiguous
   `accepted` names for mock-only paths; they now explicitly assert command attempts followed by
   legacy controller fallback in mock contexts.
+- `tests/unit/ui/test_sidebars_and_components.py` has no remaining `accepted` / `no_crash` test
+  names; the former smoke tests now assert info-panel service boundaries and command-plus-legacy
+  channel-selection behavior.
 
 ### Evidence 入口
 

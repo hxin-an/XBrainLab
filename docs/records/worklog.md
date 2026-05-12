@@ -37,6 +37,32 @@
 
 ## 2026-05-12
 
+### 17:36 Final sidebars ambiguous-name cleanup
+
+- 做了什麼：
+  - Replaced `test_update_info_no_crash` with a behavior-specific TrainingSidebar test that verifies
+    `update_info()` does not read training controller readiness or dataset state; the aggregate info
+    panel service remains the owner of those updates.
+  - Replaced `test_open_channel_selection_accepted` with explicit DatasetSidebar mock-context
+    coverage that asserts `QueryStateCommand`, `PreprocessCommand`, legacy controller fallback,
+    panel refresh, and success feedback.
+  - `tests/unit/ui/test_sidebars_and_components.py` no longer contains `accepted` / `no_crash` test
+    names.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py -q`
+    -> `96 passed`.
+  - `poetry run ruff check tests/unit/ui/test_sidebars_and_components.py`
+    -> `All checks passed!`.
+  - `poetry run basedpyright tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run mkdocs build --strict`
+    -> PASS, with the existing MkDocs Material advisory.
+  - `git diff --check`
+    -> PASS.
+- 接續 / 本輪剩餘：
+  - Commit this cleanup, then continue scanning other backend/UI test suites for weak naming or
+    mock-only assertions.
+
 ### 17:31 TrainingSidebar accepted-test cleanup
 
 - 做了什麼：

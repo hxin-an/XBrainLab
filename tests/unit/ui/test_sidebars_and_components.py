@@ -796,8 +796,23 @@ class TestTrainingSidebar:
         assert sidebar.btn_start.isEnabled() is False
         assert "state is unavailable" in sidebar.btn_start.toolTip()
 
-    def test_update_info_no_crash(self, sidebar):
-        sidebar.update_info()  # smoke test: should not raise
+    def test_update_info_is_info_panel_service_boundary_without_controller_reads(
+        self,
+        sidebar,
+    ):
+        sidebar.panel.controller.validate_ready.reset_mock()
+        sidebar.panel.controller.has_datasets.reset_mock()
+        sidebar.panel.controller.validate_ready.side_effect = AssertionError(
+            "update_info should not read training readiness",
+        )
+        sidebar.panel.controller.has_datasets.side_effect = AssertionError(
+            "update_info should not read dataset state",
+        )
+
+        sidebar.update_info()
+
+        sidebar.panel.controller.validate_ready.assert_not_called()
+        sidebar.panel.controller.has_datasets.assert_not_called()
 
     def test_split_data_legacy_mock_context_applies_controller_fallback(
         self,
@@ -2495,16 +2510,55 @@ class TestDatasetSidebar:
         mock_warning.assert_called_once()
         assert "could not safely complete" in mock_warning.call_args.args[2]
 
-    def test_open_channel_selection_accepted(self, sidebar):
+    def test_open_channel_selection_legacy_mock_context_applies_controller_fallback(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.application import PreprocessCommand, QueryStateCommand
+
+        raw = MagicMock()
         sidebar.panel.controller.has_data.return_value = True
         sidebar.panel.controller.is_locked.return_value = False
-        sidebar.panel.controller.get_loaded_data_list.return_value = [MagicMock()]
-        with patch(
-            "XBrainLab.ui.panels.dataset.sidebar.ChannelSelectionDialog"
-        ) as MockDlg:
+        sidebar.panel.controller.get_loaded_data_list.return_value = [raw]
+        with (
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.sidebar.get_command_capability",
+                return_value=None,
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
+                side_effect=[None, None],
+            ) as mock_execute,
+            patch(
+                "XBrainLab.ui.panels.dataset.sidebar.ChannelSelectionDialog"
+            ) as MockDlg,
+            patch.object(QMessageBox, "information") as mock_info,
+        ):
             MockDlg.return_value.exec.return_value = QDialog.DialogCode.Accepted
             MockDlg.return_value.get_result.return_value = ["Fp1", "Fp2"]
             sidebar.open_channel_selection()
+
+        assert isinstance(mock_execute.call_args_list[0].args[1], QueryStateCommand)
+        command = mock_execute.call_args_list[1].args[1]
+        assert isinstance(command, PreprocessCommand)
+        assert command.channels == ["Fp1", "Fp2"]
+        MockDlg.assert_called_once_with(sidebar, [raw])
+        sidebar.panel.controller.apply_channel_selection.assert_called_once_with(
+            ["Fp1", "Fp2"],
+        )
+        sidebar.panel.update_panel.assert_called_once()
+        mock_info.assert_called_once_with(
+            sidebar,
+            "Success",
+            "Channel selection applied.",
+        )
 
     def test_clear_dataset(self, sidebar):
         from PyQt6.QtWidgets import QMessageBox
