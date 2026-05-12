@@ -6290,6 +6290,8 @@ mock-only sidebar tests explicit compatibility coverage.
   now asserts visualizer invocation, figure replacement, canvas ownership, and hidden error state.
 - MessageBubble file-link coverage now asserts Windows Explorer selection and non-Windows
   `QDesktopServices.openUrl` side effects separately instead of accepting either branch as no-crash.
+- InfoPanelService initialization coverage now asserts the dataset/preprocess observer bridge
+  observables and event names instead of treating construction without error as enough.
 
 ### Evidence 入口
 

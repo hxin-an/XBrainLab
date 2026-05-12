@@ -13,8 +13,11 @@ from XBrainLab.ui.components.info_panel_service import InfoPanelService
 @pytest.fixture
 def study_mock():
     study = MagicMock(spec=Study)
-    # Mock controllers
-    study.get_controller.return_value = MagicMock()
+    controllers = {
+        "dataset": MagicMock(),
+        "preprocess": MagicMock(),
+    }
+    study.get_controller.side_effect = lambda name: controllers[name]
     return study
 
 
@@ -24,10 +27,14 @@ def service(study_mock):
 
 
 def test_service_initialization(service, study_mock):
-    """Test that bridges are set up on init."""
     assert service.study == study_mock
-    # Check if bridges connected
-    # Since bridges are internal, we assume success if no error, or check functionality
+    assert service._observes_controller_events is True
+    assert service.dataset_bridge.observable is study_mock.get_controller("dataset")
+    assert service.dataset_bridge.event_name == "data_changed"
+    assert service.preprocess_bridge.observable is study_mock.get_controller(
+        "preprocess"
+    )
+    assert service.preprocess_bridge.event_name == "preprocess_changed"
 
 
 def test_service_can_delegate_observer_refresh_to_main_window_coordinator(study_mock):

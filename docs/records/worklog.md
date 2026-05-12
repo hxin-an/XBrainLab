@@ -37,6 +37,28 @@
 
 ## 2026-05-12
 
+### 18:43 InfoPanelService bridge initialization cleanup
+
+- 做了什麼：
+  - Replaced the remaining no-crash style comment in
+    `test_info_panel_service.py::test_service_initialization`.
+  - The mock Study fixture now returns separate dataset/preprocess controller mocks.
+  - Initialization coverage now asserts direct observer mode plus the dataset/preprocess bridge
+    observables and event names.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/components/test_info_panel_service.py -q`
+    -> `7 passed`.
+  - `poetry run ruff check tests/unit/ui/components/test_info_panel_service.py`
+    -> `All checks passed!`.
+  - `poetry run basedpyright tests/unit/ui/components/test_info_panel_service.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run mkdocs build --strict`
+    -> PASS, with the existing MkDocs Material advisory.
+  - `git diff --check`
+    -> PASS.
+- 接續 / 本輪剩餘：
+  - Commit this cleanup.
+
 ### 18:38 Message bubble file-link test cleanup
 
 - 做了什麼：
