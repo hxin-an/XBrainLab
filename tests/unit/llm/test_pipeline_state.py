@@ -6,6 +6,7 @@ and the ``Study.pipeline_stage`` computed property.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from XBrainLab.llm.pipeline_state import (
@@ -103,6 +104,18 @@ class TestComputePipelineStage:
         trainer = MagicMock(spec=[])  # no attributes
         study = _make_study(trainer=trainer)
         assert compute_pipeline_stage(study) == PipelineStage.TRAINED
+
+    def test_real_study_uses_application_service_snapshot(self):
+        from XBrainLab.backend.application import get_application_service
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        service = get_application_service(study)
+        service.get_state = MagicMock(
+            return_value=SimpleNamespace(pipeline_stage="dataset_ready"),
+        )
+
+        assert compute_pipeline_stage(study) == PipelineStage.DATASET_READY
 
 
 # ---------------------------------------------------------------------------

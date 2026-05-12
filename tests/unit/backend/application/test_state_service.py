@@ -174,7 +174,7 @@ def _expect_payload(result: HandlerResult) -> tuple[str, dict[str, Any]]:
 def test_state_snapshot_service_builds_workflow_snapshot() -> None:
     state = _snapshot_service().build()
 
-    assert state.pipeline_stage == "loaded"
+    assert state.pipeline_stage == "dataset_ready"
     assert state.raw.loaded is True
     assert state.raw.files == ["subject01.fif"]
     assert state.raw.metadata[0]["subject"] == "S01"

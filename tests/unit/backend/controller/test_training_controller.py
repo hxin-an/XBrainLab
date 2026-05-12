@@ -43,6 +43,26 @@ class TestTrainingController:
             MockThread.assert_called_once()
             thread_instance.start.assert_called_once()
 
+    def test_start_training_sync_honors_command_options(self, controller, mock_study):
+        mock_study.is_training.return_value = False
+
+        started_callback = MagicMock()
+        stopped_callback = MagicMock()
+        controller.subscribe("training_started", started_callback)
+        controller.subscribe("training_stopped", stopped_callback)
+
+        with patch("threading.Thread") as MockThread:
+            controller.start_training(append=False, interactive=False)
+
+        mock_study.generate_plan.assert_called_once_with(
+            force_update=True,
+            append=False,
+        )
+        mock_study.train.assert_called_once_with(interact=False)
+        started_callback.assert_called_once()
+        stopped_callback.assert_called_once()
+        MockThread.assert_not_called()
+
     def test_start_training_already_running(self, controller, mock_study):
         mock_study.is_training.return_value = True
         mock_callback = MagicMock()

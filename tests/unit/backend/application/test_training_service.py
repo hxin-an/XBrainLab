@@ -44,8 +44,10 @@ class _TrainingController:
     def set_training_option(self, option: Any) -> None:
         self.training_option = option
 
-    def start_training(self) -> None:
+    def start_training(self, *, append: bool = True, interactive: bool = True) -> None:
         self.started = True
+        self.started_append = append
+        self.started_interactive = interactive
 
     def stop_training(self) -> None:
         self.stopped = True
@@ -135,15 +137,20 @@ def test_training_service_configures_model_and_options() -> None:
 def test_training_service_start_stop_and_clear_history() -> None:
     service, training = _service()
 
-    start = service.handle_train(TrainCommand())
+    start_message, start_payload = _expect_payload(
+        service.handle_train(TrainCommand(append=False, interactive=False)),
+    )
     stop = service.handle_stop_training(StopTrainingCommand())
     clear_message, clear_payload = _expect_payload(
         service.handle_clear_training_history(ClearTrainingHistoryCommand()),
     )
 
-    assert start == "Training started."
+    assert start_message == "Training started."
+    assert start_payload == {"append": False, "interactive": False}
     assert stop == "Training stop requested."
     assert training.started is True
+    assert training.started_append is False
+    assert training.started_interactive is False
     assert training.stopped is True
     assert training.history_cleared is True
     assert training.notifications == ["training_updated"]

@@ -4,15 +4,19 @@ Defines the :class:`PipelineStage` enum and :data:`STAGE_CONFIG` mapping
 that drive which tools and system-prompt context the LLM agent receives
 at each stage of the EEG analysis pipeline.
 
-The stage is computed from the ``Study`` object (see
-:func:`compute_pipeline_stage`) — it is **never** stored or manually
-advanced, so it cannot drift from the actual application state.
+For real product sessions, the stage is derived from the ApplicationService
+state snapshot so tool prompts, capability policy, and command execution share
+one backend truth. Mock / legacy callers fall back to direct Study-shaped reads.
 """
 
 from __future__ import annotations
 
 from enum import Enum
 from typing import Any
+from unittest.mock import Mock
+
+from XBrainLab.backend.application.runtime import get_application_service
+from XBrainLab.backend.study import Study
 
 
 class PipelineStage(Enum):
@@ -48,7 +52,7 @@ class PipelineStage(Enum):
 
 
 def compute_pipeline_stage(study: Any) -> PipelineStage:
-    """Derive the current pipeline stage from *study* state.
+    """Derive the current pipeline stage from ApplicationService state.
 
     The check order matters — more advanced stages are tested first so
     that the most specific match wins (e.g. ``TRAINING`` before
@@ -65,7 +69,15 @@ def compute_pipeline_stage(study: Any) -> PipelineStage:
     if study is None:
         return PipelineStage.EMPTY
 
-    # Training in progress — highest-priority lock
+    service_stage = _application_service_pipeline_stage(study)
+    if service_stage is not None:
+        return service_stage
+
+    return _legacy_study_pipeline_stage(study)
+
+
+def _legacy_study_pipeline_stage(study: Any) -> PipelineStage:
+    """Return stage from direct Study-shaped attributes for mock compatibility."""
     if (
         study.trainer is not None
         and hasattr(study.trainer, "is_running")
@@ -90,6 +102,28 @@ def compute_pipeline_stage(study: Any) -> PipelineStage:
         return PipelineStage.DATA_LOADED
 
     return PipelineStage.EMPTY
+
+
+def _application_service_pipeline_stage(study: Any) -> PipelineStage | None:
+    """Return stage from the shared ApplicationService snapshot when available."""
+    if not isinstance(study, Study) or isinstance(study, Mock):
+        return None
+
+    try:
+        value = get_application_service(study).get_state().pipeline_stage
+    except Exception:
+        return None
+    return _pipeline_stage_from_value(value)
+
+
+def _pipeline_stage_from_value(value: Any) -> PipelineStage | None:
+    text = getattr(value, "value", value)
+    if not isinstance(text, str):
+        return None
+    for stage in PipelineStage:
+        if stage.value == text:
+            return stage
+    return None
 
 
 # ---------------------------------------------------------------------------

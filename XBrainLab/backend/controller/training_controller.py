@@ -74,7 +74,7 @@ class TrainingController(Observable):
         """
         return self._study.is_training()
 
-    def start_training(self) -> None:
+    def start_training(self, *, append: bool = True, interactive: bool = True) -> None:
         """Generate a training plan and start training.
 
         Appends to existing plans to preserve history. If training
@@ -84,15 +84,17 @@ class TrainingController(Observable):
         if self.is_training():
             return
 
-        # Generate plan (append=True to keep history)
-        self._study.generate_plan(force_update=True, append=True)
+        self._study.generate_plan(force_update=True, append=append)
 
-        # Start training in interactive mode (threaded)
-        self._study.train(interact=True)
+        if interactive:
+            self._study.train(interact=True)
+            self.notify("training_started")
+            self._start_monitoring()
+            return
+
         self.notify("training_started")
-
-        # Start monitoring
-        self._start_monitoring()
+        self._study.train(interact=False)
+        self.notify("training_stopped")
 
     def stop_training(self) -> None:
         """Interrupt the current training process.

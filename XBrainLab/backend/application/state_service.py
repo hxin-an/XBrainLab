@@ -67,7 +67,6 @@ class StateSnapshotService:
         trainer = getattr(self.study, "trainer", None)
         model_holder = getattr(self.study, "model_holder", None)
         training_option = getattr(self.study, "training_option", None)
-        pipeline_stage = self._pipeline_stage()
 
         raw_diagnostics = self._safe_call_dict(self.dataset.get_runtime_diagnostics)
         preprocess_diagnostics = self._safe_call_dict(
@@ -157,6 +156,10 @@ class StateSnapshotService:
             has_trainer=training.has_trainer,
             is_running=training.is_running,
         )
+        pipeline_stage = self._pipeline_stage_from_snapshots(
+            active_dataset,
+            active_training,
+        )
         return ApplicationStateSnapshot(
             pipeline_stage=pipeline_stage,
             raw=raw,
@@ -244,14 +247,22 @@ class StateSnapshotService:
     def _interpretation_snapshot(self) -> InterpretationStateSnapshot:
         return self.interpretation.snapshot()
 
-    def _pipeline_stage(self) -> str:
-        stage = getattr(self.study, "pipeline_stage", None)
-        value = getattr(stage, "value", None)
-        if isinstance(value, str):
-            return value
-        if isinstance(stage, str):
-            return stage
-        return str(stage) if stage is not None else "unknown"
+    @staticmethod
+    def _pipeline_stage_from_snapshots(
+        active_dataset: ActiveDatasetSnapshot,
+        active_training: ActiveTrainingSnapshot,
+    ) -> str:
+        if active_training.is_running:
+            return "training"
+        if active_training.has_trainer:
+            return "trained"
+        if active_dataset.has_datasets:
+            return "dataset_ready"
+        if active_dataset.has_epoch_data:
+            return "preprocessed"
+        if active_dataset.has_raw_data:
+            return "data_loaded"
+        return "empty"
 
     @staticmethod
     def _raw_formats(raw_data: list[Any]) -> list[str]:

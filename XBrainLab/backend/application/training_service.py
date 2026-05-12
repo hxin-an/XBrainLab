@@ -103,8 +103,17 @@ class TrainingCommandService:
     def handle_train(self, command: Command) -> HandlerResult:
         if not isinstance(command, TrainCommand):
             raise TypeError("Invalid command for train")
-        self.training.start_training()
-        return "Training started."
+        self.training.start_training(
+            append=command.append,
+            interactive=command.interactive,
+        )
+        return (
+            "Training started.",
+            {
+                "append": command.append,
+                "interactive": command.interactive,
+            },
+        )
 
     def handle_stop_training(self, command: Command) -> HandlerResult:
         if not isinstance(command, StopTrainingCommand):

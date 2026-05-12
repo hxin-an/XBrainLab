@@ -103,8 +103,10 @@ def _training_ready_service() -> tuple[ApplicationService, dict[str, Any]]:
     cast(Any, service.study).training_option = object()
     calls: dict[str, Any] = {"started": 0, "stopped": 0, "running": False}
 
-    def start_training() -> None:
+    def start_training(*, append: bool = True, interactive: bool = True) -> None:
         calls["started"] += 1
+        calls["append"] = append
+        calls["interactive"] = interactive
         calls["running"] = True
 
     def stop_training() -> None:
@@ -321,8 +323,10 @@ def test_http_mcp_rejects_duplicate_train_start_while_job_is_starting():
     release_start = Event()
     first_response: dict[str, Any] = {}
 
-    def slow_start_training() -> None:
+    def slow_start_training(*, append: bool = True, interactive: bool = True) -> None:
         calls["started"] += 1
+        calls["append"] = append
+        calls["interactive"] = interactive
         if calls["started"] == 1:
             start_entered.set()
             release_start.wait(timeout=5)

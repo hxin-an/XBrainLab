@@ -1155,7 +1155,10 @@ def test_train_command_requires_confirmation_before_long_running_start():
     assert result.failed is True
     assert result.error_type == ErrorType.CONFIRMATION_REQUIRED
     assert confirmed.ok is True
-    service.training.start_training.assert_called_once()
+    service.training.start_training.assert_called_once_with(
+        append=True,
+        interactive=True,
+    )
 
 
 def test_every_declared_command_returns_result_envelope():
