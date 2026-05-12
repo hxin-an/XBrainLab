@@ -6255,8 +6255,12 @@ mock-only sidebar tests explicit compatibility coverage.
   epoching were renamed and strengthened so they explicitly assert command attempts and
   legacy mock-context controller fallback parameters.
 - `docs/validation/README.md` now records a `BackendFacade` compatibility replacement map. Most
-  facade clusters have ApplicationService / command replacement coverage; montage fuzzy matching is
-  the remaining high-risk facade-specific behavior to settle before physical deletion.
+  facade clusters have ApplicationService / command replacement coverage.
+- Montage fuzzy matching has been extracted from `BackendFacade.set_montage()` into
+  `XBrainLab.backend.utils.montage_mapping` with direct helper coverage; facade compatibility tests
+  now keep old API behavior while command/service/dialog/helper tests own replacement evidence.
+- `tests/unit/backend/test_facade_coverage.py` now passes its mocked `Study` into `BackendFacade`,
+  so its compatibility assertions no longer accidentally run against a real `Study`.
 
 ### Evidence 入口
 
@@ -6271,3 +6275,5 @@ mock-only sidebar tests explicit compatibility coverage.
 - This is not product complete and does not replace human Windows desktop acceptance.
 - This does not remove all controller compatibility code; it prevents product-success evidence from
   blessing that compatibility layer.
+- Physical `BackendFacade` removal still needs the remaining compatibility-only tests either moved
+  to command/service/dialog/helper coverage or deleted with documented replacement evidence.

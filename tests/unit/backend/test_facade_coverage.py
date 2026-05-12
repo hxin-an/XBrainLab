@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 import torch
 
-from XBrainLab.backend.application import ApplyMontageCommand
+from XBrainLab.backend.application import ApplyMontageCommand, CreateEpochCommand
 from XBrainLab.backend.facade import BackendFacade
 
 # ---------------------------------------------------------------------------
@@ -54,7 +54,7 @@ def _make_facade():
         controllers["training"].is_training.return_value = False
         controllers["training"].get_missing_requirements.return_value = []
         controllers["evaluation"].get_plans.return_value = []
-        facade = BackendFacade()
+        facade = BackendFacade(study=mock_study)
     return facade, mock_study
 
 
@@ -253,9 +253,12 @@ class TestSetMontage:
                 "Cz": (0.7, 0.8, 0.9),
             }
         }
-        with patch(
-            "XBrainLab.backend.facade.get_montage_positions",
-            return_value=positions,
+        with (
+            patch(
+                "XBrainLab.backend.facade.get_montage_positions",
+                return_value=positions,
+            ),
+            patch.object(facade.study, "set_channels") as legacy_set_channels,
         ):
             result = facade.set_montage("standard_1020")
 
@@ -268,7 +271,7 @@ class TestSetMontage:
             (0.4, 0.5, 0.6),
             (0.7, 0.8, 0.9),
         ]
-        facade.study.set_channels.assert_not_called()
+        legacy_set_channels.assert_not_called()
 
     def test_no_data_loaded(self):
         facade, _ = _make_facade()
@@ -707,14 +710,26 @@ class TestDelegation:
         facade.select_channels(["Fp1", "Fp2"])
         facade.dataset.apply_channel_selection.assert_called_once_with(["Fp1", "Fp2"])
 
-    def test_epoch_data(self):
-        facade, mock_study = _make_facade()
-        _mark_preprocess_available(mock_study)
+    def test_epoch_data_delegates_to_application_service_command(self):
+        facade, _ = _make_facade()
         facade.preprocess.apply_epoching = MagicMock()
-        facade.epoch_data(-0.2, 0.5, baseline=[None, 0], event_ids=["left", "right"])
-        facade.preprocess.apply_epoching.assert_called_once_with(
-            [None, 0], ["left", "right"], -0.2, 0.5
+        facade.service.execute = MagicMock(
+            return_value=MagicMock(
+                failed=False,
+                message="Created epochs.",
+                diagnostics={},
+            ),
         )
+
+        facade.epoch_data(-0.2, 0.5, baseline=(None, 0), event_ids=["left", "right"])
+
+        command = facade.service.execute.call_args.args[0]
+        assert isinstance(command, CreateEpochCommand)
+        assert command.t_min == -0.2
+        assert command.t_max == 0.5
+        assert command.baseline == (None, 0)
+        assert command.event_ids == ["left", "right"]
+        facade.preprocess.apply_epoching.assert_not_called()
 
     def test_set_model_unknown(self):
         facade, _ = _make_facade()

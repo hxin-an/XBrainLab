@@ -38,6 +38,7 @@ from XBrainLab.backend.application import (
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.utils.mne_helper import get_montage_positions
+from XBrainLab.backend.utils.montage_mapping import map_channels_to_montage_positions
 
 
 class BackendFacade:
@@ -350,60 +351,43 @@ class BackendFacade:
             if not loaded_positions:
                 return f"Error: Failed to load montage '{montage_name}'"
 
-            ch_pos_dict = loaded_positions["ch_pos"]
-            current_chs = target_info["ch_names"]
+            montage_mapping = map_channels_to_montage_positions(
+                target_info["ch_names"],
+                loaded_positions["ch_pos"],
+            )
 
-            mapped_chs = []
-            mapped_positions = []
-            montage_lookup = {k.lower(): k for k in ch_pos_dict}
-
-            for ch in current_chs:
-                clean_ch = (
-                    ch.lower()
-                    .replace("eeg", "")
-                    .replace("ref", "")
-                    .replace("-", "")
-                    .strip()
-                )
-                real_name = None
-                if ch.lower() in montage_lookup:
-                    real_name = montage_lookup[ch.lower()]
-                elif clean_ch in montage_lookup:
-                    real_name = montage_lookup[clean_ch]
-
-                if real_name:
-                    mapped_chs.append(ch)
-                    mapped_positions.append(
-                        tuple(float(value) for value in ch_pos_dict[real_name])
-                    )
-
-            if not mapped_chs:
+            if not montage_mapping.has_matches:
                 return f"Request: Verify Montage '{montage_name}'"
 
-            if len(mapped_chs) < len(current_chs):
+            if not montage_mapping.full_match:
                 return (
                     f"Request: Verify Montage '{montage_name}' "
-                    f"(Only {len(mapped_chs)}/{len(current_chs)} channels matched)"
+                    f"(Only {montage_mapping.matched_count}/"
+                    f"{montage_mapping.total_count} channels matched)"
                 )
 
             result = self.service.execute(
                 ApplyMontageCommand(
-                    channels=mapped_chs,
-                    positions=mapped_positions,
+                    channels=montage_mapping.channels,
+                    positions=montage_mapping.positions,
                     montage_name=montage_name,
                 ),
             )
             if result.failed:
                 return f"Error: {result.message}"
 
+            matched_count = int(
+                result.diagnostics.get(
+                    "channel_count",
+                    montage_mapping.matched_count,
+                ),
+            )
+
         except Exception as e:
             logger.error("SetMontage failed", exc_info=True)
             return f"SetMontage failed: {e!s}"
-
-        matched_count = int(
-            result.diagnostics.get("channel_count", len(mapped_chs)),
-        )
-        return f"Set Montage '{montage_name}' (Matched {matched_count} channels)"
+        else:
+            return f"Set Montage '{montage_name}' (Matched {matched_count} channels)"
 
     def apply_montage(
         self,
@@ -425,7 +409,7 @@ class BackendFacade:
         self,
         t_min: float,
         t_max: float,
-        baseline: list[float] | None = None,
+        baseline: list[float] | tuple[float | None, float | None] | None = None,
         event_ids: list[str] | None = None,
     ):
         """Slice continuous data into epochs around events.

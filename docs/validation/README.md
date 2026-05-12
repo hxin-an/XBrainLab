@@ -161,6 +161,9 @@ Offscreen screenshots include:
 | `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS | Documentation edits build strictly and diff whitespace is clean. | Documentation content is automatically complete. | Keep future validation entries tied to executed commands. |
 | `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py -q` | `96 passed` after PreprocessSidebar cleanup. | PreprocessSidebar filtering/resample/rereference/normalize/epoching mock-context tests now explicitly assert attempted command routing plus legacy controller fallback parameters. | Product command success or human desktop acceptance. | Continue with remaining ambiguous `accepted` / `no_crash` UI unit tests. |
 | `poetry run ruff check tests/unit/ui/test_sidebars_and_components.py` / `poetry run basedpyright tests/unit/ui/test_sidebars_and_components.py` | PASS / `0 errors, 0 warnings, 0 notes` | The focused UI test cleanup passes lint/type gates. | Full repo health by itself. | Run docs gate before committing this slice. |
+| `poetry run pytest --capture=sys tests/unit/backend/utils/test_montage_mapping.py tests/unit/backend/test_facade_coverage.py -q` | `50 passed`. Full `test_facade_coverage.py` was red before fixing its helper because it created a mocked study but did not pass it into `BackendFacade`; after fixture correction the file is `43 passed`. | Montage fuzzy matching now has direct backend helper coverage outside `BackendFacade`, and facade compatibility tests actually exercise their mocked-study boundary. | Product runtime completion or human desktop acceptance. | Continue deleting or moving facade-only compatibility tests only after their command/service replacements are confirmed. |
+| `poetry run ruff check XBrainLab/backend/utils/montage_mapping.py XBrainLab/backend/facade.py tests/unit/backend/utils/test_montage_mapping.py tests/unit/backend/test_facade_coverage.py` / `poetry run basedpyright XBrainLab/backend/utils/montage_mapping.py XBrainLab/backend/facade.py tests/unit/backend/utils/test_montage_mapping.py tests/unit/backend/test_facade_coverage.py` | PASS / `0 errors, 0 warnings, 0 notes`. | The montage helper, facade adapter, and compatibility tests pass focused lint/type gates. | Full repo health by itself. | Run broader dashboard only at branch closure or when product runtime scope changes. |
+| `poetry run python tests/architecture_compliance.py` / `poetry run mkdocs build --strict` / `git diff --check` | `Architecture compliant!` / PASS with the existing MkDocs Material advisory / PASS. | Static architecture guard, docs build, and whitespace gate are clean for the montage-helper slice. | Human runtime acceptance or full repo dashboard health. | Continue with the next backend/test hygiene slice. |
 
 ## BackendFacade Compatibility Replacement Map
 
@@ -175,11 +178,11 @@ Offscreen screenshots include:
 | Dataset generation / clear datasets | `TestGenerateDataset`, clear dataset tests | Covered by dataset generation service tests, ApplicationService workflow tests, and real-data pipeline smokes. | Keep service tests; do not preserve facade API as product evidence. |
 | Training configure / start / stop / clear history | `test_backend_facade_headless`, `TestTrainingControl`, `TestDelegation` | Covered by training command service tests, ApplicationService tests, and pipeline smokes. | Facade tests only prove old method names. |
 | Evaluate / visualize / saliency summaries | `TestGetLatestResults` and summary helpers | Covered by analysis command service and ApplicationService tests. | Preserve command result semantics, not facade shape. |
-| Montage fuzzy matching | `TestSetMontage` in `test_facade_coverage.py` | Partly replaced by `PickMontageDialog`, `ApplyMontageCommand`, AgentManager montage confirmation, and UI/LLM tool tests. | Highest-risk facade-specific logic. Before deleting facade, either prove dialog/tool coverage fully owns fuzzy matching or extract a shared helper with direct tests. |
+| Montage fuzzy matching | `TestSetMontage` in `test_facade_coverage.py` plus `tests/unit/backend/utils/test_montage_mapping.py` | Fuzzy cleanup now lives in `XBrainLab.backend.utils.montage_mapping` with direct helper tests. `BackendFacade.set_montage()` delegates to that helper before issuing `ApplyMontageCommand`; UI/dialog/tool paths still own interactive confirmation. | The highest-risk facade-specific logic is now outside the facade. Keep helper tests when deleting facade compatibility tests. |
 
-Physical `BackendFacade` removal should wait until the montage fuzzy-matching ownership decision is
-settled and any remaining facade-only unit tests are either deleted as compatibility-only or moved
-to command/service/dialog helper tests.
+Physical `BackendFacade` removal no longer depends on an unresolved montage fuzzy-matching decision.
+It should still wait until remaining facade-only unit tests are either deleted as compatibility-only
+or moved to command/service/dialog/helper tests.
 
 ## 常用 docs gate
 

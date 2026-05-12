@@ -37,6 +37,45 @@
 
 ## 2026-05-12
 
+### 17:15 Montage fuzzy-matching facade extraction
+
+- 做了什麼：
+  - Added `XBrainLab.backend.utils.montage_mapping` as a pure backend helper for montage channel
+    cleanup, channel-name resolution, 3D position coercion, partial-match counts, and no-match
+    state.
+  - Changed `BackendFacade.set_montage()` to use that helper before issuing
+    `ApplyMontageCommand`, preserving the legacy compatibility messages for no match / partial
+    match / command failure.
+  - Added direct helper tests outside `BackendFacade`, covering exact match, EEG/ref/hyphen fuzzy
+    cleanup, partial match, no match, case-insensitive resolution, and malformed position vectors.
+  - Fixed `tests/unit/backend/test_facade_coverage.py`'s `_make_facade()` helper so its mocked
+    `Study` is actually passed into `BackendFacade`; before that fix, the full file was red because
+    it accidentally ran against a real `Study`.
+  - Rewrote the facade epoch compatibility test from direct controller assertion to explicit
+    `CreateEpochCommand` route coverage.
+- TDD red：
+  - `poetry run pytest --capture=sys tests/unit/backend/utils/test_montage_mapping.py -q`
+    -> failed on missing `XBrainLab.backend.utils.montage_mapping` before implementation.
+  - `poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py -q`
+    -> `19 failed, 24 passed` before the test helper correction; failures were stale mocked-study
+    assumptions, not a product runtime regression from this slice.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/backend/utils/test_montage_mapping.py tests/unit/backend/test_facade_coverage.py -q`
+    -> `50 passed`.
+  - `poetry run ruff check XBrainLab/backend/utils/montage_mapping.py XBrainLab/backend/facade.py tests/unit/backend/utils/test_montage_mapping.py tests/unit/backend/test_facade_coverage.py`
+    -> `All checks passed!`.
+  - `poetry run basedpyright XBrainLab/backend/utils/montage_mapping.py XBrainLab/backend/facade.py tests/unit/backend/utils/test_montage_mapping.py tests/unit/backend/test_facade_coverage.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `poetry run mkdocs build --strict`
+    -> PASS, with the existing MkDocs Material advisory.
+  - `git diff --check`
+    -> PASS.
+- 接續 / 本輪剩餘：
+  - Commit this slice. Continue mapping remaining facade compatibility tests to command/service
+    coverage before physical removal.
+
 ### 13:25 Epoch UI freeze / hidden-modal reality gap
 
 - 做了什麼：
