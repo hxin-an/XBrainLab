@@ -16452,3 +16452,27 @@
 - claims still not supported：
   - This does not physically remove `BackendFacade`.
   - This is state/query replacement coverage, not human UI diagnostics acceptance.
+
+### 2026-05-12 UI accepted-wording cleanup
+
+- scope：
+  - Continued on `test/backend-ui-legacy-hygiene`.
+  - No answer UI redesign and no Data Import UX redesign.
+  - Cleaned the remaining broad `accepted` wording in UI test comments/docstrings so weak-name
+    scans do not confuse UI behavior comments with the architecture guard's forbidden examples.
+- validation：
+  - `rg -n "accepted" tests/unit/ui -g '*.py'` -> no matches.
+  - `rg -n "def test_.*(accepted|no_crash|does_not_crash)" tests/unit tests/integration -g '*.py'`
+    -> only the intentional architecture-compliance forbidden examples remain.
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys
+    tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker::test_montage_no_valid_config
+    tests/unit/ui/test_ui_components.py::TestFilteringDialog::test_get_params_default -q`
+    -> `2 passed`.
+  - `poetry run ruff check tests/unit/ui/test_agent_manager_coverage.py
+    tests/unit/ui/test_ui_components.py`
+    -> PASS.
+  - `poetry run basedpyright tests/unit/ui/test_agent_manager_coverage.py
+    tests/unit/ui/test_ui_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+- claims still not supported：
+  - This is wording hygiene only, not UI acceptance evidence.

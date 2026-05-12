@@ -313,7 +313,7 @@ class TestMontagePicker:
         mock_hui.assert_called_with("Montage Selection Cancelled by User.")
 
     def test_montage_no_valid_config(self):
-        """L664-667: Dialog accepted but no valid result."""
+        """L664-667: Confirmed dialog returned no montage configuration."""
         m = _make_manager()
         mock_dialog = MagicMock()
         mock_dialog.exec.return_value = True

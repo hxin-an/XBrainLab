@@ -228,7 +228,7 @@ class TestFilteringDialog:
 
         d = FilteringDialog(None)
         qtbot.addWidget(d)
-        # get_params returns None before the dialog is accepted
+        # get_params returns None before the dialog returns a confirmed result.
         result = d.get_params()
         assert result is None or isinstance(result, tuple)
 

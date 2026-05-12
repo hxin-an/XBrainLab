@@ -285,6 +285,15 @@ or moved to command/service/dialog/helper tests.
 | `poetry run ruff check tests/unit/backend/application/test_state_service.py` / `poetry run basedpyright tests/unit/backend/application/test_state_service.py` | PASS / `0 errors, 0 warnings, 0 notes`. | Changed replacement tests pass focused lint/type gates. | Full repo quality by itself. | Run broader gates before branch closure. |
 | `poetry run python tests/architecture_compliance.py` | `Architecture compliant!`. | Product runtime and product-success test architecture guards remain clean after the replacement test slice. | Human Windows desktop acceptance. | Keep this gate in each backend/test hygiene slice. |
 
+## 2026-05-12 UI Accepted-Word Cleanup
+
+| Command | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `rg -n "accepted" tests/unit/ui -g '*.py'` | No matches. | UI unit tests no longer contain broad `accepted` wording in comments/docstrings. | UI acceptance or behavioral coverage by itself. | Keep architecture guard examples separate from product/UI tests. |
+| `rg -n "def test_.*(accepted|no_crash|does_not_crash)" tests/unit tests/integration -g '*.py'` | Only intentional architecture-compliance forbidden examples remain. | Weak UI/product test names are not present in the scanned suites. | Test quality beyond the naming pattern. | Continue relying on behavior assertions rather than names alone. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker::test_montage_no_valid_config tests/unit/ui/test_ui_components.py::TestFilteringDialog::test_get_params_default -q` | `2 passed`. | The touched UI tests still pass after wording cleanup. | Broad UI acceptance. | No UX changes were made. |
+| `poetry run ruff check tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/test_ui_components.py` / `poetry run basedpyright tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/test_ui_components.py` | PASS / `0 errors, 0 warnings, 0 notes`. | Touched UI test files pass focused lint/type gates. | Full repo quality by itself. | Run broader gates before branch closure. |
+
 ## 常用 docs gate
 
 ```bash
