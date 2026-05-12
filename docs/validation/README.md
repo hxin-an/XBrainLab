@@ -221,6 +221,15 @@ or moved to command/service/dialog/helper tests.
 | `poetry run mkdocs build --strict` | PASS with the existing MkDocs Material advisory and nav notices. | Documentation edits build strictly. | Documentation content is automatically complete. | Keep validation records tied to executed commands. |
 | `git diff --check` | PASS. | Current diff has no whitespace errors. | Docs build or runtime behavior. | Re-run after docs edits and before commit. |
 
+## 2026-05-12 AgentManager Montage Command Route Guard
+
+| Command | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestAgentManagerDeep::test_open_montage_command_route_skips_legacy_controller tests/unit/ui/test_ui_misc.py::TestAgentManagerDeep::test_open_montage_legacy_mock_context_applies_controller_fallback -q` | `2 passed`. | AgentManager montage command-route and legacy mock-context fallback behavior are both explicitly covered. | Human montage-dialog acceptance. | Keep command-route and compatibility tests paired until legacy fallback is removed. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py -q` | `144 passed`. | Broader UI misc coverage remains green after the montage guard. | Full product UI acceptance. | Run broader UI/dashboard gates at branch closure. |
+| `poetry run ruff check tests/unit/ui/test_ui_misc.py` / `poetry run basedpyright tests/unit/ui/test_ui_misc.py` | PASS / `0 errors, 0 warnings, 0 notes`. | The focused test file remains lint/type clean. | Runtime behavior by itself. | Continue adding command-route assertions beside compatibility fallbacks. |
+| `git diff --check` | PASS. | Current diff has no whitespace errors. | Docs build. | Re-run after docs edits and before commit. |
+
 ## 常用 docs gate
 
 ```bash

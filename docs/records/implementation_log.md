@@ -6341,3 +6341,29 @@ observable assertions.
 - It does not remove `BackendFacade`; it prepares the test suite so future removal is judged
   against stronger replacement coverage rather than weak no-crash assertions.
 - Human Windows desktop acceptance and full MVP flow validation remain separate gates.
+
+## 2026-05-12 AgentManager Montage Command Route Guard
+
+### 狀態
+
+Added a focused AgentManager montage-selection command-route test without changing UX. This pairs
+the existing mock-context legacy fallback coverage with an explicit assertion that the command path
+does not call the legacy preprocess controller when `ApplicationService` command results are
+available.
+
+### 已可宣稱
+
+- AgentManager montage setup now has a unit guard for the intended command path:
+  `QueryStateCommand(query="state")` provides channel names and confirmed dialog output emits
+  `ApplyMontageCommand`.
+- The test asserts normalized montage positions are passed as tuples and
+  `preprocess_controller.apply_montage()` is not called on the command route.
+- The existing legacy mock-context fallback test still passes as compatibility-only coverage.
+- Focused validation is green: the two montage tests `2 passed`, full `test_ui_misc.py`
+  `144 passed`, ruff PASS, basedpyright `0 errors`.
+
+### 不能宣稱完成
+
+- This is not human montage-dialog acceptance.
+- Legacy fallback remains for mock / non-real-`Study` compatibility paths; the new guard prevents
+  that fallback test from being the only montage evidence.

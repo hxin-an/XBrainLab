@@ -16255,3 +16255,28 @@
   - This does not prove product complete or replace human Windows desktop acceptance.
   - This removes weak assertion wording and improves behavior checks; it is not physical
     `BackendFacade` deletion.
+
+### 2026-05-12 AgentManager montage command-route guard
+
+- scope：
+  - Continued on `test/backend-ui-legacy-hygiene`.
+  - No answer UI redesign and no Data Import UX redesign.
+  - Added command-route counterpart coverage for AgentManager montage selection so the existing
+    legacy mock-context fallback test is not the only montage evidence.
+- test cleanup：
+  - Added `test_open_montage_command_route_skips_legacy_controller`.
+  - The test asserts `QueryStateCommand(query="state")` supplies channel names, confirmed montage
+    selection emits `ApplyMontageCommand`, normalized positions are tuples, and
+    `preprocess_controller.apply_montage()` is not called when command results are available.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys
+    tests/unit/ui/test_ui_misc.py::TestAgentManagerDeep::test_open_montage_command_route_skips_legacy_controller
+    tests/unit/ui/test_ui_misc.py::TestAgentManagerDeep::test_open_montage_legacy_mock_context_applies_controller_fallback -q`
+    -> `2 passed`.
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys
+    tests/unit/ui/test_ui_misc.py -q` -> `144 passed`.
+  - `poetry run ruff check tests/unit/ui/test_ui_misc.py` -> PASS.
+  - `poetry run basedpyright tests/unit/ui/test_ui_misc.py` -> `0 errors, 0 warnings, 0 notes`.
+  - `git diff --check` -> PASS.
+- claims still not supported：
+  - This is a unit command-route guard, not human montage-dialog acceptance.

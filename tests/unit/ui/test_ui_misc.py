@@ -2729,6 +2729,57 @@ class TestAgentManagerDeep:
         )
         mock_handle_user_input.assert_called_once_with("Montage Confirmed.")
 
+    @patch("XBrainLab.ui.components.agent_manager.PickMontageDialog")
+    def test_open_montage_command_route_skips_legacy_controller(
+        self,
+        mock_dlg_cls,
+        mgr,
+    ):
+        from XBrainLab.backend.application import (
+            ApplyMontageCommand,
+            CommandName,
+            QueryStateCommand,
+        )
+
+        mgr.preprocess_controller = MagicMock()
+        dlg = MagicMock()
+        mock_dlg_cls.return_value = dlg
+        dlg.exec.return_value = True
+        dlg.get_result.return_value = (["C3", "C4"], [[0, 0, 0], [1, 0, 0]])
+        mgr.chat_panel = MagicMock()
+        mgr.chat_panel.debug_mode = False
+        state_result = _command_result(state={"epoch": {"channel_names": ["C3", "C4"]}})
+        montage_result = _command_result()
+        capability = SimpleNamespace(
+            enabled=True,
+            name=CommandName.APPLY_MONTAGE,
+            reasons=[],
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.components.agent_manager.get_command_capability",
+                return_value=capability,
+            ),
+            patch(
+                "XBrainLab.ui.components.agent_manager.execute_application_command",
+                side_effect=[state_result, montage_result],
+            ) as mock_execute,
+            patch.object(mgr, "handle_user_input") as mock_handle_user_input,
+        ):
+            mgr.open_montage_picker_dialog({"montage_name": "standard_1020"})
+
+        commands = [call.args[1] for call in mock_execute.call_args_list]
+        assert isinstance(commands[0], QueryStateCommand)
+        assert commands[0].query == "state"
+        assert isinstance(commands[1], ApplyMontageCommand)
+        assert commands[1].channels == ["C3", "C4"]
+        assert commands[1].positions == [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)]
+        assert commands[1].montage_name == "standard_1020"
+        mgr.preprocess_controller.apply_montage.assert_not_called()
+        mgr.chat_controller.add_agent_message.assert_called_with("Montage Confirmed.")
+        mock_handle_user_input.assert_called_once_with("Montage Confirmed.")
+
 
 # ====================================================================
 # SaliencyTopographicMapWidget
