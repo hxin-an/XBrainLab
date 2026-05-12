@@ -127,6 +127,54 @@ def test_preprocess_service_applies_core_operations() -> None:
     assert dataset.selected_channels == ["C3", "C4"]
 
 
+def test_preprocess_service_maps_individual_operations_without_facade() -> None:
+    service, preprocess, _dataset = _service()
+
+    assert (
+        service.handle_preprocess(
+            PreprocessCommand(
+                operation=PreprocessOperation.NOTCH,
+                notch_freq=60.0,
+            ),
+        )
+        == "Applied notch filter (60.0 Hz)."
+    )
+    assert (
+        service.handle_preprocess(
+            PreprocessCommand(
+                operation=PreprocessOperation.RESAMPLE,
+                rate=256,
+            ),
+        )
+        == "Resampled data to 256 Hz."
+    )
+    assert (
+        service.handle_preprocess(
+            PreprocessCommand(
+                operation=PreprocessOperation.NORMALIZE,
+                method="zscore",
+            ),
+        )
+        == "Normalized data using zscore."
+    )
+    assert (
+        service.handle_preprocess(
+            PreprocessCommand(
+                operation=PreprocessOperation.REREFERENCE,
+                channels=["Cz"],
+            ),
+        )
+        == "Applied reference: Cz."
+    )
+
+    assert preprocess.events == [
+        ("filter", (None, None, [60.0])),
+        ("resample", 256),
+        ("normalize", "zscore"),
+        ("rereference", ["Cz"]),
+    ]
+
+
 def test_preprocess_service_applies_standard_preprocess_in_batch() -> None:
     service, preprocess, _dataset = _service()
 

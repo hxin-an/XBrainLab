@@ -6442,3 +6442,25 @@ compatibility behavior into direct `EvaluateCommand` / `AnalysisCommandService` 
 - This does not physically remove `BackendFacade`.
 - This is command-result replacement evidence for one facade cluster, not full evaluation UI
   acceptance or training quality evidence.
+
+## 2026-05-12 Preprocess Operation Facade-Replacement Guard
+
+### 狀態
+
+Continued the backend/test hygiene lane on `test/backend-ui-legacy-hygiene`. This slice did not
+touch answer UI layout or Data Import UX. It moved remaining `BackendFacade` preprocess operation
+mapping behavior into direct `PreprocessCommandService` tests.
+
+### 已可宣稱
+
+- Preprocess command-service coverage now checks individual `NOTCH`, `RESAMPLE`, `NORMALIZE`, and
+  channel-list `REREFERENCE` operations without entering through `BackendFacade`.
+- The replacement test asserts the exact controller side effects, not only old facade method names.
+- Focused validation is green: preprocess service `5 passed`, facade compatibility plus replacement
+  coverage `48 passed`, ruff PASS, basedpyright `0 errors`, architecture compliant.
+
+### 不能宣稱完成
+
+- This does not physically remove `BackendFacade`.
+- This is command-service replacement evidence for one facade cluster, not full preprocessing
+  workflow acceptance.

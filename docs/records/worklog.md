@@ -16372,3 +16372,30 @@
 - claims still not supported：
   - This does not physically remove `BackendFacade`.
   - This is command-result replacement coverage, not proof of full evaluation UI acceptance.
+
+### 2026-05-12 Preprocess operation facade-replacement guard
+
+- scope：
+  - Continued on `test/backend-ui-legacy-hygiene`.
+  - No answer UI redesign and no Data Import UX redesign.
+  - Moved remaining `BackendFacade` preprocess operation mapping into direct
+    `PreprocessCommandService` replacement coverage.
+- test cleanup：
+  - Added direct command-service checks for individual `NOTCH`, `RESAMPLE`, `NORMALIZE`, and
+    channel-list `REREFERENCE` operations.
+  - The new test asserts controller side effects exactly, rather than preserving facade method
+    names as product evidence.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_preprocess_service.py -q`
+    -> `5 passed`.
+  - `poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py
+    tests/unit/backend/application/test_preprocess_service.py -q`
+    -> `48 passed`.
+  - `poetry run ruff check tests/unit/backend/application/test_preprocess_service.py`
+    -> PASS.
+  - `poetry run basedpyright tests/unit/backend/application/test_preprocess_service.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+- claims still not supported：
+  - This does not physically remove `BackendFacade`.
+  - This is command-service mapping coverage, not full preprocessing workflow acceptance.
