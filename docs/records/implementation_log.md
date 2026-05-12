@@ -6234,3 +6234,34 @@ purity, unsupported command result envelopes, and walkthrough test evidence alig
 - This is not product complete and does not replace human Windows desktop acceptance.
 - Controller compatibility code remains present for mock / legacy non-`Study` contexts, guarded
   from product runtime rather than deleted wholesale.
+
+## 2026-05-12 Backend/UI Legacy Test Hygiene Follow-Up
+
+### 狀態
+
+Focused test hygiene continued on `test/backend-ui-legacy-hygiene` without Data Import UX
+changes. This slice tightened the evidence boundary for product-success tests and made selected
+mock-only sidebar tests explicit compatibility coverage.
+
+### 已可宣稱
+
+- `tests/architecture_compliance.py` now rejects product-success integration tests that import or
+  call `run_legacy_controller_fallback()` or `get_legacy_controller_from_study()`.
+- Unit compatibility tests may still cover legacy fallback helpers; those tests cannot be cited as
+  product workflow success.
+- Ambiguous TrainingSidebar tests for split generation and start training were renamed and
+  strengthened so they explicitly assert legacy mock-context controller fallback behavior.
+
+### Evidence 入口
+
+- Source:
+  - `tests/architecture_compliance.py`
+  - `tests/unit/test_architecture_compliance.py`
+  - `tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation: `docs/records/worklog.md` and `docs/validation/README.md`.
+
+### 不能宣稱完成
+
+- This is not product complete and does not replace human Windows desktop acceptance.
+- This does not remove all controller compatibility code; it prevents product-success evidence from
+  blessing that compatibility layer.

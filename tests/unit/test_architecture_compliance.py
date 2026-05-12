@@ -1,6 +1,7 @@
 from tests.architecture_compliance import (
     check_product_runtime_backend_facade_usage,
     check_product_success_backend_facade_tests,
+    check_product_success_legacy_fallback_tests,
     check_ui_capability_gated_controller_readiness,
     check_ui_command_execution_suppresses_observer_refresh,
     check_ui_controller_fallbacks,
@@ -101,6 +102,74 @@ def test_facade_compatibility():
     )
 
     assert check_product_success_backend_facade_tests(tmp_path) == []
+
+
+def test_product_success_legacy_fallback_test_guard_flags_integration_fallback(
+    tmp_path,
+):
+    path = tmp_path / "tests" / "integration" / "ui" / "test_demo.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+from XBrainLab.ui.application_capabilities import run_legacy_controller_fallback
+
+
+def test_product_action():
+    run_legacy_controller_fallback(widget, lambda: controller.start_training())
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_product_success_legacy_fallback_tests(tmp_path)
+
+    assert len(violations) == 2
+    assert "tests/integration/ui/test_demo.py" in violations[0]
+    assert "legacy fallback product-success evidence" in violations[0]
+
+
+def test_product_success_legacy_fallback_test_guard_flags_controller_lookup(
+    tmp_path,
+):
+    path = tmp_path / "tests" / "integration" / "backend" / "test_demo.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+from XBrainLab.ui import application_capabilities
+
+
+def test_product_action(study):
+    return application_capabilities.get_legacy_controller_from_study(
+        widget,
+        study,
+        "training",
+    )
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_product_success_legacy_fallback_tests(tmp_path)
+
+    assert len(violations) == 1
+    assert "get_legacy_controller_from_study" in violations[0]
+
+
+def test_product_success_legacy_fallback_test_guard_allows_unit_compatibility_test(
+    tmp_path,
+):
+    path = tmp_path / "tests" / "unit" / "ui" / "test_legacy_compat.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+from XBrainLab.ui.application_capabilities import run_legacy_controller_fallback
+
+
+def test_legacy_compat():
+    return run_legacy_controller_fallback(object(), lambda: "legacy-ok")
+""",
+        encoding="utf-8",
+    )
+
+    assert check_product_success_legacy_fallback_tests(tmp_path) == []
 
 
 def test_direct_backend_service_execute_guard_flags_ui_bypass(tmp_path):

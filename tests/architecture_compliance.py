@@ -135,6 +135,10 @@ PRODUCT_SUCCESS_BACKEND_FACADE_TEST_DIRS = (
     Path("tests/integration/pipeline"),
     Path("tests/integration/ui"),
 )
+PRODUCT_SUCCESS_LEGACY_FALLBACK_SYMBOLS = (
+    "get_legacy_controller_from_study",
+    "run_legacy_controller_fallback",
+)
 
 
 def check_architecture(root_dir: str) -> int:
@@ -231,6 +235,15 @@ def check_architecture(root_dir: str) -> int:
     if facade_test_violations:
         print("\nProduct Success BackendFacade Test Violations Found:")
         for violation in facade_test_violations:
+            print(f" - {violation}")
+        return 1
+
+    fallback_test_violations = check_product_success_legacy_fallback_tests(
+        Path(root_dir)
+    )
+    if fallback_test_violations:
+        print("\nProduct Success Legacy Fallback Test Violations Found:")
+        for violation in fallback_test_violations:
             print(f" - {violation}")
         return 1
 
@@ -448,6 +461,33 @@ def check_product_success_backend_facade_tests(root_dir: Path) -> list[str]:
     return violations
 
 
+def check_product_success_legacy_fallback_tests(root_dir: Path) -> list[str]:
+    """Return product-success tests that still use legacy fallback helpers."""
+    violations: list[str] = []
+
+    for relative_dir in PRODUCT_SUCCESS_BACKEND_FACADE_TEST_DIRS:
+        test_dir = root_dir / relative_dir
+        if not test_dir.exists():
+            continue
+        for py_file in test_dir.rglob("*.py"):
+            source = py_file.read_text(encoding="utf-8")
+            try:
+                tree = ast.parse(source, filename=str(py_file))
+            except SyntaxError:
+                continue
+            visitor = _LegacyFallbackTestUsageVisitor()
+            visitor.visit(tree)
+            violations.extend(
+                f"{py_file.relative_to(root_dir)}:{getattr(node, 'lineno', 0)} uses "
+                f"{_legacy_fallback_symbol_name(node)} as legacy fallback "
+                "product-success evidence; rewrite the test to exercise "
+                "ApplicationService / Command API, or move compatibility "
+                "coverage into explicit legacy-only unit tests."
+                for node in visitor.violations
+            )
+    return violations
+
+
 class _BackendFacadeRuntimeUsageVisitor(ast.NodeVisitor):
     def __init__(self) -> None:
         self.violations: list[ast.AST] = []
@@ -463,6 +503,39 @@ class _BackendFacadeRuntimeUsageVisitor(ast.NodeVisitor):
             self.violations.append(node)
             return
         self.generic_visit(node)
+
+
+class _LegacyFallbackTestUsageVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.violations: list[ast.AST] = []
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        if node.module == "XBrainLab.ui.application_capabilities" and any(
+            alias.name == "*" or alias.name in PRODUCT_SUCCESS_LEGACY_FALLBACK_SYMBOLS
+            for alias in node.names
+        ):
+            self.violations.append(node)
+            return
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if _call_name(node.func) in PRODUCT_SUCCESS_LEGACY_FALLBACK_SYMBOLS:
+            self.violations.append(node)
+            return
+        self.generic_visit(node)
+
+
+def _legacy_fallback_symbol_name(node: ast.AST) -> str:
+    if isinstance(node, ast.ImportFrom):
+        names = [
+            alias.name
+            for alias in node.names
+            if alias.name in PRODUCT_SUCCESS_LEGACY_FALLBACK_SYMBOLS
+        ]
+        return ", ".join(names) if names else "*"
+    if isinstance(node, ast.Call):
+        return _call_name(node.func)
+    return "legacy fallback helper"
 
 
 def check_ui_controller_fallbacks(root_dir: Path) -> list[str]:

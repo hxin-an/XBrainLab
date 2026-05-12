@@ -729,16 +729,29 @@ class TestTrainingSidebar:
     def test_update_info_no_crash(self, sidebar):
         sidebar.update_info()  # smoke test: should not raise
 
-    def test_split_data_accepted(self, sidebar):
+    def test_split_data_legacy_mock_context_applies_controller_fallback(
+        self,
+        sidebar,
+    ):
         sidebar.panel.controller.has_data = MagicMock(return_value=True)
         sidebar.panel.dataset_controller.has_data.return_value = True
         sidebar.panel.dataset_controller.get_epoch_data.return_value = MagicMock()
-        with patch(
-            "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog"
-        ) as MockDlg:
+        sidebar.panel.controller.has_datasets.return_value = False
+        sidebar.panel.controller.get_trainer.return_value = None
+        generator = MagicMock()
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog"
+            ) as MockDlg,
+            patch("PyQt6.QtWidgets.QMessageBox.information"),
+        ):
             MockDlg.return_value.exec.return_value = QDialog.DialogCode.Accepted
-            MockDlg.return_value.get_result.return_value = MagicMock()
+            MockDlg.return_value.get_result.return_value = generator
             sidebar.split_data()
+
+        sidebar.panel.controller.apply_data_splitting.assert_called_once_with(
+            generator,
+        )
 
     def test_split_data_service_success_does_not_fallback_to_controller(
         self,
@@ -1799,9 +1812,17 @@ class TestTrainingSidebar:
             "Stop training before changing training configuration.",
         )
 
-    def test_start_training_ui_action(self, sidebar):
+    def test_start_training_legacy_mock_context_runs_controller_fallback(
+        self,
+        sidebar,
+    ):
         sidebar.panel.controller.is_training.return_value = False
-        sidebar.start_training_ui_action()
+        with patch(
+            "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+            return_value=None,
+        ):
+            sidebar.start_training_ui_action()
+
         sidebar.panel.controller.start_training.assert_called_once()
 
     def test_start_training_requires_confirmation_for_long_running_command(
@@ -1973,11 +1994,22 @@ class TestTrainingSidebar:
 
         mock_check_ready.assert_not_called()
 
-    def test_start_training_error(self, sidebar):
+    def test_start_training_legacy_mock_context_reports_controller_error(
+        self,
+        sidebar,
+    ):
         sidebar.panel.controller.is_training.return_value = False
         sidebar.panel.controller.start_training.side_effect = RuntimeError("fail")
-        with patch("PyQt6.QtWidgets.QMessageBox.critical"):
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                return_value=None,
+            ),
+            patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_critical,
+        ):
             sidebar.start_training_ui_action()
+
+        mock_critical.assert_called_once()
 
     def test_split_data_no_data(self, sidebar):
         sidebar.panel.controller.get_loaded_data_list.return_value = []

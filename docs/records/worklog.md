@@ -15702,3 +15702,53 @@
   - Not human Windows desktop acceptance.
   - Not a deletion of all controller compatibility code; remaining fallback is guarded and
     compatibility-only.
+
+### 2026-05-12 Backend/UI legacy test hygiene follow-up
+
+- scope：
+  - Started focused test hygiene on `test/backend-ui-legacy-hygiene`, branched from
+    `refactor/backend-command-spine-hardening`.
+  - Did not touch Data Import UX.
+  - Goal of this slice: product-success tests must not treat legacy controller fallback helpers as
+    product workflow evidence; legacy mock/non-`Study` compatibility remains allowed in unit tests.
+- TDD red / fix：
+  - Added failing architecture guard examples for product-success integration tests importing or
+    calling `run_legacy_controller_fallback()` and
+    `get_legacy_controller_from_study()`.
+  - Initial targeted run failed with `ImportError` because
+    `check_product_success_legacy_fallback_tests()` did not exist yet.
+  - Implemented the AST guard in `tests/architecture_compliance.py` and wired it into
+    `check_architecture()`.
+  - A full architecture unit run then exposed a patch-placement mistake that temporarily hid
+    `BackendFacade` call detection; fixed by restoring
+    `_BackendFacadeRuntimeUsageVisitor.visit_Call()`.
+- test cleanup：
+  - Renamed ambiguous sidebar tests so mock-only behavior is explicit:
+    `test_split_data_legacy_mock_context_applies_controller_fallback`,
+    `test_start_training_legacy_mock_context_runs_controller_fallback`, and
+    `test_start_training_legacy_mock_context_reports_controller_error`.
+  - Strengthened those tests with concrete fallback behavior assertions instead of smoke-only
+    success.
+  - Kept legacy fallback tests because they protect mock / legacy compatibility; they are not
+    product-success evidence.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_product_success_legacy_fallback_test_guard_flags_integration_fallback tests/unit/test_architecture_compliance.py::test_product_success_legacy_fallback_test_guard_flags_controller_lookup tests/unit/test_architecture_compliance.py::test_product_success_legacy_fallback_test_guard_allows_unit_compatibility_test -q`
+    -> red first due to missing guard, then `3 passed`.
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` ->
+    `64 passed`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_split_data_legacy_mock_context_applies_controller_fallback tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_start_training_legacy_mock_context_runs_controller_fallback tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_start_training_legacy_mock_context_reports_controller_error -q`
+    -> `3 passed`.
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py -q`
+    -> `96 passed`.
+  - `poetry run ruff check tests/architecture_compliance.py tests/unit/test_architecture_compliance.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `All checks passed!`.
+  - `poetry run basedpyright tests/architecture_compliance.py tests/unit/test_architecture_compliance.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run mkdocs build --strict` -> PASS.
+  - `git diff --check` -> PASS.
+- claims still not supported：
+  - Not product complete.
+  - Not human Windows desktop acceptance.
+  - Not a wholesale removal of controller compatibility code; this slice prevents product-success
+    tests from blessing that compatibility layer.
