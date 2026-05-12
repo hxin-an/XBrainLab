@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from typing import Any
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -158,6 +159,31 @@ class TestDataSplittingDialog:
         controller.get_epoch_data.assert_not_called()
         controller.get_dataset_generator.assert_not_called()
 
+    def test_default_split_config_uses_trainable_trial_splits(
+        self,
+        qtbot,
+        controller,
+    ):
+        from XBrainLab.backend.dataset import SplitByType, ValSplitByType
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+            DataSplittingDialog,
+        )
+
+        dlg = DataSplittingDialog(None, controller)
+        qtbot.addWidget(dlg)
+
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_dialog."
+            "DataSplittingPreviewDialog"
+        ) as MockPreview:
+            MockPreview.return_value.exec.return_value = False
+
+            dlg.confirm()
+
+        config = MockPreview.call_args.args[3]
+        assert config.test_splitter_list[0].split_type == SplitByType.TRIAL
+        assert config.val_splitter_list[0].split_type == ValSplitByType.TRIAL
+
     def test_update_preview(self, qtbot, controller):
         from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
             DataSplittingDialog,
@@ -198,7 +224,7 @@ class TestDataSplittingDialog:
 class TestDataSplittingDialogSplitTypes:
     """Tests for each split type combo value in update_preview."""
 
-    def _make_dialog(self, qtbot, controller):
+    def _make_dialog(self, qtbot, controller) -> Any:
         from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
             DataSplittingDialog,
         )

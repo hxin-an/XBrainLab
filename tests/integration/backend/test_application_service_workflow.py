@@ -28,6 +28,14 @@ from XBrainLab.backend.application import (
     ValidateInterpretationCommand,
     VisualizeCommand,
 )
+from XBrainLab.backend.dataset import (
+    DataSplitter,
+    DataSplittingConfig,
+    SplitByType,
+    SplitUnit,
+    TrainingType,
+    ValSplitByType,
+)
 
 
 def _write_synthetic_raw_fif(tmp_path):
@@ -184,6 +192,77 @@ def test_application_service_load_epoch_dataset_workflow(tmp_path):
     assert reset_result.state.last_error is None
     assert reset_result.changed_state.error_changed is True
     assert service.get_capabilities().get(CommandName.LOAD_DATA).available is True
+
+
+def test_application_service_accepts_dialog_generator_split_and_updates_readiness(
+    tmp_path,
+):
+    service = ApplicationService()
+    fif_path = _write_synthetic_raw_fif(tmp_path)
+
+    assert service.execute(LoadDataCommand(paths=[str(fif_path)])).ok is True
+    assert (
+        service.execute(
+            PreprocessCommand(
+                operation=PreprocessOperation.NORMALIZE,
+                method="z-score",
+            ),
+        ).ok
+        is True
+    )
+    assert (
+        service.execute(
+            CreateEpochCommand(
+                t_min=0.0,
+                t_max=0.25,
+                event_ids=["left", "right"],
+            ),
+        ).ok
+        is True
+    )
+
+    dialog_like_config = DataSplittingConfig(
+        train_type=TrainingType.FULL,
+        is_cross_validation=False,
+        val_splitter_list=[
+            DataSplitter(
+                split_type=ValSplitByType.TRIAL,
+                value_var="0.2",
+                split_unit=SplitUnit.RATIO,
+            ),
+        ],
+        test_splitter_list=[
+            DataSplitter(
+                split_type=SplitByType.TRIAL,
+                value_var="0.2",
+                split_unit=SplitUnit.RATIO,
+            ),
+        ],
+    )
+    generator = service.study.get_datasets_generator(dialog_like_config)
+
+    dataset_result = service.execute(GenerateDatasetCommand(generator=generator))
+
+    assert dataset_result.ok is True
+    assert dataset_result.diagnostics["split_audit"]["ok"] is True
+    assert dataset_result.state.dataset.available is True
+    assert dataset_result.state.dataset.split_summary["train_count"] > 0
+    assert dataset_result.state.dataset.split_summary["val_count"] > 0
+    assert dataset_result.state.dataset.split_summary["test_count"] > 0
+
+    assert service.execute(ConfigureTrainingCommand(model_name="EEGNet")).ok is True
+    assert (
+        service.execute(
+            ConfigureTrainingCommand(
+                epoch=1,
+                batch_size=2,
+                learning_rate=0.001,
+                output_dir=str(tmp_path / "training-output"),
+            ),
+        ).ok
+        is True
+    )
+    assert service.get_capabilities().get(CommandName.TRAIN).available is True
 
 
 def test_data_interpretation_to_dataset_workflow_is_non_mocked(tmp_path):

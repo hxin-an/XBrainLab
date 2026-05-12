@@ -446,6 +446,7 @@ class DataSplittingDialog(BaseDialog):
         right_layout.addWidget(QLabel("Testing Set"))
         self.test_combo = QComboBox()
         self.test_combo.addItems([i.value for i in SplitByType])
+        self.test_combo.setCurrentText(SplitByType.TRIAL.value)
         self.test_combo.currentTextChanged.connect(self.update_preview)
         right_layout.addWidget(self.test_combo)
 
@@ -456,6 +457,7 @@ class DataSplittingDialog(BaseDialog):
         right_layout.addWidget(QLabel("Validation Set"))
         self.val_combo = QComboBox()
         self.val_combo.addItems([i.value for i in ValSplitByType])
+        self.val_combo.setCurrentText(ValSplitByType.TRIAL.value)
         self.val_combo.currentTextChanged.connect(self.update_preview)
         right_layout.addWidget(self.val_combo)
 
