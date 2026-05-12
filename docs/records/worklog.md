@@ -37,6 +37,31 @@
 
 ## 2026-05-12
 
+### 17:31 TrainingSidebar accepted-test cleanup
+
+- 做了什麼：
+  - Renamed the ambiguous `test_select_model_accepted` and `test_training_setting_accepted` tests
+    into explicit legacy/mock-context fallback tests.
+  - Both tests now assert that TrainingSidebar first attempts `ConfigureTrainingCommand` through
+    `execute_application_command(...)` and only then applies controller fallback when the command
+    helper returns `None`.
+  - Strengthened assertions for model name/params, training option fields, success messages, and
+    exact controller fallback arguments.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py -q`
+    -> `96 passed`.
+  - `poetry run ruff check tests/unit/ui/test_sidebars_and_components.py`
+    -> `All checks passed!`.
+  - `poetry run basedpyright tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run mkdocs build --strict`
+    -> PASS, with the existing MkDocs Material advisory.
+  - `git diff --check`
+    -> PASS.
+- 接續 / 本輪剩餘：
+  - Commit this test cleanup, then continue with the remaining ambiguous `test_update_info_no_crash`
+    and `test_open_channel_selection_accepted` tests.
+
 ### 17:25 BackendFacade test quarantine guard
 
 - 做了什麼：

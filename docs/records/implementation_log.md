@@ -6267,6 +6267,9 @@ mock-only sidebar tests explicit compatibility coverage.
 - Architecture compliance now quarantines `BackendFacade` test usage: new tests outside explicit
   facade compatibility/runtime/guard files must use `ApplicationService / Command API` replacement
   coverage instead of reintroducing facade workflow truth.
+- TrainingSidebar model-selection and training-setting unit tests no longer use ambiguous
+  `accepted` names for mock-only paths; they now explicitly assert command attempts followed by
+  legacy controller fallback in mock contexts.
 
 ### Evidence 入口
 

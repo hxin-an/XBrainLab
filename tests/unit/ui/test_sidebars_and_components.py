@@ -1294,21 +1294,43 @@ class TestTrainingSidebar:
         mock_info.assert_not_called()
         assert "could not safely complete" in mock_warning.call_args.args[2]
 
-    def test_select_model_accepted(self, sidebar):
+    def test_select_model_legacy_mock_context_applies_controller_fallback(
+        self,
+        sidebar,
+    ):
+        from XBrainLab.backend.application import ConfigureTrainingCommand
+
         sidebar.panel.controller.is_training.return_value = False
         mock_holder = MagicMock()
         mock_holder.target_model.__name__ = "EEGNet"
+        mock_holder.model_params_map = {"channels": 8}
+        mock_holder.pretrained_weight_path = None
         sidebar.panel.controller.get_model_holder.return_value = mock_holder
         with (
             patch(
+                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                return_value=None,
+            ),
+            patch(
                 "XBrainLab.ui.panels.training.sidebar.ModelSelectionDialog"
             ) as MockDlg,
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=None,
+            ) as mock_execute,
+            patch("PyQt6.QtWidgets.QMessageBox.information") as mock_info,
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_result.return_value = mock_holder
             sidebar.select_model()
-            sidebar.panel.controller.set_model_holder.assert_called_once()
+
+        command = mock_execute.call_args.args[1]
+        assert isinstance(command, ConfigureTrainingCommand)
+        assert command.model_name == "EEGNet"
+        assert command.model_params == {"channels": 8}
+        sidebar.panel.controller.set_model_holder.assert_called_once_with(mock_holder)
+        sidebar.panel.controller.get_model_holder.assert_called_once()
+        mock_info.assert_called_once_with(sidebar, "Success", "Model selected: EEGNet")
 
     def test_select_model_service_success_does_not_read_stale_controller(
         self,
@@ -1699,18 +1721,60 @@ class TestTrainingSidebar:
         with patch("PyQt6.QtWidgets.QMessageBox.warning"):
             sidebar.training_setting()
 
-    def test_training_setting_accepted(self, sidebar):
+    def test_training_setting_legacy_mock_context_applies_controller_fallback(
+        self,
+        sidebar,
+    ):
+        from XBrainLab.backend.application import ConfigureTrainingCommand
+
         sidebar.panel.controller.is_training.return_value = False
+        option = SimpleNamespace(
+            epoch=11,
+            bs=32,
+            lr=0.001,
+            repeat_num=2,
+            use_cpu=True,
+            gpu_idx=None,
+            optim=None,
+            optim_params={"weight_decay": 0.01},
+            checkpoint_epoch=3,
+            output_dir="./legacy-output",
+            evaluation_option=SimpleNamespace(value="val_acc"),
+        )
         with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                return_value=None,
+            ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog"
             ) as MockDlg,
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                side_effect=[None, None],
+            ) as mock_execute,
+            patch("PyQt6.QtWidgets.QMessageBox.information") as mock_info,
         ):
             MockDlg.return_value.exec.return_value = True
-            MockDlg.return_value.get_result.return_value = MagicMock()
+            MockDlg.return_value.get_result.return_value = option
             sidebar.training_setting()
-            sidebar.panel.controller.set_training_option.assert_called_once()
+
+        command = mock_execute.call_args_list[1].args[1]
+        assert isinstance(command, ConfigureTrainingCommand)
+        assert command.epoch == 11
+        assert command.batch_size == 32
+        assert command.learning_rate == 0.001
+        assert command.repeat == 2
+        assert command.device == "cpu"
+        assert command.optimizer == "adam"
+        assert command.optimizer_params == {"weight_decay": 0.01}
+        assert command.save_checkpoints_every == 3
+        assert command.output_dir == "./legacy-output"
+        assert command.evaluation_option == "val_acc"
+        sidebar.panel.controller.set_training_option.assert_called_once_with(option)
+        mock_info.assert_called_once_with(
+            sidebar, "Success", "Training settings saved."
+        )
 
     def test_training_setting_uses_state_snapshot_defaults_before_stale_controller(
         self,
