@@ -16310,3 +16310,30 @@
   - This is replacement coverage for facade compatibility behavior, not physical
     `BackendFacade` removal.
   - It does not prove full product runtime acceptance or every external split fixture.
+
+### 2026-05-12 Training configure facade-replacement guard
+
+- scope：
+  - Continued on `test/backend-ui-legacy-hygiene`.
+  - No answer UI redesign and no Data Import UX redesign.
+  - Moved `BackendFacade` training configure compatibility behavior into direct
+    `TrainingCommandService` replacement coverage.
+- test cleanup：
+  - Added command-service tests for case-insensitive model names and unknown-model rejection.
+  - Added command-service tests for AdamW optimizer mapping.
+  - Added command-service tests for `auto` device mapping using an explicit CUDA-usability probe
+    stub, so the assertion is not dependent on local hardware.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_training_service.py -q`
+    -> `7 passed`.
+  - `poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py
+    tests/unit/backend/application/test_training_service.py -q`
+    -> `50 passed`.
+  - `poetry run ruff check tests/unit/backend/application/test_training_service.py`
+    -> PASS.
+  - `poetry run basedpyright tests/unit/backend/application/test_training_service.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+- claims still not supported：
+  - This does not physically remove `BackendFacade`.
+  - This is command-service replacement coverage, not proof of full training runtime quality.

@@ -6392,3 +6392,27 @@ mode compatibility behavior into direct `GenerateDatasetCommand` service tests.
 - This does not physically remove `BackendFacade`.
 - This is command-service replacement evidence for one facade cluster, not full desktop runtime
   acceptance or full external-dataset coverage.
+
+## 2026-05-12 Training Configure Facade-Replacement Guard
+
+### 狀態
+
+Continued the backend/test hygiene lane on `test/backend-ui-legacy-hygiene`. This slice did not
+touch answer UI layout or Data Import UX. It moved `BackendFacade` training configure compatibility
+behavior into direct `TrainingCommandService` tests.
+
+### 已可宣稱
+
+- Training command-service coverage now checks case-insensitive model resolution without entering
+  through `BackendFacade`.
+- Training command-service coverage now checks unknown-model rejection without entering through
+  `BackendFacade`.
+- Training command-service coverage now checks AdamW optimizer mapping and `auto` device mapping.
+- Focused validation is green: training service `7 passed`, facade compatibility plus replacement
+  coverage `50 passed`, ruff PASS, basedpyright `0 errors`, architecture compliant.
+
+### 不能宣稱完成
+
+- This does not physically remove `BackendFacade`.
+- This is command-service replacement evidence for one facade cluster, not full training quality,
+  GPU runtime acceptance, or desktop workflow completion.

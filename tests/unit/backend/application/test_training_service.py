@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+import pytest
+
 from XBrainLab.backend.application.commands import (
     ClearTrainingHistoryCommand,
     ConfigureTrainingCommand,
@@ -27,6 +29,7 @@ from XBrainLab.backend.application.training_service import (
     HandlerResult,
     TrainingCommandService,
 )
+from XBrainLab.backend.training import option as training_option_module
 
 
 class _TrainingController:
@@ -132,6 +135,77 @@ def test_training_service_configures_model_and_options() -> None:
         "checkpoint_epoch": 0,
         "output_dir": "./tmp-output",
     }
+
+
+def test_training_service_maps_case_insensitive_model_without_facade() -> None:
+    service, training = _service()
+
+    message = service.handle_configure_training(
+        ConfigureTrainingCommand(model_name="EEGNET"),
+    )
+
+    assert message == "Model configured: EEGNET."
+    assert training.model_holder is not None
+    assert service.model_name(training.model_holder) == "EEGNet"
+
+
+def test_training_service_rejects_unknown_model_without_facade() -> None:
+    service, _training = _service()
+
+    with pytest.raises(ValueError, match="Unknown model architecture"):
+        service.handle_configure_training(
+            ConfigureTrainingCommand(model_name="nonexistent_model"),
+        )
+
+
+def test_training_service_maps_adamw_optimizer_without_facade() -> None:
+    service, training = _service()
+
+    _message, payload = _expect_payload(
+        service.handle_configure_training(
+            ConfigureTrainingCommand(
+                epoch=3,
+                batch_size=8,
+                learning_rate=0.002,
+                optimizer="adamw",
+                device="cpu",
+            ),
+        ),
+    )
+
+    option = training.training_option
+    assert option is not None
+    assert option.get_optim_name() == "AdamW"
+    assert payload["training_option"]["optimizer"] == "AdamW"
+
+
+def test_training_service_maps_auto_device_without_facade(monkeypatch) -> None:
+    service, training = _service()
+
+    def cuda_device_is_usable(_gpu_idx: int | None) -> tuple[bool, str | None]:
+        return True, None
+
+    monkeypatch.setattr(
+        training_option_module,
+        "is_cuda_device_usable",
+        cuda_device_is_usable,
+    )
+    _message, payload = _expect_payload(
+        service.handle_configure_training(
+            ConfigureTrainingCommand(
+                epoch=3,
+                batch_size=8,
+                learning_rate=0.002,
+                device="auto",
+            ),
+        ),
+    )
+
+    option = training.training_option
+    assert option is not None
+    assert option.use_cpu is False
+    assert option.gpu_idx == 0
+    assert payload["training_option"]["device"] == "cuda:0"
 
 
 def test_training_service_start_stop_and_clear_history() -> None:
