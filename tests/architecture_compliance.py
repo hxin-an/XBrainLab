@@ -145,6 +145,11 @@ PRODUCT_SUCCESS_LEGACY_FALLBACK_SYMBOLS = (
     "get_legacy_controller_from_study",
     "run_legacy_controller_fallback",
 )
+WEAK_TEST_NAME_PATTERNS = (
+    "accepted",
+    "no_crash",
+    "does_not_crash",
+)
 
 
 def check_architecture(root_dir: str) -> int:
@@ -257,6 +262,13 @@ def check_architecture(root_dir: str) -> int:
     if fallback_test_violations:
         print("\nProduct Success Legacy Fallback Test Violations Found:")
         for violation in fallback_test_violations:
+            print(f" - {violation}")
+        return 1
+
+    weak_test_name_violations = check_weak_test_names(Path(root_dir))
+    if weak_test_name_violations:
+        print("\nWeak Test Name Violations Found:")
+        for violation in weak_test_name_violations:
             print(f" - {violation}")
         return 1
 
@@ -530,6 +542,46 @@ def check_product_success_legacy_fallback_tests(root_dir: Path) -> list[str]:
                 for node in visitor.violations
             )
     return violations
+
+
+def check_weak_test_names(root_dir: Path) -> list[str]:
+    """Return tests named like smoke placeholders instead of behavior checks."""
+    violations: list[str] = []
+    tests_dir = root_dir / "tests"
+    if not tests_dir.exists():
+        return violations
+
+    for py_file in tests_dir.rglob("*.py"):
+        if py_file.name == "__init__.py":
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if not node.name.startswith("test_"):
+                continue
+            if not _is_weak_test_name(node.name):
+                continue
+            violations.append(
+                f"{py_file.relative_to(root_dir)}:{node.lineno} uses weak test "
+                f"name {node.name!r}; rename it to behavior-specific evidence "
+                "and assert command/result/state semantics instead of a generic "
+                "accepted/no-crash path.",
+            )
+    return violations
+
+
+def _is_weak_test_name(test_name: str) -> bool:
+    parts = test_name.split("_")
+    return any(
+        pattern in parts if "_" not in pattern else pattern in test_name
+        for pattern in WEAK_TEST_NAME_PATTERNS
+    )
 
 
 class _BackendFacadeRuntimeUsageVisitor(ast.NodeVisitor):

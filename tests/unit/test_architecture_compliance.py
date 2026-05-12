@@ -19,6 +19,7 @@ from tests.architecture_compliance import (
     check_ui_post_command_controller_echoes,
     check_ui_post_command_local_refreshes,
     check_ui_refresh_false_commands,
+    check_weak_test_names,
 )
 
 
@@ -26,6 +27,47 @@ def _write_ui_file(root, source: str) -> None:
     path = root / "XBrainLab" / "ui" / "panels" / "demo" / "sidebar.py"
     path.parent.mkdir(parents=True)
     path.write_text(source, encoding="utf-8")
+
+
+def test_weak_test_name_guard_flags_ambiguous_names(tmp_path):
+    path = tmp_path / "tests" / "unit" / "ui" / "test_demo.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_open_dialog_accepted():
+    pass
+
+
+def test_panel_no_crash():
+    pass
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_weak_test_names(tmp_path)
+
+    assert len(violations) == 2
+    assert "test_open_dialog_accepted" in violations[0]
+    assert "behavior-specific" in violations[0]
+    assert "test_panel_no_crash" in violations[1]
+
+
+def test_weak_test_name_guard_allows_behavior_specific_names(tmp_path):
+    path = tmp_path / "tests" / "unit" / "ui" / "test_demo.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_open_dialog_accepts_preview_result():
+    pass
+
+
+def test_none_figure_is_ignored():
+    pass
+""",
+        encoding="utf-8",
+    )
+
+    assert check_weak_test_names(tmp_path) == []
 
 
 def test_product_runtime_facade_guard_flags_agent_facade_import(tmp_path):

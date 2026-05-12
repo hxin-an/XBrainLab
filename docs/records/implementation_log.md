@@ -6275,6 +6275,8 @@ mock-only sidebar tests explicit compatibility coverage.
   channel-selection behavior.
 - A repo-level weak-name scan for `accepted`, `no_crash`, and `does_not_crash` test names across
   unit/integration tests now returns no matches after tightening the remaining focused UI tests.
+- Architecture compliance now enforces that weak-name cleanup with `check_weak_test_names()`, so
+  vague `accepted` / `no_crash` / `does_not_crash` test names cannot be reintroduced silently.
 
 ### Evidence 入口
 

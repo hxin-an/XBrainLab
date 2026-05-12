@@ -37,6 +37,34 @@
 
 ## 2026-05-12
 
+### 17:48 Weak test-name architecture guard
+
+- 做了什麼：
+  - Added `check_weak_test_names()` to `tests/architecture_compliance.py`.
+  - The architecture gate now rejects `test_*accepted*`, `test_*no_crash*`, and
+    `test_*does_not_crash*` placeholder names under `tests/` so future test cleanup cannot regress
+    into vague smoke evidence.
+  - Added guard unit tests that flag ambiguous names and allow behavior-specific names like
+    `test_open_dialog_accepts_preview_result`.
+- TDD red：
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> failed before implementation because `check_weak_test_names` did not exist.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `68 passed`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `poetry run ruff check tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> `All checks passed!`.
+  - `poetry run basedpyright tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run mkdocs build --strict`
+    -> PASS, with the existing MkDocs Material advisory.
+  - `git diff --check`
+    -> PASS.
+- 接續 / 本輪剩餘：
+  - Commit this guard.
+
 ### 17:42 Remaining weak UI test-name cleanup
 
 - 做了什麼：
