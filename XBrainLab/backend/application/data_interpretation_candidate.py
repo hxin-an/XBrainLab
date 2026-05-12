@@ -7,6 +7,7 @@ from dataclasses import field as dc_field
 from pathlib import Path
 from typing import Any
 
+from . import data_interpretation_internal_events as _internal_events
 from .data_interpretation_label_carriers import (
     build_label_carrier_plan as _build_label_carrier_plan,
 )
@@ -38,6 +39,7 @@ class InterpretationCandidate:
     event_roles: dict[str, str] = dc_field(default_factory=dict)
     class_map: dict[str, str] = dc_field(default_factory=dict)
     class_map_source: str = ""
+    internal_event_preview: dict[str, Any] = dc_field(default_factory=dict)
     time_model: str = "unknown"
     granularity: str = "unknown"
     metadata: list[FileMetadataResolution] = dc_field(default_factory=list)
@@ -120,6 +122,7 @@ def build_interpretation_candidate(
             "Confirm label carrier alignment, anchor event, and class map "
             "before applying.",
         )
+    internal_event_preview: dict[str, Any] = {}
     if scan.bids.get("is_bids"):
         event_roles.update(
             {
@@ -132,7 +135,19 @@ def build_interpretation_candidate(
             warnings.append("BIDS-like source has no events.tsv file.")
     else:
         extensions = {Path(item).suffix.lower() for item in selected_files}
-        if extensions & {".gdf", ".edf", ".bdf", ".set", ".vhdr"}:
+        internal_event_preview = _internal_events.build_internal_event_preview(
+            selected_files
+        )
+        internal_event_warnings = internal_event_preview.get("scan_warnings", [])
+        if isinstance(internal_event_warnings, list):
+            warnings.extend(str(item) for item in internal_event_warnings)
+        has_internal_event_rows = bool(
+            internal_event_preview.get("candidate_label_events")
+            or internal_event_preview.get("not_used_events")
+        )
+        if extensions & {".gdf", ".edf", ".bdf", ".set", ".vhdr"} or (
+            has_internal_event_rows
+        ):
             event_roles["internal_events"] = "event role candidates"
             confirmation_items.append(
                 "Confirm which events are trial anchors, class cues, responses, "
@@ -185,6 +200,7 @@ def build_interpretation_candidate(
         event_roles=event_roles,
         class_map=class_map,
         class_map_source=class_map_source,
+        internal_event_preview=internal_event_preview,
         time_model="sample_index_or_annotation_time"
         if event_roles
         else "file_native_time",

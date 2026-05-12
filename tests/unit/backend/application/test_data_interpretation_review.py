@@ -45,6 +45,25 @@ def _candidate(**overrides):
         "blocked_reasons": [],
         "event_roles": {"trial_type": "class cue"},
         "class_map": {"left": "0"},
+        "internal_event_preview": {
+            "candidate_label_events": [
+                {
+                    "event_code": "769",
+                    "use_as": "Class label",
+                    "event_count": 72,
+                    "coverage": "1/1 files",
+                    "evidence": "Known GDF class event code",
+                }
+            ],
+            "not_used_events": [
+                {
+                    "event_code": "768",
+                    "use_as": "Trial timing",
+                    "reason": "Trial start marker",
+                    "coverage": "1/1 files",
+                }
+            ],
+        },
     }
     data.update(overrides)
     return SimpleNamespace(**data)
@@ -63,6 +82,10 @@ def test_build_interpretation_preview_serializes_review_payload():
     assert preview.metadata_preview[0]["file"] == "sub-01.fif"
     assert preview.metadata_preview[0]["subject"]["value"] == "01"
     assert preview.event_roles == {"trial_type": "class cue"}
+    assert (
+        preview.internal_event_preview["candidate_label_events"][0]["event_code"]
+        == "769"
+    )
     assert preview.action_items
     assert {
         "issue": "Review labels.",

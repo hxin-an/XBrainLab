@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from XBrainLab.backend.application import data_interpretation_internal_events
 from XBrainLab.backend.application.data_interpretation_candidate import (
     InterpretationCandidate,
     build_interpretation_candidate,
@@ -106,9 +107,22 @@ def test_build_interpretation_candidate_previews_tabular_label_class_values(tmp_
 
 def test_build_interpretation_candidate_uses_inside_eeg_labels_instead_of_carrier(
     tmp_path,
+    monkeypatch,
 ):
     events = tmp_path / "A01T.mat"
     events.write_text("not parsed when embedded events are selected", encoding="utf-8")
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "768": {"count": 72, "description": "768"},
+                "769": {"count": 18, "description": "769"},
+                "770": {"count": 18, "description": "770"},
+                "1023": {"count": 6, "description": "1023"},
+            }
+        },
+    )
 
     candidate = build_interpretation_candidate(
         candidate_id="candidate-1",
@@ -135,6 +149,16 @@ def test_build_interpretation_candidate_uses_inside_eeg_labels_instead_of_carrie
     assert candidate.label_carrier_plan == []
     assert candidate.class_map == {}
     assert candidate.event_roles["internal_events"] == "event role candidates"
+    assert [
+        row["event_code"]
+        for row in candidate.internal_event_preview["candidate_label_events"]
+    ] == ["769", "770"]
+    assert candidate.internal_event_preview["candidate_label_events"][0][
+        "evidence"
+    ].startswith("Known GDF class event code")
+    assert [
+        row["event_code"] for row in candidate.internal_event_preview["not_used_events"]
+    ] == ["768", "1023"]
     assert all(
         "label carrier alignment" not in item for item in candidate.confirmation_items
     )
@@ -498,3 +522,64 @@ def test_build_interpretation_candidate_preserves_user_added_label_sources():
     assert plans["/external/sub-01_task-mi_labels.tsv"]["source_location"] == (
         "/external"
     )
+
+
+def test_build_interpretation_candidate_uses_real_internal_event_evidence(
+    monkeypatch,
+):
+    def fake_read(path: str):
+        name = Path(path).name
+        counts_by_file = {
+            "A01T.gdf": {"768": 72, "769": 36, "770": 36, "772": 36, "1023": 2},
+            "A02T.gdf": {"768": 72, "769": 36, "770": 36, "772": 36, "1023": 2},
+            "A03T.gdf": {"768": 72, "769": 36, "770": 36, "1023": 2},
+        }
+        return {
+            "events": {
+                code: {"count": count, "description": code}
+                for code, count in counts_by_file[name].items()
+            }
+        }
+
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        fake_read,
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            source_kind="folder",
+            eeg_files=["/data/A01T.gdf", "/data/A02T.gdf", "/data/A03T.gdf"],
+            label_carriers=[],
+            label_carrier_sources={},
+            bids={"is_bids": False, "events_files": []},
+        ),
+        choices={
+            "selected_eeg_files": [
+                "/data/A01T.gdf",
+                "/data/A02T.gdf",
+                "/data/A03T.gdf",
+            ],
+            "label_carrier": "embedded_events",
+        },
+    )
+
+    preview = candidate.internal_event_preview
+    rows_by_code = {row["event_code"]: row for row in preview["candidate_label_events"]}
+    other_by_code = {row["event_code"]: row for row in preview["not_used_events"]}
+
+    assert preview["source"] == "mne_internal_events"
+    assert preview["file_count"] == 3
+    assert list(rows_by_code) == ["769", "770", "772"]
+    assert rows_by_code["769"]["event_count"] == 108
+    assert rows_by_code["769"]["coverage"] == "3/3 files"
+    assert "same count in each file" in rows_by_code["769"]["evidence"]
+    assert rows_by_code["772"]["coverage"] == "2/3 files"
+    assert rows_by_code["772"]["missing_files"] == ["A03T.gdf"]
+    assert "missing in A03T.gdf" in rows_by_code["772"]["evidence"]
+    assert other_by_code["768"]["use_as"] == "Trial timing"
+    assert other_by_code["1023"]["reason"] == "Rejected / artifact trial"
+    assert candidate.class_map == {}
+    assert candidate.class_map_source == ""

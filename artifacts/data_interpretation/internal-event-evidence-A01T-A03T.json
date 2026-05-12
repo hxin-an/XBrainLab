@@ -1,0 +1,189 @@
+{
+  "selected_files": [
+    "tests/fixtures/data/A01T.gdf",
+    "tests/fixtures/data/A02T.gdf",
+    "tests/fixtures/data/A03T.gdf"
+  ],
+  "internal_event_preview": {
+    "source": "mne_internal_events",
+    "file_count": 3,
+    "scanned_files": [
+      "A01T.gdf",
+      "A02T.gdf",
+      "A03T.gdf"
+    ],
+    "event_count": 1815,
+    "candidate_label_events": [
+      {
+        "event_code": "769",
+        "code": "769",
+        "use_as": "Class label",
+        "event_count": 216,
+        "coverage": "3/3 files",
+        "present_files": 3,
+        "total_files": 3,
+        "missing_files": [],
+        "file_counts": {
+          "A01T.gdf": 72,
+          "A02T.gdf": 72,
+          "A03T.gdf": 72
+        },
+        "evidence": "Known GDF class event code; same count in each file"
+      },
+      {
+        "event_code": "770",
+        "code": "770",
+        "use_as": "Class label",
+        "event_count": 216,
+        "coverage": "3/3 files",
+        "present_files": 3,
+        "total_files": 3,
+        "missing_files": [],
+        "file_counts": {
+          "A01T.gdf": 72,
+          "A02T.gdf": 72,
+          "A03T.gdf": 72
+        },
+        "evidence": "Known GDF class event code; same count in each file"
+      },
+      {
+        "event_code": "771",
+        "code": "771",
+        "use_as": "Class label",
+        "event_count": 216,
+        "coverage": "3/3 files",
+        "present_files": 3,
+        "total_files": 3,
+        "missing_files": [],
+        "file_counts": {
+          "A01T.gdf": 72,
+          "A02T.gdf": 72,
+          "A03T.gdf": 72
+        },
+        "evidence": "Known GDF class event code; same count in each file"
+      },
+      {
+        "event_code": "772",
+        "code": "772",
+        "use_as": "Class label",
+        "event_count": 216,
+        "coverage": "3/3 files",
+        "present_files": 3,
+        "total_files": 3,
+        "missing_files": [],
+        "file_counts": {
+          "A01T.gdf": 72,
+          "A02T.gdf": 72,
+          "A03T.gdf": 72
+        },
+        "evidence": "Known GDF class event code; same count in each file"
+      }
+    ],
+    "not_used_events": [
+      {
+        "event_code": "276",
+        "code": "276",
+        "use_as": "Review",
+        "event_count": 3,
+        "coverage": "3/3 files",
+        "present_files": 3,
+        "total_files": 3,
+        "missing_files": [],
+        "file_counts": {
+          "A01T.gdf": 1,
+          "A02T.gdf": 1,
+          "A03T.gdf": 1
+        },
+        "evidence": "Event role needs review; same count in each file",
+        "reason": "Event role needs review"
+      },
+      {
+        "event_code": "277",
+        "code": "277",
+        "use_as": "Review",
+        "event_count": 3,
+        "coverage": "3/3 files",
+        "present_files": 3,
+        "total_files": 3,
+        "missing_files": [],
+        "file_counts": {
+          "A01T.gdf": 1,
+          "A02T.gdf": 1,
+          "A03T.gdf": 1
+        },
+        "evidence": "Event role needs review; same count in each file",
+        "reason": "Event role needs review"
+      },
+      {
+        "event_code": "768",
+        "code": "768",
+        "use_as": "Trial timing",
+        "event_count": 864,
+        "coverage": "3/3 files",
+        "present_files": 3,
+        "total_files": 3,
+        "missing_files": [],
+        "file_counts": {
+          "A01T.gdf": 288,
+          "A02T.gdf": 288,
+          "A03T.gdf": 288
+        },
+        "evidence": "Known GDF trial start marker; same count in each file",
+        "reason": "Trial start marker"
+      },
+      {
+        "event_code": "1023",
+        "code": "1023",
+        "use_as": "Exclude bad trials",
+        "event_count": 51,
+        "coverage": "3/3 files",
+        "present_files": 3,
+        "total_files": 3,
+        "missing_files": [],
+        "file_counts": {
+          "A01T.gdf": 15,
+          "A02T.gdf": 18,
+          "A03T.gdf": 18
+        },
+        "evidence": "Known GDF rejected-trial marker; count differs by file",
+        "reason": "Rejected / artifact trial"
+      },
+      {
+        "event_code": "1072",
+        "code": "1072",
+        "use_as": "Review",
+        "event_count": 3,
+        "coverage": "3/3 files",
+        "present_files": 3,
+        "total_files": 3,
+        "missing_files": [],
+        "file_counts": {
+          "A01T.gdf": 1,
+          "A02T.gdf": 1,
+          "A03T.gdf": 1
+        },
+        "evidence": "Event role needs review; same count in each file",
+        "reason": "Event role needs review"
+      },
+      {
+        "event_code": "32766",
+        "code": "32766",
+        "use_as": "Ignore",
+        "event_count": 27,
+        "coverage": "3/3 files",
+        "present_files": 3,
+        "total_files": 3,
+        "missing_files": [],
+        "file_counts": {
+          "A01T.gdf": 9,
+          "A02T.gdf": 9,
+          "A03T.gdf": 9
+        },
+        "evidence": "Known GDF system marker; same count in each file",
+        "reason": "System / boundary marker"
+      }
+    ],
+    "names_reliable": false,
+    "pattern_status": "Suggested label events found"
+  }
+}

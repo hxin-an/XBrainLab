@@ -41,6 +41,7 @@ from XBrainLab.backend.application import (
     UpdateMetadataCommand,
     ValidateInterpretationCommand,
     VisualizeCommand,
+    data_interpretation_internal_events,
 )
 from XBrainLab.backend.dataset import SplitByType
 from XBrainLab.backend.study import Study
@@ -179,6 +180,51 @@ def test_data_interpretation_choices_flow_into_recipe(tmp_path):
     assert recipe["class_map"] == {"1": "left hand", "2": "right hand"}
     assert "choices:metadata_overrides" in recipe["recipe_trace"]
     assert "choices:class_map" in recipe["recipe_trace"]
+
+
+def test_data_interpretation_preview_exposes_internal_event_evidence(
+    tmp_path,
+    monkeypatch,
+):
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    eeg_path = source_dir / "A01T.gdf"
+    eeg_path.write_bytes(b"not loaded during scan")
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "768": {"count": 288, "description": "768"},
+                "769": {"count": 72, "description": "769"},
+                "770": {"count": 72, "description": "770"},
+                "1023": {"count": 15, "description": "1023"},
+            }
+        },
+    )
+    service = ApplicationService(Study())
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    result = service.execute(
+        PreviewInterpretationCommand(
+            choices={"label_carrier": "embedded_events"},
+        )
+    )
+
+    preview_payload = result.diagnostics["preview"]["internal_event_preview"]
+    candidate_payload = result.diagnostics["candidate"]["internal_event_preview"]
+
+    assert preview_payload == candidate_payload
+    assert preview_payload["source"] == "mne_internal_events"
+    assert [row["event_code"] for row in preview_payload["candidate_label_events"]] == [
+        "769",
+        "770",
+    ]
+    assert preview_payload["candidate_label_events"][0]["event_count"] == 72
+    assert [row["event_code"] for row in preview_payload["not_used_events"]] == [
+        "768",
+        "1023",
+    ]
 
 
 def test_data_interpretation_apply_updates_loaded_metadata(tmp_path):
