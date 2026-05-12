@@ -6489,3 +6489,26 @@ compatibility behavior into direct `DataCompatibilityCommandService` tests.
 - This does not physically remove `BackendFacade`.
 - This is command-service replacement evidence for one facade cluster, not Data Import UX
   acceptance or complete external-label format coverage.
+
+## 2026-05-12 State Diagnostics Facade-Replacement Guard
+
+### 狀態
+
+Continued the backend/test hygiene lane on `test/backend-ui-legacy-hygiene`. This slice did not
+touch answer UI layout or Data Import UX. It moved `BackendFacade.get_data_summary()` and
+`get_preprocess_diagnostics()` compatibility behavior into direct state/query service tests.
+
+### 已可宣稱
+
+- State snapshot coverage now checks raw and preprocessed runtime diagnostics without entering
+  through `BackendFacade`.
+- Query-state coverage now checks `data_summary` carries `runtime_signals`,
+  `gdf_duplicate_channel_files`, and detailed duplicate-channel diagnostics.
+- Focused validation is green: state service `3 passed`, facade compatibility plus replacement
+  coverage `46 passed`, ruff PASS, basedpyright `0 errors`, architecture compliant.
+
+### 不能宣稱完成
+
+- This does not physically remove `BackendFacade`.
+- This is state/query replacement evidence for one facade cluster, not human UI diagnostics
+  acceptance.

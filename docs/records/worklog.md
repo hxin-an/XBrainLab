@@ -16426,3 +16426,29 @@
 - claims still not supported：
   - This does not physically remove `BackendFacade`.
   - This is command-service replacement coverage, not full Data Import UX acceptance.
+
+### 2026-05-12 State diagnostics facade-replacement guard
+
+- scope：
+  - Continued on `test/backend-ui-legacy-hygiene`.
+  - No answer UI redesign and no Data Import UX redesign.
+  - Moved `BackendFacade.get_data_summary()` / `get_preprocess_diagnostics()`
+    compatibility behavior into direct state/query service replacement coverage.
+- test cleanup：
+  - Added state snapshot assertions for raw and preprocessed runtime diagnostics.
+  - Added `QueryStateCommand(query="data_summary")` assertions for `runtime_signals`,
+    `gdf_duplicate_channel_files`, and detailed duplicate-channel diagnostics.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_state_service.py -q`
+    -> `3 passed`.
+  - `poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py
+    tests/unit/backend/application/test_state_service.py -q`
+    -> `46 passed`.
+  - `poetry run ruff check tests/unit/backend/application/test_state_service.py`
+    -> PASS.
+  - `poetry run basedpyright tests/unit/backend/application/test_state_service.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+- claims still not supported：
+  - This does not physically remove `BackendFacade`.
+  - This is state/query replacement coverage, not human UI diagnostics acceptance.

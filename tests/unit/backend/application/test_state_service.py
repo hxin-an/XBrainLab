@@ -75,7 +75,19 @@ class _DatasetController:
         self.study = study
 
     def get_runtime_diagnostics(self) -> dict[str, Any]:
-        return {"source": "runtime"}
+        return {
+            "source": "runtime",
+            "runtime_signals": ["signal one"],
+            "gdf_duplicate_channel_files": ["sub01.gdf"],
+            "gdf_duplicate_channel_details": [
+                {
+                    "file": "sub01.gdf",
+                    "generated_bases": ["EEG"],
+                    "generated_channels": ["EEG-0", "EEG-1"],
+                    "message": "detail message",
+                },
+            ],
+        }
 
     def get_event_info(self) -> dict[str, Any]:
         return {"total": 2, "unique_labels": ["left"]}
@@ -99,7 +111,11 @@ class _BrokenLoadedDataController(_DatasetController):
 
 class _PreprocessController:
     def get_runtime_diagnostics(self) -> dict[str, Any]:
-        return {"preprocess": "ok"}
+        return {
+            "preprocess": "ok",
+            "runtime_signals": ["preprocess signal"],
+            "gdf_duplicate_channel_files": ["preprocessed-sub01.gdf"],
+        }
 
     def is_epoched(self) -> bool:
         return True
@@ -179,6 +195,8 @@ def test_state_snapshot_service_builds_workflow_snapshot() -> None:
     assert state.raw.files == ["subject01.fif"]
     assert state.raw.metadata[0]["subject"] == "S01"
     assert state.preprocessed.operations == ["filter", "normalize"]
+    assert state.raw.diagnostics["runtime_signals"] == ["signal one"]
+    assert state.preprocessed.diagnostics["runtime_signals"] == ["preprocess signal"]
     assert state.epoch.available is True
     assert state.epoch.event_ids == {"left": 1}
     assert state.dataset.count == 1
@@ -224,6 +242,9 @@ def test_query_state_service_returns_summary_and_capabilities() -> None:
     assert summary_message == "Dataset summary ready."
     assert summary["count"] == 1
     assert summary["unique_labels"] == ["left"]
+    assert summary["runtime_signals"] == ["signal one"]
+    assert summary["gdf_duplicate_channel_files"] == ["sub01.gdf"]
+    assert summary["gdf_duplicate_channel_details"][0]["message"] == "detail message"
 
     suggestions_message, suggestions = _expect_payload(
         query.handle_query_state(
