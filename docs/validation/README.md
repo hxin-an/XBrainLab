@@ -16,7 +16,7 @@
 
 | Gate | 最近可信結果 | 用途 | 不能取代 |
 | --- | --- | --- | --- |
-| Fast quality dashboard | 2026-05-13 21:19:07 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
+| Fast quality dashboard | 2026-05-13 21:31:03 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
 | Architecture compliance | 最近 checkpoint `Architecture compliant!`，guard unit `88 passed` | 阻擋已知 `BackendFacade`、legacy fallback、direct state、positive controller lookup、docs overclaim 等 regression。 | runtime semantic proof for every possible path。 |
 | Focused UI integration | `test_ui_refresh.py`、`test_ui_integration.py`、`test_panel_controller_binding.py` -> `8 passed` | MainWindow launch/navigation/tab-refresh 和 injected controller event wiring 不再把 legacy lookup 當成功證據。 | full zero-controller UI 或人工桌面驗收。 |
 | Product smokes / real tools | guarded UI product smokes、epoch runtime、real-tools suites recently PASS | product evidence 轉向 `QueryStateCommand` / command diagnostics / UI-visible state。 | 所有 integration tests 都已清成 product evidence。 |
@@ -292,6 +292,21 @@ non-null through a tiny helper, keeping focused type checks clean.
 | Focused `ruff` / `basedpyright` on changed Python files | PASS / `0 errors, 0 warnings, 0 notes` | Changed test and guard code are lint/type clean. | Runtime behavior by itself. | Run docs build and dashboard before checkpoint commit. |
 | `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS | Documentation builds strictly and whitespace remains clean after current-truth and validation updates. | Content is automatically complete. | Keep docs review separate from build success. |
 | `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 21:19:07 UTC+08:00`. | Fast engineering dashboard remains green after this preprocess validation fixture-load slice, including full ruff, basedpyright, architecture, startup, UI baseline/dialog/unit, and real-data IO. | Product complete, all preprocess UX paths, or human Windows acceptance. | Dashboard remains engineering health evidence only. |
+
+## 2026-05-13 Preprocess Controller Test-Quality Checkpoint
+
+This controller-level cleanup kept `PreprocessController` as the subject under test but stopped
+using `DatasetController.import_files()` as the fixture-load path. The fixture now loads A01T
+through `LoadDataCommand` and confirms raw state through `QueryStateCommand`. Generic
+non-empty checks for events and history were narrowed to expected A01T event IDs and a concrete
+Filtering history assertion.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/controller/test_preprocess_controller.py -q` | `4 passed` | Real GDF PreprocessController regressions still pass with command-backed fixture load and more specific event/history assertions. | Product UI preprocess acceptance or full command-only preprocess runtime. | Keep controller tests classified as lower-level regression evidence. |
+| Focused `ruff` / `basedpyright` / `ruff format --check` on `test_preprocess_controller.py` | PASS / `0 errors, 0 warnings, 0 notes` / PASS | The changed controller integration test is lint/type/format clean. | Runtime behavior by itself. | Pair with docs build and dashboard before checkpoint commit. |
+| `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS | Documentation builds strictly and whitespace remains clean after current-truth and validation updates. | Content is automatically complete. | Keep docs review separate from build success. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 21:31:03 UTC+08:00`. | Fast engineering dashboard remains green after this controller integration test-quality slice, including full ruff, basedpyright, architecture, startup, UI baseline/dialog/unit, and real-data IO. | Product complete, UI preprocess acceptance, or human Windows acceptance. | Dashboard remains engineering health evidence only. |
 
 ## 2026-05-13 Data Import Runtime Integration Checkpoint
 
