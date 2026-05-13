@@ -32,6 +32,7 @@
 | MCP stdio / HTTP tests 是否仍只證明有 response | [MCP JSON-RPC exact evidence](#2026-05-14-mcp-json-rpc-exact-evidence-checkpoint) | MCP tests 檢查 JSON-RPC envelope、request id、error/result separation、tool schema、structuredContent、adapter session、command name 和 accepted/status。 | external MCP client certification、remote security review、or long-running job durability。 |
 | Agent pipeline stage prompt / label tests 是否仍只看 non-empty | [Agent pipeline-state exact prompt evidence](#2026-05-14-agent-pipeline-state-exact-prompt-evidence-checkpoint) | Stage config tests 檢查每個 stage 的 prompt markers、action/blocked guidance、exact label map，且 architecture guard 擋回 generic non-empty string assertion。 | local-model session quality、tool-call benchmark accuracy、or assistant UX acceptance。 |
 | LLM parser tests 是否仍只看 parsed object exists | [LLM parser exact parse-result evidence](#2026-05-14-llm-parser-exact-parse-result-evidence-checkpoint) | Parser tests 檢查 exact `(tool_name, parameters)` list，且 architecture guard 擋回 generic `parsed/result is not None`。 | Full local-model parsing quality、tool-call benchmark accuracy、or assistant UX acceptance。 |
+| LLM tool/debug tests 是否仍只看 registry 非空 | [LLM tool/debug exact registry evidence](#2026-05-14-llm-tooldebug-exact-registry-evidence-checkpoint) | Tool/debug tests 檢查 exact agent tool-name set、backend resolver class identity、debug calls 和 visualization figure type。 | Full agent runtime acceptance or local-model behavior。 |
 | Evaluation panel 是否還會顯示 stale metrics | [Evaluation display command evidence](#2026-05-13-evaluation-display-command-evidence-checkpoint) | service-owned average metrics 缺失時清空 stale display。 | human evaluation UX acceptance。 |
 | Data Import runtime / agent-MCP schema 是否仍可引用 | [Data Import runtime integration](#2026-05-13-data-import-runtime-integration-checkpoint) | command/service/dialog contracts 和 agent/MCP baseline。 | final Match Labels / Review and Import UX。 |
 | 測試是否能擋 facade / legacy fallback 回流 | [Backend test hygiene inventory](#backend-test-hygiene-inventory) 和 architecture guard checkpoints | 已知 forbidden product-success evidence 被 guard。 | semantic proof for every lower-level test。 |
@@ -118,6 +119,21 @@ non-`None` parser assertions in these files.
 | Weak-evidence scan: `rg -n "assert .* is not None\|len\\(.+\\) > 0\|len\\(.+\\) >= 1\|non-empty\|no crash\|no_crash\|does_not_crash" tests/unit/llm/test_parser.py tests/unit/llm/test_misc_coverage.py` | No matches. | The targeted parser test files no longer contain the scanned weak assertion patterns. | Full LLM parser coverage. | Continue only where stronger exact parse expectations are available. |
 | `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run python tests/architecture_compliance.py` | `97 passed` / `Architecture compliant!` | Architecture guard now rejects generic non-`None` parser assertions while allowing exact parse-result contracts. | Semantic proof for every LLM test file. | Extend guards narrowly after exact replacements exist. |
 | `poetry run ruff check tests/unit/llm/test_parser.py tests/architecture_compliance.py tests/unit/test_architecture_compliance.py` / `poetry run basedpyright tests/unit/llm/test_parser.py tests/architecture_compliance.py tests/unit/test_architecture_compliance.py` | PASS / `0 errors, 0 warnings, 0 notes`. | Changed parser test and guard files are lint and type clean. | Runtime behavior by itself. | Pair static checks with focused behavior tests. |
+
+## 2026-05-14 LLM Tool/Debug Exact Registry Evidence Checkpoint
+
+This test-quality slice did not change runtime behavior. It tightened
+`tests/unit/llm/test_tools_and_debug.py` and the duplicate coverage companion so tool registry,
+backend resolver, debug script, and visualization checks no longer pass because collections or
+objects merely exist. They now assert the exact prompt-facing agent tool-name set, exact backend
+model/preprocessor class identity, exact debug tool-call dataclass output, and Matplotlib
+`Figure` type after failed base visualization rendering.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `poetry run pytest --capture=sys tests/unit/llm/test_tools_and_debug.py tests/unit/llm/test_tools_and_debug_cov.py -q` | `52 passed` | Tool/debug coverage asserts exact tool registry and backend/debug/visualization contracts instead of non-empty or non-`None` checks. | Full agent runtime acceptance or local-model behavior. | Decide later whether the duplicate `_cov` file should be consolidated after replacement coverage is stable. |
+| Weak-evidence scan: `rg -n "assert .* is not None\|len\\(.+\\) > 0\|non-empty\|no crash\|no_crash\|does_not_crash" tests/unit/llm/test_tools_and_debug.py tests/unit/llm/test_tools_and_debug_cov.py` | No matches. | The targeted tool/debug test files no longer contain the scanned weak assertion patterns. | Full LLM test-suite quality. | Continue replacing weak assertions only with stronger behavior or exact contract checks. |
+| `poetry run ruff check tests/unit/llm/test_tools_and_debug.py tests/unit/llm/test_tools_and_debug_cov.py` / `poetry run basedpyright tests/unit/llm/test_tools_and_debug.py tests/unit/llm/test_tools_and_debug_cov.py` | PASS / `0 errors, 0 warnings, 0 notes`. | Changed tool/debug test files are lint and type clean. | Runtime behavior by itself. | Pair static checks with focused behavior tests. |
 
 ## 2026-05-14 MCP JSON-RPC Exact Evidence Checkpoint
 

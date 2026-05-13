@@ -2,9 +2,42 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+EXPECTED_AGENT_TOOL_NAMES = {
+    "apply_bandpass_filter",
+    "apply_interpretation",
+    "apply_notch_filter",
+    "apply_standard_preprocess",
+    "attach_labels",
+    "clear_dataset",
+    "configure_training",
+    "epoch_data",
+    "evaluate",
+    "generate_dataset",
+    "get_dataset_info",
+    "list_files",
+    "load_data",
+    "normalize_data",
+    "preview_interpretation",
+    "query_state",
+    "reload_interpretation_recipe",
+    "resample_data",
+    "saliency",
+    "save_interpretation_recipe",
+    "scan_source",
+    "select_channels",
+    "set_model",
+    "set_montage",
+    "set_reference",
+    "start_training",
+    "switch_panel",
+    "validate_interpretation",
+    "visualize",
+}
 
 
 # --- llm/tools/__init__.py ---
@@ -14,17 +47,16 @@ class TestGetAllTools:
 
         tools = get_all_tools("mock")
         names = {tool.name for tool in tools}
-        assert len(tools) > 0
-        assert all(hasattr(t, "name") for t in tools)
-        assert {"evaluate", "visualize", "saliency"}.issubset(names)
+        assert names == EXPECTED_AGENT_TOOL_NAMES
+        assert len(tools) == len(EXPECTED_AGENT_TOOL_NAMES)
 
     def test_real_mode(self):
         from XBrainLab.llm.tools import get_all_tools
 
         tools = get_all_tools("real")
         names = {tool.name for tool in tools}
-        assert len(tools) > 0
-        assert {"evaluate", "visualize", "saliency"}.issubset(names)
+        assert names == EXPECTED_AGENT_TOOL_NAMES
+        assert len(tools) == len(EXPECTED_AGENT_TOOL_NAMES)
 
     def test_unknown_mode_raises(self):
         from XBrainLab.llm.tools import get_all_tools
@@ -36,20 +68,23 @@ class TestGetAllTools:
 # --- backend_resolver.py ---
 class TestBackendResolver:
     def test_get_model_class(self):
+        from XBrainLab.backend.model_base.EEGNet import EEGNet
+        from XBrainLab.backend.model_base.SCCNet import SCCNet
         from XBrainLab.llm.tools.real.backend_resolver import (
             BackendRegistryCompat as ToolRegistry,
         )
 
-        assert ToolRegistry.get_model_class("EEGNet") is not None
-        assert ToolRegistry.get_model_class("sccnet") is not None
+        assert ToolRegistry.get_model_class("EEGNet") is EEGNet
+        assert ToolRegistry.get_model_class("sccnet") is SCCNet
         assert ToolRegistry.get_model_class("unknown") is None
 
     def test_get_preprocessor_class(self):
+        from XBrainLab.backend.preprocessor.filtering import Filtering
         from XBrainLab.llm.tools.real.backend_resolver import (
             BackendRegistryCompat as ToolRegistry,
         )
 
-        assert ToolRegistry.get_preprocessor_class("bandpass") is not None
+        assert ToolRegistry.get_preprocessor_class("bandpass") is Filtering
         assert ToolRegistry.get_preprocessor_class("unknown") is None
 
     def test_get_optimizer_class(self):
@@ -106,7 +141,7 @@ class TestToolDebugMode:
     def test_load_valid_script(self, tmp_path):
         import json
 
-        from XBrainLab.debug.tool_debug_mode import ToolDebugMode
+        from XBrainLab.debug.tool_debug_mode import DebugToolCall, ToolDebugMode
 
         script = {"calls": [{"tool": "t1", "params": {"a": 1}}, {"tool": "t2"}]}
         p = tmp_path / "test_script.json"
@@ -117,12 +152,10 @@ class TestToolDebugMode:
         assert not dbg.is_complete
 
         call1 = dbg.next_call()
-        assert call1.tool == "t1"
-        assert call1.params == {"a": 1}
+        assert call1 == DebugToolCall(tool="t1", params={"a": 1})
 
         call2 = dbg.next_call()
-        assert call2.tool == "t2"
-        assert call2.params == {}
+        assert call2 == DebugToolCall(tool="t2", params={})
 
         assert dbg.next_call() is None
         assert dbg.is_complete
@@ -157,27 +190,32 @@ class TestVisualizer:
 
     def test_get_saliency_gradient(self):
         v = self._make_visualizer()
-        v.eval_record.get_gradient.return_value = "g"
+        eval_record = cast(Any, v.eval_record)
+        eval_record.get_gradient.return_value = "g"
         assert v.get_saliency("Gradient", 0) == "g"
 
     def test_get_saliency_gradient_input(self):
         v = self._make_visualizer()
-        v.eval_record.get_gradient_input.return_value = "gi"
+        eval_record = cast(Any, v.eval_record)
+        eval_record.get_gradient_input.return_value = "gi"
         assert v.get_saliency("Gradient * Input", 0) == "gi"
 
     def test_get_saliency_smoothgrad(self):
         v = self._make_visualizer()
-        v.eval_record.get_smoothgrad.return_value = "sg"
+        eval_record = cast(Any, v.eval_record)
+        eval_record.get_smoothgrad.return_value = "sg"
         assert v.get_saliency("SmoothGrad", 0) == "sg"
 
     def test_get_saliency_smoothgrad_sq(self):
         v = self._make_visualizer()
-        v.eval_record.get_smoothgrad_sq.return_value = "sgs"
+        eval_record = cast(Any, v.eval_record)
+        eval_record.get_smoothgrad_sq.return_value = "sgs"
         assert v.get_saliency("SmoothGrad_Squared", 0) == "sgs"
 
     def test_get_saliency_vargrad(self):
         v = self._make_visualizer()
-        v.eval_record.get_vargrad.return_value = "vg"
+        eval_record = cast(Any, v.eval_record)
+        eval_record.get_vargrad.return_value = "vg"
         assert v.get_saliency("VarGrad", 0) == "vg"
 
     def test_get_saliency_unknown(self):
@@ -188,13 +226,15 @@ class TestVisualizer:
     def test_get_saliency_none(self):
         v = self._make_visualizer()
         with pytest.raises(ValueError):
-            v.get_saliency(None, 0)
+            v.get_saliency(cast(str, None), 0)
 
     def test_get_plt_creates_figure(self):
+        from matplotlib.figure import Figure
+
         v = self._make_visualizer()
         with pytest.raises(NotImplementedError):
             v.get_plt()
-        assert isinstance(v.fig, object) and v.fig is not None
+        assert isinstance(v.fig, Figure)
         import matplotlib.pyplot as plt
 
         plt.close("all")
@@ -251,13 +291,13 @@ class TestLogger:
         # Find the SafeRotatingFileHandler and trigger doRollover
         for h in lgr.handlers:
             if hasattr(h, "doRollover"):
+                handler = cast(Any, h)
                 # Simulate PermissionError during rollover
-                original = super(type(h), h).doRollover
                 with patch.object(
-                    type(h).__bases__[0],
+                    type(handler).__bases__[0],
                     "doRollover",
                     side_effect=PermissionError("locked"),
                 ):
-                    h.stream = None
-                    h.doRollover()
+                    handler.stream = None
+                    handler.doRollover()
                 break
