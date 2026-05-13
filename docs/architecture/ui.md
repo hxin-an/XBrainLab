@@ -240,8 +240,8 @@ boundary，不代表 controller 已完全退場。最新 guard 已移除 `main_w
 這是測試證據 guard，不代表所有非 product-smoke integration tests 都已完成同樣清理。
 後續 UI integration evidence cleanup 又把 `test_panel_controller_binding.py` 改成 injected
 controller event wiring，不再 positive assert panel 從 `Study.get_controller()` resolve
-controller；`test_ui_integration.py` 也改用 real empty `Study()` 驗證 MainWindow launch /
-navigation baseline。Architecture guard 會拒絕 product-success integration tests 把
+controller；`test_ui_integration.py` 和 `test_ui_refresh.py` 也改用 real empty `Study()` 驗證
+MainWindow launch / navigation / tab-refresh baseline。Architecture guard 會拒絕 product-success integration tests 把
 `study.get_controller()` lookup assert 當成功證據；`assert_not_called()` 這種 boundary check
 仍可保留。
 
