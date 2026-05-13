@@ -33,6 +33,7 @@
 | Data Import runtime / agent-MCP schema 是否仍可引用 | [Data Import runtime integration](#2026-05-13-data-import-runtime-integration-checkpoint) | command/service/dialog contracts 和 agent/MCP baseline。 | final Match Labels / Review and Import UX。 |
 | 測試是否能擋 facade / legacy fallback 回流 | [Backend test hygiene inventory](#backend-test-hygiene-inventory) 和 architecture guard checkpoints | 已知 forbidden product-success evidence 被 guard。 | semantic proof for every lower-level test。 |
 | Real-data IO 測試是否仍只證明 no-crash | [Real-Data IO shape-evidence](#2026-05-13-real-data-io-shape-evidence-checkpoint) | compact/public EEG fixtures 會檢查 loaded data 維度、非空內容、channel axis 對齊，以及 command import summary。 | scientific reproducibility、all possible external formats、or human Data Import acceptance。 |
+| Metadata pipeline 測試是否仍靠 random label / generic assertion | [Metadata real-data event evidence](#2026-05-13-metadata-real-data-event-evidence-checkpoint) | A01T metadata test 會檢查 raw shape、fixed filename parse、deterministic label round-trip、event shape、onset alignment 和 final event IDs。 | Data Import UX acceptance、all external label heuristics、or scientific validation。 |
 | 能不能宣稱桌面 MVP 人工驗收 | [Human Windows Desktop Acceptance Gap](#human-windows-desktop-acceptance-gap) | 尚缺哪些 click-through / artifact。 | release approval。 |
 
 ## Evidence 能力邊界
@@ -163,6 +164,20 @@ duplicate-channel detail is also asserted as a dictionary before key checks.
 | `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q` | `31 passed, 8 warnings` | Real-data IO fixture tests load data arrays with expected dimensionality and channel axis instead of generic no-crash / non-`None` evidence. | Scientific reproducibility, all possible external EEG files, or human Data Import acceptance. | Continue replacing generic assertions in nearby metadata / pipeline integration tests only when replacement evidence is stronger. |
 | Focused `ruff` / `basedpyright` / `ruff format --check` on `tests/integration/io/test_io_integration.py` | PASS / `0 errors, 0 warnings, 0 notes` / PASS | Changed test code is lint/type/format clean. | Runtime behavior by itself. | Keep focused gates paired with the behavior test. |
 | `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `91 passed` | Strengthened IO evidence did not weaken architecture guard coverage. | Semantic proof outside guarded files. | Broaden guard scope only with concrete replacement behavior. |
+
+## 2026-05-13 Metadata Real-Data Event-Evidence Checkpoint
+
+This test-hygiene slice did not change runtime behavior or Data Import UX. It tightened
+`tests/integration/io/test_metadata_integration.py` from a generic `raw is not None` plus random
+label smoke into deterministic metadata evidence over the A01T GDF fixture: raw data shape,
+fixed-position filename parsing, label-file round trip, event array shape, onset/previous-value
+alignment, and final event IDs are now asserted explicitly.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/io/test_metadata_integration.py -q` | `1 passed` | The metadata pipeline test now proves deterministic label-to-event replacement against a real GDF fixture instead of random/no-crash behavior. | Data Import UX acceptance, all external label heuristics, or scientific validation. | Continue replacing weak pipeline assertions only when the replacement checks real state or UI-visible results. |
+| Focused `ruff` / `basedpyright` / `ruff format --check` on `tests/integration/io/test_metadata_integration.py` | PASS / `0 errors, 0 warnings, 0 notes` / PASS | Changed test code is lint/type/format clean. | Runtime behavior by itself. | Keep deterministic tests preferred over random fixture generation. |
+| `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `91 passed` | Strengthened metadata evidence did not weaken architecture guard coverage. | Semantic proof outside guarded files. | Broaden guard scope only with concrete replacement behavior. |
 
 ## 2026-05-13 Docs Readability and UI Refresh Truth Checkpoint
 

@@ -1,8 +1,10 @@
 import os
+from typing import Any
 
 import numpy as np
 import pytest
 
+from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.load_data.event_loader import EventLoader
 from XBrainLab.backend.load_data.label_loader import load_label_file
 from XBrainLab.backend.load_data.raw_data_loader import load_gdf_file
@@ -30,7 +32,11 @@ class TestMetadataIntegration:
             pytest.skip(f"Test data not found at {GDF_FILE}")
 
         raw = load_gdf_file(GDF_FILE)
-        assert raw is not None
+        assert isinstance(raw, Raw)
+        data: Any = raw.get_mne().get_data()
+        assert data.ndim == 2
+        assert data.shape[0] == raw.get_nchan()
+        assert data.shape[1] > 0
 
         # 2. Parse Filename (Simulate Smart Parser)
         # A01T.gdf -> Subject: A01, Session: T
@@ -61,14 +67,18 @@ class TestMetadataIntegration:
         # Let's see how many events are in the raw file first
         original_events, _ = raw.get_raw_event_list()
         n_events = len(original_events)
+        assert original_events.ndim == 2
+        assert original_events.shape[0] >= 3
+        assert original_events.shape[1] == 3
 
-        # Create dummy labels
-        dummy_labels = np.random.randint(1, 4, size=n_events)
+        # Create deterministic labels that cover every reviewed event class.
+        dummy_labels = np.resize(np.array([1, 2, 3], dtype=np.int64), n_events)
         label_file = tmp_path / "labels.txt"
         np.savetxt(label_file, dummy_labels, fmt="%d")
 
         loaded_labels = load_label_file(str(label_file))
         assert len(loaded_labels) == n_events
+        np.testing.assert_array_equal(loaded_labels, dummy_labels)
 
         # 4. Create Events (Simulate EventLoader)
         # We map label 1->Left, 2->Right, 3->Feet
@@ -83,6 +93,13 @@ class TestMetadataIntegration:
         # Note: create_event implementation details might vary.
         # If it replaces existing events based on index:
         new_events, new_event_id = event_loader.create_event(mapping)
+        assert isinstance(new_events, np.ndarray)
+        assert isinstance(new_event_id, dict)
+        assert new_event_id == {"Left": 1, "Right": 2, "Feet": 3}
+        assert new_events.shape == (n_events, 3)
+        np.testing.assert_array_equal(new_events[:, 0], original_events[:, 0])
+        np.testing.assert_array_equal(new_events[:, 1], original_events[:, 1])
+        assert sorted(np.unique(new_events[:, -1]).tolist()) == [1, 2, 3]
 
         # 5. Update Raw
         raw.set_event(new_events, new_event_id)
@@ -90,5 +107,5 @@ class TestMetadataIntegration:
         # Verify
         assert raw.has_event()
         current_events, current_id = raw.get_event_list()
-        assert len(current_events) == n_events
-        assert "Left" in current_id or "Right" in current_id or "Feet" in current_id
+        np.testing.assert_array_equal(current_events, new_events)
+        assert current_id == new_event_id
