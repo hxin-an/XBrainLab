@@ -443,11 +443,28 @@ def test_match_labels_pairing_board_applies_dataset_level_choices(qtbot):
         validation_decision={"decision": "needs_confirmation"},
     )
     qtbot.addWidget(dialog)
+    dialog.show()
     _show_step(dialog, "Match Labels")
+    qtbot.wait(0)
 
     assert dialog.label_match_mode_combo.currentData() == "filename_stem"
     assert "2/2 EEG files paired" in dialog.pairing_status_label.text()
     assert "2/2 paired" in dialog.rule_status_label.text()
+    pairing_rows = [
+        row
+        for row in dialog.label_pairing_rows_widget.findChildren(
+            QFrame,
+            "DataImportPairingRow",
+        )
+        if row.findChildren(QComboBox)
+    ]
+    assert pairing_rows
+    first_row = pairing_rows[0]
+    eeg_label = next(
+        label for label in first_row.findChildren(QLabel) if label.text() == "A01T.gdf"
+    )
+    label_selector = first_row.findChildren(QComboBox)[0]
+    assert _widget_left(eeg_label, dialog) < _widget_left(label_selector, dialog)
 
     dialog.rule_label_field_combo.setCurrentIndex(
         dialog.rule_label_field_combo.findData("target")
@@ -1238,6 +1255,8 @@ def test_converted_label_table_dialog_shows_required_format(qtbot):
     assert "target structure" in visible_text
     assert "Required column" in visible_text
     assert "label" in visible_text
+    assert "Example: match by EEG event code" in visible_text
+    assert "769,left_hand" in visible_text
     assert "Match by event code" in visible_text
     assert "event_code + label" in visible_text
     assert "Match intervals" in visible_text
@@ -1289,9 +1308,12 @@ def test_match_labels_shows_conversion_fallback_when_label_field_is_missing(
     qtbot.wait(0)
 
     visible_text = _visible_step_text(dialog, "Match Labels")
+    assert "label format needs conversion" in visible_text
+    assert "ready to place on EEG" not in visible_text
     assert "Label file needs conversion" in visible_text
     assert "cannot find a usable label column" in visible_text
-    assert "before continuing" in visible_text
+    assert "label column and one placement column" in visible_text
+    assert "Example row: event_code,label = 769,left_hand" in visible_text
     assert "Label values and placement" not in visible_text
     assert "Read labels from" not in visible_text
     assert "Place labels by" not in visible_text

@@ -73,8 +73,8 @@ class _ConvertedLabelTableDialog(BaseDialog):
         super().__init__(
             parent=parent,
             title="Load Converted Label Table",
-            width=560,
-            height=360,
+            width=620,
+            height=440,
         )
 
     def init_ui(self) -> None:
@@ -126,6 +126,20 @@ class _ConvertedLabelTableDialog(BaseDialog):
             card_layout.addWidget(value, row_index, 1)
         card_layout.setColumnStretch(1, 1)
         layout.addWidget(card)
+
+        example_card = QFrame()
+        example_card.setObjectName("DataImportCard")
+        example_layout = QVBoxLayout(example_card)
+        example_layout.setContentsMargins(14, 12, 14, 12)
+        example_layout.setSpacing(7)
+        example_title = QLabel("Example: match by EEG event code")
+        example_title.setObjectName("DataImportSourceTitle")
+        example = QLabel("event_code,label\n769,left_hand\n770,right_hand")
+        example.setObjectName("DataImportCodeBlock")
+        example.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        example_layout.addWidget(example_title)
+        example_layout.addWidget(example)
+        layout.addWidget(example_card)
 
         footer = QHBoxLayout()
         footer.setContentsMargins(0, 0, 0, 0)
@@ -844,6 +858,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
         if hasattr(self, "label_source_status_label"):
             self.label_source_status_label.setText(self._label_source_status_text())
+        if hasattr(self, "pairing_status_label"):
+            self.pairing_status_label.setText(self._pairing_summary_text())
         fallback_visible = use_loaded and self._should_show_label_table_fallback()
         if hasattr(self, "pairing_card"):
             self.pairing_card.setVisible(use_loaded)
@@ -1659,8 +1675,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         layout = QHBoxLayout(header)
         layout.setContentsMargins(10, 0, 10, 0)
         layout.setSpacing(10)
-        layout.addWidget(self._pairing_header_label("Label file"), stretch=3)
         layout.addWidget(self._pairing_header_label("EEG file"), stretch=3)
+        layout.addWidget(self._pairing_header_label("Label file"), stretch=3)
         layout.addWidget(self._pairing_header_label("Status", 92))
         return header
 
@@ -1678,6 +1694,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
         layout.setContentsMargins(10, 5, 10, 5)
         layout.setSpacing(10)
 
+        eeg_label = QLabel(eeg_file)
+        eeg_label.setObjectName("DataImportPairingFile")
+        eeg_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(eeg_label, stretch=3)
+
         selector = self._label_file_selector(eeg_file)
         self._eeg_label_widgets[eeg_file] = selector
         selector.currentIndexChanged.connect(
@@ -1687,11 +1708,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
             )
         )
         layout.addWidget(selector, stretch=3)
-
-        eeg_label = QLabel(eeg_file)
-        eeg_label.setObjectName("DataImportPairingFile")
-        eeg_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        layout.addWidget(eeg_label, stretch=3)
 
         matched = bool(selector.currentData())
         badge = QLabel("Matched" if matched else "Needs label")
@@ -1813,7 +1829,14 @@ class DataInterpretationPreviewDialog(BaseDialog):
             parts.append(f"{needs_review} need label")
         if unassigned:
             parts.append(f"{unassigned} unused label file(s)")
-        if len(parts) == 1:
+        fallback_reason = (
+            self._label_table_fallback_reason()
+            if hasattr(self, "rule_label_field_combo")
+            else ""
+        )
+        if fallback_reason:
+            parts.append("label format needs conversion")
+        elif len(parts) == 1:
             parts.append("ready to place on EEG")
         return " · ".join(parts)
 
@@ -2001,14 +2024,18 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.label_table_fallback_reason_label.setObjectName("DataImportActionText")
         self.label_table_fallback_reason_label.setWordWrap(True)
         next_action = QLabel(
-            "Convert the custom structure to an XBrainLab label table before "
-            "continuing."
+            "Create a table with a label column and one placement column, such as "
+            "event_code, onset_seconds, or sample."
         )
         next_action.setObjectName("DataImportSourceDetail")
         next_action.setWordWrap(True)
+        example = QLabel("Example row: event_code,label = 769,left_hand")
+        example.setObjectName("DataImportSourceDetail")
+        example.setWordWrap(True)
         text_layout.addWidget(title)
         text_layout.addWidget(self.label_table_fallback_reason_label)
         text_layout.addWidget(next_action)
+        text_layout.addWidget(example)
         layout.addLayout(text_layout, stretch=1)
 
         self.view_label_table_format_btn = QPushButton("View table format")
@@ -3822,6 +3849,15 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 color: #eeeeee;
                 font-size: 12px;
                 font-weight: 600;
+            }}
+            QLabel#DataImportCodeBlock {{
+                color: #d8ecff;
+                background-color: #1b1b1b;
+                border: 1px solid #343434;
+                border-radius: 4px;
+                padding: 7px 9px;
+                font-family: Consolas, "Courier New", monospace;
+                font-size: 12px;
             }}
             QLabel#DataImportInternalGroupTitle {{
                 color: #f0f0f0;
