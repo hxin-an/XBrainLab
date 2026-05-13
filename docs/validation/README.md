@@ -16,8 +16,8 @@
 
 | Gate | 最近可信結果 | 用途 | 不能取代 |
 | --- | --- | --- | --- |
-| Fast quality dashboard | 2026-05-13 20:39:30 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
-| Architecture compliance | 最近 checkpoint `Architecture compliant!`，guard unit `85 passed` | 阻擋已知 `BackendFacade`、legacy fallback、direct state、positive controller lookup、docs overclaim 等 regression。 | runtime semantic proof for every possible path。 |
+| Fast quality dashboard | 2026-05-13 20:54:34 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
+| Architecture compliance | 最近 checkpoint `Architecture compliant!`，guard unit `86 passed` | 阻擋已知 `BackendFacade`、legacy fallback、direct state、positive controller lookup、docs overclaim 等 regression。 | runtime semantic proof for every possible path。 |
 | Focused UI integration | `test_ui_refresh.py`、`test_ui_integration.py`、`test_panel_controller_binding.py` -> `8 passed` | MainWindow launch/navigation/tab-refresh 和 injected controller event wiring 不再把 legacy lookup 當成功證據。 | full zero-controller UI 或人工桌面驗收。 |
 | Product smokes / real tools | guarded UI product smokes、epoch runtime、real-tools suites recently PASS | product evidence 轉向 `QueryStateCommand` / command diagnostics / UI-visible state。 | 所有 integration tests 都已清成 product evidence。 |
 | `mkdocs build --strict` | 最近 checkpoint PASS | 文件站可建且連結/nav 基本有效。 | 文件內容一定正確或容易讀。 |
@@ -237,6 +237,25 @@ approval as current fact. Lines inside explicit boundary contexts such as "canno
 | Focused `ruff` / `basedpyright` on changed guard files | PASS / `0 errors, 0 warnings, 0 notes` | Changed checker and tests are lint/type clean. | Runtime behavior. | Run docs build before commit. |
 | `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS | Docs still build strictly and whitespace is clean after guard-evidence updates. | Content is automatically complete. | Keep docs review separate from build success. |
 | `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 20:39:30 UTC+08:00`. | Fast dashboard remains green with the docs overclaim guard in the default architecture-compliance gate. | Product complete or human acceptance. | Dashboard remains engineering health evidence only. |
+
+## 2026-05-13 Real-Data Pipeline Command-Spine Checkpoint
+
+This test-evidence slice kept UX untouched and moved `test_real_data_pipeline.py` from direct
+`Study` orchestration to the product command spine. The real GDF smoke now runs
+`LoadDataCommand -> PreprocessCommand -> CreateEpochCommand -> GenerateDatasetCommand ->
+ConfigureTrainingCommand -> TrainCommand`, then reads state, split audit, and training history
+through command results / `QueryStateCommand`. The only object access is a command-owned
+`QueryStateCommand(include_objects=True)` fixture hook used to deduplicate the checked-in GDF
+events before epoching.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| Red guard check after adding `tests/integration/pipeline/test_real_data_pipeline.py` to the direct-state product-success guard | Failed on the expected `study.preprocessed_data_list`, `study.epoch_data`, `study.trainer`, and `study.get_datasets_generator()` reads before the rewrite. | The new guard scope would have caught this suite if it kept using mutable `Study` state as product evidence. | Runtime behavior by itself. | Keep lower-level direct `Study` tests out of product-success guard until replacement command evidence exists. |
+| `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/pipeline/test_real_data_pipeline.py -q` | `1 passed` | The real A01T GDF load -> preprocess -> epoch -> dataset -> one-epoch train smoke succeeds through ApplicationService commands and command-visible state/history. | Training quality, all real datasets, or human Windows desktop acceptance. | Keep this as command-spine smoke, not scientific validation. |
+| `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run python tests/architecture_compliance.py` | `86 passed` / `Architecture compliant!` | Architecture guard now includes the real-data pipeline smoke in direct `Study` product-evidence checks. | Semantic proof outside guarded files. | Expand guard scope only one suite at a time after replacement behavior is in place. |
+| Focused `ruff` / `basedpyright` on changed Python files | PASS / `0 errors, 0 warnings, 0 notes` | Changed test and guard code are lint/type clean. | Runtime behavior by itself. | Run docs build and dashboard before checkpoint commit. |
+| `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS | Documentation builds strictly and whitespace remains clean after current-truth and validation updates. | Content is automatically complete. | Keep docs review separate from build success. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 20:54:34 UTC+08:00`. | Fast engineering dashboard remains green after this command-spine test/guard slice, including full ruff, basedpyright, architecture, startup, UI baseline/dialog/unit, and real-data IO. | Product complete, training quality, or human Windows acceptance. | Dashboard remains engineering health evidence only. |
 
 ## 2026-05-13 Data Import Runtime Integration Checkpoint
 

@@ -3,22 +3,18 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
-import torch
 
-from XBrainLab.backend.dataset import (
-    DataSplittingConfig,
-    TrainingType,
-)
-from XBrainLab.backend.dataset.data_splitter import DataSplitter
-from XBrainLab.backend.dataset.option import SplitByType, SplitUnit, ValSplitByType
-from XBrainLab.backend.load_data.raw_data_loader import load_gdf_file
-from XBrainLab.backend.model_base import EEGNet
-from XBrainLab.backend.preprocessor import Filtering, Normalize, TimeEpoch
-from XBrainLab.backend.study import Study
-from XBrainLab.backend.training import (
-    ModelHolder,
-    TrainingEvaluation,
-    TrainingOption,
+from XBrainLab.backend.application import (
+    ApplicationService,
+    CommandName,
+    ConfigureTrainingCommand,
+    CreateEpochCommand,
+    GenerateDatasetCommand,
+    LoadDataCommand,
+    PreprocessCommand,
+    PreprocessOperation,
+    QueryStateCommand,
+    TrainCommand,
 )
 from XBrainLab.backend.training.record import RecordKey
 
@@ -39,23 +35,36 @@ def test_real_data_pipeline():
     3. Dataset generation works with real epochs.
     4. Training loop runs successfully with real data shapes.
     """
-    # 1. Load Data
-    study = Study()
-    # loader = study.get_raw_data_loader() # Not needed if we load directly
-    raw = load_gdf_file(GDF_FILE)
-    assert raw is not None
-    raw_list = [raw]
-    study.set_loaded_data_list(raw_list)
+    service = ApplicationService()
 
-    # 2. Preprocess
-    # Filter: 4-38 Hz
-    study.preprocess(Filtering, l_freq=4, h_freq=38)
-    # Normalize: Z-Score
-    study.preprocess(Normalize, norm="z score")
+    load_result = service.execute(LoadDataCommand(paths=[GDF_FILE]))
+    assert load_result.ok is True
+    assert load_result.state.raw.count == 1
 
-    # Epoching: TimeEpoch
-    # Get the actual object being processed (since Study deepcopies input)
-    processed_raw = study.preprocessed_data_list[0]
+    filter_result = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.BANDPASS,
+            low_freq=4,
+            high_freq=38,
+        ),
+    )
+    normalize_result = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.NORMALIZE,
+            method="z score",
+        ),
+    )
+
+    assert filter_result.ok is True
+    assert normalize_result.ok is True
+    assert normalize_result.state.preprocessed.available is True
+
+    data_lists_result = service.execute(
+        QueryStateCommand(query="data_lists", include_objects=True),
+    )
+    assert data_lists_result.ok is True
+    assert data_lists_result.diagnostics["preprocessed_count"] == 1
+    processed_raw = data_lists_result.diagnostics["preprocessed_data_list"][0]
 
     # Get available events
     events, event_id = processed_raw.get_event_list()
@@ -70,113 +79,81 @@ def test_real_data_pipeline():
     # Verify no duplicates
     assert len(np.unique(events[:, 0])) == len(events), "Duplicates still exist!"
 
-    event_names = list(event_id.keys())
-
     # Filter event_names to only include those present in the deduplicated events
     present_event_ids = np.unique(events[:, -1])
     filtered_event_names = [
         name for name, eid in event_id.items() if eid in present_event_ids
     ]
 
-    # Patch get_raw_event_list on the processed object
     with patch.object(
         processed_raw, "get_raw_event_list", return_value=(events, event_id)
     ):
-        study.preprocess(
-            TimeEpoch,
-            baseline=None,
-            selected_event_names=filtered_event_names,
-            tmin=0,
-            tmax=4,
+        epoch_result = service.execute(
+            CreateEpochCommand(
+                t_min=0,
+                t_max=4,
+                baseline=None,
+                event_ids=filtered_event_names,
+            ),
         )
+    assert epoch_result.ok is True
+    assert epoch_result.state.epoch.exists is True
+    assert epoch_result.state.epoch.n_channels > 0
+    assert epoch_result.state.epoch.n_times > 0
+    assert len(epoch_result.state.epoch.event_ids) > 0
 
-    # 3. Dataset Generation
-    # Use Individual Training Type
-    val_splitter = DataSplitter(ValSplitByType.TRIAL, "0.2", SplitUnit.RATIO)
-    test_splitter = DataSplitter(SplitByType.TRIAL, "0.2", SplitUnit.RATIO)
-
-    config = DataSplittingConfig(
-        train_type=TrainingType.IND,
-        is_cross_validation=False,
-        val_splitter_list=[val_splitter],
-        test_splitter_list=[test_splitter],
+    dataset_result = service.execute(
+        GenerateDatasetCommand(
+            test_ratio=0.2,
+            val_ratio=0.2,
+            split_strategy="trial",
+            training_mode="individual",
+        ),
     )
-    generator = study.get_datasets_generator(config)
-    datasets = generator.generate()
-    assert len(datasets) > 0
-    study.set_datasets(datasets)
+    assert dataset_result.ok is True
+    assert dataset_result.diagnostics["split_audit"]["ok"] is True
+    assert dataset_result.state.dataset.available is True
+    assert dataset_result.state.dataset.count > 0
+    assert dataset_result.state.dataset.split_summary["train_count"] > 0
+    assert dataset_result.state.dataset.split_summary["val_count"] > 0
+    assert dataset_result.state.dataset.split_summary["test_count"] > 0
 
-    # 4. Training Setup
-    # Model: EEGNet
-    # Note: EEGNet requires specific input shape.
-    # Real data might have different channels/samples.
-    # We need to get these from the dataset.
-
-    # Get one dataset to inspect shape
-    datasets[0]
-    # We can get shape from epoch_data inside dataset or study
-    # study.epoch_data is the source
-    # 4. Model Setup
-    # Get input shape from data
-    n_channels = len(study.epoch_data.get_channel_names())
-    n_samples = study.epoch_data.get_data().shape[-1]
-    n_classes = len(study.epoch_data.event_id)
-
-    # Model params are provided by dataset automatically via ModelHolder.get_model(args)
-    # args include n_classes, channels, samples, sfreq
-    model_params = {}
-
-    holder = ModelHolder(EEGNet, model_params, None)
-    study.set_model_holder(holder)
-
-    # Training Option
-    option = TrainingOption(
-        output_dir="test_real_output",
-        optim=torch.optim.Adam,
-        optim_params={},
-        use_cpu=True,  # Force CPU for testing
-        gpu_idx=None,
-        epoch=1,  # Run 1 epoch for speed
-        bs=16,
-        lr=0.001,
-        checkpoint_epoch=1,
-        evaluation_option=TrainingEvaluation.TEST_ACC,
-        repeat_num=1,
+    model_result = service.execute(ConfigureTrainingCommand(model_name="EEGNet"))
+    training_result = service.execute(
+        ConfigureTrainingCommand(
+            output_dir="test_real_output",
+            device="cpu",
+            epoch=1,
+            batch_size=16,
+            learning_rate=0.001,
+            save_checkpoints_every=1,
+            evaluation_option="test_acc",
+        ),
     )
-    study.set_training_option(option)
+    assert model_result.ok is True
+    assert training_result.ok is True
+    assert training_result.state.training.has_model is True
+    assert training_result.state.training.has_training_option is True
+    assert service.get_capabilities().get(CommandName.TRAIN).available is True
 
-    # Saliency Params (Required by TrainingPlanHolder)
-    saliency_params = {
-        "SmoothGrad": {"nt_samples": 1, "stdevs": 0.1},
-        "SmoothGrad_Squared": {"nt_samples": 1, "stdevs": 0.1},
-        "VarGrad": {"nt_samples": 1, "stdevs": 0.1},
-    }
-    study.set_saliency_params(saliency_params)
-
-    # 5. Generate Plan and Train
-    # Patch file writing to avoid clutter
     with (
         patch("matplotlib.pyplot.savefig"),
         patch("torch.save"),
         patch("numpy.savetxt"),
         patch("os.makedirs"),
     ):
-        study.generate_plan()
-        study.train(interact=False)  # Run synchronously
+        train_result = service.execute(
+            TrainCommand(confirmed=True, interactive=False),
+        )
 
-    # 6. Verification
-    # Check if trainer has results
-    assert study.trainer is not None
+    assert train_result.ok is True
+    assert train_result.state.training.has_trainer is True
+    history_result = service.execute(
+        QueryStateCommand(query="training_history", include_objects=True),
+    )
+    assert history_result.ok is True
+    assert history_result.diagnostics["row_count"] > 0
+    record = history_result.diagnostics["rows"][0]["record"]
 
-    # Get the first plan
-    plan_holders = study.trainer.get_training_plan_holders()
-    assert len(plan_holders) > 0
-
-    plan = plan_holders[0]
-    # Check records
-    assert len(plan.train_record_list) > 0
-    record = plan.train_record_list[0]
-
-    # Check metrics exist
     assert RecordKey.LOSS in record.train
     assert RecordKey.ACC in record.train

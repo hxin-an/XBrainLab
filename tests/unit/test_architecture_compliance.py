@@ -451,6 +451,34 @@ def test_application_service_workflow(service):
     assert "study.get_datasets_generator()" in violations[0]
 
 
+def test_product_success_study_state_guard_flags_real_data_pipeline_truth(
+    tmp_path,
+):
+    path = (
+        tmp_path / "tests" / "integration" / "pipeline" / "test_real_data_pipeline.py"
+    )
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_real_data_pipeline():
+    processed = study.preprocessed_data_list[0]
+    generator = study.get_datasets_generator(config)
+    assert study.epoch_data is not None
+    assert study.trainer is not None
+    return processed, generator
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_product_success_direct_study_state_tests(tmp_path)
+
+    assert len(violations) == 4
+    assert "study.preprocessed_data_list" in violations[0]
+    assert "study.epoch_data" in violations[1]
+    assert "study.trainer" in violations[2]
+    assert "study.get_datasets_generator()" in violations[3]
+
+
 def test_product_success_study_state_guard_allows_command_state_truth(
     tmp_path,
 ):

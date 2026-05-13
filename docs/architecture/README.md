@@ -25,7 +25,7 @@ claim boundary。
 | --- | --- | --- |
 | Backend command spine | `ApplicationService / Command API` 是 product runtime 主入口；`BackendFacade` 已物理移除。 | 還要防止新 wrapper / direct manager mutation 回流。 |
 | UI refresh | command-result、navigation、known observer event 已集中到 refresh coordinator。 | panel constructor / observer bridge 還依賴 injected controllers，不是 full zero-controller UI。 |
-| Product evidence | guarded product smokes 和 real-tools evidence 已轉向 command/query truth。 | lower-level integration tests 仍有 setup/domain 目的的 direct `Study` access，不能全部當 product smoke。 |
+| Product evidence | guarded product smokes、real-tools evidence、real GDF full-pipeline smoke 已轉向 command/query truth。 | lower-level integration tests 仍有 setup/domain 目的的 direct `Study` access，不能全部當 product smoke。 |
 | Desktop acceptance | startup、UI baseline、dialog/unit、real-data IO dashboard PASS。 | 還缺人手 Windows desktop click-through 和長時間 local-model session。 |
 
 ## 目前分層
