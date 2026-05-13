@@ -184,8 +184,19 @@ class TestEvaluationPanelIntegration:
 
         # Verify panel state when no trainer
         panel.update_panel()
-        assert panel.model_combo.count() > 0
+        assert panel.last_application_query is not None
+        assert panel.last_application_query.failed
+        assert (
+            panel.last_application_query.message
+            == "Create a training plan before evaluating results."
+        )
+        assert (
+            panel.last_application_query.diagnostics.get("exception_type")
+            == "PreconditionError"
+        )
+        assert panel.model_combo.count() == 1
         assert panel.model_combo.currentText() == "No Data Available"
+        assert panel.run_combo.count() == 0
 
     def test_evaluation_panel_with_unfinished_trainer_shows_unavailable_state(
         self,
@@ -303,12 +314,16 @@ class TestTrainingWorkflowWithUI:
         )
         mock_trainer.get_training_plan_holders.return_value = [mock_plan]
         mock_trainer.is_running.return_value = True
+        mock_trainer.current_idx = 0
         mock_trainer.get_progress_text.return_value = "Epoch 5/10"
         mock_plan.get_epoch_progress_text.return_value = "Epoch 5/10"
         mock_plan.model_holder.target_model.__name__ = "TestModel"
+        mock_plan.get_training_repeat.return_value = 0
 
         # Mock get_plans
         mock_record = MagicMock()
+        mock_record.repeat = 0
+        mock_record.is_finished.return_value = False
         mock_record.get_epoch.return_value = 5
         mock_record.train = {
             "loss": [0.5],
@@ -324,9 +339,10 @@ class TestTrainingWorkflowWithUI:
         # Update should work without type errors
         panel.update_loop()
 
-        # Progress should be shown in history table
-        # Row 0, Column 1 is Progress
-        assert panel.history_table.rowCount() > 0
+        assert panel.history_table.rowCount() == 1
+        status_item = panel.history_table.item(0, 3)
+        assert status_item is not None
+        assert status_item.text() == "Running"
         progress_item = panel.history_table.item(0, 4)
         assert progress_item is not None
         assert progress_item.text() == "5/10"
@@ -418,11 +434,13 @@ class TestTrainingWorkflowWithUI:
 
         panel.update_loop()
 
-        # Verify metrics were converted to float and plotted
-        # Check the last value in the accuracy tab's validation values
-        assert len(panel.tab_acc.val_vals) > 0
-        assert panel.tab_acc.val_vals[-1] == 0.75
-        assert isinstance(panel.tab_acc.val_vals[-1], float)
+        assert panel.tab_acc.epochs == [1]
+        assert panel.tab_acc.train_vals == [0.8]
+        assert panel.tab_acc.val_vals == [0.75]
+        assert panel.tab_loss.epochs == [1]
+        assert panel.tab_loss.train_vals == [0.5]
+        assert panel.tab_loss.val_vals == [0.6]
+        assert isinstance(panel.tab_acc.val_vals[0], float)
 
     def test_metric_tab_only_shows_one_point_initially(self, qtbot):
         """Test that plots show proper line progression, not just one point."""
