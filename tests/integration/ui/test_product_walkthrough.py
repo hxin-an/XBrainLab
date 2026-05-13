@@ -33,6 +33,14 @@ from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
     LocalRuntimeFirstRunDialog,
 )
 
+EXPECTED_PRODUCT_WALKTHROUGH_SPLIT_SUMMARY = {
+    "count": 1,
+    "train_count": 4,
+    "val_count": 1,
+    "test_count": 1,
+    "audit": {"ok": True, "dataset_count": 1, "issues": []},
+}
+
 
 def _click(qtbot, button) -> None:
     qtbot.mouseClick(button, Qt.MouseButton.LeftButton)
@@ -373,7 +381,12 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         FakeEpochingDialog,
     ):
         _click(qtbot, test_app.preprocess_panel.sidebar.btn_epoch)
-    assert _application_state(test_app.study)["epoch"]["exists"] is True
+    epoch_state = _application_state(test_app.study)["epoch"]
+    assert epoch_state["exists"] is True
+    assert epoch_state["epoch_count"] == 6
+    assert epoch_state["n_channels"] == 4
+    assert epoch_state["n_times"] == 33
+    assert epoch_state["event_ids"] == {"left": 0, "right": 1}
 
     _click(qtbot, test_app.nav_btns[2])
 
@@ -454,7 +467,8 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
     ):
         _click(qtbot, test_app.training_panel.sidebar.btn_split)
     dataset_state = _application_state(test_app.study)["dataset"]
-    assert dataset_state["count"] > 0
+    assert dataset_state["count"] == EXPECTED_PRODUCT_WALKTHROUGH_SPLIT_SUMMARY["count"]
+    assert dataset_state["split_summary"] == EXPECTED_PRODUCT_WALKTHROUGH_SPLIT_SUMMARY
 
     with patch(
         "XBrainLab.ui.panels.training.sidebar.ModelSelectionDialog", FakeModelDialog
