@@ -368,6 +368,62 @@ def test_evaluation_panel_refuses_real_study_query_none_metric_fallback(
     assert panel.summary_text.toPlainText() == ""
 
 
+def test_evaluation_panel_clears_metrics_when_service_average_payload_missing(
+    qtbot,
+    monkeypatch,
+):
+    """Missing service-owned average metrics should clear stale run metrics."""
+
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    service_plan = MockPlanHolder("Service Plan")
+    query_result = CommandResult.success_result(
+        command_name="evaluate",
+        message="Evaluation summary ready.",
+        state={},
+        changed_state=ChangedState(),
+        diagnostics={
+            "payload_type": "evaluation_summary",
+            "available": True,
+            "plan_objects": [service_plan],
+            "pooled_eval_results": [None],
+            "model_summaries": [
+                {
+                    "plan": "Service plan summary",
+                    "runs": [
+                        "Service run 1 summary",
+                        "Service run 2 summary",
+                    ],
+                },
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.evaluation.panel.execute_application_command",
+        lambda *_args, **_kwargs: query_result,
+    )
+    stale_controller = MagicMock()
+    stale_controller.get_pooled_eval_result.side_effect = AssertionError(
+        "stale pooled evaluation metrics should not be read",
+    )
+
+    panel = EvaluationPanel(controller=stale_controller, parent=RealMainWindow())
+    qtbot.addWidget(panel)
+
+    panel.update_panel()
+    assert panel.metrics_table.rowCount() > 0
+
+    average_index = panel.run_combo.findText("Average (Finished Runs)")
+    assert average_index >= 0
+    panel.run_combo.setCurrentIndex(average_index)
+
+    stale_controller.get_pooled_eval_result.assert_not_called()
+    assert panel.metrics_table.rowCount() == 0
+
+
 def test_evaluation_panel_clears_stale_plans_on_preprocess_change(qtbot):
     """Preprocess invalidation should clear stale evaluation plan selections."""
     main_window = MockMainWindow()

@@ -319,6 +319,21 @@ runtime risks from quarantined controller adapter hits.
 | Source-doc audit of `docs/architecture/ui.md` and `docs/planning/now.md` | Confirmed the earlier duplicate `ApplicationService Readiness Gate` heading is no longer present; added reading guidance for UI controller hits and made the next engineering gap explicit. | Current docs are less likely to be read as either "everything is legacy" or "full zero-controller UI is done." | Runtime behavior, product acceptance, or proof that every UI display fallback is removed. | Keep retiring UI readonly display fallback one class at a time, with command/query evidence. |
 | `poetry run mkdocs build --strict` / `poetry run python tests/architecture_compliance.py` / `git diff --check` | PASS / `Architecture compliant!` / PASS | Docs site still builds strictly, current-truth claim guards remain green, and the docs-only diff is whitespace clean. | Dashboard freshness, runtime behavior, or human Windows desktop acceptance. | Keep docs readability work tied to source/test evidence instead of chronological history alone. |
 
+## 2026-05-13 Evaluation Display Command-Evidence Checkpoint
+
+This UI-refresh slice fixed a stale display path in `EvaluationPanel`. When the service-backed
+evaluation payload exists but does not contain average pooled metrics for the selected plan, the
+panel now clears the metric views instead of leaving the previous run's metrics visible. The path
+still refuses stale controller pooled-metric fallback for real `Study` contexts.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| Red test: `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_evaluation_panel_redesign.py::test_evaluation_panel_clears_metrics_when_service_average_payload_missing -q` before the fix | Failed as expected with 3 stale metric rows left visible after selecting Average. | Reproduced a concrete UI refresh truth bug, not just a legacy-string finding. | Full evaluation UX acceptance. | Keep display-clearing behavior tied to command/query payload availability. |
+| Same focused test after the fix | `1 passed` | Service-owned missing average metrics now clear stale displayed metrics without reading controller fallback. | Full product workflow. | Keep this as a focused regression. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_evaluation_panel_redesign.py -q` | `12 passed` | EvaluationPanel query-first rendering and stale-fallback regression coverage remains green after the fix. | Human desktop acceptance or full zero-controller UI. | Pair with product walkthrough / human artifact before release claims. |
+| Focused `ruff` / `basedpyright` / `ruff format --check` on changed Python files, plus architecture gates | PASS / `0 errors, 0 warnings, 0 notes` / PASS / `Architecture compliant!`, architecture unit `88 passed` | Changed EvaluationPanel code and tests are lint/type/format clean and do not violate current architecture rules. | Dashboard freshness or runtime coverage outside this panel. | Keep architecture guard examples aligned with replacement behavior. |
+| `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS | Documentation builds strictly and the checkpoint diff is whitespace clean after current-truth updates. | Runtime behavior by itself. | Re-run after future docs edits. |
+
 ## 2026-05-13 Data Import Runtime Integration Checkpoint
 
 | Command | Result | Claim supported | Claim not supported | Follow-up |

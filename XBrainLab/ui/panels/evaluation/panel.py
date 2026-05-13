@@ -238,11 +238,14 @@ class EvaluationPanel(BasePanel):
         self.model_combo.addItem("No Data Available")
         self.model_combo.blockSignals(False)
         self.run_combo.clear()
+        self._clear_metric_views()
+        self.summary_text.clear()
+        self.plot_stack.setCurrentIndex(1)
+
+    def _clear_metric_views(self) -> None:
         self.matrix_widget.update_plot(None)
         self.bar_chart.update_plot({})
         self.metrics_table.update_data({})
-        self.summary_text.clear()
-        self.plot_stack.setCurrentIndex(1)
 
     def on_model_changed(self, index, preferred_run=None, preferred_run_text=""):
         """Handle model selection change."""
@@ -291,24 +294,29 @@ class EvaluationPanel(BasePanel):
         """Update Matrix and Table based on current selection."""
         data = self.run_combo.currentData()
         if not data:
+            self._clear_metric_views()
             return
 
         # Handle Average
         if data == "average":
             plan = self.model_combo.currentData()
             if not plan:
+                self._clear_metric_views()
                 return
 
             pooled_result = self._pooled_result_from_application_query(plan)
             if pooled_result is None:
                 if self._evaluation_query_payload() is not None:
+                    self._clear_metric_views()
                     return
                 pooled_result = self._legacy_pooled_result_for_render(plan)
                 if pooled_result is None:
+                    self._clear_metric_views()
                     return
             pooled_labels, pooled_outputs, metrics = pooled_result
 
             if pooled_labels is None:
+                self._clear_metric_views()
                 return
 
             # Create proxy record for Matrix plotting
