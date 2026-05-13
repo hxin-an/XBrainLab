@@ -107,7 +107,7 @@ UI_DIRECT_STUDY_STATE_ATTRIBUTES = (
     "training_option",
     "trainer",
 )
-UI_DIRECT_STUDY_CONTROLLER_LOOKUP_ALLOWED_FILES = ("main_window.py",)
+UI_DIRECT_STUDY_CONTROLLER_LOOKUP_ALLOWED_FILES: tuple[str, ...] = ()
 UI_OBSERVER_REFRESH_EVENTS = (
     "data_changed",
     "preprocess_changed",
@@ -1214,8 +1214,8 @@ def check_ui_direct_study_get_controller_lookups(root_dir: Path) -> list[str]:
             violations.extend(
                 f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
                 "study.get_controller(); product UI controller lookup must be "
-                "centralized in MainWindow injection or limited to an explicit "
-                "legacy/fallback helper."
+                "limited to an explicit legacy/fallback helper, specifically "
+                "the named bootstrap quarantine for panel constructor adapters."
                 for call in visitor.violations
             )
     return violations

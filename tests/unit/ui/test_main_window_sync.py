@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
@@ -129,6 +130,74 @@ def test_main_window_delegates_info_refresh_to_coordinator(mock_study, qtbot):
     service_cls.assert_called_once_with(
         mock_study,
         observe_controller_events=False,
+    )
+
+
+def test_init_panels_uses_legacy_bootstrap_helper(mock_study, qtbot):
+    """MainWindow should not directly look up workflow controllers."""
+    controllers = SimpleNamespace(
+        dataset=object(),
+        preprocess=object(),
+        training=object(),
+        evaluation=object(),
+        visualization=object(),
+    )
+
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow.init_agent"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+        patch("XBrainLab.ui.main_window.ToolExecutor"),
+        patch("XBrainLab.ui.main_window.InfoPanelService"),
+        patch(
+            "XBrainLab.ui.main_window.get_legacy_workflow_controllers_for_panel_bootstrap",
+            return_value=controllers,
+        ) as bootstrap,
+        patch(
+            "XBrainLab.ui.main_window.DatasetPanel",
+            side_effect=lambda *args: QWidget(),
+        ) as dataset_panel,
+        patch(
+            "XBrainLab.ui.main_window.PreprocessPanel",
+            side_effect=lambda *args: QWidget(),
+        ) as preprocess_panel,
+        patch(
+            "XBrainLab.ui.main_window.TrainingPanel",
+            side_effect=lambda *args: QWidget(),
+        ) as training_panel,
+        patch(
+            "XBrainLab.ui.main_window.EvaluationPanel",
+            side_effect=lambda *args: QWidget(),
+        ) as evaluation_panel,
+        patch(
+            "XBrainLab.ui.main_window.VisualizationPanel",
+            side_effect=lambda *args: QWidget(),
+        ) as visualization_panel,
+    ):
+        window = MainWindow(mock_study)
+
+    qtbot.addWidget(window)
+    bootstrap.assert_called_once_with(mock_study)
+    mock_study.get_controller.assert_not_called()
+    dataset_panel.assert_called_once_with(controllers.dataset, window)
+    preprocess_panel.assert_called_once_with(
+        controllers.preprocess,
+        controllers.dataset,
+        window,
+    )
+    training_panel.assert_called_once_with(
+        controllers.training,
+        controllers.dataset,
+        window,
+    )
+    evaluation_panel.assert_called_once_with(
+        controllers.evaluation,
+        controllers.training,
+        window,
+    )
+    visualization_panel.assert_called_once_with(
+        controllers.visualization,
+        controllers.training,
+        window,
     )
 
 

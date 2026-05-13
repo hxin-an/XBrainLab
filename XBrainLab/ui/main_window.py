@@ -28,6 +28,9 @@ from XBrainLab.ui.components.agent_manager import AgentManager
 from XBrainLab.ui.components.info_panel_service import InfoPanelService
 
 # LLMController, ChatPanel, PickMontageDialog moved to AgentManager
+from XBrainLab.ui.legacy_controller_bootstrap import (
+    get_legacy_workflow_controllers_for_panel_bootstrap,
+)
 from XBrainLab.ui.panels.dataset.panel import DatasetPanel
 from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
 from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
@@ -421,31 +424,42 @@ class MainWindow(QMainWindow):
         """Initializes and adds all main functional panels to the stacked widget.
         The order of addition corresponds to the index used in navigation.
         """
-        # Get Controllers
-        dataset_ctrl = self.study.get_controller("dataset")
-        preprocess_ctrl = self.study.get_controller("preprocess")
-        training_ctrl = self.study.get_controller("training")
-        eval_ctrl = self.study.get_controller("evaluation")
-        viz_ctrl = self.study.get_controller("visualization")
+        controllers = get_legacy_workflow_controllers_for_panel_bootstrap(self.study)
 
         # 0. Dataset
-        self.dataset_panel = DatasetPanel(dataset_ctrl, self)
+        self.dataset_panel = DatasetPanel(controllers.dataset, self)
         self.stack.addWidget(self.dataset_panel)
 
         # 1. Preprocess
-        self.preprocess_panel = PreprocessPanel(preprocess_ctrl, dataset_ctrl, self)
+        self.preprocess_panel = PreprocessPanel(
+            controllers.preprocess,
+            controllers.dataset,
+            self,
+        )
         self.stack.addWidget(self.preprocess_panel)
 
         # 2. Training
-        self.training_panel = TrainingPanel(training_ctrl, dataset_ctrl, self)
+        self.training_panel = TrainingPanel(
+            controllers.training,
+            controllers.dataset,
+            self,
+        )
         self.stack.addWidget(self.training_panel)
 
         # 3. Evaluation
-        self.evaluation_panel = EvaluationPanel(eval_ctrl, training_ctrl, self)
+        self.evaluation_panel = EvaluationPanel(
+            controllers.evaluation,
+            controllers.training,
+            self,
+        )
         self.stack.addWidget(self.evaluation_panel)
 
         # 4. Visualization
-        self.visualization_panel = VisualizationPanel(viz_ctrl, training_ctrl, self)
+        self.visualization_panel = VisualizationPanel(
+            controllers.visualization,
+            controllers.training,
+            self,
+        )
         self.stack.addWidget(self.visualization_panel)
 
     def init_agent(self):

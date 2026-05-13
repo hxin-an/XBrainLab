@@ -1309,6 +1309,25 @@ def __init__(self, study):
     assert "study.get_controller" in violations[0]
 
 
+def test_direct_study_get_controller_guard_flags_main_window_lookup(tmp_path):
+    path = tmp_path / "XBrainLab" / "ui" / "main_window.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def init_panels(self):
+    dataset_ctrl = self.study.get_controller("dataset")
+    self.dataset_panel = DatasetPanel(dataset_ctrl, self)
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_ui_direct_study_get_controller_lookups(tmp_path)
+
+    assert len(violations) == 1
+    assert "XBrainLab/ui/main_window.py" in violations[0]
+    assert "study.get_controller" in violations[0]
+
+
 def test_direct_study_get_controller_guard_allows_legacy_helper(tmp_path):
     _write_ui_file(
         tmp_path,

@@ -203,6 +203,15 @@ Offscreen screenshots include:
 | `poetry run python tests/architecture_compliance.py` | `Architecture compliant!` after the quarantine rule. | Current repo has no `BackendFacade` usage outside the allowed unit compatibility/runtime/guard test quarantine and the facade module itself. | Product completion or human desktop acceptance. | Keep this gate in final branch validation. |
 | `poetry run python tests/architecture_compliance.py` / `poetry run mkdocs build --strict` / `git diff --check` | `Architecture compliant!` / PASS with the existing MkDocs Material advisory / PASS. | Static architecture guard, docs build, and whitespace gate are clean for the montage-helper slice. | Human runtime acceptance or full repo dashboard health. | Continue with the next backend/test hygiene slice. |
 
+## 2026-05-13 UI Refresh Command Truth Checkpoint
+
+| Command | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `73 passed`. | Architecture guard unit coverage now proves `main_window.py` direct `study.get_controller(...)` lookup is no longer a blanket exception, while explicit legacy/fallback helpers remain allowed. | Runtime proof that panels no longer need injected controller adapters. | Continue shrinking panel constructor controller dependencies in later slices. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_main_window_sync.py tests/unit/ui/test_legacy_controller_bootstrap.py -q` | `15 passed`. | MainWindow panel construction now routes through `get_legacy_workflow_controllers_for_panel_bootstrap(...)`, and the helper returns a bounded controller bundle or `None` adapters when no getter exists. | Human UI acceptance or proof that read-only panel rendering is fully controller-free. | Add product smoke for stale UI state after command success in the next UI refresh slice. |
+| `poetry run python tests/architecture_compliance.py` / focused `ruff` / focused `basedpyright` | `Architecture compliant!` / PASS / `0 errors, 0 warnings, 0 notes`. | The repo is static-clean for the new panel-bootstrap quarantine and the edited guard/test files pass lint/type checks. | Full repo health or runtime flow acceptance. | Keep this gate in branch closure and dashboard validation. |
+| `poetry run mkdocs build --strict` | PASS with the existing MkDocs Material advisory. | Current architecture docs build after updating the MainWindow bootstrap truth. | File content truth beyond the edited pages or human product acceptance. | Keep docs in sync as remaining read-only population paths are cleaned. |
+
 ## BackendFacade Retirement Map
 
 2026-05-12 physical removal status:
