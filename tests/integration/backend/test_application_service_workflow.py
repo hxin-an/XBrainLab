@@ -29,6 +29,7 @@ from XBrainLab.backend.application import (
     VisualizeCommand,
 )
 from XBrainLab.backend.dataset import (
+    DatasetGenerator,
     DataSplitter,
     DataSplittingConfig,
     SplitByType,
@@ -239,7 +240,20 @@ def test_application_service_accepts_dialog_generator_split_and_updates_readines
             ),
         ],
     )
-    generator = service.study.get_datasets_generator(dialog_like_config)
+    context_result = service.execute(
+        QueryStateCommand(
+            query="dataset_generation_context",
+            include_objects=True,
+        ),
+    )
+
+    assert context_result.ok is True
+    assert context_result.diagnostics["payload_type"] == "dataset_generation_context"
+    assert context_result.diagnostics["epoch_available"] is True
+    generator = DatasetGenerator(
+        context_result.diagnostics["epoch_data"],
+        dialog_like_config,
+    )
 
     dataset_result = service.execute(GenerateDatasetCommand(generator=generator))
 

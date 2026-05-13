@@ -356,6 +356,32 @@ def test_real_tools_e2e_flow(study):
     assert "study.training_option" in violations[2]
 
 
+def test_product_success_study_state_guard_flags_application_workflow_generator(
+    tmp_path,
+):
+    path = (
+        tmp_path
+        / "tests"
+        / "integration"
+        / "backend"
+        / "test_application_service_workflow.py"
+    )
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_application_service_workflow(service):
+    generator = service.study.get_datasets_generator(config)
+    return generator
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_product_success_direct_study_state_tests(tmp_path)
+
+    assert len(violations) == 1
+    assert "study.get_datasets_generator()" in violations[0]
+
+
 def test_product_success_study_state_guard_allows_command_state_truth(
     tmp_path,
 ):

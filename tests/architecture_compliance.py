@@ -109,6 +109,7 @@ UI_DIRECT_STUDY_STATE_ATTRIBUTES = (
     "trainer",
 )
 PRODUCT_SUCCESS_DIRECT_STUDY_STATE_TEST_FILES = (
+    Path("tests/integration/backend/test_application_service_workflow.py"),
     Path("tests/integration/pipeline/test_all_real_tools.py"),
     Path("tests/integration/pipeline/test_integration_real_tools.py"),
     Path("tests/integration/ui/test_epoch_runtime.py"),

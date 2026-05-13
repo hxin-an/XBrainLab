@@ -16,7 +16,7 @@
 
 | Gate | 最近可信結果 | 用途 | 不能取代 |
 | --- | --- | --- | --- |
-| Fast quality dashboard | 2026-05-13 17:46:11 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
+| Fast quality dashboard | 2026-05-13 19:45:45 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
 | Architecture compliance | 最近 checkpoint `Architecture compliant!`，guard unit `79 passed` | 阻擋已知 `BackendFacade`、legacy fallback、direct state、positive controller lookup 等 regression。 | runtime semantic proof for every possible path。 |
 | Focused UI integration | `test_ui_refresh.py`、`test_ui_integration.py`、`test_panel_controller_binding.py` -> `8 passed` | MainWindow launch/navigation/tab-refresh 和 injected controller event wiring 不再把 legacy lookup 當成功證據。 | full zero-controller UI 或人工桌面驗收。 |
 | Product smokes / real tools | guarded UI product smokes、epoch runtime、real-tools suites recently PASS | product evidence 轉向 `QueryStateCommand` / command diagnostics / UI-visible state。 | 所有 integration tests 都已清成 product evidence。 |
@@ -141,6 +141,22 @@ acceptance.
 | Docs entry audit: compared `docs/index.md`, `docs/planning/now.md`, `docs/architecture/README.md`, `docs/current.md`, and this validation page for current-vs-target wording | Entry docs now describe remaining gaps as UI controller adapter distance, product-smoke evidence boundaries, and human desktop acceptance rather than stale facade cleanup. | New readers can reach the current state and next work without reading chronological history first. | Runtime behavior or product acceptance. | Keep `now.md` current after each major stabilization checkpoint. |
 | `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS | Documentation site and whitespace gate remain clean after entry-navigation edits. | Content correctness by itself. | Pair docs edits with source/test audits when implementation claims change. |
 | `poetry run python tests/architecture_compliance.py` | `Architecture compliant!` | The source tree still passes the architecture guard while docs classify `BackendFacade` as a guarded regression risk, not current implementation. | Human desktop acceptance or full zero-controller UI. | Keep architecture docs and guard vocabulary aligned. |
+
+## 2026-05-13 ApplicationService Workflow Query-Evidence Checkpoint
+
+This test/guard slice tightened backend product-evidence boundaries without touching UX. The
+non-mocked `test_application_service_workflow.py` no longer creates a dialog-like dataset generator
+through `service.study.get_datasets_generator(...)`; it now queries
+`QueryStateCommand(query="dataset_generation_context", include_objects=True)` and builds the dialog
+generator from the command-owned epoch object before dispatching `GenerateDatasetCommand`.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py::test_application_service_accepts_dialog_generator_split_and_updates_readiness -q` | `1 passed` | The dialog-generator split workflow can be proven through ApplicationService query diagnostics plus `GenerateDatasetCommand`, not direct `Study` generator calls. | Every pipeline/domain integration test is product evidence. | Continue migrating one suite at a time before broadening guards. |
+| `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py -q` | `8 passed` | The full non-mocked ApplicationService workflow suite remains green after query-truth replacement. | Human desktop acceptance or full UI zero-controller architecture. | Keep this suite in command-spine validation. |
+| `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run python tests/architecture_compliance.py` | `80 passed` / `Architecture compliant!` | Architecture guard now includes `tests/integration/backend/test_application_service_workflow.py` in direct `Study` product-evidence checks. | Semantic proof outside guarded files. | Expand guard scope only after replacement command/query evidence exists. |
+| Focused `ruff` / `basedpyright` on changed Python files | PASS / `0 errors, 0 warnings, 0 notes` | Changed Python files are lint/type clean. | Runtime behavior by itself. | Dashboard also ran below. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 19:45:45 UTC+08:00`. | Fast engineering dashboard is green after this guard/test slice, including full ruff, basedpyright, architecture, startup, UI baseline/dialog/unit, and real-data IO. | Product complete or human Windows acceptance. | Keep dashboard as health evidence, not product acceptance. |
 
 ## 2026-05-13 Data Import Runtime Integration Checkpoint
 
