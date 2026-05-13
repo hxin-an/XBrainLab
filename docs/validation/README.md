@@ -16,8 +16,8 @@
 
 | Gate | 最近可信結果 | 用途 | 不能取代 |
 | --- | --- | --- | --- |
-| Fast quality dashboard | 2026-05-13 19:45:45 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
-| Architecture compliance | 最近 checkpoint `Architecture compliant!`，guard unit `79 passed` | 阻擋已知 `BackendFacade`、legacy fallback、direct state、positive controller lookup 等 regression。 | runtime semantic proof for every possible path。 |
+| Fast quality dashboard | 2026-05-13 19:58:33 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
+| Architecture compliance | 最近 checkpoint `Architecture compliant!`，guard unit `81 passed` | 阻擋已知 `BackendFacade`、legacy fallback、direct state、positive controller lookup 等 regression。 | runtime semantic proof for every possible path。 |
 | Focused UI integration | `test_ui_refresh.py`、`test_ui_integration.py`、`test_panel_controller_binding.py` -> `8 passed` | MainWindow launch/navigation/tab-refresh 和 injected controller event wiring 不再把 legacy lookup 當成功證據。 | full zero-controller UI 或人工桌面驗收。 |
 | Product smokes / real tools | guarded UI product smokes、epoch runtime、real-tools suites recently PASS | product evidence 轉向 `QueryStateCommand` / command diagnostics / UI-visible state。 | 所有 integration tests 都已清成 product evidence。 |
 | `mkdocs build --strict` | 最近 checkpoint PASS | 文件站可建且連結/nav 基本有效。 | 文件內容一定正確或容易讀。 |
@@ -157,6 +157,24 @@ generator from the command-owned epoch object before dispatching `GenerateDatase
 | `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run python tests/architecture_compliance.py` | `80 passed` / `Architecture compliant!` | Architecture guard now includes `tests/integration/backend/test_application_service_workflow.py` in direct `Study` product-evidence checks. | Semantic proof outside guarded files. | Expand guard scope only after replacement command/query evidence exists. |
 | Focused `ruff` / `basedpyright` on changed Python files | PASS / `0 errors, 0 warnings, 0 notes` | Changed Python files are lint/type clean. | Runtime behavior by itself. | Dashboard also ran below. |
 | `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 19:45:45 UTC+08:00`. | Fast engineering dashboard is green after this guard/test slice, including full ruff, basedpyright, architecture, startup, UI baseline/dialog/unit, and real-data IO. | Product complete or human Windows acceptance. | Keep dashboard as health evidence, not product acceptance. |
+
+## 2026-05-13 Training Command/Query State-Evidence Checkpoint
+
+This test-hygiene slice kept UX and training runtime behavior unchanged. The old training
+integration evidence that implied UI-facing code should read `Study.training_option` directly
+was replaced with `ConfigureTrainingCommand` plus `QueryStateCommand(query="state")`. The lower-level
+`Study.training_option` compatibility contract remains covered in a unit/domain test instead of
+being treated as product-success evidence.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| Red guard check after adding `tests/integration/training/test_training_integration.py` to the direct-state product-success guard | Failed on the expected `study.training_option` reads before the test rewrite. | The new guard scope would have caught the stale training integration evidence. | Runtime behavior by itself. | Keep direct `Study` contracts in unit/domain tests only. |
+| `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/training/test_training_integration.py::TestApplicationServiceTrainingStateIntegration::test_training_option_is_exposed_through_command_state -q` | `1 passed` | UI-facing training configuration truth is observable through ApplicationService command state and query diagnostics. | Actual training quality, long-running training, or desktop acceptance. | Keep training UI actions paired with command result/state assertions. |
+| `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/training/test_training_integration.py -q` | `22 passed` | Existing training integration bug-fix coverage remains green after removing product direct-state evidence. | Full product workflow or all training edge cases. | Continue classifying lower-level pipeline training tests before broadening guards. |
+| `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/backend/test_study_training_contract.py -q` | `2 passed` | `Study.training_option` remains explicitly covered as a lower-level compatibility contract. | Product command-spine evidence. | Do not use this unit contract as UI/backend product success. |
+| `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run python tests/architecture_compliance.py` | `81 passed` / `Architecture compliant!` | Architecture guard now rejects `study.training_option` success evidence in the training integration suite. | Semantic proof outside guarded files. | Expand guard scope only after replacement command/query evidence exists. |
+| Focused `ruff` / `basedpyright`, `poetry run mkdocs build --strict`, `git diff --check` | PASS / `0 errors, 0 warnings, 0 notes` / PASS / PASS | Changed Python files are lint/type clean, docs build strictly, and whitespace is clean. | Runtime behavior by itself. | Continue running focused gates before each checkpoint commit. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 19:58:33 UTC+08:00`. | Fast engineering dashboard remains green after this training test/guard slice, including full ruff, basedpyright, architecture, startup, UI baseline/dialog/unit, and real-data IO. | Product complete, human Windows acceptance, or training quality. | Keep dashboard as engineering health evidence only. |
 
 ## 2026-05-13 Data Import Runtime Integration Checkpoint
 

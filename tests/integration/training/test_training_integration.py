@@ -11,7 +11,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 import torch
 
-from XBrainLab import Study
+from XBrainLab.backend.application import (
+    ApplicationService,
+    ConfigureTrainingCommand,
+    QueryStateCommand,
+)
 from XBrainLab.backend.model_base import EEGNet, SCCNet
 from XBrainLab.backend.training import TrainingEvaluation, TrainingOption
 from XBrainLab.backend.training.model_holder import ModelHolder
@@ -121,30 +125,6 @@ class TestEpochDurationValidation:
             EEGNet(n_classes=2, channels=3, samples=100, sfreq=250)
 
 
-class TestStudyAttributeConsistency:
-    """Test that Study object attributes are consistently named."""
-
-    def test_study_has_training_option_not_setting(self):
-        """Verify Study uses training_option, not training_setting."""
-        study = Study()
-
-        # Bug fix: Should be training_option
-        assert study.training_option is None
-
-        # Should NOT have training_setting
-        assert not hasattr(study, "training_setting")
-
-    def test_study_set_training_option(self, real_training_option):
-        """Test Study.set_training_option() works correctly."""
-        study = Study()
-        study.set_training_option(real_training_option)
-
-        assert study.training_option is not None
-        assert study.training_option.epoch == 5
-        assert study.training_option.lr == 0.001
-        assert study.training_option.optim == torch.optim.Adam
-
-
 class TestCompleteTrainingWorkflow:
     """Integration test for complete training workflow using real objects."""
 
@@ -167,36 +147,49 @@ class TestCompleteTrainingWorkflow:
             )
 
 
-class TestUITrainingPanelIntegration:
-    """Integration tests for UI training panel focusing on attribute naming."""
+class TestApplicationServiceTrainingStateIntegration:
+    """Integration tests for UI-facing training command state."""
 
-    def test_study_training_option_attribute_exists(self):
-        """Verify Study uses training_option, not training_setting."""
-        study = Study()
+    def test_training_option_is_exposed_through_command_state(self, tmp_path):
+        """UI-facing training config truth comes from command/query state."""
+        service = ApplicationService()
 
-        # This is what the UI code expects
-        assert study.training_option is None
-        assert not hasattr(study, "training_setting")
-
-        # Set a real option
-        option = TrainingOption(
-            output_dir="./test_output",
-            optim=torch.optim.Adam,
-            optim_params={},
-            use_cpu=True,
-            gpu_idx=None,
-            epoch=_ui_text("5"),
-            bs=_ui_text("4"),
-            lr=_ui_text("0.001"),
-            checkpoint_epoch=_ui_text("1"),
-            evaluation_option=TrainingEvaluation.TEST_ACC,
-            repeat_num=_ui_text("1"),
+        result = service.execute(
+            ConfigureTrainingCommand(
+                model_name="EEGNet",
+                epoch=5,
+                batch_size=4,
+                learning_rate=0.001,
+                device="cpu",
+                optimizer="adam",
+                output_dir=str(tmp_path / "training-output"),
+                evaluation_option=TrainingEvaluation.TEST_ACC.value,
+            ),
         )
-        study.set_training_option(option)
 
-        # UI code should be able to access this
-        assert study.training_option is not None
-        assert study.training_option.epoch == 5
+        assert result.ok is True
+        assert result.state.training.has_model is True
+        assert result.state.training.model_name == "EEGNet"
+        assert result.state.training.has_training_option is True
+        assert result.state.training.training_option == {
+            "epoch": 5,
+            "batch_size": 4,
+            "learning_rate": 0.001,
+            "repeat": 1,
+            "device": "cpu",
+            "optimizer": "Adam",
+            "checkpoint_epoch": 0,
+            "output_dir": str(tmp_path / "training-output"),
+        }
+
+        query_result = service.execute(QueryStateCommand(query="state"))
+
+        assert query_result.ok is True
+        training_state = query_result.diagnostics["state"]["training"]
+        assert "training_setting" not in training_state
+        assert training_state["has_training_option"] is True
+        assert training_state["training_option"]["epoch"] == 5
+        assert training_state["training_option"]["learning_rate"] == 0.001
 
 
 class TestTrainingSettingDefaultValues:

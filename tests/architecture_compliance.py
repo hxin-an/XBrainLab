@@ -112,6 +112,7 @@ PRODUCT_SUCCESS_DIRECT_STUDY_STATE_TEST_FILES = (
     Path("tests/integration/backend/test_application_service_workflow.py"),
     Path("tests/integration/pipeline/test_all_real_tools.py"),
     Path("tests/integration/pipeline/test_integration_real_tools.py"),
+    Path("tests/integration/training/test_training_integration.py"),
     Path("tests/integration/ui/test_epoch_runtime.py"),
     Path("tests/integration/ui/test_product_walkthrough.py"),
     Path("tests/integration/ui/test_real_tools_e2e.py"),
