@@ -122,6 +122,12 @@ PRODUCT_SUCCESS_DIRECT_STUDY_STATE_TEST_FILES = (
 )
 PRODUCT_SUCCESS_DIRECT_STUDY_METHODS = ("get_datasets_generator",)
 MCP_DIRECT_STUDY_METHODS = ("get_controller", "get_datasets_generator")
+PRODUCT_SUCCESS_TEST_DIRS = (
+    Path("tests/integration/backend"),
+    Path("tests/integration/io"),
+    Path("tests/integration/pipeline"),
+    Path("tests/integration/ui"),
+)
 UI_DIRECT_STUDY_CONTROLLER_LOOKUP_ALLOWED_FILES: tuple[str, ...] = ()
 UI_OBSERVER_REFRESH_EVENTS = (
     "data_changed",
@@ -165,6 +171,10 @@ WEAK_TEST_NAME_PATTERNS = (
     "accepted",
     "no_crash",
     "does_not_crash",
+)
+PRODUCT_SUCCESS_WEAK_TEST_NAME_PATTERNS = (
+    "initialization",
+    "initializes",
 )
 MCP_EXACT_EVIDENCE_TEST_DIRS = (
     Path("tests/unit/mcp"),
@@ -838,7 +848,14 @@ def check_weak_test_names(root_dir: Path) -> list[str]:
                 continue
             if not node.name.startswith("test_"):
                 continue
-            if not _is_weak_test_name(node.name):
+            relative_file = py_file.relative_to(root_dir)
+            patterns = WEAK_TEST_NAME_PATTERNS
+            if _is_under_any(relative_file, PRODUCT_SUCCESS_TEST_DIRS):
+                patterns = (
+                    *WEAK_TEST_NAME_PATTERNS,
+                    *PRODUCT_SUCCESS_WEAK_TEST_NAME_PATTERNS,
+                )
+            if not _is_weak_test_name(node.name, patterns):
                 continue
             violations.append(
                 f"{py_file.relative_to(root_dir)}:{node.lineno} uses weak test "
@@ -849,12 +866,19 @@ def check_weak_test_names(root_dir: Path) -> list[str]:
     return violations
 
 
-def _is_weak_test_name(test_name: str) -> bool:
+def _is_weak_test_name(
+    test_name: str,
+    patterns: tuple[str, ...] = WEAK_TEST_NAME_PATTERNS,
+) -> bool:
     parts = test_name.split("_")
     return any(
         pattern in parts if "_" not in pattern else pattern in test_name
-        for pattern in WEAK_TEST_NAME_PATTERNS
+        for pattern in patterns
     )
+
+
+def _is_under_any(relative_file: Path, roots: tuple[Path, ...]) -> bool:
+    return any(relative_file == root or root in relative_file.parents for root in roots)
 
 
 def check_mcp_weak_response_assertions(root_dir: Path) -> list[str]:

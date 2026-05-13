@@ -248,9 +248,11 @@ class TestEvaluationPanelIntegration:
 class TestVisualizationPanelIntegration:
     """Test that visualization panel works correctly."""
 
-    def test_visualization_panel_initialization(self, qtbot):
-        """Verify visualization panel initializes without errors."""
-
+    def test_visualization_panel_without_ready_state_uses_command_blocked_reason(
+        self,
+        qtbot,
+    ):
+        """Verify unavailable visualization state comes from Command API truth."""
         study = Study()
 
         parent = cast(Any, QWidget())
@@ -259,7 +261,29 @@ class TestVisualizationPanelIntegration:
         panel = VisualizationPanel(parent=parent)
         qtbot.addWidget(panel)
 
-        assert isinstance(panel, VisualizationPanel)
+        panel.update_panel()
+
+        assert panel.last_application_query is not None
+        assert panel.last_application_query.failed
+        assert (
+            panel.last_application_query.message
+            == "Create epochs, complete training, or configure saliency before "
+            "opening visualization views."
+        )
+        assert (
+            panel.last_application_query.diagnostics.get("exception_type")
+            == "PreconditionError"
+        )
+        assert panel.plan_combo.count() == 1
+        assert panel.plan_combo.itemText(0) == "Select a plan"
+        assert panel.run_combo.count() == 0
+        current_widget = cast(Any, panel.tabs.currentWidget())
+        assert current_widget.error_label.isHidden() is False
+        assert (
+            current_widget.error_label.text()
+            == "Error: Create epochs, complete training, or configure saliency "
+            "before opening visualization views."
+        )
 
 
 class TestTrainingWorkflowWithUI:

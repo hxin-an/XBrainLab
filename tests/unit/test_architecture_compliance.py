@@ -73,6 +73,24 @@ def test_panel_no_crash():
     assert "test_panel_no_crash" in violations[1]
 
 
+def test_weak_test_name_guard_flags_product_initialization_names(tmp_path):
+    path = tmp_path / "tests" / "integration" / "pipeline" / "test_demo.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_visualization_panel_initialization():
+    pass
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_weak_test_names(tmp_path)
+
+    assert len(violations) == 1
+    assert "test_visualization_panel_initialization" in violations[0]
+    assert "command/result/state semantics" in violations[0]
+
+
 def test_weak_test_name_guard_allows_behavior_specific_names(tmp_path):
     path = tmp_path / "tests" / "unit" / "ui" / "test_demo.py"
     path.parent.mkdir(parents=True)
