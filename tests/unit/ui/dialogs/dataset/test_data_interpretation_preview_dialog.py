@@ -1235,6 +1235,7 @@ def test_converted_label_table_dialog_shows_required_format(qtbot):
         if label.text().strip() and label.isVisibleTo(dialog)
     )
     assert "XBrainLab label table" in visible_text
+    assert "target structure" in visible_text
     assert "Required column" in visible_text
     assert "label" in visible_text
     assert "Match by event code" in visible_text
@@ -1290,7 +1291,12 @@ def test_match_labels_shows_conversion_fallback_when_label_field_is_missing(
     visible_text = _visible_step_text(dialog, "Match Labels")
     assert "Label file needs conversion" in visible_text
     assert "cannot find a usable label column" in visible_text
-    assert "converted CSV/TSV with Load label file" in visible_text
+    assert "before continuing" in visible_text
+    assert "Label values and placement" not in visible_text
+    assert "Read labels from" not in visible_text
+    assert "Place labels by" not in visible_text
+    assert "Check" not in visible_text
+    assert "converted CSV/TSV" not in visible_text
 
     _click_button(dialog, "View table format")
     qtbot.wait(0)

@@ -91,8 +91,8 @@ class _ConvertedLabelTableDialog(BaseDialog):
         title = QLabel("XBrainLab label table")
         title.setObjectName("DataImportPanelTitle")
         detail = QLabel(
-            "Use this when XBrainLab cannot read or match the original label file. "
-            "Convert outside XBrainLab, then load the CSV/TSV with Load label file."
+            "Use this as the target structure when XBrainLab cannot read or match "
+            "the original label file."
         )
         detail.setObjectName("DataImportPanelSubtitle")
         detail.setWordWrap(True)
@@ -844,16 +844,18 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
         if hasattr(self, "label_source_status_label"):
             self.label_source_status_label.setText(self._label_source_status_text())
+        fallback_visible = use_loaded and self._should_show_label_table_fallback()
+        if hasattr(self, "pairing_card"):
+            self.pairing_card.setVisible(use_loaded)
         for widget in (
-            getattr(self, "pairing_card", None),
             getattr(self, "label_values_card", None),
             getattr(self, "placement_card", None),
         ):
             if widget is not None:
-                widget.setVisible(use_loaded)
+                widget.setVisible(use_loaded and not fallback_visible)
         self._refresh_label_table_fallback()
         if hasattr(self, "match_check_card"):
-            self.match_check_card.setVisible(use_loaded)
+            self.match_check_card.setVisible(use_loaded and not fallback_visible)
         if hasattr(self, "internal_event_card"):
             internal_details_available = bool(
                 self._internal_candidate_label_event_rows()
@@ -866,7 +868,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
             )
         if hasattr(self, "event_group"):
             self.event_group.setVisible(
-                has_event_details and (not use_loaded or has_class_map)
+                has_event_details
+                and (not fallback_visible)
+                and (not use_loaded or has_class_map)
             )
         if hasattr(self, "rule_status_label"):
             self.rule_status_label.setText(self._label_rule_status_text())
@@ -1997,8 +2001,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.label_table_fallback_reason_label.setObjectName("DataImportActionText")
         self.label_table_fallback_reason_label.setWordWrap(True)
         next_action = QLabel(
-            "Convert the custom structure to an XBrainLab label table, then load "
-            "the converted CSV/TSV with Load label file."
+            "Convert the custom structure to an XBrainLab label table before "
+            "continuing."
         )
         next_action.setObjectName("DataImportSourceDetail")
         next_action.setWordWrap(True)
