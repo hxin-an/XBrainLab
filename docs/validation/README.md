@@ -16,7 +16,7 @@
 
 | Gate | 最近可信結果 | 用途 | 不能取代 |
 | --- | --- | --- | --- |
-| Fast quality dashboard | 2026-05-13 22:29:42 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
+| Fast quality dashboard | 2026-05-13 23:20:52 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
 | Architecture compliance | 最近 checkpoint `Architecture compliant!`，guard unit `91 passed` | 阻擋已知 `BackendFacade`、legacy fallback、direct state、positive controller lookup、docs overclaim 等 regression。 | runtime semantic proof for every possible path。 |
 | Focused UI integration | `test_ui_refresh.py`、`test_ui_integration.py`、`test_panel_controller_binding.py` -> `8 passed` | MainWindow launch/navigation/tab-refresh 和 injected controller event wiring 不再把 legacy lookup 當成功證據。 | full zero-controller UI 或人工桌面驗收。 |
 | Product smokes / real tools | guarded UI product smokes、epoch runtime、real-tools suites recently PASS | product evidence 轉向 `QueryStateCommand` / command diagnostics / UI-visible state。 | 所有 integration tests 都已清成 product evidence。 |
@@ -193,6 +193,17 @@ event code, and reset returns to raw data with cleared preprocess history.
 | `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/controller/test_preprocess_controller.py -q` | `4 passed` | Lower-level preprocess controller behavior is protected by shape/event/history assertions instead of generic `None` checks. | Product command-spine success, UI refresh acceptance, or zero-controller UI architecture. | Keep product-facing preprocess evidence in ApplicationService / command tests. |
 | Focused `ruff` / `basedpyright` / `ruff format --check` on `tests/integration/controller/test_preprocess_controller.py` | PASS / `0 errors, 0 warnings, 0 notes` / PASS | Changed test code is lint/type/format clean. | Runtime behavior by itself. | Continue keeping controller tests classified as lower-level contracts. |
 | `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `91 passed` | Strengthened controller evidence did not weaken architecture guard coverage. | Semantic proof outside guarded files. | Do not use this controller suite to justify product UI bypasses. |
+
+## 2026-05-13 Test Evidence Cleanup Fast Dashboard
+
+After the real-data IO shape, metadata event, and lower-level preprocess controller evidence
+cleanup slices, the fast dashboard was rerun on the stacked branch state. This refreshes the
+engineering-health signal for the current branch, but it still does not close human Windows
+desktop acceptance or product-complete claims.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 23:20:52 UTC+08:00`; UI unit suite `1137 passed`; real-data IO `31 passed, 8 warnings`. | Fast engineering dashboard remains green after the test-evidence cleanup stack, including full ruff, basedpyright, architecture, startup, UI baseline/dialog/unit, and real-data IO. | Product complete, human Windows acceptance, long local-model session, or scientific validation. | Treat dashboard as health evidence only; keep human desktop acceptance separate. |
 
 ## 2026-05-13 Docs Readability and UI Refresh Truth Checkpoint
 
