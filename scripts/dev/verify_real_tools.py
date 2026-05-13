@@ -173,9 +173,8 @@ def run_verification():
     # Tool only supports names list.
     # Let's grab names from info if possible, or just skip if dangerous.
     # We can try commonly available channels. 'EEG-Fz', 'EEG-0', etc.
-    # Check info again
-    # logger.info(f"Channels: {study.loaded_data_list[0].raw.info['ch_names']}")
-    # For safety, let's select first 3 channels dynamically if possible,
+    # Check channel names through the ApplicationService state snapshot.
+    # For safety, select the first 3 channels dynamically if possible,
     # or skip to avoid error.
     # If we are using A01T, it has 22 EEG + 3 EOG.
     sel_channels = _raw_channels(study)[:3]
