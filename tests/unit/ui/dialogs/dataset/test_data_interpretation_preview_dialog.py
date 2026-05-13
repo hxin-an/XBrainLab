@@ -752,8 +752,10 @@ def test_match_labels_internal_source_uses_task_panel_for_suggested_events(qtbot
         if label.text().strip()
     )
     assert "Suggested training labels" in visible_text
+    assert "Suggestion evidence" in visible_text
     assert "Use this when class labels are stored as EEG events." not in visible_text
     assert "Other EEG events" in visible_text
+    assert "Suggestion evidence / reason" in visible_text
     assert "not currently used as class labels" in visible_text
     assert "Selection preview: train on 769, 770" in visible_text
     assert "not used: 768, 1023" in visible_text

@@ -1221,7 +1221,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         headers = [
             "Event",
             "Suggested use",
-            "Suggestion / reason",
+            "Suggestion evidence / reason",
             "Count / coverage",
             "",
         ]
