@@ -340,6 +340,19 @@ directories.
 | `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run python tests/architecture_compliance.py` | `100 passed` / `Architecture compliant!`. | Architecture guard now blocks product-success integration tests named like generic initialization evidence or relying on generic panel instance assertions. | Every possible weak assertion shape. | Add more exact-evidence guards only after finding a real weak pattern in current product-success tests. |
 | Focused `ruff check` / `ruff format --check` / `basedpyright` on touched Python files / `git diff --check` | PASS / PASS / `0 errors, 0 warnings, 0 notes` / PASS. | The test and guard changes are lint, format, type, and whitespace clean. | Runtime behavior by itself. | No docs-site claim until `mkdocs build --strict` is rerun after this validation entry. |
 
+## 2026-05-14 Product Status Readability Checkpoint
+
+This docs-only slice refreshed the first-screen status in `docs/index.md`,
+`docs/architecture/README.md`, and `docs/planning/now.md`. It clarifies that
+`BackendFacade` removal, artifact pruning, dashboard PASS, and product-success weak-evidence
+guards are real progress but do not imply full zero-controller UI or human Windows acceptance.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `poetry run mkdocs build --strict` | PASS. | Documentation still builds strictly after readability edits. | Source correctness or runtime behavior. | Keep current truth in `docs/current.md` once the existing Data Import dirty docs are ready to stage. |
+| `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `100 passed`. | Docs did not trip current-truth overclaim guards, and the architecture guard suite remains green. | Human desktop acceptance or full zero-controller UI. | Continue keeping target-state language out of current architecture summaries. |
+| `git diff --check` | PASS. | Docs diff is whitespace clean. | Content completeness by itself. | Pair future docs readability edits with a quick stale-link / claim-boundary scan. |
+
 ## Reality-Gap Audit
 
 當 human walkthrough 發現 dashboard / automated smoke 沒抓到的問題時，不能只修單點 bug。

@@ -1,6 +1,6 @@
 # XBrainLab 目前架構
 
-最後更新：`2026-05-13`
+最後更新：`2026-05-14`
 
 這裡描述目前實作，不描述理想終局。目標態請看 [target/architecture.md](../target/architecture.md)。
 
@@ -16,8 +16,9 @@ UI / assistant / MCP / scripts
 ```
 
 這個方向已經有實作基礎。Backend command spine 和 `BackendFacade` removal 已經落地；
-剩餘距離主要在 UI controller adapter、human desktop acceptance、以及 test evidence
-claim boundary。
+剩餘距離主要在 UI controller adapter、human desktop acceptance、以及 product evidence
+claim boundary。讀本頁時先看下方「目前距離目標多遠」，再進 `ui.md` 的例外地圖；不要從
+歷史 checkpoint 數量推論目前架構乾淨度。
 
 ## 目前距離目標多遠
 
@@ -25,8 +26,18 @@ claim boundary。
 | --- | --- | --- |
 | Backend command spine | `ApplicationService / Command API` 是 product runtime 主入口；`BackendFacade` 已物理移除。 | 還要防止新 wrapper / direct manager mutation 回流。 |
 | UI refresh | command-result、navigation、known observer event 已集中到 refresh coordinator。 | panel constructor / observer bridge 還依賴 injected controllers，不是 full zero-controller UI。 |
-| Product evidence | guarded product smokes、real-tools evidence、real GDF full-pipeline smoke 已轉向 command/query truth。 | lower-level integration tests 仍有 setup/domain 目的的 direct `Study` access，不能全部當 product smoke。 |
+| Product evidence | guarded product smokes、real-tools evidence、real GDF full-pipeline smoke 已轉向 command/query truth；product-success tests 也開始阻擋 no-crash / generic panel assertion 形狀。 | lower-level integration tests 仍有 setup/domain 目的的 direct `Study` access，不能全部當 product smoke。 |
 | Desktop acceptance | startup、UI baseline、dialog/unit、real-data IO dashboard PASS。 | 還缺人手 Windows desktop click-through 和長時間 local-model session。 |
+
+## 目前不要誤讀
+
+| 看到的訊號 | 正確解讀 | 不能推論 |
+| --- | --- | --- |
+| `BackendFacade` 已刪除 | product runtime 不應再從 facade 進 backend。 | UI 已 full zero-controller。 |
+| `ApplicationService` tests / smokes 綠 | command spine 和 state/query truth 有保護。 | 每個 panel display path 都已完全不讀 controller。 |
+| product-success weak evidence guard 綠 | facade、legacy fallback、direct `Study` state、controller lookup、no-crash / generic panel assertion 等回歸會被擋。 | 所有 mock-heavy 或 lower-level tests 都已重寫。 |
+| artifacts current tree 已 prune | current evidence 入口比較少、比較好讀。 | screenshot freshness 或 human Windows acceptance 已完成。 |
+| automated walkthrough / dashboard PASS | 可支撐 engineering health 和 offscreen product evidence。 | 可取代人手 Windows launcher / Data Import / local model click-through。 |
 
 ## 目前分層
 
@@ -55,6 +66,7 @@ claim boundary。
 | UI refresh split truth | backend state 正確但畫面顯示舊狀態。 | command result / changed state 驅動 refresh；command 執行期間的 observer refresh 會被暫停，避免先用 stale controller state 重刷。 |
 | `BackendFacade` reintroduction | 這是 guarded regression，不是 current implementation。若 wrapper 回來，就會和 UI / MCP 分裂。 | Architecture guard blocks `BackendFacade` use in product UI / assistant / MCP packages and tests. |
 | evidence overclaim | dashboard PASS 或 offscreen smoke 被誤解成 product complete。 | Validation docs must keep human desktop acceptance and long local-model sessions as separate claims. |
+| weak product tests returning | product-success test 可能退回 no-crash、generic string 或 generic widget assertion。 | Architecture guard now blocks known weak shapes; add new exact-evidence guards only when a real weak pattern appears. |
 | Data Interpretation maturity | 資料語意錯會污染後續 training / evidence。 | MVP 先處理代表性 ambiguity，不誇大 final support。 |
 | MCP session confusion | headless session 容易被誤解成桌面 UI 控制。 | Phase 4 明確 session ownership 和 client matrix。 |
 
