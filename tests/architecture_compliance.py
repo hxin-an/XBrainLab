@@ -122,8 +122,16 @@ PRODUCT_SUCCESS_DIRECT_STUDY_STATE_TEST_FILES = (
 )
 PRODUCT_SUCCESS_DIRECT_STUDY_METHODS = ("get_datasets_generator",)
 MCP_DIRECT_STUDY_METHODS = ("get_controller", "get_datasets_generator")
-HEADLESS_VERIFIER_STATE_TRUTH_FILES = (Path("scripts/dev/verify_real_tools.py"),)
-HEADLESS_VERIFIER_DIRECT_STUDY_METHODS = ("is_training", "stop_training")
+HEADLESS_VERIFIER_STATE_TRUTH_FILES = (
+    Path("scripts/dev/verify_real_tools.py"),
+    Path("scripts/dev/run_public_cross_source_training_smoke.py"),
+)
+HEADLESS_VERIFIER_DIRECT_STUDY_METHODS = (
+    "generate_plan",
+    "is_training",
+    "stop_training",
+    "train",
+)
 PRODUCT_SUCCESS_TEST_DIRS = (
     Path("tests/integration/backend"),
     Path("tests/integration/io"),
@@ -852,8 +860,8 @@ def check_headless_verifier_direct_study_state(root_dir: Path) -> list[str]:
         violations.extend(
             f"{relative_file}:{call.lineno} calls "
             f"{_study_state_expression(source, call.func)}; headless product "
-            "verifiers must use QueryStateCommand for readiness/status and "
-            "StopTrainingCommand for cancellation."
+            "verifiers must use QueryStateCommand for readiness/status, "
+            "TrainCommand for training, and StopTrainingCommand for cancellation."
             for call in method_visitor.violations
         )
     return violations

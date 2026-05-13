@@ -10,8 +10,6 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import patch
 
-import torch
-
 from XBrainLab.backend.application import (
     ConfigureTrainingCommand,
     CreateEpochCommand,
@@ -19,14 +17,12 @@ from XBrainLab.backend.application import (
     LoadDataCommand,
     PreprocessCommand,
     PreprocessOperation,
+    QueryStateCommand,
     SaliencyCommand,
+    TrainCommand,
     get_application_service,
 )
 from XBrainLab.backend.study import Study
-from XBrainLab.backend.training import (
-    TrainingEvaluation,
-    TrainingOption,
-)
 from XBrainLab.backend.training.record import RecordKey
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -146,8 +142,7 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
         )
         _raise_if_failed(dataset_result)
 
-        datasets = study.datasets
-        dataset_count = len(datasets) if datasets is not None else 0
+        dataset_count = int(dataset_result.state.dataset.count or 0)
         if dataset_count <= 0:
             return SmokeResult(
                 name=str(fixture["name"]),
@@ -162,19 +157,13 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
         _raise_if_failed(configure_model)
         configure_training = service.execute(
             ConfigureTrainingCommand(
-                training_option=TrainingOption(
-                    output_dir="test_public_output",
-                    optim=torch.optim.Adam,
-                    optim_params={},
-                    use_cpu=True,
-                    gpu_idx=None,
-                    epoch=1,
-                    bs=8,
-                    lr=0.001,
-                    checkpoint_epoch=1,
-                    evaluation_option=TrainingEvaluation.TEST_ACC,
-                    repeat_num=1,
-                ),
+                output_dir="test_public_output",
+                device="cpu",
+                epoch=1,
+                batch_size=8,
+                learning_rate=0.001,
+                save_checkpoints_every=1,
+                evaluation_option="test_acc",
             ),
         )
         _raise_if_failed(configure_training)
@@ -195,11 +184,12 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
             patch("numpy.savetxt"),
             patch("os.makedirs"),
         ):
-            study.generate_plan()
-            study.train(interact=False)
+            train_result = service.execute(
+                TrainCommand(confirmed=True, interactive=False),
+            )
+        _raise_if_failed(train_result)
 
-        trainer = study.trainer
-        if trainer is None:
+        if train_result.state.training.run_count <= 0:
             return SmokeResult(
                 name=str(fixture["name"]),
                 filename=str(fixture["filename"]),
@@ -208,8 +198,21 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
                 dataset_count=dataset_count,
                 message="training produced no trainer",
             )
-        plan_holders = trainer.get_training_plan_holders()
-        record = plan_holders[0].train_record_list[0]
+        history = service.execute(
+            QueryStateCommand(query="training_history", include_objects=True),
+        )
+        _raise_if_failed(history)
+        rows = cast(list[dict[str, Any]], history.diagnostics.get("rows", []))
+        if not rows:
+            return SmokeResult(
+                name=str(fixture["name"]),
+                filename=str(fixture["filename"]),
+                source_family=str(fixture["source_family"]),
+                status="failed",
+                dataset_count=dataset_count,
+                message="training history did not include a run record",
+            )
+        record = rows[0]["record"]
         if RecordKey.LOSS not in record.train or RecordKey.ACC not in record.train:
             return SmokeResult(
                 name=str(fixture["name"]),

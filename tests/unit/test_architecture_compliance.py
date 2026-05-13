@@ -58,6 +58,12 @@ def _write_headless_verifier_file(root, source: str) -> None:
     path.write_text(source, encoding="utf-8")
 
 
+def _write_public_training_smoke_file(root, source: str) -> None:
+    path = root / "scripts" / "dev" / "run_public_cross_source_training_smoke.py"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(source, encoding="utf-8")
+
+
 def test_weak_test_name_guard_flags_ambiguous_names(tmp_path):
     path = tmp_path / "tests" / "unit" / "ui" / "test_demo.py"
     path.parent.mkdir(parents=True)
@@ -774,21 +780,26 @@ def test_headless_verifier_state_guard_flags_direct_study_truth(tmp_path):
 def verify(study):
     if study.loaded_data_list:
         return len(study.datasets)
+    study.generate_plan()
     if study.is_training():
         study.stop_training()
+    study.train(interact=False)
     return 0
 """,
     )
 
     violations = check_headless_verifier_direct_study_state(tmp_path)
 
-    assert len(violations) == 4
+    assert len(violations) == 6
     assert "study.loaded_data_list" in violations[0]
     assert "QueryStateCommand" in violations[0]
     assert "study.datasets" in violations[1]
-    assert "study.is_training" in violations[2]
-    assert "StopTrainingCommand" in violations[2]
-    assert "study.stop_training" in violations[3]
+    assert "study.generate_plan" in violations[2]
+    assert "TrainCommand" in violations[2]
+    assert "study.is_training" in violations[3]
+    assert "StopTrainingCommand" in violations[3]
+    assert "study.stop_training" in violations[4]
+    assert "study.train" in violations[5]
 
 
 def test_headless_verifier_state_guard_allows_command_query_truth(tmp_path):
@@ -812,6 +823,27 @@ def verify(study):
     )
 
     assert check_headless_verifier_direct_study_state(tmp_path) == []
+
+
+def test_headless_verifier_state_guard_scans_public_training_smoke(tmp_path):
+    _write_public_training_smoke_file(
+        tmp_path,
+        """
+def run_fixture_smoke(study):
+    dataset_count = len(study.datasets)
+    trainer = study.trainer
+    study.train(interact=False)
+    return dataset_count, trainer
+""",
+    )
+
+    violations = check_headless_verifier_direct_study_state(tmp_path)
+
+    assert len(violations) == 3
+    assert "scripts/dev/run_public_cross_source_training_smoke.py" in violations[0]
+    assert "study.datasets" in violations[0]
+    assert "study.trainer" in violations[1]
+    assert "study.train" in violations[2]
 
 
 def test_product_success_controller_lookup_guard_flags_direct_lookup_assertion(
