@@ -23,6 +23,22 @@ TEST_DATA_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "fixtures", "data"),
 )
 GDF_FILE = os.path.join(TEST_DATA_DIR, "A01T.gdf")
+EXPECTED_A01T_EVENT_NAMES = ["32766", "768", "769", "770", "771", "772"]
+EXPECTED_A01T_EVENT_IDS = {
+    "32766": 0,
+    "768": 1,
+    "769": 2,
+    "770": 3,
+    "771": 4,
+    "772": 5,
+}
+EXPECTED_A01T_SPLIT_SUMMARY = {
+    "count": 1,
+    "train_count": 375,
+    "val_count": 93,
+    "test_count": 117,
+    "audit": {"ok": True, "dataset_count": 1, "issues": []},
+}
 
 
 @pytest.mark.skipif(not os.path.exists(GDF_FILE), reason="Real test data not found")
@@ -84,6 +100,7 @@ def test_real_data_pipeline():
     filtered_event_names = [
         name for name, eid in event_id.items() if eid in present_event_ids
     ]
+    assert filtered_event_names == EXPECTED_A01T_EVENT_NAMES
 
     with patch.object(
         processed_raw, "get_raw_event_list", return_value=(events, event_id)
@@ -98,9 +115,11 @@ def test_real_data_pipeline():
         )
     assert epoch_result.ok is True
     assert epoch_result.state.epoch.exists is True
-    assert epoch_result.state.epoch.n_channels > 0
-    assert epoch_result.state.epoch.n_times > 0
-    assert len(epoch_result.state.epoch.event_ids) > 0
+    assert epoch_result.state.epoch.epoch_count == 585
+    assert epoch_result.state.epoch.n_channels == 25
+    assert epoch_result.state.epoch.n_times == 1001
+    assert epoch_result.state.epoch.event_names == EXPECTED_A01T_EVENT_NAMES
+    assert epoch_result.state.epoch.event_ids == EXPECTED_A01T_EVENT_IDS
 
     dataset_result = service.execute(
         GenerateDatasetCommand(
@@ -113,10 +132,8 @@ def test_real_data_pipeline():
     assert dataset_result.ok is True
     assert dataset_result.diagnostics["split_audit"]["ok"] is True
     assert dataset_result.state.dataset.available is True
-    assert dataset_result.state.dataset.count > 0
-    assert dataset_result.state.dataset.split_summary["train_count"] > 0
-    assert dataset_result.state.dataset.split_summary["val_count"] > 0
-    assert dataset_result.state.dataset.split_summary["test_count"] > 0
+    assert dataset_result.state.dataset.count == EXPECTED_A01T_SPLIT_SUMMARY["count"]
+    assert dataset_result.state.dataset.split_summary == EXPECTED_A01T_SPLIT_SUMMARY
 
     model_result = service.execute(ConfigureTrainingCommand(model_name="EEGNet"))
     training_result = service.execute(
@@ -148,11 +165,14 @@ def test_real_data_pipeline():
 
     assert train_result.ok is True
     assert train_result.state.training.has_trainer is True
+    assert train_result.state.training.plan_count == 1
+    assert train_result.state.training.run_count == 1
+    assert train_result.state.training.finished_run_count == 1
     history_result = service.execute(
         QueryStateCommand(query="training_history", include_objects=True),
     )
     assert history_result.ok is True
-    assert history_result.diagnostics["row_count"] > 0
+    assert history_result.diagnostics["row_count"] == 1
     record = history_result.diagnostics["rows"][0]["record"]
 
     assert RecordKey.LOSS in record.train

@@ -34,6 +34,7 @@
 | 測試是否能擋 facade / legacy fallback 回流 | [Backend test hygiene inventory](#backend-test-hygiene-inventory) 和 architecture guard checkpoints | 已知 forbidden product-success evidence 被 guard。 | semantic proof for every lower-level test。 |
 | Real-data IO 測試是否仍只證明 no-crash | [Real-Data IO shape-evidence](#2026-05-13-real-data-io-shape-evidence-checkpoint) | compact/public EEG fixtures 會檢查 loaded data 維度、非空內容、channel axis 對齊，以及 command import summary。 | scientific reproducibility、all possible external formats、or human Data Import acceptance。 |
 | Metadata pipeline 測試是否仍靠 random label / generic assertion | [Metadata real-data event evidence](#2026-05-13-metadata-real-data-event-evidence-checkpoint) | A01T metadata test 會檢查 raw shape、fixed filename parse、deterministic label round-trip、event shape、onset alignment 和 final event IDs。 | Data Import UX acceptance、all external label heuristics、or scientific validation。 |
+| Real-data pipeline smoke 是否仍只看 non-empty | [A01T real-data pipeline exact evidence](#2026-05-13-a01t-real-data-pipeline-exact-evidence-checkpoint) | A01T command-spine smoke 現在檢查 exact event names / ids、epoch shape、trial split summary 和 one-run training history。 | Training quality、all external datasets、or human desktop acceptance。 |
 | Lower-level preprocess controller 測試是否仍只是 non-`None` | [Preprocess controller shape/event evidence](#2026-05-13-preprocess-controller-shapeevent-evidence-checkpoint) | Controller integration tests 會檢查 `Raw` object、signal/epoch shape、filter shape preservation、selected event code 和 reset history。 | Product command-spine success、UI refresh acceptance、or zero-controller UI architecture。 |
 | Synthetic preprocess validation 是否仍靠 random/no-crash | [Preprocess validation deterministic evidence](#2026-05-13-preprocess-validation-deterministic-evidence-checkpoint) | Synthetic preprocess tests now use a fixed fixture and assert resample event codes, epoch shape, operation history, and reset shape. | Real-data product acceptance、UI responsiveness、or all preprocess edge cases。 |
 | AgentManager montage 測試是否仍靠 `Study.epoch_data` side effect | [AgentManager montage command evidence](#2026-05-13-agentmanager-montage-command-evidence-checkpoint) | Montage picker 的 channel source 來自 `QueryStateCommand`，apply payload 以 `ApplyMontageCommand` 檢查 channels / positions / montage name。 | Human montage UX acceptance 或 full zero-controller UI。 |
@@ -222,6 +223,21 @@ Mock / legacy fallback coverage remains separate compatibility evidence.
 | `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker -q` | `9 passed` | AgentManager montage tests now assert command-visible channel source and apply payload instead of `Study.epoch_data` side effects. | Human montage-dialog acceptance, full zero-controller UI, or final Data Import UX. | Continue retiring UI controller/read-only exceptions one behavior at a time. |
 | Focused `ruff` / `basedpyright` / `ruff format --check` on `tests/unit/ui/test_agent_manager_coverage.py` | PASS / `0 errors, 0 warnings, 0 notes` / PASS | Changed test code is lint/type/format clean. | Runtime behavior by itself. | Keep command-shape assertions paired with compatibility fallback tests. |
 | `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `91 passed` | The command-evidence rewrite did not weaken current architecture guards. | Semantic proof for every UI controller path. | Add guard examples only after concrete replacement behavior exists. |
+
+## 2026-05-13 A01T Real-Data Pipeline Exact-Evidence Checkpoint
+
+This test-evidence slice did not change product runtime or UX. It tightened
+`tests/integration/pipeline/test_real_data_pipeline.py` so the A01T command-spine smoke no longer
+passes on generic non-empty event, split, or history checks. The smoke now verifies the exact
+deduplicated event-name set, ApplicationService epoch-state event IDs and shape, deterministic
+trial split counts, and one-run training-history state.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| Red alignment run after replacing non-empty split evidence with exact summary | Failed because the expected summary initially omitted the command-state `audit` payload. | The strengthened assertion reads the full dataset split summary shape instead of only checking counts. | Runtime correctness by itself. | Keep exact evidence tied to known checked-in fixtures. |
+| `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/pipeline/test_real_data_pipeline.py -q` | `1 passed` | A01T load -> preprocess -> epoch -> split -> configure -> train succeeds through ApplicationService commands with exact event IDs, epoch shape, split summary, and one training-history row. | Training quality, all real datasets, or human Windows desktop acceptance. | Keep cross-source/public fixture coverage separate from this A01T smoke. |
+| Focused `ruff` / `basedpyright` / `ruff format --check` on `tests/integration/pipeline/test_real_data_pipeline.py` | PASS / `0 errors, 0 warnings, 0 notes` / PASS | Changed test code is lint/type/format clean. | Runtime behavior by itself. | Prefer fixed fixture expectations over generic non-empty checks. |
+| `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `91 passed` | The exact-evidence rewrite did not weaken current architecture guards. | Semantic proof for every pipeline test. | Expand guard scope only with replacement command/query evidence. |
 
 ## 2026-05-13 Test Evidence Cleanup Fast Dashboard
 
