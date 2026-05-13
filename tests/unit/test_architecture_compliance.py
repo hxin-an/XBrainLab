@@ -10,6 +10,7 @@ from tests.architecture_compliance import (
     check_product_success_backend_facade_tests,
     check_product_success_controller_lookup_assertions,
     check_product_success_direct_study_state_tests,
+    check_product_success_generic_panel_instance_assertions,
     check_product_success_legacy_fallback_tests,
     check_ui_capability_gated_controller_readiness,
     check_ui_command_execution_suppresses_observer_refresh,
@@ -107,6 +108,42 @@ def test_none_figure_is_ignored():
     )
 
     assert check_weak_test_names(tmp_path) == []
+
+
+def test_product_success_panel_instance_guard_flags_generic_assertion(tmp_path):
+    path = tmp_path / "tests" / "integration" / "pipeline" / "test_demo.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_visualization_panel_uses_command_state(qtbot):
+    panel = VisualizationPanel(parent=parent)
+    assert isinstance(panel, VisualizationPanel)
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_product_success_generic_panel_instance_assertions(tmp_path)
+
+    assert len(violations) == 1
+    assert "generic panel isinstance assertion" in violations[0]
+    assert "CommandResult" in violations[0]
+
+
+def test_product_success_panel_instance_guard_allows_ui_visible_evidence(tmp_path):
+    path = tmp_path / "tests" / "integration" / "pipeline" / "test_demo.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_visualization_panel_uses_command_state(qtbot):
+    panel = VisualizationPanel(parent=parent)
+    panel.update_panel()
+    assert panel.last_application_query.failed
+    assert panel.last_application_query.message == "Create epochs first."
+""",
+        encoding="utf-8",
+    )
+
+    assert check_product_success_generic_panel_instance_assertions(tmp_path) == []
 
 
 def test_mcp_weak_response_assertion_guard_flags_non_none_response(tmp_path):

@@ -384,6 +384,15 @@ def check_architecture(root_dir: str) -> int:
             print(f" - {violation}")
         return 1
 
+    generic_panel_assertion_violations = (
+        check_product_success_generic_panel_instance_assertions(Path(root_dir))
+    )
+    if generic_panel_assertion_violations:
+        print("\nProduct Success Generic Panel Assertion Violations Found:")
+        for violation in generic_panel_assertion_violations:
+            print(f" - {violation}")
+        return 1
+
     mcp_weak_assertion_violations = check_mcp_weak_response_assertions(Path(root_dir))
     if mcp_weak_assertion_violations:
         print("\nMCP Weak Response Assertion Violations Found:")
@@ -879,6 +888,54 @@ def _is_weak_test_name(
 
 def _is_under_any(relative_file: Path, roots: tuple[Path, ...]) -> bool:
     return any(relative_file == root or root in relative_file.parents for root in roots)
+
+
+def check_product_success_generic_panel_instance_assertions(
+    root_dir: Path,
+) -> list[str]:
+    """Return product-success tests that only assert panel construction shape."""
+    violations: list[str] = []
+
+    for relative_dir in PRODUCT_SUCCESS_TEST_DIRS:
+        test_dir = root_dir / relative_dir
+        if not test_dir.exists():
+            continue
+        for py_file in test_dir.rglob("*.py"):
+            if py_file.name == "__init__.py":
+                continue
+            source = py_file.read_text(encoding="utf-8")
+            try:
+                tree = ast.parse(source, filename=str(py_file))
+            except SyntaxError:
+                continue
+
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Assert):
+                    continue
+                if not _is_generic_panel_instance_assertion(node.test):
+                    continue
+                violations.append(
+                    f"{py_file.relative_to(root_dir)}:{node.lineno} uses generic "
+                    "panel isinstance assertion as product-success evidence; "
+                    "assert CommandResult, state diagnostics, refresh result, or "
+                    "UI-visible blocked/success text instead.",
+                )
+    return violations
+
+
+def _is_generic_panel_instance_assertion(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Call):
+        return False
+    if not isinstance(node.func, ast.Name) or node.func.id != "isinstance":
+        return False
+    if len(node.args) < 2:
+        return False
+    panel_type = node.args[1]
+    if isinstance(panel_type, ast.Name):
+        return panel_type.id.endswith("Panel")
+    if isinstance(panel_type, ast.Attribute):
+        return panel_type.attr.endswith("Panel")
+    return False
 
 
 def check_mcp_weak_response_assertions(root_dir: Path) -> list[str]:

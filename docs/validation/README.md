@@ -329,14 +329,15 @@ This test-quality slice rewrote one weak product-success integration test that o
 `VisualizationPanel` could be constructed. The replacement now verifies the no-ready-state
 product behavior through `VisualizeCommand` failure truth, exact blocked reason, exception
 diagnostics, cleared plan/run controls, and the UI-visible saliency error label. The architecture
-guard now also treats `initialization` / `initializes` names as weak evidence inside product-success
-integration directories.
+guard now also treats `initialization` / `initializes` names and generic
+`assert isinstance(panel, SomePanel)` checks as weak evidence inside product-success integration
+directories.
 
 | Command / audit | Result | Claim supported | Claim not supported | Follow-up |
 | --- | --- | --- | --- | --- |
 | `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration/pipeline/test_e2e_training.py::TestVisualizationPanelIntegration::test_visualization_panel_without_ready_state_uses_command_blocked_reason -q` | `1 passed`. | The formerly no-crash visualization panel test now checks command-backed blocked behavior and visible UI state. | Full visualization runtime, saliency render freshness, or human desktop acceptance. | Keep replacing generic initialization tests with command/result/UI-visible assertions. |
 | `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration/pipeline/test_e2e_training.py -q` | `9 passed`. | The affected training/evaluation/visualization integration file remains green after strengthening the visualization evidence. | Full pipeline smoke or real-data IO coverage. | Pair with tiny pipeline smoke when production behavior changes, not for this test-only cleanup. |
-| `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run python tests/architecture_compliance.py` | `98 passed` / `Architecture compliant!`. | Architecture guard now blocks product-success integration tests named like generic initialization evidence. | Every possible weak assertion shape. | Add more exact-evidence guards only after finding a real weak pattern in current product-success tests. |
+| `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run python tests/architecture_compliance.py` | `100 passed` / `Architecture compliant!`. | Architecture guard now blocks product-success integration tests named like generic initialization evidence or relying on generic panel instance assertions. | Every possible weak assertion shape. | Add more exact-evidence guards only after finding a real weak pattern in current product-success tests. |
 | Focused `ruff check` / `ruff format --check` / `basedpyright` on touched Python files / `git diff --check` | PASS / PASS / `0 errors, 0 warnings, 0 notes` / PASS. | The test and guard changes are lint, format, type, and whitespace clean. | Runtime behavior by itself. | No docs-site claim until `mkdocs build --strict` is rerun after this validation entry. |
 
 ## Reality-Gap Audit
