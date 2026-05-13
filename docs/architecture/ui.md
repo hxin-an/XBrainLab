@@ -45,7 +45,7 @@ command truth。不要只用 `rg get_controller` 的數量判斷架構好壞。
 
 | Source hit | 目前分類 | 為什麼目前可接受或仍有 gap | 下一個可移除方向 |
 | --- | --- | --- | --- |
-| `legacy_controller_bootstrap.get_legacy_workflow_controllers_for_panel_bootstrap(...)` | panel constructor adapter | `MainWindow.init_panels()` 仍要把五個 workflow controllers 傳給既有 panel constructor。這不是 action / readiness / refresh truth。 | panel constructor 改吃 view model、service adapter 或 observer subscription token 後，移除 bootstrap controller bundle。 |
+| `legacy_controller_bootstrap.get_legacy_workflow_controllers_for_panel_bootstrap(...)` | panel constructor adapter | `MainWindow.init_panels()` 仍要把五個 workflow controllers 傳給既有 panel constructor。這不是 action / readiness / refresh truth；Evaluation / Visualization training-event bridges 現在只接受 injected training controller，不再從 `controller.study` 回頭 lookup。 | panel constructor 改吃 view model、service adapter 或 observer subscription token 後，移除 bootstrap controller bundle。 |
 | `application_capabilities.run_legacy_controller_fallback(...)` | mock / legacy gate | real `Study` 會丟 `LegacyControllerFallbackUnavailableError`，所以 product runtime 不會 silent fallback 到 controller mutation。 | 保留到 mock-heavy UI tests 和 standalone legacy contexts 改成 service-backed fixture。 |
 | Dataset / Preprocess / Training `_legacy_*` helpers | compatibility helper | helper 名稱讓 fallback 和 product command path 可讀性分開；architecture guard 阻擋 product method 直接呼叫 fallback gate 或直接 controller mutation。 | 將剩餘 mock-heavy tests 改成 command/state evidence，再逐步刪 helper。 |
 | Dataset / Preprocess / Evaluation / Visualization display getters | readonly render fallback | real `Study` 先走 `QueryStateCommand`、`EvaluateCommand`、`VisualizeCommand` 或 `SaliencyCommand`；controller getter 只在 command helper 回傳 `None` 的 mock / no-service context 使用。 | 把 lower-level UI/component tests 的資料來源改成 typed command result 或 view model。 |
@@ -142,6 +142,9 @@ real `Study` panel 若缺少 MainWindow 注入 controller，不再自行走回 c
 完整 Application Service-only 分層，因為 panels 仍以 injected controllers 作為 observer bridge /
 legacy adapter，但直接 controller lookup 已被收進 explicit legacy helper，且 architecture guard
 不再允許 `main_window.py` 作為 blanket exception。
+2026-05-14 後，`EvaluationPanel` 和 `VisualizationPanel` 的 training observer bridge 也不再從
+`controller.study.get_controller("training")` 取得 fallback controller；沒有 injected training
+controller 的 standalone context 只是不建立 training lifecycle bridge。
 
 ## ApplicationService Readiness Gate
 

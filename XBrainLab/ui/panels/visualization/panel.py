@@ -86,14 +86,10 @@ class VisualizationPanel(BasePanel):
 
     def _setup_bridges(self):
         """Listen to TrainingController to update when training finishes."""
-        training_ctrl = (
-            self.training_controller or self._legacy_training_controller_for_bridges()
-        )
-
-        if training_ctrl:
-            self._create_refresh_bridge(training_ctrl, "training_stopped")
-            self._create_refresh_bridge(training_ctrl, "history_cleared")
-            self._create_refresh_bridge(training_ctrl, "config_changed")
+        if self.training_controller:
+            self._create_refresh_bridge(self.training_controller, "training_stopped")
+            self._create_refresh_bridge(self.training_controller, "history_cleared")
+            self._create_refresh_bridge(self.training_controller, "config_changed")
         if self.controller:
             self._create_refresh_bridge(self.controller, "montage_changed")
             self._create_refresh_bridge(self.controller, "saliency_changed")
@@ -102,18 +98,6 @@ class VisualizationPanel(BasePanel):
                 self.preprocess_controller,
                 "preprocess_changed",
             )
-
-    def _legacy_training_controller_for_bridges(self):
-        study = getattr(self.controller, "study", None)
-        if study is None:
-            return None
-        try:
-            return run_legacy_controller_fallback(
-                self,
-                lambda: study.get_controller("training"),
-            )
-        except LegacyControllerFallbackUnavailableError:
-            return None
 
     def init_ui(self):
         """Build the panel layout with control bar, tabbed plots, and sidebar."""

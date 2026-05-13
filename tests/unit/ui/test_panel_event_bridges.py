@@ -207,6 +207,24 @@ def test_evaluation_panel_does_not_fetch_training_controller_from_real_study(qtb
     study.get_controller.assert_not_called()
 
 
+def test_evaluation_panel_requires_injected_training_controller_for_bridge(qtbot):
+    legacy_study = MagicMock()
+    legacy_study.get_controller.side_effect = AssertionError(
+        "training bridge fallback is not allowed",
+    )
+    controller = MagicMock()
+    controller.study = legacy_study
+
+    with patch.object(EvaluationPanel, "init_ui"):
+        panel = EvaluationPanel(
+            controller=controller,
+            preprocess_controller=Observable(),
+        )
+        qtbot.addWidget(panel)
+
+    legacy_study.get_controller.assert_not_called()
+
+
 def test_visualization_panel_refreshes_on_training_stopped(qtbot):
     training_controller = Observable()
 
@@ -300,6 +318,24 @@ def test_visualization_panel_does_not_fetch_training_controller_from_real_study(
         qtbot.addWidget(panel)
 
     study.get_controller.assert_not_called()
+
+
+def test_visualization_panel_requires_injected_training_controller_for_bridge(qtbot):
+    legacy_study = MagicMock()
+    legacy_study.get_controller.side_effect = AssertionError(
+        "training bridge fallback is not allowed",
+    )
+    controller = Observable()
+    cast(Any, controller).study = legacy_study
+
+    with patch.object(VisualizationPanel, "init_ui"):
+        panel = VisualizationPanel(
+            controller=controller,
+            preprocess_controller=Observable(),
+        )
+        qtbot.addWidget(panel)
+
+    legacy_study.get_controller.assert_not_called()
 
 
 def test_visualization_panel_refreshes_on_montage_changed(qtbot):
