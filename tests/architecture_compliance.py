@@ -1639,15 +1639,13 @@ def check_ui_controller_study_get_controller_fallbacks(root_dir: Path) -> list[s
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            if _is_legacy_controller_mutation_helper(node.name):
-                continue
             visitor = _ControllerStudyGetControllerVisitor()
             visitor.visit(node)
             violations.extend(
                 f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
                 "controller.study.get_controller(); product UI controller wiring "
-                "must be injected or command/query-backed, with controller.study "
-                "lookup limited to an explicit legacy/fallback helper."
+                "must be injected or command/query-backed. Do not hide "
+                "controller.study lookup behind a legacy/fallback helper."
                 for call in visitor.violations
             )
     return violations

@@ -1797,10 +1797,10 @@ def _setup_bridges(self):
 
     assert len(violations) == 1
     assert "controller.study.get_controller" in violations[0]
-    assert "explicit legacy/fallback helper" in violations[0]
+    assert "Do not hide" in violations[0]
 
 
-def test_controller_study_get_controller_guard_allows_legacy_helper(tmp_path):
+def test_controller_study_get_controller_guard_flags_legacy_helper(tmp_path):
     _write_ui_file(
         tmp_path,
         """
@@ -1812,7 +1812,11 @@ def _legacy_training_controller_for_bridges(self):
 """,
     )
 
-    assert check_ui_controller_study_get_controller_fallbacks(tmp_path) == []
+    violations = check_ui_controller_study_get_controller_fallbacks(tmp_path)
+
+    assert len(violations) == 1
+    assert "controller.study.get_controller" in violations[0]
+    assert "Do not hide" in violations[0]
 
 
 def test_direct_study_get_controller_guard_flags_product_parent_fallback(tmp_path):
