@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
+    QDialog,
     QDialogButtonBox,
     QFileDialog,
     QFrame,
@@ -63,6 +64,86 @@ class _StepScrollArea(QScrollArea):
             event.accept()
             return
         super().wheelEvent(event)
+
+
+class _ConvertedLabelTableDialog(BaseDialog):
+    """Explain the converted label table format before opening the file picker."""
+
+    def __init__(self, parent=None):
+        self.choose_button: QPushButton
+        self.cancel_button: QPushButton
+        super().__init__(
+            parent=parent,
+            title="Load Converted Label Table",
+            width=560,
+            height=360,
+        )
+
+    def init_ui(self) -> None:
+        self.setObjectName("DataImportConvertedLabelDialog")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 18, 20, 16)
+        layout.setSpacing(14)
+
+        header = QFrame()
+        header.setObjectName("DataImportPanelHeader")
+        header_layout = QVBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(4)
+        title = QLabel("XBrainLab label table")
+        title.setObjectName("DataImportPanelTitle")
+        detail = QLabel(
+            "Use this when labels come from a custom lab format. Convert outside "
+            "XBrainLab, then load the CSV or TSV table."
+        )
+        detail.setObjectName("DataImportPanelSubtitle")
+        detail.setWordWrap(True)
+        header_layout.addWidget(title)
+        header_layout.addWidget(detail)
+        layout.addWidget(header)
+
+        card = QFrame()
+        card.setObjectName("DataImportCard")
+        card_layout = QGridLayout(card)
+        card_layout.setContentsMargins(14, 12, 14, 12)
+        card_layout.setHorizontalSpacing(16)
+        card_layout.setVerticalSpacing(8)
+
+        rows = [
+            ("Required column", "label"),
+            ("Optional columns", "eeg_file, class_name, trial_id"),
+            ("Row order", "one row per target EEG event"),
+            ("Event code", "event_code + label"),
+            ("Time", "onset_seconds + label"),
+            ("Interval", "onset_seconds + duration_seconds + label"),
+            ("Sample", "sample + label"),
+        ]
+        for row_index, (label_text, value_text) in enumerate(rows):
+            label = QLabel(label_text)
+            label.setObjectName("DataImportSummaryLabel")
+            value = QLabel(value_text)
+            value.setObjectName("DataImportSummaryValue")
+            value.setWordWrap(True)
+            card_layout.addWidget(label, row_index, 0)
+            card_layout.addWidget(value, row_index, 1)
+        card_layout.setColumnStretch(1, 1)
+        layout.addWidget(card)
+
+        footer = QHBoxLayout()
+        footer.setContentsMargins(0, 0, 0, 0)
+        footer.addStretch()
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.setObjectName("DataImportSecondaryButton")
+        self.cancel_button.clicked.connect(self.reject)
+        self.choose_button = QPushButton("Choose CSV/TSV table")
+        self.choose_button.setObjectName("DataImportPrimaryButton")
+        self.choose_button.clicked.connect(self.accept)
+        footer.addWidget(self.cancel_button)
+        footer.addWidget(self.choose_button)
+        layout.addLayout(footer)
+
+    def get_result(self) -> dict[str, Any]:
+        return {}
 
 
 class DataInterpretationPreviewDialog(BaseDialog):
@@ -2969,20 +3050,13 @@ class DataInterpretationPreviewDialog(BaseDialog):
         title_label = QLabel("Custom label format?")
         title_label.setObjectName("DataImportSourceTitle")
         detail_label = QLabel(
-            "Convert it outside XBrainLab to CSV/TSV, then load the table here."
+            "Convert it to an XBrainLab label table, then load the CSV or TSV."
         )
         detail_label.setObjectName("DataImportSourceDetail")
         detail_label.setWordWrap(True)
-        format_label = QLabel(
-            "Required: label. Placement: row order, event_code, onset_seconds, "
-            "duration_seconds, or sample."
-        )
-        format_label.setObjectName("DataImportSourceDetail")
-        format_label.setWordWrap(True)
 
         text_layout.addWidget(title_label)
         text_layout.addWidget(detail_label)
-        text_layout.addWidget(format_label)
         layout.addLayout(text_layout, stretch=1)
 
         self.load_converted_label_btn = QPushButton("Load converted table")
@@ -3502,6 +3576,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._add_label_sources([path] if path else [])
 
     def _add_converted_label_table(self) -> None:
+        if not self._confirm_converted_label_table_format():
+            return
         paths, _selected_filter = QFileDialog.getOpenFileNames(
             self,
             "Load converted label table",
@@ -3509,6 +3585,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
             "XBrainLab Label Tables (*.csv *.tsv);;All Files (*)",
         )
         self._add_label_sources(paths)
+
+    def _confirm_converted_label_table_format(self) -> bool:
+        dialog = _ConvertedLabelTableDialog(self)
+        dialog.setStyleSheet(self.styleSheet())
+        return dialog.exec() == QDialog.DialogCode.Accepted
 
     def _add_label_sources(self, paths: list[str]) -> None:
         changed = False
@@ -3595,7 +3676,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
     def _apply_product_tree_style(self) -> None:
         self.setStyleSheet(
             f"""
-            QDialog#DataImportWizardDialog {{
+            QDialog#DataImportWizardDialog,
+            QDialog#DataImportConvertedLabelDialog {{
                 background-color: {Theme.BACKGROUND_DARK};
                 color: {Theme.TEXT_MUTED};
                 font-family: "Segoe UI", Arial, sans-serif;

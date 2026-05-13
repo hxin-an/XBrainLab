@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
+    _ConvertedLabelTableDialog,
 )
 
 
@@ -1213,13 +1214,32 @@ def test_load_labels_step_shows_converted_label_table_fallback(qtbot):
 
     visible_text = _visible_step_text(dialog, "Load Labels")
     assert "Custom label format?" in visible_text
-    assert "Required: label" in visible_text
-    assert "event_code" in visible_text
-    assert "onset_seconds" in visible_text
-    assert "duration_seconds" in visible_text
-    assert "sample" in visible_text
+    assert "XBrainLab label table" in visible_text
+    assert "CSV or TSV" in visible_text
+    assert "Required: label" not in visible_text
+    assert "event_code" not in visible_text
     assert "Python file" not in visible_text
     assert "custom parser" not in visible_text
+
+
+def test_converted_label_table_dialog_shows_required_format(qtbot):
+    dialog = _ConvertedLabelTableDialog(parent=None)
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.wait(0)
+
+    visible_text = "\n".join(
+        label.text()
+        for label in dialog.findChildren(QLabel)
+        if label.text().strip() and label.isVisibleTo(dialog)
+    )
+    assert "XBrainLab label table" in visible_text
+    assert "Required column" in visible_text
+    assert "label" in visible_text
+    assert "Event code" in visible_text
+    assert "event_code + label" in visible_text
+    assert "Interval" in visible_text
+    assert "onset_seconds + duration_seconds + label" in visible_text
 
 
 def test_load_labels_step_loads_converted_label_table(qtbot, monkeypatch):
@@ -1237,6 +1257,11 @@ def test_load_labels_step_loads_converted_label_table(qtbot, monkeypatch):
     _show_step(dialog, "Load Labels")
     qtbot.wait(0)
 
+    monkeypatch.setattr(
+        dialog,
+        "_confirm_converted_label_table_format",
+        lambda: True,
+    )
     monkeypatch.setattr(
         "XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog.QFileDialog.getOpenFileNames",
         lambda *_args, **_kwargs: (["/tmp/custom-labels/xbrainlab_labels.tsv"], ""),
