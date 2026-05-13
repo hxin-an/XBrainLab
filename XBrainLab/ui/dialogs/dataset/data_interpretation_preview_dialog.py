@@ -332,10 +332,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.rule_use_as_combo: QComboBox
         self.label_values_status_label: QLabel
         self.target_event_status_label: QLabel
-        self.time_field_numeric_value_label: QLabel
-        self.time_field_range_value_label: QLabel
-        self.time_field_base_value_label: QLabel
-        self.time_field_preview_value_label: QLabel
+        self.time_field_check_label: QLabel
+        self.time_field_preview_empty_label: QLabel
+        self.time_field_preview_row_labels: list[tuple[QLabel, QLabel]]
         self.placement_status_label: QLabel
         self.rule_status_label: QLabel
         self.placement_detail_stack: QStackedWidget
@@ -2119,6 +2118,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.placement_status_label = QLabel(self._placement_status_text())
         self.placement_status_label.setObjectName("DataImportRuleStatus")
         self.placement_status_label.setWordWrap(True)
+        self.placement_status_label.setVisible(bool(self.placement_status_label.text()))
         layout.addWidget(self.placement_status_label)
 
         self.rule_placement_method_combo.currentIndexChanged.connect(
@@ -2360,8 +2360,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         layout.addWidget(
             self._placement_section_title(
                 "Label time",
-                "Use one time field from each label row to place labels on the "
-                "EEG timeline.",
+                "Use this when each label row has a time or sample position.",
             )
         )
         controls = QGridLayout()
@@ -2379,85 +2378,83 @@ class DataInterpretationPreviewDialog(BaseDialog):
             )
         )
         controls.addWidget(
-            self._rule_control("Label time field", time_field_combo),
+            self._rule_control("Time column", time_field_combo),
             0,
             0,
         )
         controls.addWidget(
-            self._rule_control("Interpret times as", self.rule_time_model_combo),
+            self._rule_control("Time numbers mean", self.rule_time_model_combo),
             0,
             1,
         )
         controls.setColumnStretch(0, 1)
         controls.setColumnStretch(1, 1)
         layout.addLayout(controls)
-        layout.addWidget(self._time_field_review_strip())
+        layout.addWidget(self._time_field_preview_table())
+        layout.addWidget(self._time_field_check_panel())
         layout.addStretch(1)
         return page
 
-    def _time_field_review_strip(self) -> QFrame:
-        strip = QFrame()
-        strip.setObjectName("DataImportTimeReviewStrip")
-        strip.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        layout = QGridLayout(strip)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setHorizontalSpacing(10)
-        layout.setVerticalSpacing(6)
-        self.time_field_numeric_value_label = self._time_review_metric(
-            layout,
-            0,
-            "Numeric rows",
-            self._time_field_numeric_rows_text(),
-        )
-        self.time_field_range_value_label = self._time_review_metric(
-            layout,
-            1,
-            "Time range",
-            self._time_field_range_text(),
-        )
-        self.time_field_base_value_label = self._time_review_metric(
-            layout,
-            2,
-            "Time base",
-            self._time_field_base_text(),
-        )
-        self._time_review_metric(
-            layout,
-            3,
-            "Epoch handoff",
-            "Window set later",
-        )
-        self.time_field_preview_value_label = self._time_review_metric(
-            layout,
-            4,
-            "Preview rows",
-            self._time_field_preview_text(),
-        )
-        for column in range(5):
-            layout.setColumnStretch(column, 1)
-        return strip
+    def _time_field_preview_table(self) -> QFrame:
+        table = QFrame()
+        table.setObjectName("DataImportTimePreviewTable")
+        table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout = QGridLayout(table)
+        layout.setContentsMargins(12, 10, 12, 12)
+        layout.setHorizontalSpacing(18)
+        layout.setVerticalSpacing(7)
 
-    def _time_review_metric(
-        self,
-        layout: QGridLayout,
-        column: int,
-        title: str,
-        value: str,
-    ) -> QLabel:
-        metric = QFrame()
-        metric.setObjectName("DataImportTimeReviewMetric")
-        metric_layout = QVBoxLayout(metric)
-        metric_layout.setContentsMargins(8, 6, 8, 6)
-        metric_layout.setSpacing(3)
-        title_label = QLabel(title)
-        title_label.setObjectName("DataImportMetricTitle")
-        value_label = QLabel(value)
-        value_label.setObjectName("DataImportTimeReviewValue")
-        value_label.setWordWrap(True)
-        metric_layout.addWidget(title_label)
-        metric_layout.addWidget(value_label)
-        layout.addWidget(metric, 0, column)
-        return value_label
+        title = QLabel("Preview")
+        title.setObjectName("DataImportSourceTitle")
+        layout.addWidget(title, 0, 0, 1, 2)
+
+        time_header = QLabel("Time")
+        time_header.setObjectName("DataImportPairingHeaderLabel")
+        label_header = QLabel("Label")
+        label_header.setObjectName("DataImportPairingHeaderLabel")
+        layout.addWidget(time_header, 1, 0)
+        layout.addWidget(label_header, 1, 1)
+
+        self.time_field_preview_row_labels = []
+        for row_index in range(3):
+            time_label = QLabel("")
+            time_label.setObjectName("DataImportTimePreviewValue")
+            label_value = QLabel("")
+            label_value.setObjectName("DataImportTimePreviewValue")
+            label_value.setWordWrap(True)
+            layout.addWidget(time_label, row_index + 2, 0)
+            layout.addWidget(label_value, row_index + 2, 1)
+            self.time_field_preview_row_labels.append((time_label, label_value))
+
+        self.time_field_preview_empty_label = QLabel(
+            "Preview rows will appear after the selected time and label fields can "
+            "be read."
+        )
+        self.time_field_preview_empty_label.setObjectName("DataImportSourceDetail")
+        self.time_field_preview_empty_label.setWordWrap(True)
+        layout.addWidget(self.time_field_preview_empty_label, 2, 0, 1, 2)
+
+        layout.setColumnMinimumWidth(0, 220)
+        layout.setColumnStretch(0, 0)
+        layout.setColumnStretch(1, 2)
+        self._refresh_time_field_preview_rows()
+        return table
+
+    def _time_field_check_panel(self) -> QFrame:
+        panel = QFrame()
+        panel.setObjectName("DataImportTimeCheckPanel")
+        panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(12, 10, 12, 11)
+        layout.setSpacing(5)
+        title = QLabel("Check")
+        title.setObjectName("DataImportSourceTitle")
+        self.time_field_check_label = QLabel(self._time_field_check_text())
+        self.time_field_check_label.setObjectName("DataImportRuleStatus")
+        self.time_field_check_label.setWordWrap(True)
+        layout.addWidget(title)
+        layout.addWidget(self.time_field_check_label)
+        return panel
 
     def _placement_interval_page(self) -> QFrame:
         page = self._placement_detail_frame()
@@ -2649,10 +2646,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
     @staticmethod
     def _time_model_choices() -> list[tuple[str, str]]:
         return [
-            ("Seconds", "seconds"),
+            ("Seconds from EEG start", "seconds"),
             ("Sample index", "sample_index"),
-            ("Relative time", "relative_time"),
-            ("Timestamp", "timestamp"),
+            ("Relative time from EEG start", "relative_time"),
+            ("Absolute timestamp", "timestamp"),
         ]
 
     def _default_time_model_value(self, placement_method: str) -> str:
@@ -2710,6 +2707,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 len(self._selected_eeg_file_names()),
                 self.rule_label_field_combo.currentText(),
             )
+        if placement_method == "time_field":
+            return ""
         review_text = self._backend_placement_review_text(placement_method)
         if review_text:
             return review_text
@@ -2856,66 +2855,67 @@ class DataInterpretationPreviewDialog(BaseDialog):
         return combined
 
     def _refresh_time_field_review(self) -> None:
-        if hasattr(self, "time_field_numeric_value_label"):
-            self.time_field_numeric_value_label.setText(
-                self._time_field_numeric_rows_text()
-            )
-        if hasattr(self, "time_field_range_value_label"):
-            self.time_field_range_value_label.setText(self._time_field_range_text())
-        if hasattr(self, "time_field_base_value_label"):
-            self.time_field_base_value_label.setText(self._time_field_base_text())
-        if hasattr(self, "time_field_preview_value_label"):
-            self.time_field_preview_value_label.setText(self._time_field_preview_text())
+        if hasattr(self, "time_field_check_label"):
+            self.time_field_check_label.setText(self._time_field_check_text())
+        self._refresh_time_field_preview_rows()
 
-    def _time_field_numeric_rows_text(self) -> str:
+    def _refresh_time_field_preview_rows(self) -> None:
+        if not hasattr(self, "time_field_preview_row_labels"):
+            return
+        rows = self._time_label_preview_rows()
+        for index, (time_label, label_value) in enumerate(
+            self.time_field_preview_row_labels
+        ):
+            visible = index < len(rows)
+            if visible:
+                time_label.setText(str(rows[index].get("time") or ""))
+                label_value.setText(str(rows[index].get("label") or ""))
+            else:
+                time_label.clear()
+                label_value.clear()
+            time_label.setVisible(visible)
+            label_value.setVisible(visible)
+        if hasattr(self, "time_field_preview_empty_label"):
+            self.time_field_preview_empty_label.setVisible(not rows)
+
+    def _time_field_check_text(self) -> str:
         review = self._time_field_review()
         numeric_rows = self._int_value(review.get("numeric_rows"))
         label_rows = self._int_value(review.get("label_rows"))
+        parts: list[str] = []
         if numeric_rows is None:
-            return "Needs review"
-        if label_rows is not None:
-            return f"{numeric_rows}/{label_rows}"
-        return f"{numeric_rows} rows"
+            parts.append("Time values need review.")
+        elif label_rows is not None:
+            parts.append(f"{numeric_rows}/{label_rows} rows have usable time values.")
+        else:
+            parts.append(f"{numeric_rows} rows have usable time values.")
 
-    def _time_field_range_text(self) -> str:
-        review = self._time_field_review()
         start = self._float_value(review.get("time_min"))
         end = self._float_value(review.get("time_max"))
-        if start is None or end is None:
-            return "Needs review"
-        return f"{self._number_text(start)} to {self._number_text(end)}"
+        if start is not None and end is not None:
+            parts.append(
+                "Range: "
+                f"{self._number_text(start)} to {self._number_text(end)} "
+                f"{self._time_field_unit_text()}."
+            )
+        else:
+            parts.append("Range needs review.")
+        parts.append("Epoch window will be set later.")
+        return " ".join(parts)
 
-    def _time_field_base_text(self) -> str:
-        review = self._time_field_review()
-        raw = str(review.get("time_model") or "").strip()
-        if (
-            hasattr(self, "rule_time_model_combo")
-            and self._combo_current_data(self.rule_placement_method_combo)
-            == "time_field"
-        ):
-            raw = self._combo_current_data(self.rule_time_model_combo) or raw
+    def _time_field_unit_text(self) -> str:
+        raw = ""
+        if hasattr(self, "rule_time_model_combo"):
+            raw = self._combo_current_data(self.rule_time_model_combo)
         if not raw:
-            raw = self._common_carrier_value("time_model")
+            raw = str(self._time_field_review().get("time_model") or "").strip()
         labels = {
-            "seconds": "Seconds",
-            "relative_time": "Relative time",
-            "sample_index": "Sample index",
-            "timestamp": "Timestamp",
-            "trial_order": "Trial order",
+            "seconds": "seconds",
+            "sample_index": "samples",
+            "relative_time": "relative time units",
+            "timestamp": "timestamps",
         }
-        return labels.get(raw, self._label_choice_display(raw) if raw else "Review")
-
-    def _time_field_preview_text(self) -> str:
-        rows = self._time_label_preview_rows()
-        if not rows:
-            return "Preview after apply"
-        parts = []
-        for row in rows[:3]:
-            time_value = str(row.get("time") or "").strip()
-            label_value = str(row.get("label") or "").strip()
-            if time_value and label_value:
-                parts.append(f"{time_value} -> {label_value}")
-        return "; ".join(parts) if parts else "Preview after apply"
+        return labels.get(raw, "time units")
 
     def _time_label_preview_rows(self) -> list[dict[str, str]]:
         current_time_field = self._combo_current_data(self.rule_alignment_combo)
@@ -3004,7 +3004,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self.target_event_status_label.setText(self._target_event_status_text())
         self._refresh_time_field_review()
         if hasattr(self, "placement_status_label"):
-            self.placement_status_label.setText(self._placement_status_text())
+            status_text = self._placement_status_text()
+            self.placement_status_label.setText(status_text)
+            self.placement_status_label.setVisible(bool(status_text))
         if hasattr(self, "rule_status_label"):
             self.rule_status_label.setText(self._label_rule_status_text())
         if hasattr(self, "placement_detail_stack"):
@@ -4455,8 +4457,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
             QFrame#DataImportRuleControl,
             QFrame#DataImportInlineRuleControl,
             QFrame#DataImportPairingRow,
-            QFrame#DataImportTimeReviewStrip,
-            QFrame#DataImportTimeReviewMetric,
+            QFrame#DataImportTimePreviewTable,
+            QFrame#DataImportTimeCheckPanel,
             QFrame#DataImportEventRulesTable,
             QFrame#DataImportClassMapTable,
             QFrame#DataImportInternalLabelsTable,
@@ -4466,10 +4468,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 border-radius: 5px;
             }}
             QFrame#DataImportPairingBlock {{
-                background-color: transparent;
-                border: none;
-            }}
-            QFrame#DataImportTimeReviewStrip {{
                 background-color: transparent;
                 border: none;
             }}
@@ -4556,10 +4554,12 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 font-size: 13px;
                 font-weight: 600;
             }}
-            QLabel#DataImportTimeReviewValue {{
+            QLabel#DataImportTimePreviewValue {{
                 color: #eeeeee;
-                font-size: 13px;
-                font-weight: 700;
+                background-color: transparent;
+                border: none;
+                font-size: 12px;
+                font-weight: 600;
             }}
             QLabel#DataImportPlacementOptionDetail {{
                 color: {Theme.TEXT_SECONDARY};

@@ -1232,8 +1232,8 @@ def test_match_labels_placement_methods_use_mode_specific_panels(qtbot):
     qtbot.wait(0)
 
     expectations = {
-        "eeg_event": ("Target EEG events", "Label time field"),
-        "time_field": ("Label time field", "Target EEG events"),
+        "eeg_event": ("Target EEG events", "Time column"),
+        "time_field": ("Time column", "Target EEG events"),
         "interval": ("Start field", "Label event code field"),
         "event_code": ("Label event code field", "Start field"),
     }
@@ -1246,17 +1246,18 @@ def test_match_labels_placement_methods_use_mode_specific_panels(qtbot):
         assert excluded not in visible_text
         assert "Align to" not in visible_text
         if method == "time_field":
-            assert "Interpret times as" in visible_text
-            assert "Numeric rows" in visible_text
-            assert "12/12" in visible_text
-            assert "Time range" in visible_text
-            assert "0 to 11" in visible_text
-            assert "Time base" in visible_text
-            assert "Seconds" in visible_text
-            assert "Preview rows" in visible_text
-            assert "0 -> left" in visible_text
-            assert "5.5 -> right" in visible_text
-            assert "Epoch handoff" in visible_text
+            assert "Time numbers mean" in visible_text
+            assert "Preview" in visible_text
+            assert "Time" in visible_text
+            assert "Label" in visible_text
+            assert dialog.time_field_preview_row_labels[0][0].text() == "0"
+            assert dialog.time_field_preview_row_labels[0][1].text() == "left"
+            assert dialog.time_field_preview_row_labels[1][0].text() == "5.5"
+            assert dialog.time_field_preview_row_labels[1][1].text() == "right"
+            assert "Check" in visible_text
+            assert "12/12 rows have usable time values" in visible_text
+            assert "Range: 0 to 11 seconds" in visible_text
+            assert "Epoch window will be set later" in visible_text
         if method == "event_code":
             assert "1/2 label event codes were found" in (
                 dialog.placement_status_label.text()
