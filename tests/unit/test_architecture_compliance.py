@@ -1,5 +1,6 @@
 from tests.architecture_compliance import (
     check_backend_facade_test_usage,
+    check_docs_current_truth_overclaims,
     check_llm_direct_study_state_reads,
     check_product_runtime_backend_facade_usage,
     check_product_success_backend_facade_tests,
@@ -78,6 +79,44 @@ def test_none_figure_is_ignored():
     )
 
     assert check_weak_test_names(tmp_path) == []
+
+
+def test_docs_current_truth_guard_flags_product_complete_overclaim(tmp_path):
+    path = tmp_path / "docs" / "current.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+# Current
+
+XBrainLab is product complete and ready for release approval.
+The UI is now full zero-controller UI.
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_docs_current_truth_overclaims(tmp_path)
+
+    assert len(violations) == 3
+    assert "product complete" in violations[0]
+    assert "release approval" in violations[1]
+    assert "full zero-controller UI" in violations[2]
+
+
+def test_docs_current_truth_guard_allows_explicit_claim_boundaries(tmp_path):
+    path = tmp_path / "docs" / "current.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+# Current
+
+XBrainLab 還不能宣稱 product complete。
+這些 guard 不是 full zero-controller UI 證明。
+Human Windows Desktop Acceptance Gap remains open.
+""",
+        encoding="utf-8",
+    )
+
+    assert check_docs_current_truth_overclaims(tmp_path) == []
 
 
 def test_product_runtime_facade_guard_flags_agent_facade_import(tmp_path):

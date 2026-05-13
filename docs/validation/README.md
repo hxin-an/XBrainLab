@@ -16,8 +16,8 @@
 
 | Gate | 最近可信結果 | 用途 | 不能取代 |
 | --- | --- | --- | --- |
-| Fast quality dashboard | 2026-05-13 20:22:13 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
-| Architecture compliance | 最近 checkpoint `Architecture compliant!`，guard unit `83 passed` | 阻擋已知 `BackendFacade`、legacy fallback、direct state、positive controller lookup 等 regression。 | runtime semantic proof for every possible path。 |
+| Fast quality dashboard | 2026-05-13 20:39:30 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
+| Architecture compliance | 最近 checkpoint `Architecture compliant!`，guard unit `85 passed` | 阻擋已知 `BackendFacade`、legacy fallback、direct state、positive controller lookup、docs overclaim 等 regression。 | runtime semantic proof for every possible path。 |
 | Focused UI integration | `test_ui_refresh.py`、`test_ui_integration.py`、`test_panel_controller_binding.py` -> `8 passed` | MainWindow launch/navigation/tab-refresh 和 injected controller event wiring 不再把 legacy lookup 當成功證據。 | full zero-controller UI 或人工桌面驗收。 |
 | Product smokes / real tools | guarded UI product smokes、epoch runtime、real-tools suites recently PASS | product evidence 轉向 `QueryStateCommand` / command diagnostics / UI-visible state。 | 所有 integration tests 都已清成 product evidence。 |
 | `mkdocs build --strict` | 最近 checkpoint PASS | 文件站可建且連結/nav 基本有效。 | 文件內容一定正確或容易讀。 |
@@ -219,6 +219,24 @@ available only for mock / legacy Study-shaped objects used by unit compatibility
 | `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run python tests/architecture_compliance.py` | `83 passed` / `Architecture compliant!` | Full architecture guard suite includes the LLM direct-state product boundary. | Runtime acceptance by itself. | Continue adding guard examples only with replacement behavior. |
 | `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS | Documentation builds strictly and whitespace remains clean after current-truth updates. | Content is automatically complete. | Keep docs edits tied to source/test evidence. |
 | `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 20:22:13 UTC+08:00`. | Fast engineering dashboard remains green after this LLM stage command-truth slice, including full ruff, basedpyright, architecture, startup, UI baseline/dialog/unit, and real-data IO. | Product complete, human Windows acceptance, long local-model session, or tool-call accuracy. | Keep dashboard as engineering health evidence only. |
+
+## 2026-05-13 Docs Current-Truth Overclaim Guard Checkpoint
+
+This guard slice protects documentation readability and claim boundaries. It scans the current-truth
+entry docs (`current.md`, `index.md`, `architecture/README.md`, `architecture/ui.md`,
+`architecture/backend.md`, `planning/now.md`, and this validation page) for unbounded claims that
+present product completion, full zero-controller UI, human Windows desktop acceptance, or release
+approval as current fact. Lines inside explicit boundary contexts such as "cannot claim",
+"cannot replace", "not supported", "gap", or "missing" remain allowed.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| Red test: docs overclaim checker import before implementation | Failed as expected because `check_docs_current_truth_overclaims` did not exist. | The new guard was introduced test-first. | Runtime behavior. | Keep docs guards narrow enough to avoid blocking boundary language. |
+| `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_docs_current_truth_guard_flags_product_complete_overclaim tests/unit/test_architecture_compliance.py::test_docs_current_truth_guard_allows_explicit_claim_boundaries -q` | `2 passed` | Guard rejects positive overclaim examples and allows explicit current-truth boundary language. | Human acceptance itself. | Add phrases only when current docs create real risk. |
+| `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run python tests/architecture_compliance.py` | `85 passed` / `Architecture compliant!` | Full architecture guard suite now includes docs current-truth overclaim protection. | Content quality beyond the guarded phrases. | Keep human-written docs review as the main readability check. |
+| Focused `ruff` / `basedpyright` on changed guard files | PASS / `0 errors, 0 warnings, 0 notes` | Changed checker and tests are lint/type clean. | Runtime behavior. | Run docs build before commit. |
+| `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS | Docs still build strictly and whitespace is clean after guard-evidence updates. | Content is automatically complete. | Keep docs review separate from build success. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 20:39:30 UTC+08:00`. | Fast dashboard remains green with the docs overclaim guard in the default architecture-compliance gate. | Product complete or human acceptance. | Dashboard remains engineering health evidence only. |
 
 ## 2026-05-13 Data Import Runtime Integration Checkpoint
 
