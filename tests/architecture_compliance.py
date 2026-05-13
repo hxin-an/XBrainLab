@@ -108,8 +108,11 @@ UI_DIRECT_STUDY_STATE_ATTRIBUTES = (
     "trainer",
 )
 PRODUCT_SUCCESS_DIRECT_STUDY_STATE_TEST_FILES = (
+    Path("tests/integration/pipeline/test_all_real_tools.py"),
+    Path("tests/integration/pipeline/test_integration_real_tools.py"),
     Path("tests/integration/ui/test_epoch_runtime.py"),
     Path("tests/integration/ui/test_product_walkthrough.py"),
+    Path("tests/integration/ui/test_real_tools_e2e.py"),
 )
 PRODUCT_SUCCESS_DIRECT_STUDY_METHODS = ("get_datasets_generator",)
 UI_DIRECT_STUDY_CONTROLLER_LOOKUP_ALLOWED_FILES: tuple[str, ...] = ()
@@ -1328,10 +1331,14 @@ class _DirectStudyGetControllerLookupVisitor(ast.NodeVisitor):
 
 
 def _expression_mentions_study(node: ast.AST) -> bool:
+    study_names = {"study", "loaded_study"}
+    if isinstance(node, ast.Name) and node.id in study_names:
+        return True
     if isinstance(node, ast.Attribute) and node.attr == "study":
         return True
     return any(
-        isinstance(child, ast.Attribute) and child.attr == "study"
+        (isinstance(child, ast.Name) and child.id in study_names)
+        or (isinstance(child, ast.Attribute) and child.attr == "study")
         for child in ast.walk(node)
     )
 

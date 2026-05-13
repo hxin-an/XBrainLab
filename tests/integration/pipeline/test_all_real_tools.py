@@ -108,7 +108,7 @@ class TestAllRealTools:
 
     def test_clear_dataset_tool(self, loaded_study):
         """Test RealClearDatasetTool."""
-        assert len(loaded_study.loaded_data_list) == 1
+        assert _state(loaded_study)["raw"]["count"] == 1
         tool = RealClearDatasetTool()
         res = tool.execute(loaded_study)
         assert "Dataset cleared" in res

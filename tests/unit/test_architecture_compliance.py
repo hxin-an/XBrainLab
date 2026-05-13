@@ -332,6 +332,29 @@ def test_walkthrough(test_app):
     assert "study.get_datasets_generator" in violations[2]
 
 
+def test_product_success_study_state_guard_flags_real_tools_e2e_state_truth(
+    tmp_path,
+):
+    path = tmp_path / "tests" / "integration" / "ui" / "test_real_tools_e2e.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_real_tools_e2e_flow(study):
+    assert len(study.loaded_data_list) == 1
+    assert study.model_holder.target_model.__name__ == "EEGNet"
+    assert study.training_option.epoch == 5
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_product_success_direct_study_state_tests(tmp_path)
+
+    assert len(violations) == 3
+    assert "study.loaded_data_list" in violations[0]
+    assert "study.model_holder" in violations[1]
+    assert "study.training_option" in violations[2]
+
+
 def test_product_success_study_state_guard_allows_command_state_truth(
     tmp_path,
 ):

@@ -2,6 +2,7 @@ import mne
 import numpy as np
 import pytest
 
+from XBrainLab.backend.application import QueryStateCommand, get_application_service
 from XBrainLab.llm.tools.real.dataset_real import (
     RealGetDatasetInfoTool,
     RealListFilesTool,
@@ -15,6 +16,22 @@ from XBrainLab.llm.tools.real.training_real import (
     RealSetModelTool,
 )
 from XBrainLab.llm.tools.real.ui_control_real import RealSwitchPanelTool
+
+
+def _query_diagnostics(study, query: str, *, include_objects: bool = False):
+    result = get_application_service(study).execute(
+        QueryStateCommand(query=query, include_objects=include_objects),
+    )
+    assert result.ok, result.message
+    return result.diagnostics
+
+
+def _state(study):
+    return _query_diagnostics(study, "state")["state"]
+
+
+def _data_lists(study):
+    return _query_diagnostics(study, "data_lists", include_objects=True)
 
 
 def create_dummy_eeg_file(tmp_path):
@@ -54,7 +71,7 @@ def test_real_tools_e2e_flow(test_app, tmp_path):
     tool_load = RealLoadDataTool()
     res_load = tool_load.execute(study, paths=[dummy_file])
     assert "Successfully loaded 1 files" in res_load
-    assert len(study.loaded_data_list) == 1
+    assert _state(study)["raw"]["count"] == 1
 
     # Get Info
     tool_info = RealGetDatasetInfoTool()
@@ -74,22 +91,18 @@ def test_real_tools_e2e_flow(test_app, tmp_path):
         study,
         l_freq=1,
         h_freq=40,
-        notch_freq=None,
+        notch_freq=0.0,
         resample_rate=None,
         normalize_method="z-score",
     )
     assert "Standard preprocessing applied" in res_prep
 
-    # Check that data was modified
-    # Preprocessing usually creates a new dataset or updates preprocessed list
-    # Let's check if preprocessed list has it
-    if len(study.preprocessed_data_list) > 0:
-        raw_wrapper = study.preprocessed_data_list[0]
+    data_lists = _data_lists(study)
+    if data_lists["preprocessed_count"] > 0:
+        raw_wrapper = data_lists["preprocessed_data_list"][0]
     else:
-        # Fallback if it modifies in place (unlikely for XBrainLab usually)
-        raw_wrapper = study.loaded_data_list[0]
-
-    # Check if get_mne exists (wrapper) or if it's raw
+        assert data_lists["loaded_count"] == 1
+        raw_wrapper = data_lists["loaded_data_list"][0]
 
     raw = raw_wrapper.get_mne() if hasattr(raw_wrapper, "get_mne") else raw_wrapper
 
@@ -103,7 +116,7 @@ def test_real_tools_e2e_flow(test_app, tmp_path):
     tool_model = RealSetModelTool()
     res_model = tool_model.execute(study, model_name="EEGNet")
     assert "successfully set to EEGNet" in res_model
-    assert study.model_holder.target_model.__name__ == "EEGNet"
+    assert _state(study)["training"]["model_name"] == "EEGNet"
 
     # Configure
     tool_config = RealConfigureTrainingTool()
@@ -112,13 +125,10 @@ def test_real_tools_e2e_flow(test_app, tmp_path):
     )
     assert "Training configured" in res_config
 
-    # Verify Training Option
-    # The tool sets it on the TrainingController -> Study.training_option
-    # Trainer might be initialized later or lazily?
-    # Let's check study directly as that's where controller sets it.
-    assert study.training_option is not None
-    assert study.training_option.epoch == 5
-    assert study.training_option.bs == 4
+    training_option = _state(study)["training"]["training_option"]
+    assert training_option is not None
+    assert training_option["epoch"] == 5
+    assert training_option["batch_size"] == 4
 
     # 4. UI Control
     tool_ui = RealSwitchPanelTool()
