@@ -241,6 +241,10 @@ class DataInterpretationCommandService:
             confirmations=confirmations,
             event_roles=dict(candidate.event_roles),
             class_map=dict(candidate.class_map),
+            run_event_mappings={
+                str(key): dict(value)
+                for key, value in candidate.run_event_mappings.items()
+            },
             recipe_trace=[
                 *candidate.recipe_trace,
                 f"validation:{decision.decision}",

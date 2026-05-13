@@ -1611,6 +1611,145 @@ def test_import_labels_updates_applied_interpretation_recipe_trace(tmp_path):
     assert "label_import:batch:1" in recipe["recipe_trace"]
 
 
+def test_apply_interpretation_applies_reviewed_event_code_label_file(
+    tmp_path,
+    monkeypatch,
+):
+    from XBrainLab.backend.application import data_interpretation_internal_events
+
+    source_dir = tmp_path / "event_code_labels"
+    source_dir.mkdir()
+    eeg_path = source_dir / "session.edf"
+    label_path = source_dir / "session_events.tsv"
+    eeg_path.write_bytes(b"not loaded during scan")
+    label_path.write_text(
+        "event_code\tcondition\n11\tleft\n12\tright\n11\tleft\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "11": {"count": 2, "description": "11"},
+                "12": {"count": 1, "description": "12"},
+            }
+        },
+    )
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    raw.get_filename.return_value = "session.edf"
+    raw.get_filepath.return_value = str(eeg_path)
+    raw.get_event_list.return_value = (
+        np.array([[100, 0, 1], [200, 0, 2], [300, 0, 1]], dtype=np.int32),
+        {"Stimulus/S 11": 1, "Stimulus/S 12": 2},
+    )
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    service.dataset.reset_preprocess = MagicMock()
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(eeg_path)],
+                "label_carrier_choices": {
+                    str(label_path): {
+                        "target_file": "session.edf",
+                        "label_field": "condition",
+                        "anchor": "event_code",
+                        "placement_method": "event_code",
+                    }
+                },
+                "class_map": {"left": "Left hand", "right": "Right hand"},
+            }
+        )
+    )
+    service.execute(ValidateInterpretationCommand())
+    result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert result.ok is True
+    assert result.diagnostics["label_apply"]["status"] == "applied"
+    assert result.diagnostics["label_apply"]["mode"] == "event_code"
+    raw.set_event.assert_called_once()
+    events, event_id = raw.set_event.call_args.args
+    assert events[:, 0].tolist() == [100, 200, 300]
+    assert events[:, 2].tolist() == [1, 2, 1]
+    assert event_id == {"Left hand": 1, "Right hand": 2}
+    raw.set_labels_imported.assert_called_once_with(True)
+    service.dataset.reset_preprocess.assert_called_once()
+    label_import = result.diagnostics["label_apply"]["label_import"]
+    assert label_import["mode"] == "event_code"
+    assert label_import["class_map"] == {
+        "left": "Left hand",
+        "right": "Right hand",
+    }
+    assert result.state.interpretation.epoch_handoff["ready"] is True
+    assert result.state.interpretation.epoch_handoff["placement_modes"] == [
+        "event_code"
+    ]
+    assert result.state.interpretation.epoch_handoff["class_map"] == {
+        "left": "Left hand",
+        "right": "Right hand",
+    }
+
+
+def test_apply_interpretation_uses_reviewed_interval_end_field(tmp_path):
+    source_dir = tmp_path / "interval_labels"
+    source_dir.mkdir()
+    eeg_path = source_dir / "session.edf"
+    label_path = source_dir / "session_events.tsv"
+    eeg_path.write_bytes(b"not loaded during scan")
+    label_path.write_text(
+        "onset\tend\tcondition\n0.10\t0.60\tleft\n1.00\t1.40\tright\n",
+        encoding="utf-8",
+    )
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    raw.get_filename.return_value = "session.edf"
+    raw.get_filepath.return_value = str(eeg_path)
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    service.dataset.apply_labels_batch = MagicMock(return_value=1)
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(eeg_path)],
+                "label_carrier_choices": {
+                    str(label_path): {
+                        "target_file": "session.edf",
+                        "label_field": "condition",
+                        "anchor": "onset",
+                        "duration_field": "end",
+                        "placement_method": "interval",
+                        "time_model": "seconds",
+                    }
+                },
+                "class_map": {"left": "Left", "right": "Right"},
+            }
+        )
+    )
+    service.execute(ValidateInterpretationCommand())
+    result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert result.ok is True
+    label_map = service.dataset.apply_labels_batch.call_args.args[1]
+    rows = label_map[str(label_path)]
+    assert rows == [
+        {"onset": 0.1, "label": "left", "duration": 0.5},
+        {"onset": 1.0, "label": "right", "duration": 0.4},
+    ]
+    assert result.state.interpretation.epoch_handoff["placement_modes"] == ["interval"]
+    assert (
+        result.state.interpretation.epoch_handoff["label_carrier_plan"][0][
+            "selected_duration_field"
+        ]
+        == "end"
+    )
+
+
 def test_apply_montage_command_routes_confirmed_positions():
     service = ApplicationService(Study())
     service.study.data_manager.epoch_data = MagicMock()

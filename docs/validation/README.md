@@ -40,6 +40,7 @@
 | ApplicationService workflow split 是否仍只看 non-empty | [ApplicationService exact split evidence](#2026-05-13-applicationservice-exact-split-evidence-checkpoint) | Core command-spine workflow 現在檢查 synthetic split summary 含 train/val/test count 與 audit payload。 | UI refresh acceptance、real-data breadth、or human desktop acceptance。 |
 | Real-tool chain 是否仍只看 dataset count | [Real-tool chain exact evidence](#2026-05-13-real-tool-chain-exact-evidence-checkpoint) | LLM real-tool A01T chain 現在檢查 exact epoch state、dataset split summary、tool result string 和 one-run training state。 | Tool-call benchmark accuracy、human assistant UX、or long local-model session。 |
 | UI product walkthrough 是否仍只看 dataset count | [UI product walkthrough exact-state evidence](#2026-05-13-ui-product-walkthrough-exact-state-evidence-checkpoint) | Offscreen user-facing walkthrough 現在檢查 exact epoch state 與 dataset split summary，而不是只看 dataset count。 | 不能支持 Human Windows desktop acceptance、visual UX approval、or 完整零 controller UI。 |
+| Data Interpretation label semantics 是否只是 preview 假資料 | [Data Interpretation label-semantics backend evidence](#2026-05-14-data-interpretation-label-semantics-backend-evidence-checkpoint) | reviewed event-code label files、interval end/stop/offset duration、run-dependent internal event mapping、recipe/state snapshot preservation 有 backend contract tests。 | Final Match Labels UX approval、all EEG label semantics、or human Data Import acceptance。 |
 | artifacts 是否仍是重複 evidence dump | [Artifact current-tree cleanup](#2026-05-13-artifact-current-tree-cleanup-checkpoint) | current tree 移除被 full dashboard / consolidated walkthrough / canonical wizard screenshots 覆蓋的短版或探索型 artifact。 | 不能支持 runtime correctness、human acceptance、or product completion。 |
 | Lower-level preprocess controller 測試是否仍只是 non-`None` | [Preprocess controller shape/event evidence](#2026-05-13-preprocess-controller-shapeevent-evidence-checkpoint) | Controller integration tests 會檢查 `Raw` object、signal/epoch shape、filter shape preservation、selected event code 和 reset history。 | Product command-spine success、UI refresh acceptance、or zero-controller UI architecture。 |
 | Synthetic preprocess validation 是否仍靠 random/no-crash | [Preprocess validation deterministic evidence](#2026-05-13-preprocess-validation-deterministic-evidence-checkpoint) | Synthetic preprocess tests now use a fixed fixture and assert resample event codes, epoch shape, operation history, and reset shape. | Real-data product acceptance、UI responsiveness、or all preprocess edge cases。 |
@@ -82,6 +83,25 @@ current truth 以這些文件為準：
 - [planning/roadmap.md](../planning/roadmap.md)
 - [architecture/README.md](../architecture/README.md)
 - [validation/README.md](README.md)
+
+## 2026-05-14 Data Interpretation Label-Semantics Backend Evidence Checkpoint
+
+This backend/test slice did not redesign Match Labels, Review and Import, or any Data Import
+layout. It strengthened the Data Interpretation contract behind already-reviewed choices:
+event-code placement can apply label rows to matching EEG event codes in original event order,
+interval placement can honor selected `end` / `stop` / `offset` columns as duration boundaries,
+and PhysioNet-style `T1` / `T2` internal events are flagged as run-dependent semantics that need a
+confirmable run mapping before supervised training claims are trustworthy. The mapping now survives
+candidate state, applied interpretation, recipe save/reload choices, and state snapshots.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| Initial focused red run: `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/backend/application/test_data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_recipe.py -q` | Failed 3 cases before fixes: event-code output order, interval duration floating tail, and `S001R04` run token parsing. | New tests exercised real backend contract gaps instead of only screenshot / preview assumptions. | Runtime correctness after failure. | Keep red-to-green evidence when adding Data Interpretation semantics. |
+| `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/backend/application/test_data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_recipe.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_data_interpretation_state.py tests/unit/backend/load_data/test_label_loader.py tests/unit/backend/load_data/test_label_loader_coverage.py -q` | `115 passed` | Event-code label apply, interval end-field duration handling, run-dependent event mapping preservation, state snapshot propagation, and label-loader compatibility are covered by focused backend tests. | Final Match Labels UX approval, all possible carrier schemas, human Data Import acceptance, or scientific validation. | Add UI-visible evidence only when UX work is explicitly in scope. |
+| Expanded backend unit run: `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/backend/application/test_data_interpretation_*.py tests/unit/backend/load_data/test_label_loader.py tests/unit/backend/load_data/test_label_loader_coverage.py -q` | `142 passed` | The new label-semantics contract stays green with the rest of the Data Interpretation backend unit suite. | Real-data breadth or human Data Import acceptance. | Pair with real-data/product smoke only when changing runtime source scanning or visible UI flow. |
+| Focused `ruff check` / `ruff format --check` / `basedpyright` on changed backend/test files | PASS / PASS / `0 errors, 0 warnings, 0 notes`. | Changed backend/test slice is lint, format, and type clean. | Product runtime evidence by itself. | Keep type checks paired with behavior tests for backend contract changes. |
+| `poetry run mkdocs build --strict` | PASS. | Docs site still builds after current/validation checkpoint updates. | Content correctness or runtime behavior by itself. | Keep Match Labels UX claims out of backend-only evidence. |
+| `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `git diff --check` | `Architecture compliant!` / `91 passed` / PASS. | The label-semantics backend slice and docs checkpoint did not weaken current architecture / docs overclaim guards and the diff is whitespace clean. | Full product architecture completion. | Re-run dashboard only when a broader integration checkpoint is needed. |
 
 ## 2026-05-13 Artifact Current-Tree Cleanup Checkpoint
 

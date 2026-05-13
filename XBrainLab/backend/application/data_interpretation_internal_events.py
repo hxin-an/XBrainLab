@@ -105,6 +105,23 @@ def build_internal_event_preview(selected_files: list[str]) -> dict[str, Any]:
         "names_reliable": _names_reliable(candidate_rows),
         "pattern_status": _pattern_status(candidate_rows, not_used_rows),
     }
+    run_dependent_codes = _run_dependent_event_codes(aggregates)
+    if run_dependent_codes:
+        result.update(
+            {
+                "run_dependent_semantics": True,
+                "run_dependent_event_codes": run_dependent_codes,
+                "run_event_mapping_options": _run_event_mapping_options(
+                    event_files,
+                    file_names,
+                    run_dependent_codes,
+                ),
+            }
+        )
+        scan_warnings.append(
+            "Internal events T1/T2 have run-dependent semantics; confirm "
+            "run/task mapping before supervised training.",
+        )
     if scan_warnings:
         result["scan_warnings"] = scan_warnings
     return result
@@ -616,6 +633,47 @@ def _event_sort_key(item: dict[str, Any]) -> tuple[int, int | str]:
 def _event_code_sort_value(code: str) -> tuple[int, int | str]:
     code = str(code).strip()
     return (0, int(code)) if code.isdigit() else (1, code.casefold())
+
+
+def _run_dependent_event_codes(aggregates: dict[str, dict[str, Any]]) -> list[str]:
+    codes = {
+        str(stats.get("code") or "").strip().upper()
+        for stats in aggregates.values()
+        if str(stats.get("code") or "").strip().upper() in {"T1", "T2"}
+    }
+    if {"T1", "T2"}.issubset(codes):
+        return ["T1", "T2"]
+    return []
+
+
+def _run_event_mapping_options(
+    event_files: list[str],
+    file_names: list[str],
+    event_codes: list[str],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "file": file_name,
+            "run": _run_token(file_path),
+            "event_codes": list(event_codes),
+            "class_map": dict.fromkeys(event_codes, ""),
+        }
+        for file_path, file_name in zip(event_files, file_names, strict=True)
+    ]
+
+
+def _run_token(path: str) -> str:
+    name = Path(path).stem
+    match = re.search(r"(?:^|[_-])R(\d+)(?:[_-]|$)", name, flags=re.IGNORECASE)
+    if match:
+        return match.group(1)
+    match = re.search(r"(?<![A-Z])R(\d+)$", name, flags=re.IGNORECASE)
+    if match:
+        return match.group(1)
+    match = re.search(r"(?:^|[_-])run[-_]?(\d+)(?:[_-]|$)", name, flags=re.IGNORECASE)
+    if match:
+        return match.group(1)
+    return ""
 
 
 def _scan_warning(file_path: str, exc: Exception) -> str:

@@ -790,3 +790,87 @@ def test_build_interpretation_candidate_uses_format_neutral_event_pattern(
     assert candidate_codes == ["11", "12"]
     assert preview["candidate_label_events"][0]["evidence"].startswith("Repeated group")
     assert other_by_code["1"]["use_as"] == "Trial timing"
+
+
+def test_build_interpretation_candidate_requires_run_dependent_event_mapping(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "T0": {"count": 15, "description": "T0"},
+                "T1": {"count": 15, "description": "T1"},
+                "T2": {"count": 15, "description": "T2"},
+            }
+        },
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            source_kind="folder",
+            eeg_files=["/data/S001R04.edf"],
+            label_carriers=[],
+            label_carrier_sources={},
+            bids={"is_bids": False, "events_files": []},
+        ),
+        choices={"label_carrier": "embedded_events"},
+    )
+
+    assert candidate.internal_event_preview["run_dependent_semantics"] is True
+    assert candidate.internal_event_preview["run_dependent_event_codes"] == [
+        "T1",
+        "T2",
+    ]
+    assert candidate.internal_event_preview["run_event_mapping_options"] == [
+        {
+            "file": "S001R04.edf",
+            "run": "04",
+            "event_codes": ["T1", "T2"],
+            "class_map": {"T1": "", "T2": ""},
+        }
+    ]
+    assert (
+        "Confirm run-dependent T1/T2 event mapping before supervised training."
+        in candidate.confirmation_items
+    )
+    assert candidate.run_event_mappings == {}
+
+
+def test_build_interpretation_candidate_preserves_run_dependent_event_mapping(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "T1": {"count": 15, "description": "T1"},
+                "T2": {"count": 15, "description": "T2"},
+            }
+        },
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            source_kind="folder",
+            eeg_files=["/data/S001R04.edf"],
+            label_carriers=[],
+            label_carrier_sources={},
+            bids={"is_bids": False, "events_files": []},
+        ),
+        choices={
+            "label_carrier": "embedded_events",
+            "run_event_mappings": {
+                "S001R04.edf": {"T1": "left_fist", "T2": "right_fist"}
+            },
+        },
+    )
+
+    assert candidate.run_event_mappings == {
+        "S001R04.edf": {"T1": "left_fist", "T2": "right_fist"}
+    }
+    assert "choices:run_event_mappings" in candidate.recipe_trace

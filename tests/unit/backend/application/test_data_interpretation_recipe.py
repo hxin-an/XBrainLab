@@ -37,6 +37,9 @@ def test_import_recipe_from_dict_rehydrates_metadata_and_mappings():
             ],
             "event_roles": {"trial_type": "class cue"},
             "class_map": {"left": "0"},
+            "run_event_mappings": {
+                "S001R04.edf": {"T1": "left_fist", "T2": "right_fist"}
+            },
         }
     )
 
@@ -47,6 +50,9 @@ def test_import_recipe_from_dict_rehydrates_metadata_and_mappings():
     assert recipe.excluded_label_carriers == ["/data/rejected_events.tsv"]
     assert recipe.event_roles == {"trial_type": "class cue"}
     assert recipe.class_map == {"left": "0"}
+    assert recipe.run_event_mappings == {
+        "S001R04.edf": {"T1": "left_fist", "T2": "right_fist"}
+    }
 
 
 def test_build_import_recipe_preserves_applied_trace_and_writes_json(tmp_path):
@@ -67,6 +73,7 @@ def test_build_import_recipe_preserves_applied_trace_and_writes_json(tmp_path):
         confirmations=["Confirm metadata."],
         event_roles={"trial_type": "class cue"},
         class_map={"left": "0"},
+        run_event_mappings={"S001R04.edf": {"T1": "left_fist", "T2": "right_fist"}},
         label_imports=[{"status": "applied"}],
         recipe_trace=["scan", "apply"],
     )
@@ -88,6 +95,9 @@ def test_build_import_recipe_preserves_applied_trace_and_writes_json(tmp_path):
     assert loaded.recipe_trace == ["scan", "apply", "recipe:recipe-1"]
     assert loaded.warnings == ["Review labels."]
     assert loaded.label_imports == [{"status": "applied"}]
+    assert loaded.run_event_mappings == {
+        "S001R04.edf": {"T1": "left_fist", "T2": "right_fist"}
+    }
 
 
 def test_choices_from_import_recipe_recreates_review_choices():
@@ -149,6 +159,7 @@ def test_choices_from_import_recipe_recreates_review_choices():
         ],
         event_roles={"trial_type": "class cue"},
         class_map={"1": "left", "2": "right"},
+        run_event_mappings={"S001R04.edf": {"T1": "left_fist", "T2": "right_fist"}},
         skip_labels=True,
         label_carrier="external_files",
         excluded_label_carriers=["/data/rejected_events.tsv"],
@@ -178,6 +189,9 @@ def test_choices_from_import_recipe_recreates_review_choices():
     }
     assert choices["event_roles"] == {"trial_type": "class cue"}
     assert choices["class_map"] == {"1": "left", "2": "right"}
+    assert choices["run_event_mappings"] == {
+        "S001R04.edf": {"T1": "left_fist", "T2": "right_fist"}
+    }
 
 
 def test_import_recipe_to_dict_is_json_ready():

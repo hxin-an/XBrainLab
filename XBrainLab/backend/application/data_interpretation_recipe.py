@@ -36,6 +36,7 @@ class ImportRecipe:
     confirmations: list[str] = dc_field(default_factory=list)
     event_roles: dict[str, str] = dc_field(default_factory=dict)
     class_map: dict[str, str] = dc_field(default_factory=dict)
+    run_event_mappings: dict[str, dict[str, str]] = dc_field(default_factory=dict)
     label_imports: list[dict[str, Any]] = dc_field(default_factory=list)
     warnings: list[str] = dc_field(default_factory=list)
     recipe_trace: list[str] = dc_field(default_factory=list)
@@ -94,6 +95,7 @@ def import_recipe_from_dict(payload: dict[str, Any]) -> ImportRecipe:
         confirmations=[str(item) for item in payload.get("confirmations", [])],
         event_roles=_string_mapping(payload.get("event_roles")),
         class_map=_string_mapping(payload.get("class_map")),
+        run_event_mappings=_nested_string_mapping(payload.get("run_event_mappings")),
         label_imports=[
             dict(item)
             for item in payload.get("label_imports", [])
@@ -131,6 +133,10 @@ def build_import_recipe(
         confirmations=list(applied.confirmations),
         event_roles=dict(applied.event_roles),
         class_map=dict(applied.class_map),
+        run_event_mappings={
+            str(key): dict(value)
+            for key, value in getattr(applied, "run_event_mappings", {}).items()
+        },
         label_imports=[dict(item) for item in applied.label_imports],
         warnings=list(warnings),
         recipe_trace=[*applied.recipe_trace, f"recipe:{recipe_id}"],
@@ -165,6 +171,10 @@ def choices_from_import_recipe(recipe: ImportRecipe) -> dict[str, Any]:
         choices["event_roles"] = dict(recipe.event_roles)
     if recipe.class_map:
         choices["class_map"] = dict(recipe.class_map)
+    if recipe.run_event_mappings:
+        choices["run_event_mappings"] = {
+            str(key): dict(value) for key, value in recipe.run_event_mappings.items()
+        }
     return choices
 
 
@@ -238,6 +248,17 @@ def _string_mapping(payload: Any) -> dict[str, str]:
         for key, value in payload.items()
         if str(value).strip()
     }
+
+
+def _nested_string_mapping(payload: Any) -> dict[str, dict[str, str]]:
+    if not isinstance(payload, dict):
+        return {}
+    result: dict[str, dict[str, str]] = {}
+    for key, value in payload.items():
+        nested = _string_mapping(value)
+        if nested:
+            result[str(key)] = nested
+    return result
 
 
 def _serialize(value: Any) -> Any:

@@ -131,6 +131,8 @@ class InterpretationStateSnapshot:
     format_capabilities: list[dict[str, Any]] = field(default_factory=list)
     event_roles: dict[str, str] = field(default_factory=dict)
     class_map: dict[str, str] = field(default_factory=dict)
+    run_event_mappings: dict[str, dict[str, str]] = field(default_factory=dict)
+    epoch_handoff: dict[str, Any] = field(default_factory=dict)
     label_import_count: int = 0
     label_imports: list[dict[str, Any]] = field(default_factory=list)
     recipe_path: str | None = None

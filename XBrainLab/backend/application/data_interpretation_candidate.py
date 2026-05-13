@@ -46,6 +46,7 @@ class InterpretationCandidate:
     class_map: dict[str, str] = dc_field(default_factory=dict)
     class_map_source: str = ""
     internal_event_preview: dict[str, Any] = dc_field(default_factory=dict)
+    run_event_mappings: dict[str, dict[str, str]] = dc_field(default_factory=dict)
     time_model: str = "unknown"
     granularity: str = "unknown"
     metadata: list[FileMetadataResolution] = dc_field(default_factory=list)
@@ -84,6 +85,7 @@ def build_interpretation_candidate(
     confirmation_items: list[str] = []
     event_roles: dict[str, str] = {}
     class_map: dict[str, str] = _string_mapping(choices.get("class_map"))
+    run_event_mappings = _nested_string_mapping(choices.get("run_event_mappings"))
     class_map_source = "user_choices" if class_map else ""
     metadata = _metadata_for_selected_files(
         scan.metadata,
@@ -147,6 +149,13 @@ def build_interpretation_candidate(
         internal_event_warnings = internal_event_preview.get("scan_warnings", [])
         if isinstance(internal_event_warnings, list):
             warnings.extend(str(item) for item in internal_event_warnings)
+        if internal_event_preview.get("run_dependent_semantics"):
+            event_roles["run_dependent_events"] = "run/task mapping needs confirmation"
+            if not run_event_mappings:
+                confirmation_items.append(
+                    "Confirm run-dependent T1/T2 event mapping before supervised "
+                    "training.",
+                )
         has_internal_event_rows = bool(
             internal_event_preview.get("candidate_label_events")
             or internal_event_preview.get("not_used_events")
@@ -213,6 +222,7 @@ def build_interpretation_candidate(
         class_map=class_map,
         class_map_source=class_map_source,
         internal_event_preview=internal_event_preview,
+        run_event_mappings=run_event_mappings,
         time_model="sample_index_or_annotation_time"
         if event_roles
         else "file_native_time",
@@ -324,6 +334,18 @@ def _string_mapping(payload: Any) -> dict[str, str]:
         for key, value in payload.items()
         if str(value).strip()
     }
+
+
+def _nested_string_mapping(payload: Any) -> dict[str, dict[str, str]]:
+    """Return cleaned nested string mappings from review choices."""
+    if not isinstance(payload, dict):
+        return {}
+    result: dict[str, dict[str, str]] = {}
+    for key, value in payload.items():
+        nested = _string_mapping(value)
+        if nested:
+            result[str(key)] = nested
+    return result
 
 
 def _path_key(path: str) -> str:
@@ -524,6 +546,8 @@ def _choice_recipe_trace(choices: dict[str, Any]) -> list[str]:
         traces.append("choices:eeg_file_remap")
     if _string_mapping(choices.get("label_carrier_remap")):
         traces.append("choices:label_carrier_remap")
+    if _nested_string_mapping(choices.get("run_event_mappings")):
+        traces.append("choices:run_event_mappings")
     return traces
 
 

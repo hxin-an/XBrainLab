@@ -188,6 +188,8 @@ class DataInterpretationSessionState:
             applied_review,
         )
         class_map = self._class_map(candidate_review, preview_review, applied_review)
+        run_event_mappings = self._run_event_mappings(candidate_review, applied_review)
+        epoch_handoff = self._epoch_handoff(candidate_review, applied_review)
         return InterpretationStateSnapshot(
             has_scan_result=scan is not None,
             has_candidate=candidate is not None,
@@ -238,6 +240,8 @@ class DataInterpretationSessionState:
             format_capabilities=[dict(item) for item in format_capabilities],
             event_roles=dict(event_roles),
             class_map=dict(class_map),
+            run_event_mappings=run_event_mappings,
+            epoch_handoff=epoch_handoff,
             label_import_count=len(applied.label_imports) if applied else 0,
             label_imports=[dict(item) for item in applied.label_imports]
             if applied
@@ -439,6 +443,85 @@ class DataInterpretationSessionState:
         if applied is not None:
             return dict(applied.class_map)
         return {}
+
+    @staticmethod
+    def _run_event_mappings(
+        candidate: InterpretationCandidate | None,
+        applied: AppliedInterpretation | None,
+    ) -> dict[str, dict[str, str]]:
+        source = candidate if candidate is not None else applied
+        if source is None:
+            return {}
+        return {
+            str(key): dict(value)
+            for key, value in getattr(source, "run_event_mappings", {}).items()
+        }
+
+    @staticmethod
+    def _epoch_handoff(
+        candidate: InterpretationCandidate | None,
+        applied: AppliedInterpretation | None,
+    ) -> dict[str, Any]:
+        source = applied if applied is not None else candidate
+        if source is None:
+            return {}
+        label_imports = [
+            dict(item) for item in getattr(applied, "label_imports", []) or []
+        ]
+        carrier_plan = [
+            dict(item) for item in getattr(source, "label_carrier_plan", []) or []
+        ]
+        placement_modes = sorted(
+            {
+                str(item.get("placement_method") or "").strip()
+                for item in carrier_plan
+                if str(item.get("placement_method") or "").strip()
+            }
+        )
+        selected_event_names = sorted(
+            {
+                str(name)
+                for item in label_imports
+                for name in item.get("selected_event_names", [])
+                if str(name).strip()
+            }
+        )
+        class_map = {
+            str(key): str(value)
+            for key, value in getattr(source, "class_map", {}).items()
+        }
+        run_event_mappings = {
+            str(key): dict(value)
+            for key, value in getattr(source, "run_event_mappings", {}).items()
+        }
+        handoff: dict[str, Any] = {
+            "ready": bool(applied is not None),
+            "source": "applied_interpretation" if applied is not None else "candidate",
+            "placement_modes": placement_modes,
+            "class_map": class_map,
+            "selected_event_names": selected_event_names,
+            "run_event_mappings": run_event_mappings,
+        }
+        if label_imports:
+            handoff["label_imports"] = label_imports
+        if carrier_plan:
+            handoff["label_carrier_plan"] = [
+                {
+                    key: item.get(key)
+                    for key in (
+                        "path",
+                        "selected_target_file",
+                        "selected_label_field",
+                        "selected_anchor",
+                        "selected_duration_field",
+                        "placement_method",
+                        "time_model",
+                    )
+                    if item.get(key) not in (None, "")
+                }
+                for item in carrier_plan
+            ]
+        return handoff
 
     @staticmethod
     def _label_mapping_for_recipe(mapping: Any) -> dict[str, str]:
