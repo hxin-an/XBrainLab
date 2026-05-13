@@ -743,6 +743,11 @@ class LLMController(QObject):
                 remaining = commands[cmd_idx + 1 :]
                 self._pending_confirmation = (cmd, params, remaining)
                 self.status_update.emit(f"Waiting for confirmation: {cmd}")
+                decision_boundary = (
+                    dynamic_confirmation.decision_boundary
+                    if dynamic_confirmation is not None
+                    else "tool_confirmation"
+                )
                 self.request_user_interaction.emit(
                     "confirm_action",
                     {
@@ -753,6 +758,7 @@ class LLMController(QObject):
                             if tool
                             else "ApplicationService requires confirmation."
                         ),
+                        "decision_boundary": decision_boundary,
                     },
                 )
                 return  # Pause — wait for user response

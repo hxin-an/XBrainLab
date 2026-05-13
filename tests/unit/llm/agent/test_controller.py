@@ -387,7 +387,8 @@ class TestProcessToolCalls:
         ):
             result = ctrl._check_requested_intent_boundary("set_model")
 
-        assert result is not None
+        assert isinstance(result, ToolCommandResult)
+        assert result.ok is False
         assert result.command_name == CommandName.TRAIN.value
         assert result.error_type == "precondition"
         assert "Generate datasets before training" in result.message
@@ -411,8 +412,10 @@ class TestProcessToolCalls:
         ):
             result = ctrl._check_requested_intent_boundary("switch_panel")
 
-        assert result is not None
+        assert isinstance(result, ToolCommandResult)
+        assert result.ok is False
         assert result.command_name == CommandName.VISUALIZE.value
+        assert result.error_type == "precondition"
         assert "readiness summary" in result.message
 
     def test_requested_intent_boundary_rejects_saliency_setup_substitute(self, ctrl):
@@ -434,8 +437,10 @@ class TestProcessToolCalls:
         ):
             result = ctrl._check_requested_intent_boundary("set_model")
 
-        assert result is not None
+        assert isinstance(result, ToolCommandResult)
+        assert result.ok is False
         assert result.command_name == CommandName.SALIENCY.value
+        assert result.error_type == "precondition"
         assert "readiness summary" in result.message
 
     def test_verification_failure_uses_requested_path_label(self, ctrl):
@@ -612,12 +617,14 @@ class TestProcessToolCallsConfirmation:
                 '{"tool_name": "clear_dataset"}',
             )
 
-        # Should have stored pending and emitted signal
-        assert ctrl._pending_confirmation is not None
-        assert ctrl._pending_confirmation[0] == "clear_dataset"
+        pending = ctrl._pending_confirmation
+        assert isinstance(pending, tuple)
+        assert pending == ("clear_dataset", {}, [])
         ctrl.request_user_interaction.emit.assert_called_once()
         call_args = ctrl.request_user_interaction.emit.call_args[0]
         assert call_args[0] == "confirm_action"
+        assert call_args[1]["tool_name"] == "clear_dataset"
+        assert call_args[1]["decision_boundary"] == "tool_confirmation"
 
     def test_backend_confirmation_boundary_pauses_execution(self, ctrl):
         """ApplicationService autonomy policy can require HITL dynamically."""
@@ -652,9 +659,14 @@ class TestProcessToolCallsConfirmation:
                 '{"tool_name": "apply_interpretation"}',
             )
 
-        assert ctrl._pending_confirmation is not None
-        assert ctrl._pending_confirmation[0] == "apply_interpretation"
+        pending = ctrl._pending_confirmation
+        assert isinstance(pending, tuple)
+        assert pending == ("apply_interpretation", {}, [])
         ctrl.request_user_interaction.emit.assert_called_once()
+        call_args = ctrl.request_user_interaction.emit.call_args[0]
+        assert call_args[0] == "confirm_action"
+        assert call_args[1]["tool_name"] == "apply_interpretation"
+        assert call_args[1]["decision_boundary"] == "semantic_apply"
 
     def test_no_confirmation_executes_directly(self, ctrl):
         """Tool without requires_confirmation should execute normally."""

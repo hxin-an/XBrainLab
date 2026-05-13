@@ -31,6 +31,7 @@
 | MCP / headless status 是否仍走 command state | [MCP direct Study-state guard](#2026-05-13-mcp-direct-study-state-guard-checkpoint) 和 [MCP HTTP progress command-state](#2026-05-13-mcp-http-progress-command-state-checkpoint) | MCP progress/status 不回到 direct mutable `Study` read 或 controller lookup bypass。 | full external MCP client certification。 |
 | MCP stdio / HTTP tests 是否仍只證明有 response | [MCP JSON-RPC exact evidence](#2026-05-14-mcp-json-rpc-exact-evidence-checkpoint) | MCP tests 檢查 JSON-RPC envelope、request id、error/result separation、tool schema、structuredContent、adapter session、command name 和 accepted/status。 | external MCP client certification、remote security review、or long-running job durability。 |
 | Agent tool surface 是否仍只看 `result is not None` | [Agent tool-surface exact result evidence](#2026-05-14-agent-tool-surface-exact-result-evidence-checkpoint) | ApplicationService-backed tool tests 檢查 command name、raw result status、state training truth、blocked reason、Data Interpretation scan/preview/validate result shape。 | tool-call benchmark accuracy、local-model session quality、or full agent UX acceptance。 |
+| Agent HITL confirmation 是否知道 backend decision boundary | [Agent confirmation boundary payload evidence](#2026-05-14-agent-confirmation-boundary-payload-evidence-checkpoint) | `confirm_action` payload 會帶 `decision_boundary`，legacy tool confirmation 是 `tool_confirmation`，ApplicationService semantic apply 是 `semantic_apply`。 | full assistant UX acceptance or human desktop confirmation flow。 |
 | Evaluation panel 是否還會顯示 stale metrics | [Evaluation display command evidence](#2026-05-13-evaluation-display-command-evidence-checkpoint) | service-owned average metrics 缺失時清空 stale display。 | human evaluation UX acceptance。 |
 | Data Import runtime / agent-MCP schema 是否仍可引用 | [Data Import runtime integration](#2026-05-13-data-import-runtime-integration-checkpoint) | command/service/dialog contracts 和 agent/MCP baseline。 | final Match Labels / Review and Import UX。 |
 | 測試是否能擋 facade / legacy fallback 回流 | [Backend test hygiene inventory](#backend-test-hygiene-inventory) 和 architecture guard checkpoints | 已知 forbidden product-success evidence 被 guard。 | semantic proof for every lower-level test。 |
@@ -85,6 +86,20 @@ current truth 以這些文件為準：
 - [planning/roadmap.md](../planning/roadmap.md)
 - [architecture/README.md](../architecture/README.md)
 - [validation/README.md](README.md)
+
+## 2026-05-14 Agent Confirmation Boundary Payload Evidence Checkpoint
+
+This agent-runtime slice tightened the human-in-the-loop confirmation contract without changing the
+Data Import UX. `LLMController` now includes a `decision_boundary` in `confirm_action` payloads:
+legacy tool-level confirmation uses `tool_confirmation`, while backend policy-driven confirmation
+uses the ApplicationService boundary such as `semantic_apply`.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| Focused red/green: `poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py::TestProcessToolCalls::test_requested_intent_boundary_reads_application_policy tests/unit/llm/agent/test_controller.py::TestProcessToolCalls::test_requested_intent_boundary_rejects_visualization_ui_substitute tests/unit/llm/agent/test_controller.py::TestProcessToolCalls::test_requested_intent_boundary_rejects_saliency_setup_substitute tests/unit/llm/agent/test_controller.py::TestProcessToolCallsConfirmation::test_confirmation_required_pauses_execution tests/unit/llm/agent/test_controller.py::TestProcessToolCallsConfirmation::test_backend_confirmation_boundary_pauses_execution -q` | Initially failed on missing `decision_boundary`, then `5 passed` after the controller payload fix. | Reproduced and fixed the missing confirmation-boundary payload in agent controller tests. | Human confirmation dialog acceptance or local-model session quality. | Pair with UI/AgentManager click-through when human desktop acceptance is in scope. |
+| `poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py -q` | `65 passed` | Agent controller unit behavior remains green after surfacing confirmation boundaries. | Full assistant product acceptance or tool-call benchmark accuracy. | Keep requested-intent and HITL tests tied to ApplicationService policy semantics. |
+| Weak-evidence scan: `rg -n "assert .* is not None\|len\\(.+\\) > 0\|non-empty\|no crash\|no_crash\|does_not_crash" tests/unit/llm/agent/test_controller.py` | No matches. | The targeted agent controller file no longer contains the scanned weak assertion patterns. | Full LLM test-suite quality. | Continue case-by-case cleanup where stronger behavior evidence exists. |
+| `poetry run ruff check XBrainLab/llm/agent/controller.py tests/unit/llm/agent/test_controller.py` / `poetry run basedpyright XBrainLab/llm/agent/controller.py tests/unit/llm/agent/test_controller.py` | PASS / `0 errors, 0 warnings, 0 notes`. | Changed controller/test files are lint and type clean. | Runtime behavior by itself. | Pair lint/type checks with focused behavior tests. |
 
 ## 2026-05-14 Agent Tool-Surface Exact Result Evidence Checkpoint
 
