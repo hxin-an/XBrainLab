@@ -2,7 +2,30 @@
 
 最後更新：`2026-05-13`
 
-## 可信度
+## 快速讀法
+
+如果只想知道現在 backend 離 target 多遠，先看這裡；下面的「驗證範圍與歷史脈絡」
+保留重構時間線，但不是讀本頁的第一入口。
+
+| 問題 | 目前答案 |
+| --- | --- |
+| backend 主入口是什麼？ | `ApplicationService / Command API`。UI high-value actions、assistant、MCP、headless scripts 都應從這裡進 backend。 |
+| `BackendFacade` 還是不是架構的一部分？ | 不是。module 已刪除，architecture guard 會擋 product runtime 和 product-success tests 重新 import / construct。 |
+| `ApplicationService` 是不是 god object？ | 已從早期 god-object 形狀拆成 focused services；目前主要負責 dispatch、capability / confirmation gate、state/result envelope。 |
+| UI 是否完全不碰 controllers？ | 還不是。controllers 仍存在於 panel bootstrap、observer bridge、mock / legacy compatibility、部分 readonly display fallback。 |
+| product success 應該怎麼證明？ | 用 command result、`QueryStateCommand` / state snapshot、typed diagnostics、UI-visible state、exact event/epoch/split/history evidence；不要用 facade、legacy fallback、direct mutable `Study` state、generic non-empty / no-crash assertion。 |
+
+## Current Target Gap
+
+| Area | 已接近 target | 剩餘距離 |
+| --- | --- | --- |
+| Command spine | load / preprocess / epoch / split / train / evaluate / visualize / saliency / reset / Data Interpretation / MCP job progress 都有 command or query truth。 | 要持續防止新 wrapper、direct manager mutation、direct service bypass 回流。 |
+| Focused services | Data Interpretation、analysis、training、dataset generation、lifecycle、compatibility、data table、preprocess、state/query 都已從 `ApplicationService` 拆出。 | focused service 間仍要靠 tests/guard 維持邊界，避免把 orchestration 塞回單一檔。 |
+| State truth | `StateSnapshotService` / `QueryStateCommandService` 是 UI / assistant / MCP 判斷狀態的主要讀法。 | 少數 lower-level domain / fixture tests 仍直接 setup/read `Study`，不能當 product smoke。 |
+| UI boundary | product action method 不可直接呼叫 legacy fallback helper；MainWindow controller lookup 收進 named quarantine。 | panels 還吃 injected controllers 作為 observer / adapter，不是完整 zero-controller UI。 |
+| Evidence | exact-evidence stack 已替換多個 generic non-empty product smokes。 | human Windows desktop acceptance 和長時間 local-model session 仍缺人工 evidence。 |
+
+## 驗證範圍與歷史脈絡
 
 狀態：`partially-verified`
 
