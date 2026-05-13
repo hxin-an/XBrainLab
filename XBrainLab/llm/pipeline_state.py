@@ -4,9 +4,10 @@ Defines the :class:`PipelineStage` enum and :data:`STAGE_CONFIG` mapping
 that drive which tools and system-prompt context the LLM agent receives
 at each stage of the EEG analysis pipeline.
 
-For real product sessions, the stage is derived from the ApplicationService
+For real product sessions, the stage is derived only from the ApplicationService
 state snapshot so tool prompts, capability policy, and command execution share
-one backend truth. Mock / legacy callers fall back to direct Study-shaped reads.
+one backend truth. Mock / legacy callers may still fall back to direct
+Study-shaped reads for compatibility tests.
 """
 
 from __future__ import annotations
@@ -69,11 +70,15 @@ def compute_pipeline_stage(study: Any) -> PipelineStage:
     if study is None:
         return PipelineStage.EMPTY
 
-    service_stage = _application_service_pipeline_stage(study)
-    if service_stage is not None:
-        return service_stage
+    if _is_real_product_study(study):
+        return _application_service_pipeline_stage(study) or PipelineStage.EMPTY
 
     return _legacy_study_pipeline_stage(study)
+
+
+def _is_real_product_study(study: Any) -> bool:
+    """Return whether stage truth must come from ApplicationService."""
+    return isinstance(study, Study) and not isinstance(study, Mock)
 
 
 def _legacy_study_pipeline_stage(study: Any) -> PipelineStage:
@@ -106,7 +111,7 @@ def _legacy_study_pipeline_stage(study: Any) -> PipelineStage:
 
 def _application_service_pipeline_stage(study: Any) -> PipelineStage | None:
     """Return stage from the shared ApplicationService snapshot when available."""
-    if not isinstance(study, Study) or isinstance(study, Mock):
+    if not _is_real_product_study(study):
         return None
 
     try:

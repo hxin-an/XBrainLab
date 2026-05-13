@@ -147,12 +147,12 @@ class Study:
 
     @property
     def pipeline_stage(self) -> PipelineStage:
-        """Compute the current pipeline stage from live state.
+        """Compute the current pipeline stage through ApplicationService state.
 
         Returns:
             The :class:`~XBrainLab.llm.pipeline_state.PipelineStage`
-            derived from the current Study attributes.  This is always
-            recomputed — never cached — so it cannot drift from reality.
+            derived from the shared application state snapshot. This is always
+            recomputed — never cached — so it cannot drift from command truth.
 
         """
         from XBrainLab.llm.pipeline_state import compute_pipeline_stage  # noqa: PLC0415

@@ -36,7 +36,7 @@ claim boundary。
 | `ApplicationService` | command dispatch、capability / confirmation gate、result envelope。 | 必須保持 spine，不要變成 god object。 |
 | focused services | Data Interpretation、preprocess、dataset、training、analysis、lifecycle。 | 邊界要靠 tests 和 architecture guard 維持。 |
 | `Study` / managers | domain state、data lifecycle、training lifecycle。 | product path 不應直接繞過 command spine；lower-level domain tests 仍可 setup state。 |
-| assistant / MCP | tool / JSON payload 轉 command。 | MVP 先做 baseline；client certification 屬 Phase 4。 |
+| assistant / MCP | tool / JSON payload 轉 command；real `Study` pipeline stage 來自 ApplicationService state snapshot。 | MVP 先做 baseline；mock compatibility fallback 不等於 product runtime truth，client certification 屬 Phase 4。 |
 
 ## Roadmap 對應
 

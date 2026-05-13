@@ -117,6 +117,17 @@ class TestComputePipelineStage:
 
         assert compute_pipeline_stage(study) == PipelineStage.DATASET_READY
 
+    def test_real_study_does_not_fallback_to_direct_state_when_service_fails(self):
+        from XBrainLab.backend.application import get_application_service
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        study.loaded_data_list = [MagicMock()]
+        service = get_application_service(study)
+        service.get_state = MagicMock(side_effect=RuntimeError("snapshot failed"))
+
+        assert compute_pipeline_stage(study) == PipelineStage.EMPTY
+
 
 # ---------------------------------------------------------------------------
 # STAGE_CONFIG integrity
@@ -239,15 +250,14 @@ class TestStudyPipelineStage:
 
         assert study.pipeline_stage == PipelineStage.EMPTY
 
-    def test_property_reflects_loaded_data(self):
+    def test_property_reflects_application_service_snapshot(self):
+        from XBrainLab.backend.application import get_application_service
         from XBrainLab.backend.study import Study
 
-        study = Study.__new__(Study)
-        study.data_manager = MagicMock()
-        study.training_manager = MagicMock()
-        study.data_manager.loaded_data_list = ["raw1"]
-        study.data_manager.epoch_data = None
-        study.data_manager.datasets = []
-        study.training_manager.trainer = None
+        study = Study()
+        service = get_application_service(study)
+        service.get_state = MagicMock(
+            return_value=SimpleNamespace(pipeline_stage="data_loaded"),
+        )
 
         assert study.pipeline_stage == PipelineStage.DATA_LOADED

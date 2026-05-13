@@ -16,7 +16,7 @@
 
 | Gate | 最近可信結果 | 用途 | 不能取代 |
 | --- | --- | --- | --- |
-| Fast quality dashboard | 2026-05-13 19:58:33 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
+| Fast quality dashboard | 2026-05-13 20:10:46 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
 | Architecture compliance | 最近 checkpoint `Architecture compliant!`，guard unit `81 passed` | 阻擋已知 `BackendFacade`、legacy fallback、direct state、positive controller lookup 等 regression。 | runtime semantic proof for every possible path。 |
 | Focused UI integration | `test_ui_refresh.py`、`test_ui_integration.py`、`test_panel_controller_binding.py` -> `8 passed` | MainWindow launch/navigation/tab-refresh 和 injected controller event wiring 不再把 legacy lookup 當成功證據。 | full zero-controller UI 或人工桌面驗收。 |
 | Product smokes / real tools | guarded UI product smokes、epoch runtime、real-tools suites recently PASS | product evidence 轉向 `QueryStateCommand` / command diagnostics / UI-visible state。 | 所有 integration tests 都已清成 product evidence。 |
@@ -175,6 +175,23 @@ being treated as product-success evidence.
 | `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run python tests/architecture_compliance.py` | `81 passed` / `Architecture compliant!` | Architecture guard now rejects `study.training_option` success evidence in the training integration suite. | Semantic proof outside guarded files. | Expand guard scope only after replacement command/query evidence exists. |
 | Focused `ruff` / `basedpyright`, `poetry run mkdocs build --strict`, `git diff --check` | PASS / `0 errors, 0 warnings, 0 notes` / PASS / PASS | Changed Python files are lint/type clean, docs build strictly, and whitespace is clean. | Runtime behavior by itself. | Continue running focused gates before each checkpoint commit. |
 | `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 19:58:33 UTC+08:00`. | Fast engineering dashboard remains green after this training test/guard slice, including full ruff, basedpyright, architecture, startup, UI baseline/dialog/unit, and real-data IO. | Product complete, human Windows acceptance, or training quality. | Keep dashboard as engineering health evidence only. |
+
+## 2026-05-13 LLM Pipeline Stage Command-Truth Checkpoint
+
+This runtime slice removed a real-product fallback in assistant stage calculation. For real
+`Study` objects, `compute_pipeline_stage()` now uses ApplicationService state snapshots only and
+fails closed to `EMPTY` if the snapshot cannot be read. The direct `Study` state fallback remains
+available only for mock / legacy Study-shaped objects used by unit compatibility tests.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| Red test: `poetry run pytest --capture=sys tests/unit/llm/test_pipeline_state.py::TestComputePipelineStage::test_real_study_does_not_fallback_to_direct_state_when_service_fails -q` before the fix | Failed as expected: real `Study` with a failing service snapshot reported `DATA_LOADED` from direct `loaded_data_list`. | The test reproduced the ApplicationService-bypass fallback risk. | Full agent runtime acceptance. | Keep product session stage truth command-owned. |
+| Same focused test after the fix | `1 passed` | Real `Study` stage now fails closed instead of falling back to mutable state when ApplicationService snapshot fails. | Correctness of every possible tool prompt. | Add product-level assistant walkthrough before release claims. |
+| `poetry run pytest --capture=sys tests/unit/llm/test_pipeline_state.py -q` | `25 passed` | Pipeline stage compatibility behavior remains covered, including mock fallback and real ApplicationService snapshot path. | Tool-call benchmark accuracy. | Keep mock fallback explicitly labeled compatibility. |
+| `poetry run pytest --capture=sys tests/unit/llm/test_pipeline_state.py tests/unit/llm/agent/test_assembler_stage.py tests/unit/llm/agent/test_context_assembler.py -q` | `41 passed` | Agent context assembly remains compatible with command-owned stage truth. | Long-running local model session or external MCP client certification. | Pair with runtime assistant smoke later. |
+| Focused `ruff` / `basedpyright` on changed Python files, plus `poetry run python tests/architecture_compliance.py` | PASS / `0 errors, 0 warnings, 0 notes` / `Architecture compliant!` | Changed code is lint/type clean and does not violate current architecture guard. | Product complete. | Run docs/dashboard gates before committing this checkpoint. |
+| `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS | Documentation builds strictly and whitespace remains clean after current-truth updates. | Content is automatically complete. | Keep docs edits tied to source/test evidence. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 20:10:46 UTC+08:00`. | Fast engineering dashboard remains green after this LLM stage command-truth slice, including full ruff, basedpyright, architecture, startup, UI baseline/dialog/unit, and real-data IO. | Product complete, human Windows acceptance, long local-model session, or tool-call accuracy. | Keep dashboard as engineering health evidence only. |
 
 ## 2026-05-13 Data Import Runtime Integration Checkpoint
 
