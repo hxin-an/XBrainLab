@@ -308,6 +308,17 @@ Filtering history assertion.
 | `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS | Documentation builds strictly and whitespace remains clean after current-truth and validation updates. | Content is automatically complete. | Keep docs review separate from build success. |
 | `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 21:31:03 UTC+08:00`. | Fast engineering dashboard remains green after this controller integration test-quality slice, including full ruff, basedpyright, architecture, startup, UI baseline/dialog/unit, and real-data IO. | Product complete, UI preprocess acceptance, or human Windows acceptance. | Dashboard remains engineering health evidence only. |
 
+## 2026-05-13 UI Current-Truth Readability Polish Checkpoint
+
+This docs-only slice kept UX, backend runtime, and tests untouched. It tightened the reading path
+for current UI architecture and the next-work plan so a new engineer can distinguish real product
+runtime risks from quarantined controller adapter hits.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| Source-doc audit of `docs/architecture/ui.md` and `docs/planning/now.md` | Confirmed the earlier duplicate `ApplicationService Readiness Gate` heading is no longer present; added reading guidance for UI controller hits and made the next engineering gap explicit. | Current docs are less likely to be read as either "everything is legacy" or "full zero-controller UI is done." | Runtime behavior, product acceptance, or proof that every UI display fallback is removed. | Keep retiring UI readonly display fallback one class at a time, with command/query evidence. |
+| `poetry run mkdocs build --strict` / `poetry run python tests/architecture_compliance.py` / `git diff --check` | PASS / `Architecture compliant!` / PASS | Docs site still builds strictly, current-truth claim guards remain green, and the docs-only diff is whitespace clean. | Dashboard freshness, runtime behavior, or human Windows desktop acceptance. | Keep docs readability work tied to source/test evidence instead of chronological history alone. |
+
 ## 2026-05-13 Data Import Runtime Integration Checkpoint
 
 | Command | Result | Claim supported | Claim not supported | Follow-up |
