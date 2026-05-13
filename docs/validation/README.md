@@ -16,7 +16,7 @@
 
 | Gate | 最近可信結果 | 用途 | 不能取代 |
 | --- | --- | --- | --- |
-| Fast quality dashboard | 2026-05-13 21:31:03 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
+| Fast quality dashboard | 2026-05-13 21:51:50 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
 | Architecture compliance | 最近 checkpoint `Architecture compliant!`，guard unit `88 passed` | 阻擋已知 `BackendFacade`、legacy fallback、direct state、positive controller lookup、docs overclaim 等 regression。 | runtime semantic proof for every possible path。 |
 | Focused UI integration | `test_ui_refresh.py`、`test_ui_integration.py`、`test_panel_controller_binding.py` -> `8 passed` | MainWindow launch/navigation/tab-refresh 和 injected controller event wiring 不再把 legacy lookup 當成功證據。 | full zero-controller UI 或人工桌面驗收。 |
 | Product smokes / real tools | guarded UI product smokes、epoch runtime、real-tools suites recently PASS | product evidence 轉向 `QueryStateCommand` / command diagnostics / UI-visible state。 | 所有 integration tests 都已清成 product evidence。 |
@@ -333,6 +333,7 @@ still refuses stale controller pooled-metric fallback for real `Study` contexts.
 | `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_evaluation_panel_redesign.py -q` | `12 passed` | EvaluationPanel query-first rendering and stale-fallback regression coverage remains green after the fix. | Human desktop acceptance or full zero-controller UI. | Pair with product walkthrough / human artifact before release claims. |
 | Focused `ruff` / `basedpyright` / `ruff format --check` on changed Python files, plus architecture gates | PASS / `0 errors, 0 warnings, 0 notes` / PASS / `Architecture compliant!`, architecture unit `88 passed` | Changed EvaluationPanel code and tests are lint/type/format clean and do not violate current architecture rules. | Dashboard freshness or runtime coverage outside this panel. | Keep architecture guard examples aligned with replacement behavior. |
 | `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS | Documentation builds strictly and the checkpoint diff is whitespace clean after current-truth updates. | Runtime behavior by itself. | Re-run after future docs edits. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 21:51:50 UTC+08:00`; UI unit suite `1137 passed`, real-data IO `31 passed, 8 warnings`. | Fast engineering dashboard remains green after the EvaluationPanel display fix. | Product complete, human Windows acceptance, or long local-model session. | Treat dashboard as health evidence only. |
 
 ## 2026-05-13 Data Import Runtime Integration Checkpoint
 
