@@ -17,8 +17,8 @@
 | Gate | 最近可信結果 | 用途 | 不能取代 |
 | --- | --- | --- | --- |
 | Fast quality dashboard | 2026-05-14 00:11:43 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
-| Architecture compliance | 最近 checkpoint `Architecture compliant!`，guard unit `97 passed` | 阻擋已知 `BackendFacade`、legacy fallback、direct state、positive controller lookup、docs overclaim、weak protocol/string evidence 等 regression。 | runtime semantic proof for every possible path。 |
-| Focused UI integration | `test_ui_refresh.py`、`test_ui_integration.py`、`test_panel_controller_binding.py` -> `8 passed` | MainWindow launch/navigation/tab-refresh 和 injected controller event wiring 不再把 legacy lookup 當成功證據。 | full zero-controller UI 或人工桌面驗收。 |
+| Architecture compliance | 最近 checkpoint `Architecture compliant!`，guard unit `100 passed` | 阻擋已知 `BackendFacade`、legacy fallback、direct state、positive controller lookup、docs overclaim、weak protocol/string evidence 等 regression。 | runtime semantic proof for every possible path。 |
+| Focused UI integration | `test_ui_refresh.py`、`test_ui_integration.py`、`test_panel_controller_binding.py` -> `8 passed` | MainWindow launch/navigation/tab-refresh、Evaluation/Visualization empty-state command truth、injected controller event wiring 不再把 legacy lookup 或 widget-exists 當成功證據。 | full zero-controller UI 或人工桌面驗收。 |
 | Product smokes / real tools | guarded UI product smokes、epoch runtime、real-tools suites recently PASS | product evidence 轉向 `QueryStateCommand` / command diagnostics / UI-visible state。 | 所有 integration tests 都已清成 product evidence。 |
 | `mkdocs build --strict` | 最近 checkpoint PASS | 文件站可建且連結/nav 基本有效。 | 文件內容一定正確或容易讀。 |
 
@@ -35,6 +35,7 @@
 | LLM tool/debug tests 是否仍只看 registry 非空 | [LLM tool/debug exact registry evidence](#2026-05-14-llm-tooldebug-exact-registry-evidence-checkpoint) | Tool/debug tests 檢查 exact agent tool-name set、backend resolver class identity、debug calls 和 visualization figure type。 | Full agent runtime acceptance or local-model behavior。 |
 | UI controller hit 是否仍代表 product legacy path | [UI controller exception-map readability checkpoint](#2026-05-14-ui-controller-exception-map-readability-checkpoint)、[UI bridge fallback cleanup](#2026-05-14-ui-training-bridge-fallback-cleanup-checkpoint)、[controller.study lookup guard](#2026-05-14-controllerstudy-lookup-guard-checkpoint) 和 [UI 目前架構](../architecture/ui.md) | Source 對照表區分 panel bootstrap、mock fallback、readonly render fallback、refresh surface、assistant adapter 和 lower-level domain object；Evaluation / Visualization training-event bridge 不再 fallback lookup training controller，guard 也不允許把 `controller.study.get_controller()` 藏在 legacy helper。 | Full zero-controller UI、human desktop acceptance、or runtime proof for every panel state。 |
 | UI navigation refresh 測試是否仍靠 mock call / 猜 index | [UI refresh duplicate-test cleanup](#2026-05-14-ui-refresh-duplicate-test-cleanup-checkpoint) | 重複的 mock-heavy integration test 已移除；replacement coverage 檢查 exact `switch_page()` coordinator delegation、target-panel scope、navigation checked state、command/observer refresh routing。 | Human UI acceptance 或每個 panel render content。 |
+| Evaluation / Visualization integration 是否仍只看 widget exists | [UI integration empty-state command evidence](#2026-05-14-ui-integration-empty-state-command-evidence-checkpoint) | `test_ui_integration.py` now checks exact empty-state `EvaluateCommand` / `VisualizeCommand` blocked reasons, diagnostics, combo state, fallback plot state, and visible visualization error text; architecture guard rejects product integration tests named `*_init`. | Human visual UX approval, full zero-controller UI, or loaded-data workflow. |
 | Headless UI smoke 是否仍只看 object exists | [Headless UI exact state evidence](#2026-05-14-headless-ui-exact-state-evidence-checkpoint) | `test_ui_headless.py` now checks MainWindow class, exact nav labels/check state, exact page switch state, and exact empty `QueryStateCommand(data_summary)` diagnostics. | Human Windows desktop acceptance, visual UX, or loaded-data workflow. |
 | pytest-qt UI integration 是否仍只看 widget exists / tab count >= | [pytest-qt UI exact contract evidence](#2026-05-14-pytest-qt-ui-exact-contract-evidence-checkpoint) | `test_e2e_qtbot.py` now checks exact navigation checked-state transitions, AI button contract, stack panel order/types, Evaluation/Visualization tab labels, and product InfoPanelService wiring. | Human UX approval, screenshot quality, or full data workflow. |
 | Real UI tools smoke 是否仍靠 substring / non-`None` | [Real-tools UI exact state evidence](#2026-05-14-real-tools-ui-exact-state-evidence-checkpoint) | `test_real_tools_e2e.py` now uses deterministic FIF data and checks exact list/load/info/preprocess/config/UI messages plus exact ApplicationService state deltas. | Full agent benchmark, training quality, or human UI acceptance. |
@@ -92,6 +93,18 @@ current truth 以這些文件為準：
 - [planning/roadmap.md](../planning/roadmap.md)
 - [architecture/README.md](../architecture/README.md)
 - [validation/README.md](README.md)
+
+## 2026-05-14 UI Integration Empty-State Command Evidence Checkpoint
+
+This test-quality slice replaced Evaluation / Visualization product integration checks that only
+looked at panel initialization shape. The tests now open the real `MainWindow` with an empty
+`Study()` and assert the backend blocked-state result that the pages render.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/ui/test_ui_integration.py -q` | `4 passed`. | Evaluation and Visualization no-data states are backed by exact `EvaluateCommand` / `VisualizeCommand` messages, diagnostics, combo state, and visible error text instead of widget-exists assertions. | Human visual UX approval, loaded-data workflow, or full zero-controller UI. | Keep replacing product integration checks that only prove construction. |
+| `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run python tests/architecture_compliance.py` | `100 passed` / `Architecture compliant!`. | Product integration tests named `*_init` are now treated as weak product-success evidence unless rewritten to behavior/state semantics. | Runtime behavior by itself. | Add concrete guard examples only when a new weak-evidence pattern appears. |
+| Focused `ruff check` / `ruff format --check` / `basedpyright`, plus `poetry run mkdocs build --strict` and `git diff --check` | PASS / PASS / `0 errors`; docs and diff PASS. | Changed files remain lint/type/docs/diff clean after validation. | Product completion. | Keep final checkpoint report tied to executed commands. |
 
 ## 2026-05-14 UI Controller Exception-Map Readability Checkpoint
 

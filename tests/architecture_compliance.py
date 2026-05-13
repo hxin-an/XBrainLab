@@ -173,6 +173,7 @@ WEAK_TEST_NAME_PATTERNS = (
     "does_not_crash",
 )
 PRODUCT_SUCCESS_WEAK_TEST_NAME_PATTERNS = (
+    "init",
     "initialization",
     "initializes",
 )

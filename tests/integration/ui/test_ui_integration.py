@@ -1,6 +1,7 @@
+from typing import Any, cast
+
 import pytest
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QWidget
 
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.main_window import MainWindow
@@ -52,45 +53,67 @@ def test_navigation(qtbot, study):
     window.close()
 
 
-def test_evaluation_panel_init(qtbot, study):
-    """Test EvaluationPanel initialization and tab loading."""
+def test_evaluation_page_empty_state_uses_command_blocked_reason(qtbot, study):
+    """Evaluation page should render backend blocked-state truth."""
     window = MainWindow(study)
     qtbot.addWidget(window)
 
-    # Switch to Evaluation
     window.switch_page(3)
     eval_panel = window.evaluation_panel
+    eval_panel.update_panel()
 
-    # Check widgets exist (Matrix and Metrics Table are now separate/in
-    # different layout)
-    assert isinstance(eval_panel.matrix_widget, QWidget)
-    assert isinstance(eval_panel.metrics_table, QWidget)
-
-    # Check bottom tabs (Metrics Summary, Model Summary)
-    assert eval_panel.bottom_tabs.count() >= 2
+    assert eval_panel.last_application_query is not None
+    assert eval_panel.last_application_query.failed
+    assert (
+        eval_panel.last_application_query.message
+        == "Create a training plan before evaluating results."
+    )
+    assert (
+        eval_panel.last_application_query.diagnostics.get("exception_type")
+        == "PreconditionError"
+    )
+    assert eval_panel.model_combo.count() == 1
+    assert eval_panel.model_combo.currentText() == "No Data Available"
+    assert eval_panel.run_combo.count() == 0
+    assert eval_panel.plot_stack.currentIndex() == 1
     assert eval_panel.bottom_tabs.tabText(0) == "Metrics Summary"
     assert eval_panel.bottom_tabs.tabText(1) == "Model Summary"
 
     window.close()
 
 
-def test_visualization_panel_init(qtbot, study):
-    """Test VisualizationPanel initialization and tab loading."""
+def test_visualization_page_empty_state_uses_command_blocked_reason(qtbot, study):
+    """Visualization page should render backend blocked-state truth."""
     window = MainWindow(study)
     qtbot.addWidget(window)
 
-    # Switch to Visualization
     window.switch_page(4)
     viz_panel = window.visualization_panel
+    viz_panel.update_panel()
 
-    # Check tabs exist (Saliency Map, Topographic Map, Spectrogram, 3D Plot)
-    assert viz_panel.tabs.count() >= 4
+    assert viz_panel.last_application_query is not None
+    assert viz_panel.last_application_query.failed
+    assert (
+        viz_panel.last_application_query.message
+        == "Create epochs, complete training, or configure saliency before "
+        "opening visualization views."
+    )
+    assert (
+        viz_panel.last_application_query.diagnostics.get("exception_type")
+        == "PreconditionError"
+    )
+    assert viz_panel.plan_combo.count() == 1
+    assert viz_panel.plan_combo.currentText() == "Select a plan"
+    assert viz_panel.run_combo.count() == 0
     assert viz_panel.tabs.tabText(0) == "Saliency Map"
     assert viz_panel.tabs.tabText(1) == "Spectrogram"
     assert viz_panel.tabs.tabText(2) == "Topographic Map"
-
-    # Check if widgets inside tabs are initialized
-    assert isinstance(viz_panel.tab_map, QWidget)
-    assert isinstance(viz_panel.tab_topo, QWidget)
+    current_widget = cast(Any, viz_panel.tabs.currentWidget())
+    assert current_widget.error_label.isHidden() is False
+    assert (
+        current_widget.error_label.text()
+        == "Error: Create epochs, complete training, or configure saliency "
+        "before opening visualization views."
+    )
 
     window.close()

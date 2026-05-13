@@ -81,15 +81,20 @@ def test_weak_test_name_guard_flags_product_initialization_names(tmp_path):
         """
 def test_visualization_panel_initialization():
     pass
+
+
+def test_evaluation_panel_init():
+    pass
 """,
         encoding="utf-8",
     )
 
     violations = check_weak_test_names(tmp_path)
 
-    assert len(violations) == 1
+    assert len(violations) == 2
     assert "test_visualization_panel_initialization" in violations[0]
     assert "command/result/state semantics" in violations[0]
+    assert "test_evaluation_panel_init" in violations[1]
 
 
 def test_weak_test_name_guard_allows_behavior_specific_names(tmp_path):
