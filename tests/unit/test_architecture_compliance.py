@@ -2,6 +2,7 @@ from tests.architecture_compliance import (
     check_backend_facade_test_usage,
     check_product_runtime_backend_facade_usage,
     check_product_success_backend_facade_tests,
+    check_product_success_controller_lookup_assertions,
     check_product_success_direct_study_state_tests,
     check_product_success_legacy_fallback_tests,
     check_ui_capability_gated_controller_readiness,
@@ -376,6 +377,46 @@ def test_walkthrough(test_app):
     )
 
     assert check_product_success_direct_study_state_tests(tmp_path) == []
+
+
+def test_product_success_controller_lookup_guard_flags_direct_lookup_assertion(
+    tmp_path,
+):
+    path = tmp_path / "tests" / "integration" / "ui" / "test_panel_binding.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_controller_resolution(mock_study):
+    panel = TrainingPanel(parent=parent)
+    assert panel.controller is not None
+    mock_study.get_controller.assert_any_call("training")
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_product_success_controller_lookup_assertions(tmp_path)
+
+    assert len(violations) == 1
+    assert "study.get_controller() lookup" in violations[0]
+    assert "assert_not_called" in violations[0]
+
+
+def test_product_success_controller_lookup_guard_allows_negative_boundary_assertion(
+    tmp_path,
+):
+    path = tmp_path / "tests" / "integration" / "ui" / "test_panel_binding.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_injected_controller_is_used(main_window):
+    panel = TrainingPanel(controller=training_controller, parent=main_window)
+    assert panel.controller is training_controller
+    main_window.study.get_controller.assert_not_called()
+""",
+        encoding="utf-8",
+    )
+
+    assert check_product_success_controller_lookup_assertions(tmp_path) == []
 
 
 def test_direct_backend_service_execute_guard_flags_ui_bypass(tmp_path):

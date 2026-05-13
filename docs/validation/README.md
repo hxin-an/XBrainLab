@@ -246,6 +246,20 @@ Import redesign, and no answer UI redesign.
 | `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 13:52:36 UTC+08:00`. Includes full ruff, basedpyright, architecture, startup smoke, UI baseline, UI dialog acceptance, UI unit suite, and real-data IO. | Fast engineering dashboard is green after this checkpoint. | Product complete, release approval, or human Windows acceptance. | Human-observable desktop smoke remains required before release claims. |
 | `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS. | Canonical docs build strictly and the diff has no whitespace errors after this checkpoint record. | Runtime behavior. | Re-run after future docs edits. |
 
+## 2026-05-13 UI Integration Controller-Evidence Checkpoint
+
+This slice kept UX work separate: no Data Import UX redesign, no Match Labels / Review and
+Import redesign, and no answer UI redesign.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/ui/test_ui_integration.py tests/integration/ui/test_panel_controller_binding.py -q` | `7 passed`. | UI integration launch/navigation and TrainingPanel event wiring now use a real empty `Study()` or explicit injected controllers instead of blessing legacy `Study.get_controller()` resolution as success. | Human desktop acceptance, Data Import UX, or full zero-controller UI. | Continue migrating remaining mock-heavy UI integration checks case by case. |
+| `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run python tests/architecture_compliance.py` | `78 passed` / `Architecture compliant!`. | Architecture guard now rejects positive `study.get_controller()` lookup assertions in product-success integration tests while allowing explicit `assert_not_called()` boundary checks. | Semantic proof for every integration test setup pattern. | Keep setup-only mocks separate from product-success assertions. |
+| Product-success controller-lookup assertion scan: `rg -n "get_controller\\.(assert_any_call\|assert_called\|assert_called_once\|assert_called_once_with\|assert_called_with)" tests/integration/backend tests/integration/io tests/integration/pipeline tests/integration/ui` | No matches. | Product-success integration suites no longer positive assert direct controller lookup as success evidence. | Controller use inside explicit product bootstrap or mock setup. | Keep positive controller-lookup assertions out of integration/product evidence. |
+| Focused `poetry run ruff check <changed Python files>` / `poetry run basedpyright <changed Python files>` | PASS / `0 errors, 0 warnings, 0 notes`. | Changed Python files are lint/type clean. | Full repo quality by itself. | Run broader gates before branch closure. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 16:04:52 UTC+08:00`. Includes full ruff, basedpyright, architecture, startup smoke, UI baseline, UI dialog acceptance, UI unit suite, and real-data IO. | Fast engineering dashboard is green after this checkpoint. | Product complete, release approval, or human Windows acceptance. | Keep human-observable desktop smoke separate. |
+| `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS. | Canonical docs build strictly and the diff has no whitespace errors after this checkpoint record. | Documentation readability by itself; readability is judged separately in the final score. | Keep checkpoint records concise so validation history stays readable. |
+
 ## BackendFacade Retirement Map
 
 2026-05-12 physical removal status:

@@ -1,76 +1,20 @@
-import os
-import sys
-from unittest.mock import MagicMock
-
 import pytest
-import torch
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QWidget
 
-# Ensure XBrainLab is in path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
+from XBrainLab.backend.study import Study
 from XBrainLab.ui.main_window import MainWindow
 
 
 @pytest.fixture
-def mock_study():
-    """Mock the backend Study object."""
-    study = MagicMock()
-
-    # Mock study.model_holder
-    study.model_holder = MagicMock()
-    study.model_holder.target_model.__name__ = "TestModel"
-
-    # Mock trainer and training plans
-    study.trainer = MagicMock()
-    mock_plan = MagicMock()
-    mock_plan.get_name.return_value = "TestPlan"
-    mock_plan.model_holder.target_model.__name__ = "TestModel"
-    mock_plan.record = {"test_acc": 0.85, "val_acc": 0.80, "train_acc": 0.90}
-    mock_plan.get_plans.return_value = []
-
-    # Configure plan properties needed by EvaluationController.get_model_summary_str
-    mock_plan.dataset.get_training_data.return_value = (
-        torch.randn(4, 1, 20, 100),
-        None,
-    )
-    mock_plan.dataset.get_epoch_data().get_model_args.return_value = {}
-    mock_plan.model_holder.get_model.return_value = MagicMock()
-    mock_plan.option.bs = 4
-    mock_plan.option.get_device.return_value = "cpu"
-
-    study.trainer.get_training_plan_holders.return_value = [mock_plan]
-
-    # Mock epoch data
-    study.epoch_data = MagicMock()
-    study.epoch_data.get_channel_names.return_value = ["C3", "C4", "Cz"]
-
-    # Mock saliency params
-    study.get_saliency_params.return_value = {}
-
-    # Mock lists to be empty by default to comply with InfoPanel logic
-    study.loaded_data_list = []
-    study.preprocessed_data_list = []
-
-    # Configure shared mock controller behavior
-    mock_ctrl = MagicMock()
-    mock_ctrl.get_loaded_data_list.return_value = []
-    mock_ctrl.get_preprocessed_data_list.return_value = []
-    mock_ctrl.get_plans.return_value = []
-    mock_ctrl.has_datasets.return_value = False
-    mock_ctrl.has_model.return_value = False
-    mock_ctrl.has_training_option.return_value = False
-    mock_ctrl.validate_ready.return_value = False  # Should be False if empty
-
-    study.get_controller.return_value = mock_ctrl
-
-    return study
+def study():
+    """Return a real empty Study for UI integration startup/navigation checks."""
+    return Study()
 
 
-def test_mainwindow_launch(qtbot, mock_study):
+def test_mainwindow_launch(qtbot, study):
     """Test that MainWindow launches without error."""
-    window = MainWindow(mock_study)
+    window = MainWindow(study)
     qtbot.addWidget(window)
 
     # Check window title and visibility
@@ -80,9 +24,9 @@ def test_mainwindow_launch(qtbot, mock_study):
     window.close()
 
 
-def test_navigation(qtbot, mock_study):
+def test_navigation(qtbot, study):
     """Test navigation between main panels."""
-    window = MainWindow(mock_study)
+    window = MainWindow(study)
     qtbot.addWidget(window)
     window.show()
 
@@ -108,9 +52,9 @@ def test_navigation(qtbot, mock_study):
     window.close()
 
 
-def test_evaluation_panel_init(qtbot, mock_study):
+def test_evaluation_panel_init(qtbot, study):
     """Test EvaluationPanel initialization and tab loading."""
-    window = MainWindow(mock_study)
+    window = MainWindow(study)
     qtbot.addWidget(window)
 
     # Switch to Evaluation
@@ -130,9 +74,9 @@ def test_evaluation_panel_init(qtbot, mock_study):
     window.close()
 
 
-def test_visualization_panel_init(qtbot, mock_study):
+def test_visualization_panel_init(qtbot, study):
     """Test VisualizationPanel initialization and tab loading."""
-    window = MainWindow(mock_study)
+    window = MainWindow(study)
     qtbot.addWidget(window)
 
     # Switch to Visualization

@@ -147,6 +147,13 @@ PRODUCT_SUCCESS_LEGACY_FALLBACK_SYMBOLS = (
     "get_legacy_controller_from_study",
     "run_legacy_controller_fallback",
 )
+PRODUCT_SUCCESS_CONTROLLER_LOOKUP_ASSERTIONS = (
+    "assert_any_call",
+    "assert_called",
+    "assert_called_once",
+    "assert_called_once_with",
+    "assert_called_with",
+)
 WEAK_TEST_NAME_PATTERNS = (
     "accepted",
     "no_crash",
@@ -273,6 +280,15 @@ def check_architecture(root_dir: str) -> int:
     if product_success_study_state_violations:
         print("\nProduct Success Direct Study State Test Violations Found:")
         for violation in product_success_study_state_violations:
+            print(f" - {violation}")
+        return 1
+
+    controller_lookup_test_violations = (
+        check_product_success_controller_lookup_assertions(Path(root_dir))
+    )
+    if controller_lookup_test_violations:
+        print("\nProduct Success Controller Lookup Assertion Violations Found:")
+        for violation in controller_lookup_test_violations:
             print(f" - {violation}")
         return 1
 
@@ -591,6 +607,32 @@ def check_product_success_direct_study_state_tests(root_dir: Path) -> list[str]:
             "diagnostics or a command-owned object source instead."
             for call in visitor.study_method_calls
         )
+    return violations
+
+
+def check_product_success_controller_lookup_assertions(root_dir: Path) -> list[str]:
+    """Return integration tests that bless direct Study controller lookup."""
+    violations: list[str] = []
+
+    for relative_dir in PRODUCT_SUCCESS_BACKEND_FACADE_TEST_DIRS:
+        test_dir = root_dir / relative_dir
+        if not test_dir.exists():
+            continue
+        for py_file in test_dir.rglob("*.py"):
+            source = py_file.read_text(encoding="utf-8")
+            try:
+                tree = ast.parse(source, filename=str(py_file))
+            except SyntaxError:
+                continue
+            visitor = _ProductSuccessControllerLookupAssertionVisitor()
+            visitor.visit(tree)
+            violations.extend(
+                f"{py_file.relative_to(root_dir)}:{call.lineno} asserts "
+                "study.get_controller() lookup as product-success evidence; "
+                "use injected controller wiring, ApplicationService / Command API, "
+                "or an explicit assert_not_called boundary instead."
+                for call in visitor.violations
+            )
     return violations
 
 
@@ -1308,6 +1350,21 @@ class _ProductSuccessStudyStateVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
+class _ProductSuccessControllerLookupAssertionVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.violations: list[ast.Call] = []
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if (
+            _call_name(node.func) in PRODUCT_SUCCESS_CONTROLLER_LOOKUP_ASSERTIONS
+            and isinstance(node.func, ast.Attribute)
+            and _expression_mentions_get_controller(node.func.value)
+        ):
+            self.violations.append(node)
+            return
+        self.generic_visit(node)
+
+
 class _ControllerStudyGetControllerVisitor(ast.NodeVisitor):
     def __init__(self) -> None:
         self.violations: list[ast.Call] = []
@@ -1339,6 +1396,15 @@ def _expression_mentions_study(node: ast.AST) -> bool:
     return any(
         (isinstance(child, ast.Name) and child.id in study_names)
         or (isinstance(child, ast.Attribute) and child.attr == "study")
+        for child in ast.walk(node)
+    )
+
+
+def _expression_mentions_get_controller(node: ast.AST) -> bool:
+    if isinstance(node, ast.Attribute) and node.attr == "get_controller":
+        return True
+    return any(
+        isinstance(child, ast.Attribute) and child.attr == "get_controller"
         for child in ast.walk(node)
     )
 

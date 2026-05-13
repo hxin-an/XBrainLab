@@ -1,6 +1,4 @@
-"""
-Integration tests ensuring UI Panels correctly respond to Controller events.
-"""
+"""Integration tests ensuring UI panels respond to injected controller events."""
 
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
@@ -17,50 +15,51 @@ from XBrainLab.ui.panels.training.panel import TrainingPanel
 
 
 class TestPanelControllerBinding:
-    """Test UI <-> Controller wiring."""
+    """Test UI <-> controller event wiring without legacy Study lookup evidence."""
 
     @pytest.fixture
-    def mock_study(self):
-        return MagicMock(spec=Study)
+    def training_controller(self):
+        controller = MagicMock(spec=TrainingController)
+        controller.validate_ready.return_value = False
+        return controller
 
     @pytest.fixture
-    def training_panel(self, qtbot, mock_study):
+    def dataset_controller(self):
+        return MagicMock()
+
+    @pytest.fixture
+    def preprocess_controller(self):
+        return MagicMock()
+
+    @pytest.fixture
+    def training_panel(
+        self,
+        qtbot,
+        training_controller,
+        dataset_controller,
+        preprocess_controller,
+    ):
         parent = cast(Any, QWidget())
-        parent.study = mock_study
+        parent.study = MagicMock(spec=Study)
+        parent.study.get_controller = MagicMock(
+            side_effect=AssertionError("legacy Study controller lookup is not allowed"),
+        )
 
-        # Setup specific returns for get_controller
-        training_ctrl = MagicMock(spec=TrainingController)
-        dataset_ctrl = MagicMock()  # Spec not strictly needed for basic checks
-
-        def get_ctrl_side_effect(name):
-            if name == "training":
-                return training_ctrl
-            if name == "dataset":
-                return dataset_ctrl
-            return MagicMock()
-
-        mock_study.get_controller.side_effect = get_ctrl_side_effect
-
-        # Initialize
-        panel = TrainingPanel(parent=parent)
+        panel = TrainingPanel(
+            controller=training_controller,
+            dataset_controller=dataset_controller,
+            preprocess_controller=preprocess_controller,
+            parent=parent,
+        )
         qtbot.addWidget(panel)
         return panel
 
-    def test_training_start_event_updates_ui(self, training_panel, mock_study):
+    def test_training_start_event_updates_ui(self, training_panel):
         """Test 'training_started' event updates sidebar."""
-        controller = training_panel.controller
-
-        # Spy on sidebar
         training_panel.sidebar = MagicMock()
-
-        # Simulate 'training_started'
-        # The bridge connects to _on_training_started
-        # We manually trigger the callback to verify logic,
-        # NOT the Qt signal capability (Qtbot handles that but mocking signal emission is complex)
 
         training_panel._on_training_started()
 
-        # Verify sidebar was notified
         training_panel.sidebar.on_training_started.assert_called_once()
         assert "started" in training_panel.log_text.toPlainText()
 
@@ -92,7 +91,11 @@ class TestPanelControllerBinding:
             event_name="training_updated",
         )
 
-    def test_controller_resolution(self, training_panel, mock_study):
-        """Verify panel correctly resolved the controller from study."""
-        assert training_panel.controller is not None
-        mock_study.get_controller.assert_any_call("training")
+    def test_uses_injected_controller_without_study_lookup(
+        self,
+        training_panel,
+        training_controller,
+    ):
+        """Panel event wiring should use injected controllers, not Study lookup."""
+        assert training_panel.controller is training_controller
+        training_panel.main_window.study.get_controller.assert_not_called()
