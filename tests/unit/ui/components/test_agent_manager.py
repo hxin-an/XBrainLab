@@ -344,6 +344,70 @@ class TestAgentManagerMethods:
         assert "command_name" not in visible
         assert manager.chat_panel.status_label.text() == "No data loaded"
 
+    def test_montage_channel_names_use_query_state_before_legacy(self, qtbot):
+        """Real Study montage dialog channels come from ApplicationService state."""
+        from XBrainLab.backend.application import QueryStateCommand
+        from XBrainLab.backend.study import Study
+        from XBrainLab.ui.components.agent_manager import AgentManager
+
+        main_window = cast(Any, QMainWindow())
+        main_window.ai_btn = MagicMock()
+        qtbot.addWidget(main_window)
+        manager = cast(Any, AgentManager(main_window, Study()))
+        manager._legacy_montage_channel_names_for_dialog = MagicMock(
+            side_effect=AssertionError("legacy channel fallback should not run"),
+        )
+
+        query_result = SimpleNamespace(
+            failed=False,
+            diagnostics={"state": {"epoch": {"channel_names": ["C3", "C4", 7]}}},
+        )
+        with patch(
+            "XBrainLab.ui.components.agent_manager.execute_application_command",
+            return_value=query_result,
+        ) as execute_command:
+            channels = manager._montage_channel_names_for_dialog()
+
+        assert channels == ["C3", "C4", "7"]
+        manager._legacy_montage_channel_names_for_dialog.assert_not_called()
+        execute_command.assert_called_once()
+        command = execute_command.call_args.args[1]
+        assert isinstance(command, QueryStateCommand)
+        assert command.query == "state"
+        assert execute_command.call_args.kwargs == {"refresh": False}
+
+    def test_montage_channel_query_failure_blocks_without_legacy_fallback(self, qtbot):
+        """Real Study query failure is visible and does not read legacy Study state."""
+        from XBrainLab.backend.study import Study
+        from XBrainLab.ui.components.agent_manager import AgentManager
+
+        main_window = cast(Any, QMainWindow())
+        main_window.ai_btn = MagicMock()
+        qtbot.addWidget(main_window)
+        manager = cast(Any, AgentManager(main_window, Study()))
+        manager.handle_user_input = MagicMock()
+        manager._legacy_montage_channel_names_for_dialog = MagicMock(
+            side_effect=AssertionError("legacy channel fallback should not run"),
+        )
+        query_result = SimpleNamespace(
+            failed=True,
+            message="state query failed",
+            diagnostics={},
+        )
+
+        with patch(
+            "XBrainLab.ui.components.agent_manager.execute_application_command",
+            return_value=query_result,
+        ):
+            channels = manager._montage_channel_names_for_dialog()
+
+        assert channels is None
+        manager._legacy_montage_channel_names_for_dialog.assert_not_called()
+        assert main_window.statusBar().currentMessage() == (
+            "Montage setup blocked: state query failed"
+        )
+        manager.handle_user_input.assert_called_once_with("Montage Selection Failed.")
+
 
 class _FakeAgentController(QObject):
     response_ready = pyqtSignal(str, str)

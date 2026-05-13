@@ -353,6 +353,20 @@ guards are real progress but do not imply full zero-controller UI or human Windo
 | `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `100 passed`. | Docs did not trip current-truth overclaim guards, and the architecture guard suite remains green. | Human desktop acceptance or full zero-controller UI. | Continue keeping target-state language out of current architecture summaries. |
 | `git diff --check` | PASS. | Docs diff is whitespace clean. | Content completeness by itself. | Pair future docs readability edits with a quick stale-link / claim-boundary scan. |
 
+## 2026-05-14 AgentManager Montage Query Evidence Checkpoint
+
+This assistant UI test slice protects the montage dialog channel-name path. Real `Study` contexts
+must use `QueryStateCommand(query="state")`; query success must not fall back to
+`study.epoch_data`, and query failure must surface a blocked message instead of reading legacy
+state.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/components/test_agent_manager.py::TestAgentManagerMethods::test_montage_channel_names_use_query_state_before_legacy tests/unit/ui/components/test_agent_manager.py::TestAgentManagerMethods::test_montage_channel_query_failure_blocks_without_legacy_fallback -q` | `2 passed`. | AgentManager montage channel lookup uses command/query truth before legacy fallback, and query failure is UI-visible. | Full montage picker UX or human desktop acceptance. | Add a human click-through artifact before claiming assistant-driven montage setup is release-ready. |
+| `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/components/test_agent_manager.py -q` | `34 passed`. | Existing AgentManager UI behavior remains green after adding montage query evidence. | Local LLM long-session runtime. | Pair with local runtime smoke when touching model execution. |
+| Focused `ruff check` / `ruff format --check` / `basedpyright` on `tests/unit/ui/components/test_agent_manager.py` | PASS / PASS / `0 errors, 0 warnings, 0 notes`. | The test addition is lint, format, and type clean. | Runtime behavior by itself. | Keep assistant UI tests focused on visible state and command/query truth. |
+| `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `git diff --check` | `Architecture compliant!` / `100 passed` / PASS. | Architecture and whitespace guards remain green. | Human acceptance or full zero-controller UI. | Continue classifying legacy assistant paths as mock/legacy only unless a real product path still needs cleanup. |
+
 ## Reality-Gap Audit
 
 當 human walkthrough 發現 dashboard / automated smoke 沒抓到的問題時，不能只修單點 bug。
