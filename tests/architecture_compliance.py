@@ -170,6 +170,9 @@ MCP_EXACT_EVIDENCE_TEST_DIRS = (
     Path("tests/unit/mcp"),
     Path("tests/integration/mcp"),
 )
+AGENT_TOOL_SURFACE_EXACT_EVIDENCE_TEST_FILES = (
+    Path("tests/unit/llm/tools/test_application_surface.py"),
+)
 DOC_CURRENT_TRUTH_FILES = (
     Path("docs/current.md"),
     Path("docs/index.md"),
@@ -373,6 +376,15 @@ def check_architecture(root_dir: str) -> int:
     if mcp_weak_assertion_violations:
         print("\nMCP Weak Response Assertion Violations Found:")
         for violation in mcp_weak_assertion_violations:
+            print(f" - {violation}")
+        return 1
+
+    agent_tool_surface_violations = check_agent_tool_surface_weak_result_assertions(
+        Path(root_dir)
+    )
+    if agent_tool_surface_violations:
+        print("\nAgent Tool Surface Weak Result Assertion Violations Found:")
+        for violation in agent_tool_surface_violations:
             print(f" - {violation}")
         return 1
 
@@ -850,7 +862,7 @@ def check_mcp_weak_response_assertions(root_dir: Path) -> list[str]:
                 tree = ast.parse(source, filename=str(py_file))
             except SyntaxError:
                 continue
-            visitor = _MCPWeakResponseAssertionVisitor()
+            visitor = _GenericNonNoneAssertionVisitor()
             visitor.visit(tree)
             violations.extend(
                 f"{py_file.relative_to(root_dir)}:{name_node.lineno} uses "
@@ -860,6 +872,31 @@ def check_mcp_weak_response_assertions(root_dir: Path) -> list[str]:
                 "instead."
                 for name_node in visitor.violations
             )
+    return violations
+
+
+def check_agent_tool_surface_weak_result_assertions(root_dir: Path) -> list[str]:
+    """Return agent tool-surface tests that use generic non-None result assertions."""
+    violations: list[str] = []
+
+    for relative_file in AGENT_TOOL_SURFACE_EXACT_EVIDENCE_TEST_FILES:
+        py_file = root_dir / relative_file
+        if not py_file.exists():
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+        visitor = _GenericNonNoneAssertionVisitor()
+        visitor.visit(tree)
+        violations.extend(
+            f"{relative_file}:{name_node.lineno} uses generic non-None "
+            f"agent tool result assertion on {name_node.id!r}; assert "
+            "ToolCommandResult shape, command name, raw command result, "
+            "state truth, and blocked reason semantics instead."
+            for name_node in visitor.violations
+        )
     return violations
 
 
@@ -895,7 +932,7 @@ def _docs_line_has_claim_boundary(lower_line: str) -> bool:
     return any(token.lower() in lower_line for token in DOC_CLAIM_BOUNDARY_TOKENS)
 
 
-class _MCPWeakResponseAssertionVisitor(ast.NodeVisitor):
+class _GenericNonNoneAssertionVisitor(ast.NodeVisitor):
     def __init__(self) -> None:
         self.violations: list[ast.Name] = []
 

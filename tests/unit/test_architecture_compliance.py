@@ -1,4 +1,5 @@
 from tests.architecture_compliance import (
+    check_agent_tool_surface_weak_result_assertions,
     check_backend_facade_test_usage,
     check_docs_current_truth_overclaims,
     check_llm_direct_study_state_reads,
@@ -125,6 +126,44 @@ def test_mcp_response_shape(server):
     )
 
     assert check_mcp_weak_response_assertions(tmp_path) == []
+
+
+def test_agent_tool_surface_guard_flags_non_none_tool_result(tmp_path):
+    path = tmp_path / "tests" / "unit" / "llm" / "tools" / "test_application_surface.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_tool_command_result_exists(study):
+    result = execute_application_tool_command(study, "query_state", {})
+    assert result is not None
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_agent_tool_surface_weak_result_assertions(tmp_path)
+
+    assert len(violations) == 1
+    assert "generic non-None agent tool result assertion" in violations[0]
+    assert "ToolCommandResult shape" in violations[0]
+
+
+def test_agent_tool_surface_guard_allows_exact_tool_result_shape(tmp_path):
+    path = tmp_path / "tests" / "unit" / "llm" / "tools" / "test_application_surface.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_tool_command_result_shape(study):
+    result = _tool_command_result(
+        execute_application_tool_command(study, "query_state", {})
+    )
+    assert result.ok is True
+    assert result.command_name == "query_state"
+    assert result.raw_result["status"] == "ok"
+""",
+        encoding="utf-8",
+    )
+
+    assert check_agent_tool_surface_weak_result_assertions(tmp_path) == []
 
 
 def test_docs_current_truth_guard_flags_product_complete_overclaim(tmp_path):
