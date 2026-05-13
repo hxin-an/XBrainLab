@@ -103,18 +103,36 @@ def _eeg_event_order_review(
     if label_rows == event_count:
         status = "ready"
         summary = f"{matched} label rows match {event_count} selected EEG events."
-    else:
+        next_action = "Confirm the target event selection."
+    elif event_count > label_rows:
+        difference = event_count - label_rows
+        noun = "event" if difference == 1 else "events"
+        verb = "has" if difference == 1 else "have"
         status = "needs_review"
         summary = (
-            f"{matched} rows match; "
-            f"{review['unlabeled_eeg_events']} EEG events unlabeled; "
-            f"{review['unmatched_label_rows']} label rows unmatched."
+            f"{difference} selected EEG {noun} {verb} no label "
+            f"({label_rows} label rows, {event_count} selected events)."
+        )
+        next_action = (
+            "Uncheck extra target events or choose a label field with more rows."
+        )
+    else:
+        difference = label_rows - event_count
+        noun = "row" if difference == 1 else "rows"
+        verb = "has" if difference == 1 else "have"
+        status = "needs_review"
+        summary = (
+            f"{difference} label {noun} {verb} no selected EEG event "
+            f"({label_rows} label rows, {event_count} selected events)."
+        )
+        next_action = (
+            "Select more target events or check whether the label file has extra rows."
         )
     review.update(
         {
             "status": status,
             "summary": summary,
-            "next_action": "Confirm the target event or adjust the label file.",
+            "next_action": next_action,
         }
     )
     return review

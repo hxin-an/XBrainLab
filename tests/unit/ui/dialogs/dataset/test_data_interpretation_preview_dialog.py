@@ -1045,7 +1045,8 @@ def test_match_labels_eeg_event_order_shows_target_event_check(qtbot):
     assert "768" in visible_text
     assert "288 selected EEG events" in visible_text
     assert "282 label rows" in visible_text
-    assert "6 unlabeled EEG events" in visible_text
+    assert "6 selected EEG events have no label" in visible_text
+    assert "Uncheck extra target events or choose another label field" in visible_text
     assert "6 EEG events excluded" in visible_text
     assert "Label file needs conversion" not in visible_text
     assert visible_text.count("Check:") == 1

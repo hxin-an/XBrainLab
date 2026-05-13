@@ -320,7 +320,7 @@ def _semantic_for_event(stats: dict[str, Any]) -> dict[str, str]:
             "bucket": "not_used",
             "use_as": "Exclude bad trials",
             "reason": "Rejected / artifact trial",
-            "evidence": "Artifact-like event description",
+            "evidence": "Artifact text",
         }
     if _description_has_any(
         descriptions,
@@ -330,28 +330,28 @@ def _semantic_for_event(stats: dict[str, Any]) -> dict[str, str]:
             "bucket": "not_used",
             "use_as": "Ignore",
             "reason": "System / boundary marker",
-            "evidence": "Boundary-like event description",
+            "evidence": "Boundary/system text",
         }
     if _description_has_any(descriptions, ("trial start", "starttrial", "start trial")):
         return {
             "bucket": "not_used",
             "use_as": "Trial timing",
             "reason": "Trial start marker",
-            "evidence": "Trial-start event description",
+            "evidence": "Trial-start text",
         }
     class_name = _class_like_description(descriptions)
     if class_name:
         return {
             "bucket": "candidate",
             "use_as": "Class label",
-            "evidence": "Class-like event description",
+            "evidence": "Class-like text",
             "class_name": class_name,
         }
     return {
         "bucket": "not_used",
         "use_as": "Review",
         "reason": "Event role needs review",
-        "evidence": "Event role needs review",
+        "evidence": "Needs review",
     }
 
 
@@ -368,9 +368,9 @@ def _apply_count_pattern_evidence(
     if not pattern:
         return
 
-    evidence = "Repeated group"
+    evidence = "Repeated count"
     if pattern.get("timing_code"):
-        evidence += "; timing match"
+        evidence += " + timing"
     for code in pattern["candidate_codes"]:
         semantic = semantics_by_code.get(code)
         if not semantic or semantic.get("bucket") == "candidate":
@@ -392,7 +392,7 @@ def _apply_count_pattern_evidence(
                 "bucket": "not_used",
                 "use_as": "Trial timing",
                 "reason": "Count matches candidate label group",
-                "evidence": "Matches candidate total",
+                "evidence": "Matches class total",
             }
         )
 
@@ -542,11 +542,11 @@ def _evidence_text(
     details: list[str] = []
     counts = list(file_counts.values())
     if len(counts) > 1 and len(set(counts)) == 1:
-        details.append("stable count")
+        details.append("same count/file")
     elif len(counts) > 1:
-        details.append("count differs")
+        details.append("count varies/file")
     if missing_files:
-        details.append("missing in " + ", ".join(missing_files))
+        details.append("missing " + ", ".join(missing_files))
     return "; ".join([base, *details])
 
 

@@ -138,25 +138,25 @@ def preview_payload(method: str) -> dict[str, Any]:
                     "event_code": "769",
                     "use_as": "Class label",
                     "event_count": 72,
-                    "evidence": "Occurs as one of four balanced label events",
+                    "evidence": "Repeated count + timing",
                 },
                 {
                     "event_code": "770",
                     "use_as": "Class label",
                     "event_count": 70,
-                    "evidence": "Occurs as one of four balanced label events",
+                    "evidence": "Repeated count + timing",
                 },
                 {
                     "event_code": "771",
                     "use_as": "Class label",
                     "event_count": 70,
-                    "evidence": "Occurs as one of four balanced label events",
+                    "evidence": "Repeated count + timing",
                 },
                 {
                     "event_code": "772",
                     "use_as": "Class label",
                     "event_count": 70,
-                    "evidence": "Occurs as one of four balanced label events",
+                    "evidence": "Repeated count + timing",
                 },
             ],
             "not_used_events": [
@@ -164,13 +164,13 @@ def preview_payload(method: str) -> dict[str, Any]:
                     "event_code": "768",
                     "use_as": "Trial timing",
                     "event_count": 288,
-                    "evidence": "Count matches candidate trial total",
+                    "evidence": "Matches class total",
                 },
                 {
                     "event_code": "1023",
                     "use_as": "Artifact",
                     "event_count": 6,
-                    "evidence": "Rejected trial marker",
+                    "evidence": "Artifact text",
                 },
             ],
         },
@@ -190,7 +190,13 @@ def placement_reviews() -> dict[str, dict[str, Any]]:
             "unlabeled_eeg_events": 6,
             "unmatched_label_rows": 0,
             "excluded_eeg_events": 6,
-            "summary": "282 rows match; 6 EEG events unlabeled; 0 label rows unmatched.",
+            "summary": (
+                "6 selected EEG events have no label "
+                "(282 label rows, 288 selected events)."
+            ),
+            "next_action": (
+                "Uncheck extra target events or choose a label field with more rows."
+            ),
         },
         "time_field": {
             "method": "time_field",

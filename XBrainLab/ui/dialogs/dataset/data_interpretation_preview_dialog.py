@@ -3172,11 +3172,26 @@ class DataInterpretationPreviewDialog(BaseDialog):
             matched = min(label_rows, target_count)
             parts.append(f"{matched} matched")
             if target_count > label_rows:
-                parts.append(f"{target_count - label_rows} unlabeled EEG events")
+                difference = target_count - label_rows
+                event_word = "event" if difference == 1 else "events"
+                verb = "has" if difference == 1 else "have"
+                parts.append(f"{difference} selected EEG {event_word} {verb} no label")
             if label_rows > target_count:
-                parts.append(f"{label_rows - target_count} unmatched label rows")
+                difference = label_rows - target_count
+                row_word = "row" if difference == 1 else "rows"
+                verb = "has" if difference == 1 else "have"
+                parts.append(
+                    f"{difference} label {row_word} {verb} no selected EEG event"
+                )
         if excluded:
             parts.append(f"{excluded} EEG events excluded")
+        if label_rows is not None and target_count is not None:
+            if target_count > label_rows:
+                parts.append(
+                    "Uncheck extra target events or choose another label field"
+                )
+            elif label_rows > target_count:
+                parts.append("Select more target events or check the label file")
         return " · ".join(parts)
 
     def _active_label_row_count(self) -> int | None:

@@ -155,7 +155,7 @@ def test_build_interpretation_candidate_uses_inside_eeg_labels_instead_of_carrie
     ] == ["769", "770"]
     assert candidate.internal_event_preview["candidate_label_events"][0][
         "evidence"
-    ].startswith("Repeated group")
+    ].startswith("Repeated count")
     assert [
         row["event_code"] for row in candidate.internal_event_preview["not_used_events"]
     ] == ["768", "1023"]
@@ -610,10 +610,10 @@ def test_build_interpretation_candidate_uses_real_internal_event_evidence(
     assert list(rows_by_code) == ["769", "770", "772"]
     assert rows_by_code["769"]["event_count"] == 108
     assert rows_by_code["769"]["coverage"] == "3/3 files"
-    assert "stable count" in rows_by_code["769"]["evidence"]
+    assert "same count/file" in rows_by_code["769"]["evidence"]
     assert rows_by_code["772"]["coverage"] == "2/3 files"
     assert rows_by_code["772"]["missing_files"] == ["A03T.gdf"]
-    assert "missing in A03T.gdf" in rows_by_code["772"]["evidence"]
+    assert "missing A03T.gdf" in rows_by_code["772"]["evidence"]
     assert other_by_code["768"]["use_as"] == "Trial timing"
     assert other_by_code["1023"]["reason"] == "Event role needs review"
     assert candidate.class_map == {}
@@ -717,6 +717,61 @@ def test_build_interpretation_candidate_reviews_multiple_event_order_targets(
     assert review["selected_eeg_events"] == 4
     assert review["matched"] == 4
     assert review["excluded_eeg_events"] == 1
+
+
+def test_build_interpretation_candidate_explains_event_order_count_mismatch(
+    tmp_path,
+    monkeypatch,
+):
+    from scipy.io import savemat
+
+    label_path = tmp_path / "A01T.mat"
+    savemat(label_path, {"classlabel": [1, 2, 1, 2]})
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "768": {"count": 5, "description": "trial start"},
+                "769": {"count": 2, "description": "769"},
+                "770": {"count": 2, "description": "770"},
+            }
+        },
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            eeg_files=["/data/A01T.gdf"],
+            label_carriers=[str(label_path)],
+            bids={"is_bids": False, "events_files": []},
+        ),
+        choices={
+            "label_carrier_choices": {
+                str(label_path): {
+                    "label_field": "classlabel",
+                    "target_event_codes": ["768"],
+                    "placement_method": "eeg_event",
+                }
+            }
+        },
+    )
+
+    review = candidate.label_carrier_plan[0]["placement_review"]
+
+    assert review["status"] == "needs_review"
+    assert review["label_rows"] == 4
+    assert review["selected_eeg_events"] == 5
+    assert review["unlabeled_eeg_events"] == 1
+    assert review["unmatched_label_rows"] == 0
+    assert (
+        review["summary"]
+        == "1 selected EEG event has no label (4 label rows, 5 selected events)."
+    )
+    assert (
+        review["next_action"]
+        == "Uncheck extra target events or choose a label field with more rows."
+    )
 
 
 def test_build_interpretation_candidate_reviews_event_code_placement(
@@ -840,5 +895,5 @@ def test_build_interpretation_candidate_uses_format_neutral_event_pattern(
     other_by_code = {row["event_code"]: row for row in preview["not_used_events"]}
 
     assert candidate_codes == ["11", "12"]
-    assert preview["candidate_label_events"][0]["evidence"].startswith("Repeated group")
+    assert preview["candidate_label_events"][0]["evidence"].startswith("Repeated count")
     assert other_by_code["1"]["use_as"] == "Trial timing"

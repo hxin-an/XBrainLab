@@ -1,6 +1,6 @@
 # Data Pipeline Architecture
 
-最後更新：`2026-05-12`
+最後更新：`2026-05-13`
 
 ## 可信度
 
@@ -113,22 +113,30 @@ label import 目前集中在 `LabelImportService`。
 ### Internal Event Evidence Preview
 
 Data Import 的 `Labels inside EEG files` preview 目前不使用單一 dataset 或格式專屬 code
-table 來硬猜 class label。後端先讀 EEG 內建 event / annotation，再用下列 evidence 分群：
+table 來硬猜 class label。後端先讀 EEG 內建 event / annotation，再用下列 evidence 分群；
+UI 的 `Evidence` 欄只顯示短句，完整判斷規則以這裡為準。
 
-- 文字語意：若 event description 不是純數字，且包含 `left`、`right`、`hand`、`foot`、
-  `feet`、`tongue`、`target`、`non-target`、`nontarget`、`standard`、`deviant`
-  或 `rest`，可列為 `Class label` candidate。
-- Count pattern：只從尚未有明確語意、目前仍是 `Review` 的 events 中找候選群組。每個
-  code 的 per-file count 必須完全一致，且每個 file 至少 `5` 次；該 code 必須出現在至少
-  `total_files - 1` 個 selected EEG file；同一 count 的 code 數量必須在 `2` 到 `12`
-  之間。若多個群組符合，選 code 數量最多者；數量相同時選 per-file count 較高者。
-- Timing evidence：若某個非 candidate event 在每個 file 的 count 等於 candidate 群組所有
-  code 的 count 總和，將該 event 標為 `Trial timing`，reason 為
-  `Count matches candidate label group`。
-- Other events：未進 candidate 的 event 留在 `Other EEG events`。只有 description 明確包含
-  `artifact`、`artefact`、`reject`、`bad` 時才標為 artifact；明確包含 `boundary`、`edge`、
-  `new segment`、`sync`、`system` 時才標為 ignore；明確包含 `trial start`、`starttrial` 或
-  `start trial` 時才標為 trial timing。否則維持 `Review`。
+| Evidence | 來源 | 用途 |
+| --- | --- | --- |
+| `Class-like text` | event description 包含 `left`、`right`、`hand`、`foot`、`feet`、`tongue`、`target`、`non-target`、`nontarget`、`standard`、`deviant` 或 `rest`。 | 建議列為 `Class label` candidate。 |
+| `Repeated count` | 尚未有明確語意且仍是 `Review` 的 events；每個 code 的 per-file count 完全一致、每 file 至少 `5` 次、出現在至少 `total_files - 1` 個 selected EEG file；同一 count 的 code 數量在 `2` 到 `12` 之間。 | 建議這組 repeated event codes 可能是 class labels。 |
+| `Repeated count + timing` | `Repeated count` 成立，且另外找到一個 event 的 count 等於 candidate group 的 count 總和。 | 建議 repeated group 是 labels，另一個 event 是 trial timing。 |
+| `Matches class total` | 非 candidate event 的 count 等於 candidate group 總數。 | 建議列為 `Trial timing`，不當 class label。 |
+| `Artifact text` / `Boundary/system text` / `Trial-start text` | description 明確包含 artifact、boundary/system 或 trial-start 類字詞。 | 放到 not-used / timing 類別。 |
+| `same count/file`、`count varies/file`、`missing <file>` | per-file count 和 coverage。 | 顯示 coverage 是否穩定，幫助人工確認。 |
+
+若多個 count group 符合，後端選 code 數量最多的群組；數量相同時選 per-file count 較高者。
+未進 candidate 的 event 留在 `Other EEG events`；若沒有明確 artifact / boundary / trial-start
+語意，維持 `Review`，由使用者確認。
+
+Loaded label files 的 `EEG event order` target suggestion 使用同一批 event evidence，但只作為
+UI 預選，不代表已確認：
+
+1. 若 recipe / 使用者 choice 已保存 `target_event_codes`，優先使用保存值。
+2. 若保存了非 `trial order` 的 anchor，使用該 anchor。
+3. 若 `Class label` candidate group 的總 count 等於 label rows，預選整組 candidate events。
+4. 否則若某個非 excluded event count 等於 label rows，預選該 event。
+5. 仍無法判斷時不預選，UI 要求使用者選 `Target EEG events`。
 
 這套規則只能產生可審查建議。GDF、EDF、BrainVision、EEGLAB、FIF 等來源都應走同一套
 evidence contract；特定資料集若需要 code semantics，應由 sidecar、recipe、preset 或使用者
