@@ -37,6 +37,7 @@
 | UI navigation refresh 測試是否仍靠 mock call / 猜 index | [UI refresh duplicate-test cleanup](#2026-05-14-ui-refresh-duplicate-test-cleanup-checkpoint) | 重複的 mock-heavy integration test 已移除；replacement coverage 檢查 exact `switch_page()` coordinator delegation、target-panel scope、navigation checked state、command/observer refresh routing。 | Human UI acceptance 或每個 panel render content。 |
 | Headless UI smoke 是否仍只看 object exists | [Headless UI exact state evidence](#2026-05-14-headless-ui-exact-state-evidence-checkpoint) | `test_ui_headless.py` now checks MainWindow class, exact nav labels/check state, exact page switch state, and exact empty `QueryStateCommand(data_summary)` diagnostics. | Human Windows desktop acceptance, visual UX, or loaded-data workflow. |
 | pytest-qt UI integration 是否仍只看 widget exists / tab count >= | [pytest-qt UI exact contract evidence](#2026-05-14-pytest-qt-ui-exact-contract-evidence-checkpoint) | `test_e2e_qtbot.py` now checks exact navigation checked-state transitions, AI button contract, stack panel order/types, Evaluation/Visualization tab labels, and product InfoPanelService wiring. | Human UX approval, screenshot quality, or full data workflow. |
+| Real UI tools smoke 是否仍靠 substring / non-`None` | [Real-tools UI exact state evidence](#2026-05-14-real-tools-ui-exact-state-evidence-checkpoint) | `test_real_tools_e2e.py` now uses deterministic FIF data and checks exact list/load/info/preprocess/config/UI messages plus exact ApplicationService state deltas. | Full agent benchmark, training quality, or human UI acceptance. |
 | Evaluation panel 是否還會顯示 stale metrics | [Evaluation display command evidence](#2026-05-13-evaluation-display-command-evidence-checkpoint) | service-owned average metrics 缺失時清空 stale display。 | human evaluation UX acceptance。 |
 | Data Import runtime / agent-MCP schema 是否仍可引用 | [Data Import runtime integration](#2026-05-13-data-import-runtime-integration-checkpoint) | command/service/dialog contracts 和 agent/MCP baseline。 | final Match Labels / Review and Import UX。 |
 | 測試是否能擋 facade / legacy fallback 回流 | [Backend test hygiene inventory](#backend-test-hygiene-inventory) 和 architecture guard checkpoints | 已知 forbidden product-success evidence 被 guard。 | semantic proof for every lower-level test。 |
@@ -177,6 +178,20 @@ the product `InfoPanelService` wiring used by `MainWindow`.
 | --- | --- | --- | --- | --- |
 | `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration/ui/test_e2e_qtbot.py -q` | `17 passed`. | pytest-qt UI integration checks exact visible navigation/panel/dock/service contract instead of object existence or loose counts. | Human Windows desktop acceptance, final UX approval, or real data workflow. | Add screenshot or human evidence separately when visual quality is in scope. |
 | `poetry run ruff check tests/integration/ui/test_e2e_qtbot.py` / `poetry run basedpyright tests/integration/ui/test_e2e_qtbot.py` | PASS / PASS. | Tightened test file is lint/type clean. | Runtime behavior outside this UI contract slice. | Keep expected labels synchronized with intentional UI copy changes. |
+| `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run mkdocs build --strict` / `git diff --check` | `Architecture compliant!` / `97 passed` / PASS / PASS. | The test-evidence change did not weaken architecture or docs gates. | Product completion. | Re-run dashboard only for broader checkpoint validation. |
+
+## 2026-05-14 Real-Tools UI Exact State Evidence Checkpoint
+
+This test-quality slice tightened `tests/integration/ui/test_real_tools_e2e.py`. The test now
+uses deterministic synthetic FIF input and checks exact real-tool messages plus ApplicationService
+state for raw file metadata, data-list counts/files, model selection, training configuration, and
+UI panel-switch request formatting. It no longer relies on substring checks or
+`training_option is not None`.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration/ui/test_real_tools_e2e.py -q` | `1 passed`. | Real UI tool chain evidence checks deterministic data and exact command-state deltas through ApplicationService. | Tool-call benchmark accuracy, training quality, or human UI acceptance. | Keep real-tool string contracts aligned with structured command result semantics. |
+| `poetry run ruff check tests/integration/ui/test_real_tools_e2e.py` / `poetry run basedpyright tests/integration/ui/test_real_tools_e2e.py` | PASS / PASS. | Tightened real-tools UI smoke is lint/type clean. | Runtime breadth beyond this single synthetic FIF workflow. | Add representative real-data cases separately. |
 | `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run mkdocs build --strict` / `git diff --check` | `Architecture compliant!` / `97 passed` / PASS / PASS. | The test-evidence change did not weaken architecture or docs gates. | Product completion. | Re-run dashboard only for broader checkpoint validation. |
 
 ## 2026-05-14 Agent Pipeline-State Exact Prompt Evidence Checkpoint
