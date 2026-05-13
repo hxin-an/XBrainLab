@@ -84,6 +84,31 @@ launcher
 -> apply loads exactly selected EEG files and loaded label carriers
 ```
 
+## Human Windows Desktop Acceptance Gap
+
+Automated gates are green enough for engineering health, but they still do not close desktop
+acceptance. Before release or product-complete claims, a human Windows run must record the real
+screen, branch/commit, launch method, selected data, expected result, observed result, and any
+blocked step.
+
+| Manual path | Must prove | Current blocker / missing artifact |
+| --- | --- | --- |
+| Launcher -> MainWindow visible | Launcher starts the intended repo/app, MainWindow appears on the active monitor, and geometry is usable. | Startup smoke exists; human Windows click-through notes and screenshots are still missing. |
+| Data Import folder/file -> Preview -> Review and Import -> Apply | Selected EEG files and selected label carriers are visibly distinct from scan location and exactly the selected scope is applied. | Automated wizard screenshots exist; human selected-scope acceptance is still missing. |
+| Preprocess -> Epoch A01T/A02T/A03T style data | Epoch command returns, UI remains responsive, no blocking success modal hides the app, and displayed state matches command result. | Offscreen real-GDF smoke exists; human Windows rerun after UX changes is still missing. |
+| Dataset split -> training readiness | Split action generates non-empty train/validation/test summary and unlocks training readiness through command state. | Backend/ApplicationService evidence exists; human desktop observation of the visible training gate is still missing. |
+| Training confirmation -> running / stopped status | Start Training requires confirmation, starts the command-backed run, and UI status/progress does not rely on stale controller echo. | Product smokes exist; long human run and interruption/recovery notes are still missing. |
+| Assistant local runtime unavailable / available | Missing local LLM is visible and non-crashing; available local model can complete a normal command-state interaction. | Local runtime smokes exist; long desktop assistant session and unavailable-state click-through are still missing. |
+
+Minimum acceptance record:
+
+- branch and commit;
+- Windows version, launch command/shortcut, Qt platform details when available;
+- dataset path/category without leaking private data;
+- screenshots or artifact paths for each major step;
+- expected result versus observed result;
+- explicit blocker if any step cannot be completed.
+
 2026-05-10 automated coverage now includes focused backend tests for external `label_sources`,
 selected scope vs scan location, structured action items, dialog primary-action visibility,
 left-side Cancel / right-side wizard navigation behavior, no nested table scroll regression,
