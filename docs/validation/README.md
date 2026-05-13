@@ -16,7 +16,7 @@
 
 | Gate | 最近可信結果 | 用途 | 不能取代 |
 | --- | --- | --- | --- |
-| Fast quality dashboard | 2026-05-13 21:51:50 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
+| Fast quality dashboard | 2026-05-13 22:19:04 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
 | Architecture compliance | 最近 checkpoint `Architecture compliant!`，guard unit `90 passed` | 阻擋已知 `BackendFacade`、legacy fallback、direct state、positive controller lookup、docs overclaim 等 regression。 | runtime semantic proof for every possible path。 |
 | Focused UI integration | `test_ui_refresh.py`、`test_ui_integration.py`、`test_panel_controller_binding.py` -> `8 passed` | MainWindow launch/navigation/tab-refresh 和 injected controller event wiring 不再把 legacy lookup 當成功證據。 | full zero-controller UI 或人工桌面驗收。 |
 | Product smokes / real tools | guarded UI product smokes、epoch runtime、real-tools suites recently PASS | product evidence 轉向 `QueryStateCommand` / command diagnostics / UI-visible state。 | 所有 integration tests 都已清成 product evidence。 |
@@ -361,6 +361,7 @@ Legacy/fallback helpers remain allowed for explicit compatibility boundaries.
 | `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_mcp_direct_study_state_guard_flags_service_study_progress_read tests/unit/test_architecture_compliance.py::test_mcp_direct_study_state_guard_allows_legacy_helper -q` | `2 passed` | The guard rejects direct MCP `service.study.trainer` reads and allows explicit legacy/fallback helper boundaries. | External MCP client certification. | Keep adding examples when MCP gains new job/status surfaces. |
 | `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `90 passed` | Architecture guard unit coverage remains green with MCP direct Study-state protection included. | Runtime behavior by itself. | Pair guard changes with runtime tests for every removed bypass. |
 | Focused `ruff` / `basedpyright` / `ruff format --check`, plus `poetry run python tests/architecture_compliance.py` | PASS / `0 errors, 0 warnings, 0 notes` / PASS / `Architecture compliant!` | The checker and real source tree remain lint/type/format clean and current source has no MCP direct mutable Study-state status/progress violation. | Human desktop acceptance or full MCP certification. | Run docs/diff before checkpoint commit. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 22:19:04 UTC+08:00`; UI unit suite `1137 passed`, real-data IO `31 passed, 8 warnings`. | Fast engineering dashboard remains green after the MCP direct Study-state guard checkpoint. | Product complete, human Windows acceptance, or long local-model session. | Treat dashboard as health evidence only. |
 
 ## 2026-05-13 Data Import Runtime Integration Checkpoint
 
