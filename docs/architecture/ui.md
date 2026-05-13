@@ -1,6 +1,6 @@
 # UI 目前架構
 
-最後更新：`2026-05-13`
+最後更新：`2026-05-14`
 
 ## 範圍
 
@@ -37,6 +37,28 @@ command truth。不要只用 `rg get_controller` 的數量判斷架構好壞。
 | Readonly display fallback | Evaluation / Visualization / Preprocess / Dataset panel display helpers | real `Study` 已優先用 typed command/query gate；no-service mock context 才讀 controller lists/plans/trainers。 | 不能宣稱所有 lower-level integration tests 都已改成 query truth。 |
 | Assistant UI wiring | `AgentManager` | status / montage channel defaults 走 state query；legacy montage apply/channel fallback 只給 mock / legacy context。 | 不能宣稱 local LLM 長時間桌面 session 已人工驗收。 |
 | Aggregate info | `InfoPanelService` | product runtime 不自行訂閱 controller events，資料列表透過 `QueryStateCommand(data_lists)`。 | 這不代表其他 panel observer adapters 已全部消失。 |
+
+### Source 對照表
+
+這張表把常見 `rg` 命中翻成現況判讀。它的用途是避免把所有
+`controller` 字樣都當成同一種問題，也避免把 quarantine 誤寫成 target 已完成。
+
+| Source hit | 目前分類 | 為什麼目前可接受或仍有 gap | 下一個可移除方向 |
+| --- | --- | --- | --- |
+| `legacy_controller_bootstrap.get_legacy_workflow_controllers_for_panel_bootstrap(...)` | panel constructor adapter | `MainWindow.init_panels()` 仍要把五個 workflow controllers 傳給既有 panel constructor。這不是 action / readiness / refresh truth。 | panel constructor 改吃 view model、service adapter 或 observer subscription token 後，移除 bootstrap controller bundle。 |
+| `application_capabilities.run_legacy_controller_fallback(...)` | mock / legacy gate | real `Study` 會丟 `LegacyControllerFallbackUnavailableError`，所以 product runtime 不會 silent fallback 到 controller mutation。 | 保留到 mock-heavy UI tests 和 standalone legacy contexts 改成 service-backed fixture。 |
+| Dataset / Preprocess / Training `_legacy_*` helpers | compatibility helper | helper 名稱讓 fallback 和 product command path 可讀性分開；architecture guard 阻擋 product method 直接呼叫 fallback gate 或直接 controller mutation。 | 將剩餘 mock-heavy tests 改成 command/state evidence，再逐步刪 helper。 |
+| Dataset / Preprocess / Evaluation / Visualization display getters | readonly render fallback | real `Study` 先走 `QueryStateCommand`、`EvaluateCommand`、`VisualizeCommand` 或 `SaliencyCommand`；controller getter 只在 command helper 回傳 `None` 的 mock / no-service context 使用。 | 把 lower-level UI/component tests 的資料來源改成 typed command result 或 view model。 |
+| `refresh_coordinator.refresh_after_*()` 呼叫 `update_panel()` / `update_info_panel()` / `refresh_backend_status()` | refresh surface | 這些 call 是 UI repaint entry，不是 backend truth。post-command refresh 由 `CommandResult.changed_state` 決定範圍，known observer event 由 owner panel 進 coordinator。 | 讓 panel `update_panel()` 內部完全讀 query/view-model，不再需要 controller render fallback。 |
+| `InfoPanelService` controller reads | aggregate mock fallback | real `Study` 資料列表透過 `QueryStateCommand(data_lists)`；controller reads 只在 mock / legacy context。 | 測試改注入 query result 後，可移除 direct controller fallback。 |
+| `AgentManager` montage fallback / status reads | assistant UI adapter | product status 讀 `ApplicationService.get_state()` / capabilities；montage channels 讀 `QueryStateCommand(state)`，legacy montage apply 只給 mock / legacy context。 | assistant montage flow 改成完整 command-backed dialog service 後，移除 fallback channel/apply helper。 |
+| `plot_figure_window.py`、`export_saliency_dialog.py` 的 `plan.get_plans()` | lower-level domain object presentation | 這是在已取得 trainer/plan 後讀 domain object，不是重新從 `Study` 或 controller 判斷 product readiness。 | 若 evaluation/visualization view model 穩定，可把圖表資料也收進 typed result。 |
+| `product_language.py` 的 `has_datasets` / `has_model` / `has_training_option` | state snapshot language | 這些是 `ApplicationState` 欄位，不是 controller readiness method。 | 保持只吃 state snapshot，避免未來直接接回 controller。 |
+
+目前判斷：UI refresh / readiness 的 product truth 已經靠 command result、capability policy 和
+query state 收斂，但還不是 target 的 full zero-controller UI。剩下的主要差距是 panel
+constructor 還需要 controller adapter、部分 display fallback 為了 mock / legacy tests 保留、
+以及人工 Windows desktop acceptance 尚未補上。
 
 ## 主要位置
 

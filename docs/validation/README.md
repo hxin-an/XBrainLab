@@ -33,6 +33,7 @@
 | Agent pipeline stage prompt / label tests 是否仍只看 non-empty | [Agent pipeline-state exact prompt evidence](#2026-05-14-agent-pipeline-state-exact-prompt-evidence-checkpoint) | Stage config tests 檢查每個 stage 的 prompt markers、action/blocked guidance、exact label map，且 architecture guard 擋回 generic non-empty string assertion。 | local-model session quality、tool-call benchmark accuracy、or assistant UX acceptance。 |
 | LLM parser tests 是否仍只看 parsed object exists | [LLM parser exact parse-result evidence](#2026-05-14-llm-parser-exact-parse-result-evidence-checkpoint) | Parser tests 檢查 exact `(tool_name, parameters)` list，且 architecture guard 擋回 generic `parsed/result is not None`。 | Full local-model parsing quality、tool-call benchmark accuracy、or assistant UX acceptance。 |
 | LLM tool/debug tests 是否仍只看 registry 非空 | [LLM tool/debug exact registry evidence](#2026-05-14-llm-tooldebug-exact-registry-evidence-checkpoint) | Tool/debug tests 檢查 exact agent tool-name set、backend resolver class identity、debug calls 和 visualization figure type。 | Full agent runtime acceptance or local-model behavior。 |
+| UI controller hit 是否仍代表 product legacy path | [UI controller exception-map readability checkpoint](#2026-05-14-ui-controller-exception-map-readability-checkpoint) 和 [UI 目前架構](../architecture/ui.md) | Source 對照表區分 panel bootstrap、mock fallback、readonly render fallback、refresh surface、assistant adapter 和 lower-level domain object。 | Full zero-controller UI、human desktop acceptance、or runtime proof for every panel state。 |
 | Evaluation panel 是否還會顯示 stale metrics | [Evaluation display command evidence](#2026-05-13-evaluation-display-command-evidence-checkpoint) | service-owned average metrics 缺失時清空 stale display。 | human evaluation UX acceptance。 |
 | Data Import runtime / agent-MCP schema 是否仍可引用 | [Data Import runtime integration](#2026-05-13-data-import-runtime-integration-checkpoint) | command/service/dialog contracts 和 agent/MCP baseline。 | final Match Labels / Review and Import UX。 |
 | 測試是否能擋 facade / legacy fallback 回流 | [Backend test hygiene inventory](#backend-test-hygiene-inventory) 和 architecture guard checkpoints | 已知 forbidden product-success evidence 被 guard。 | semantic proof for every lower-level test。 |
@@ -87,6 +88,20 @@ current truth 以這些文件為準：
 - [planning/roadmap.md](../planning/roadmap.md)
 - [architecture/README.md](../architecture/README.md)
 - [validation/README.md](README.md)
+
+## 2026-05-14 UI Controller Exception-Map Readability Checkpoint
+
+This docs/readability slice did not change runtime behavior. It updated
+`docs/architecture/ui.md` so the remaining UI/controller hits are interpreted from source instead
+of being flattened into a single "legacy exists" claim. The page now separates panel constructor
+adapters, mock/legacy fallback gates, readonly display fallback, refresh surfaces, assistant UI
+adapters, lower-level domain-object presentation, and state-snapshot language.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| Source audit: controller/fallback/refresh symbol scan over `XBrainLab/ui` plus guard constants in `tests/architecture_compliance.py` | Confirmed the remaining hits are covered by the documented categories. | The architecture doc now gives a readable map for interpreting current controller exceptions. | Runtime behavior by itself, full zero-controller UI, or human desktop acceptance. | Keep the map updated whenever a fallback helper is removed or a new exception category appears. |
+| `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `97 passed`. | Existing architecture guards still reject known product-success fallback, controller lookup, direct state, stale render, and docs-overclaim patterns after the docs update. | Semantic proof for every panel state or every lower-level component test. | Add guard examples only when a new regression pattern is found. |
+| `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS. | Docs site builds and the docs-only diff is whitespace clean. | Content correctness without source review. | Pair future docs claims with source or runtime evidence. |
 
 ## 2026-05-14 Agent Pipeline-State Exact Prompt Evidence Checkpoint
 
