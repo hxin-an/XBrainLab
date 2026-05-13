@@ -40,6 +40,7 @@
 | ApplicationService workflow split 是否仍只看 non-empty | [ApplicationService exact split evidence](#2026-05-13-applicationservice-exact-split-evidence-checkpoint) | Core command-spine workflow 現在檢查 synthetic split summary 含 train/val/test count 與 audit payload。 | UI refresh acceptance、real-data breadth、or human desktop acceptance。 |
 | Real-tool chain 是否仍只看 dataset count | [Real-tool chain exact evidence](#2026-05-13-real-tool-chain-exact-evidence-checkpoint) | LLM real-tool A01T chain 現在檢查 exact epoch state、dataset split summary、tool result string 和 one-run training state。 | Tool-call benchmark accuracy、human assistant UX、or long local-model session。 |
 | UI product walkthrough 是否仍只看 dataset count | [UI product walkthrough exact-state evidence](#2026-05-13-ui-product-walkthrough-exact-state-evidence-checkpoint) | Offscreen user-facing walkthrough 現在檢查 exact epoch state 與 dataset split summary，而不是只看 dataset count。 | 不能支持 Human Windows desktop acceptance、visual UX approval、or 完整零 controller UI。 |
+| artifacts 是否仍是重複 evidence dump | [Artifact current-tree cleanup](#2026-05-13-artifact-current-tree-cleanup-checkpoint) | current tree 移除被 full dashboard / consolidated walkthrough / canonical wizard screenshots 覆蓋的短版或探索型 artifact。 | 不能支持 runtime correctness、human acceptance、or product completion。 |
 | Lower-level preprocess controller 測試是否仍只是 non-`None` | [Preprocess controller shape/event evidence](#2026-05-13-preprocess-controller-shapeevent-evidence-checkpoint) | Controller integration tests 會檢查 `Raw` object、signal/epoch shape、filter shape preservation、selected event code 和 reset history。 | Product command-spine success、UI refresh acceptance、or zero-controller UI architecture。 |
 | Synthetic preprocess validation 是否仍靠 random/no-crash | [Preprocess validation deterministic evidence](#2026-05-13-preprocess-validation-deterministic-evidence-checkpoint) | Synthetic preprocess tests now use a fixed fixture and assert resample event codes, epoch shape, operation history, and reset shape. | Real-data product acceptance、UI responsiveness、or all preprocess edge cases。 |
 | AgentManager montage 測試是否仍靠 `Study.epoch_data` side effect | [AgentManager montage command evidence](#2026-05-13-agentmanager-montage-command-evidence-checkpoint) | Montage picker 的 channel source 來自 `QueryStateCommand`，apply payload 以 `ApplyMontageCommand` 檢查 channels / positions / montage name。 | 不能支持 Human montage UX acceptance 或完整零 controller UI。 |
@@ -81,6 +82,25 @@ current truth 以這些文件為準：
 - [planning/roadmap.md](../planning/roadmap.md)
 - [architecture/README.md](../architecture/README.md)
 - [validation/README.md](README.md)
+
+## 2026-05-13 Artifact Current-Tree Cleanup Checkpoint
+
+This docs/artifact hygiene slice did not change runtime behavior or UX. It reduced current-tree
+artifact duplication by removing short, affected-case, guardrail-only, exploratory, or superseded
+artifact families while keeping the current evidence entrances: quality dashboard, full
+deterministic / primary / fallback evals, Data Import wizard screenshots, consolidated human-like
+walkthrough, MCP / launcher evidence, local ChatPanel pipeline/training walkthroughs, visualization
+render evidence, docs-site visual check, and Data Interpretation capability evidence.
+
+Removed artifact families remain recoverable from git history; they are not new negative evidence.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `git ls-files artifacts` / duplicate-hash audit / canonical-doc reference scan | Removed obsolete current-tree copies of `agent_evals/deterministic_changed`, `agent_evals/local_*_analysis_tools`, `agent_evals/local_*_guardrail_smoke`, `ui/chatpanel-local-workflow`, `ui/chatpanel-local-training-readiness`, `ui/data-source-entry-options`, `ui/smart-parser`, and legacy `ui/data-interpretation-*` replay files. Current canonical docs had no direct dependency on those deleted paths. | Artifact tree is easier to navigate and no longer keeps redundant historical slices as if they were current truth. | Runtime behavior, product completion, human Windows acceptance, or evidence validity for retained artifacts. | Keep future artifacts behind `artifacts/README.md` retention rules; do not create new screenshot families without an evidence purpose. |
+| `du -sh artifacts` after cleanup | `9.4M` current artifact tree. | Current evidence tree is smaller after duplicate/superseded family removal. | Repository size history or artifact generator output size. | Re-run generators only when the evidence itself changes, not just to fill deleted historical directories. |
+| `poetry run mkdocs build --strict` | PASS. | Docs site still builds strictly after artifact link/readability cleanup. | Runtime behavior or human acceptance. | Keep artifact paths in current docs limited to retained evidence entrances. |
+| `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `91 passed`. | Artifact cleanup wording did not weaken current architecture / docs overclaim guards. | Semantic proof for every retained artifact. | Continue pairing artifact pruning with claim-boundary docs. |
+| `git diff --check` / `git diff --cached --check` | PASS / PASS. | Working and staged diffs are whitespace clean. | Content correctness by itself. | Keep running both checks when using staged file removals plus unstaged docs edits. |
 
 ## Reality-Gap Audit
 

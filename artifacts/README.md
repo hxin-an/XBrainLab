@@ -15,6 +15,9 @@
 - 如果 artifact 和 current docs 衝突，先查 source / runtime，再更新 canonical docs 或重跑 artifact。
 - artifact 不應變成第二套文件系統；過期 handoff、被較完整 walkthrough 覆蓋的截圖族群、
   或可由 generator 重建的 duplicate snapshot，應保留在 git history，不長期留在 current tree。
+- current tree 只保留「需要被現在讀者判讀」的 evidence 入口；探索型、affected-case、
+  guardrail-only、或已被 full dashboard / consolidated walkthrough 覆蓋的 artifact，保留在
+  git history，不再保留一份目前副本。
 
 ## 主要 artifact family
 
@@ -28,6 +31,9 @@
 | `ui/data-import-wizard-steps/` | Data Import wizard review screenshots。 | final Match Labels / Review and Import UX，或 human Windows acceptance。 |
 | `launcher/` | Windows launcher / startup smoke。 | release approval 或 signed installer。 |
 | `docs-site/` | docs site visual check 截圖。 | 文件內容一定正確。 |
+| `ui/chatpanel-local-pipeline-chain/` | local ChatPanel 從 Data Interpretation 到 dataset 的 command-chain walkthrough。 | long human desktop local-model session。 |
+| `ui/chatpanel-local-training-completion/` | local ChatPanel 訓練、evaluation、visualization、saliency completion walkthrough。 | training quality 或 release approval。 |
+| `ui/visualization-render/` | offscreen VisualizationPanel render / blocked-3D evidence。 | interactive Windows 3D acceptance。 |
 
 ## 高價值入口
 
@@ -42,6 +48,9 @@
 | `data_interpretation/internal-event-evidence-A01T-A03T.json` | 想看 A01T/A02T/A03T internal-event evidence payload。 |
 | `ui/data-import-wizard-steps/README.md` | 想看目前 Data Import wizard 和 Match Labels placement mode 截圖索引。 |
 | `launcher/windows-launcher-walkthrough.md` | 想看 launcher smoke。 |
+| `ui/chatpanel-local-pipeline-chain/chatpanel-local-pipeline-chain-walkthrough.md` | 想看 local ChatPanel tool-chain evidence。 |
+| `ui/chatpanel-local-training-completion/chatpanel-local-training-completion-walkthrough.md` | 想看 local ChatPanel training completion evidence。 |
+| `ui/visualization-render/visualization-render-walkthrough.md` | 想看 VisualizationPanel render evidence。 |
 
 ## 保留 / 清理規則
 
@@ -59,6 +68,28 @@
 - 被更完整 walkthrough supersede 的短版 chatpanel 截圖族群。
 - 未被 current docs 引用、可由 script 重跑生成的 dated docs-site visual checkpoint。
 - exact duplicate splash / ready screenshots，除非該檔本身是 current artifact family 的入口。
+- affected-case / guardrail-only eval 子目錄，當 full deterministic / primary / fallback dashboard
+  已涵蓋相同 case 或更完整 suite。
+- 舊 Data Interpretation replay screenshots，當 canonical Data Import wizard screenshots 和
+  consolidated human-like walkthrough 已覆蓋目前要判讀的畫面。
+- exploratory smart-parser / sidebar option screenshots，除非它們被 current product docs 直接引用。
+
+## 最近清理
+
+2026-05-13 current-tree cleanup 已移除：
+
+- `agent_evals/deterministic_changed/`
+- `agent_evals/local_*_analysis_tools/`
+- `agent_evals/local_*_guardrail_smoke/`
+- `ui/chatpanel-local-workflow/`
+- `ui/chatpanel-local-training-readiness/`
+- `ui/data-source-entry-options/`
+- `ui/smart-parser/`
+- legacy `ui/data-interpretation-*` replay files
+
+這些檔案不是宣告作廢；它們仍可從 git history 找回。只是 current tree 不再保留
+被 full dashboard、canonical wizard screenshots、local pipeline/training walkthrough、
+或 consolidated human-like walkthrough 覆蓋的重複 evidence。
 
 ## 新 artifact 要寫清楚
 

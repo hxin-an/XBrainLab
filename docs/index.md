@@ -29,7 +29,7 @@ Phase 1A 剩下的是 zero-controller UI 距離、human desktop acceptance、以
 
 <div markdown>
 <span class="xlb-kicker">證據邊界</span>
-artifact 是 evidence，不是 current truth；claim 要回到 Current / Validation 判讀。
+artifact 是 current evidence 入口，不是第二套文件系統；claim 要回到 Current / Validation 判讀。
 </div>
 
 </div>
@@ -101,7 +101,9 @@ artifact 是 evidence，不是 current truth；claim 要回到 Current / Validat
 | `artifacts/launcher/windows-launcher-walkthrough.md` | Automated Windows launcher command/startup smoke。 | Human click-through release approval。 |
 
 Artifact governance lives in `artifacts/README.md`; artifacts are evidence outputs, not canonical
-truth. Current truth belongs in [current.md](current.md), architecture docs, and validation docs.
+truth. Current tree is intentionally pruned: short historical slices and duplicated screenshots
+belong in git history unless they are still needed for current evidence. Current truth belongs in
+[current.md](current.md), architecture docs, and validation docs.
 
 ## 目前工作主線
 
