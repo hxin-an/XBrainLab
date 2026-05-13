@@ -34,6 +34,7 @@
 | 測試是否能擋 facade / legacy fallback 回流 | [Backend test hygiene inventory](#backend-test-hygiene-inventory) 和 architecture guard checkpoints | 已知 forbidden product-success evidence 被 guard。 | semantic proof for every lower-level test。 |
 | Real-data IO 測試是否仍只證明 no-crash | [Real-Data IO shape-evidence](#2026-05-13-real-data-io-shape-evidence-checkpoint) | compact/public EEG fixtures 會檢查 loaded data 維度、非空內容、channel axis 對齊，以及 command import summary。 | scientific reproducibility、all possible external formats、or human Data Import acceptance。 |
 | Metadata pipeline 測試是否仍靠 random label / generic assertion | [Metadata real-data event evidence](#2026-05-13-metadata-real-data-event-evidence-checkpoint) | A01T metadata test 會檢查 raw shape、fixed filename parse、deterministic label round-trip、event shape、onset alignment 和 final event IDs。 | Data Import UX acceptance、all external label heuristics、or scientific validation。 |
+| Lower-level preprocess controller 測試是否仍只是 non-`None` | [Preprocess controller shape/event evidence](#2026-05-13-preprocess-controller-shapeevent-evidence-checkpoint) | Controller integration tests 會檢查 `Raw` object、signal/epoch shape、filter shape preservation、selected event code 和 reset history。 | Product command-spine success、UI refresh acceptance、or zero-controller UI architecture。 |
 | 能不能宣稱桌面 MVP 人工驗收 | [Human Windows Desktop Acceptance Gap](#human-windows-desktop-acceptance-gap) | 尚缺哪些 click-through / artifact。 | release approval。 |
 
 ## Evidence 能力邊界
@@ -178,6 +179,20 @@ alignment, and final event IDs are now asserted explicitly.
 | `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/io/test_metadata_integration.py -q` | `1 passed` | The metadata pipeline test now proves deterministic label-to-event replacement against a real GDF fixture instead of random/no-crash behavior. | Data Import UX acceptance, all external label heuristics, or scientific validation. | Continue replacing weak pipeline assertions only when the replacement checks real state or UI-visible results. |
 | Focused `ruff` / `basedpyright` / `ruff format --check` on `tests/integration/io/test_metadata_integration.py` | PASS / `0 errors, 0 warnings, 0 notes` / PASS | Changed test code is lint/type/format clean. | Runtime behavior by itself. | Keep deterministic tests preferred over random fixture generation. |
 | `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `91 passed` | Strengthened metadata evidence did not weaken architecture guard coverage. | Semantic proof outside guarded files. | Broaden guard scope only with concrete replacement behavior. |
+
+## 2026-05-13 Preprocess Controller Shape/Event-Evidence Checkpoint
+
+This test-hygiene slice kept the boundary explicit: `tests/integration/controller/test_preprocess_controller.py`
+is lower-level controller evidence, not UI refresh or product command-spine acceptance. The suite now checks
+that controller data is a `Raw` wrapper, signal arrays are non-empty with the expected channel axis, filtering
+preserves shape while changing variance, epoch extraction creates a real `(n_events, 3)` matrix for the selected
+event code, and reset returns to raw data with cleared preprocess history.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/controller/test_preprocess_controller.py -q` | `4 passed` | Lower-level preprocess controller behavior is protected by shape/event/history assertions instead of generic `None` checks. | Product command-spine success, UI refresh acceptance, or zero-controller UI architecture. | Keep product-facing preprocess evidence in ApplicationService / command tests. |
+| Focused `ruff` / `basedpyright` / `ruff format --check` on `tests/integration/controller/test_preprocess_controller.py` | PASS / `0 errors, 0 warnings, 0 notes` / PASS | Changed test code is lint/type/format clean. | Runtime behavior by itself. | Continue keeping controller tests classified as lower-level contracts. |
+| `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `91 passed` | Strengthened controller evidence did not weaken architecture guard coverage. | Semantic proof outside guarded files. | Do not use this controller suite to justify product UI bypasses. |
 
 ## 2026-05-13 Docs Readability and UI Refresh Truth Checkpoint
 

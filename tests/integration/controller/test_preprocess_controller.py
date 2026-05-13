@@ -14,6 +14,7 @@ from XBrainLab.backend.application import (
     QueryStateCommand,
 )
 from XBrainLab.backend.controller.preprocess_controller import PreprocessController
+from XBrainLab.backend.load_data import Raw
 
 # Locate test data (relative to project root)
 TEST_DATA_DIR = os.path.abspath(
@@ -23,9 +24,23 @@ GDF_FILE = os.path.join(TEST_DATA_DIR, "A01T.gdf")
 EXPECTED_A01T_EVENTS = {"768", "769", "770", "771", "772"}
 
 
-def _first_data(controller: PreprocessController) -> Any:
+def _first_data(controller: PreprocessController) -> Raw:
     data = controller.get_first_data()
-    assert data is not None
+    assert isinstance(data, Raw)
+    return data
+
+
+def _assert_signal_data_shape(raw: Raw) -> Any:
+    data: Any = raw.get_mne().get_data()
+    assert data.ndim in (2, 3)
+    assert data.size > 0
+    if data.ndim == 2:
+        assert data.shape[0] == raw.get_nchan()
+        assert data.shape[1] > 0
+    else:
+        assert data.shape[0] > 0
+        assert data.shape[1] == raw.get_nchan()
+        assert data.shape[2] > 0
     return data
 
 
@@ -53,14 +68,15 @@ class TestPreprocessController:
         assert preprocess_controller.has_data()
 
         # Get raw data stats before filter
-        data_before = _first_data(preprocess_controller).get_mne().get_data()
+        data_before = _assert_signal_data_shape(_first_data(preprocess_controller))
         std_before = np.std(data_before)
 
         # Apply strict bandpass (e.g. 8-12Hz Alpha)
         preprocess_controller.apply_filter(l_freq=8, h_freq=12)
 
         # Get data after
-        data_after = _first_data(preprocess_controller).get_mne().get_data()
+        data_after = _assert_signal_data_shape(_first_data(preprocess_controller))
+        assert data_after.shape == data_before.shape
         std_after = np.std(data_after)
 
         # Filtered data should have lower variance (removed other freqs)
@@ -85,9 +101,19 @@ class TestPreprocessController:
 
         assert preprocess_controller.is_epoched()
 
-        epochs = _first_data(preprocess_controller).get_mne()
+        epochs: Any = _first_data(preprocess_controller).get_mne()
         assert target_event in epochs.event_id
-        assert len(epochs.events) > 0
+        assert epochs.events.ndim == 2
+        assert epochs.events.shape[0] > 0
+        assert epochs.events.shape[1] == 3
+        assert set(np.unique(epochs.events[:, -1]).tolist()) == {
+            epochs.event_id[target_event]
+        }
+        epoch_data: Any = epochs.get_data()
+        assert epoch_data.ndim == 3
+        assert epoch_data.shape[0] == len(epochs.events)
+        assert epoch_data.shape[1] == _first_data(preprocess_controller).get_nchan()
+        assert epoch_data.shape[2] > 0
         assert epochs.tmax == 4.0
 
     def test_reset_preprocess(self, preprocess_controller):
@@ -100,15 +126,10 @@ class TestPreprocessController:
 
         preprocess_controller.reset_preprocess()
 
-        # History should be cleared (or just contain raw load info)
-        # Note: implementation of reset usually reverts to raw state
-        history = _first_data(preprocess_controller).get_preprocess_history()
-        # Since reset restores from loaded_data_list deepcopy, history should be reset
-        # Depending on if loaded data had history.
-        # Check against pure raw load
-
-        # Actually verify MNE object is raw again
-        assert _first_data(preprocess_controller).is_raw()
+        reset_data = _first_data(preprocess_controller)
+        assert reset_data.is_raw()
+        assert reset_data.get_preprocess_history() == []
+        _assert_signal_data_shape(reset_data)
 
     def test_sequential_pipeline(self, preprocess_controller):
         """Test multiple operations in sequence."""
@@ -129,3 +150,7 @@ class TestPreprocessController:
         preprocess_controller.apply_epoching(None, ["769"], 0, 1)
 
         assert preprocess_controller.is_epoched()
+        epoched = _first_data(preprocess_controller)
+        epoch_data = _assert_signal_data_shape(epoched)
+        epoched_mne: Any = epoched.get_mne()
+        assert epoch_data.shape[0] == len(epoched_mne.events)
