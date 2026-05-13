@@ -138,6 +138,21 @@ Removed artifact families remain recoverable from git history; they are not new 
 | `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `91 passed`. | Artifact cleanup wording did not weaken current architecture / docs overclaim guards. | Semantic proof for every retained artifact. | Continue pairing artifact pruning with claim-boundary docs. |
 | `git diff --check` / `git diff --cached --check` | PASS / PASS. | Working and staged diffs are whitespace clean. | Content correctness by itself. | Keep running both checks when using staged file removals plus unstaged docs edits. |
 
+## 2026-05-14 Artifact Current-Tree Second-Pass Cleanup Checkpoint
+
+This artifact hygiene slice did not change runtime behavior, backend semantics, or Data Import UX.
+It removed stale or duplicate evidence entrances from the current tree while preserving canonical
+evidence: root deterministic eval output, local primary/fallback model reports, the consolidated
+human-like walkthrough, MCP / launcher / visualization evidence, docs-site visual evidence, and a
+minimal Data Import wizard screenshot set.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| Artifact reference audit over current docs and artifact indexes | Removed stale `agent_evals/deterministic/latest.md`, short `ui/training-start-confirmation/` replay artifacts, and extra Data Import wizard status variants. | Current artifact tree no longer presents duplicate/stale evidence as current truth. | Runtime correctness, product completion, human Windows acceptance, or final Data Import UX approval. | Keep new screenshots behind `artifacts/README.md` retention rules. |
+| Data Import wizard retained set review | Retained one canonical screenshot per wizard step plus four Match Labels placement panels. | A reader can still inspect the current wizard flow without sorting through repeated status variants. | Full UX approval or exhaustive screenshot coverage for every wizard state. | Regenerate variants only for a targeted UX review and prune them after the review. |
+| `poetry run mkdocs build --strict` / `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | PASS / `Architecture compliant!` / `93 passed`. | Canonical docs still build strictly and architecture/doc guards stay green after artifact pruning. | Runtime behavior, screenshot freshness, or human desktop acceptance. | Re-run dashboard only when runtime artifacts need refreshing; it was skipped here to avoid unrelated `artifacts/quality/*` churn. |
+| `git diff --check` / `git diff --cached --check` / current-doc stale-path scan | PASS / PASS / no current-doc matches for pruned wizard variants or legacy replay paths. | The cleanup diff is whitespace clean and current docs no longer point readers to removed artifact variants. | Historical records may still mention old paths intentionally. | Keep historical references in records/worklog as provenance, not current artifact entrances. |
+
 ## Reality-Gap Audit
 
 當 human walkthrough 發現 dashboard / automated smoke 沒抓到的問題時，不能只修單點 bug。
@@ -211,10 +226,13 @@ Offscreen screenshots include:
 
 - `artifacts/ui/data-import-wizard-steps/01-choose-eeg-data.png`
 - `artifacts/ui/data-import-wizard-steps/02-load-labels-many.png`
-- `artifacts/ui/data-import-wizard-steps/03-review-metadata.png`
-- `artifacts/ui/data-import-wizard-steps/04-match-labels-internal-suggested-events-full.png`
-- `artifacts/ui/data-import-wizard-steps/04-match-labels-final-loaded-label-files.png`
-- `artifacts/ui/data-import-wizard-steps/05-review-and-import.png`
+- `artifacts/ui/data-import-wizard-steps/03-review-metadata-smart-parse.png`
+- `artifacts/ui/data-import-wizard-steps/04-match-labels-internal-eeg-labels.png`
+- `artifacts/ui/data-import-wizard-steps/match-label-placement-modes/eeg-event-order-full.png`
+- `artifacts/ui/data-import-wizard-steps/match-label-placement-modes/label-time-full.png`
+- `artifacts/ui/data-import-wizard-steps/match-label-placement-modes/label-interval-full.png`
+- `artifacts/ui/data-import-wizard-steps/match-label-placement-modes/label-event-code-full.png`
+- `artifacts/ui/data-import-wizard-steps/05-review-and-import-normal.png`
 
 ## 2026-05-13 Real-Data IO Shape-Evidence Checkpoint
 
