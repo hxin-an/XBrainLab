@@ -16,7 +16,7 @@
 
 | Gate | 最近可信結果 | 用途 | 不能取代 |
 | --- | --- | --- | --- |
-| Fast quality dashboard | 2026-05-13 23:20:52 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
+| Fast quality dashboard | 2026-05-14 00:11:43 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
 | Architecture compliance | 最近 checkpoint `Architecture compliant!`，guard unit `91 passed` | 阻擋已知 `BackendFacade`、legacy fallback、direct state、positive controller lookup、docs overclaim 等 regression。 | runtime semantic proof for every possible path。 |
 | Focused UI integration | `test_ui_refresh.py`、`test_ui_integration.py`、`test_panel_controller_binding.py` -> `8 passed` | MainWindow launch/navigation/tab-refresh 和 injected controller event wiring 不再把 legacy lookup 當成功證據。 | full zero-controller UI 或人工桌面驗收。 |
 | Product smokes / real tools | guarded UI product smokes、epoch runtime、real-tools suites recently PASS | product evidence 轉向 `QueryStateCommand` / command diagnostics / UI-visible state。 | 所有 integration tests 都已清成 product evidence。 |
@@ -314,6 +314,17 @@ after clicking through import, preprocess, epoch, split, configure, and dry-run 
 | `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/ui/test_product_walkthrough.py -q` | `4 passed` | The broader product walkthrough file remains green after exact-state assertions. | Complete desktop acceptance or full zero-controller UI. | Pair with human artifact when release claims are needed. |
 | Focused `ruff` / `basedpyright` / `ruff format --check` on `tests/integration/ui/test_product_walkthrough.py` | PASS / `0 errors, 0 warnings, 0 notes` / PASS | Changed UI test code is lint/type/format clean. | Runtime behavior by itself. | Keep exact UI smoke state aligned with ApplicationService query schema. |
 | `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `91 passed` | The UI product walkthrough rewrite did not weaken current architecture guards. | Human product acceptance. | Continue replacing weak UI assertions only with stronger UI-visible or command-state evidence. |
+
+## 2026-05-14 Fast Dashboard After Exact-Evidence Stack
+
+After the exact-evidence stack for ApplicationService workflow, real-data pipeline, checked-in
+GDF/MAT fixtures, public cross-source fixtures, real tools, and the UI product walkthrough, the
+fast quality dashboard was rerun from the current branch state. This refreshes engineering-health
+evidence only; it still does not close human Windows acceptance or full product completion.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-14 00:11:43 UTC+08:00`; UI unit suite `1137 passed`; real-data IO `31 passed, 8 warnings`. | Branch health remains green after the exact-evidence stack, including full ruff, basedpyright, architecture, startup, UI baseline/dialog/unit, and real-data IO. | Product complete, human Windows desktop acceptance, long local-model session, or scientific validation. | Keep human desktop acceptance and local-model session evidence separate. |
 
 ## 2026-05-13 Test Evidence Cleanup Fast Dashboard
 
