@@ -35,6 +35,7 @@
 | LLM tool/debug tests 是否仍只看 registry 非空 | [LLM tool/debug exact registry evidence](#2026-05-14-llm-tooldebug-exact-registry-evidence-checkpoint) | Tool/debug tests 檢查 exact agent tool-name set、backend resolver class identity、debug calls 和 visualization figure type。 | Full agent runtime acceptance or local-model behavior。 |
 | UI controller hit 是否仍代表 product legacy path | [UI controller exception-map readability checkpoint](#2026-05-14-ui-controller-exception-map-readability-checkpoint)、[UI bridge fallback cleanup](#2026-05-14-ui-training-bridge-fallback-cleanup-checkpoint)、[controller.study lookup guard](#2026-05-14-controllerstudy-lookup-guard-checkpoint) 和 [UI 目前架構](../architecture/ui.md) | Source 對照表區分 panel bootstrap、mock fallback、readonly render fallback、refresh surface、assistant adapter 和 lower-level domain object；Evaluation / Visualization training-event bridge 不再 fallback lookup training controller，guard 也不允許把 `controller.study.get_controller()` 藏在 legacy helper。 | Full zero-controller UI、human desktop acceptance、or runtime proof for every panel state。 |
 | UI navigation refresh 測試是否仍靠 mock call / 猜 index | [UI refresh duplicate-test cleanup](#2026-05-14-ui-refresh-duplicate-test-cleanup-checkpoint) | 重複的 mock-heavy integration test 已移除；replacement coverage 檢查 exact `switch_page()` coordinator delegation、target-panel scope、navigation checked state、command/observer refresh routing。 | Human UI acceptance 或每個 panel render content。 |
+| Headless UI smoke 是否仍只看 object exists | [Headless UI exact state evidence](#2026-05-14-headless-ui-exact-state-evidence-checkpoint) | `test_ui_headless.py` now checks MainWindow class, exact nav labels/check state, exact page switch state, and exact empty `QueryStateCommand(data_summary)` diagnostics. | Human Windows desktop acceptance, visual UX, or loaded-data workflow. |
 | Evaluation panel 是否還會顯示 stale metrics | [Evaluation display command evidence](#2026-05-13-evaluation-display-command-evidence-checkpoint) | service-owned average metrics 缺失時清空 stale display。 | human evaluation UX acceptance。 |
 | Data Import runtime / agent-MCP schema 是否仍可引用 | [Data Import runtime integration](#2026-05-13-data-import-runtime-integration-checkpoint) | command/service/dialog contracts 和 agent/MCP baseline。 | final Match Labels / Review and Import UX。 |
 | 測試是否能擋 facade / legacy fallback 回流 | [Backend test hygiene inventory](#backend-test-hygiene-inventory) 和 architecture guard checkpoints | 已知 forbidden product-success evidence 被 guard。 | semantic proof for every lower-level test。 |
@@ -148,6 +149,20 @@ refresh routing.
 | `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_main_window_sync.py tests/unit/ui/test_refresh_coordinator.py -q` | `38 passed`. | Replacement tests cover exact MainWindow navigation delegation and refresh coordinator scope without relying on the deleted weak integration test. | Human UI acceptance or visible panel content correctness. | Keep UI refresh claims tied to coordinator/state evidence, not generic mock calls. |
 | `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `97 passed`. | Removing the duplicate test did not weaken architecture guard coverage. | Semantic proof for every UI refresh path. | Add guard coverage only for new regression patterns. |
 | `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS. | Docs remain buildable and deletion diff is whitespace clean. | Runtime behavior. | Keep deleted weak tests documented when replacement coverage matters. |
+
+## 2026-05-14 Headless UI Exact State Evidence Checkpoint
+
+This test-quality slice tightened `tests/integration/ui/test_ui_headless.py` so the headless UI
+smoke no longer passes because the fixture and study merely exist. The test now asserts the product
+`MainWindow` type, exact five-panel navigation labels, checked-state transitions for Dataset ->
+Preprocess -> Training, and exact empty `QueryStateCommand(data_summary)` diagnostics from
+`ApplicationService`.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration/ui/test_ui_headless.py -q` | `3 passed`. | Headless MainWindow smoke has exact navigation and command-state assertions instead of object-existence checks. | Human Windows desktop acceptance, screenshot quality, or real loaded-data workflow. | Extend only with user-visible state assertions, not generic object checks. |
+| Focused `ruff check` / `basedpyright` on the changed test file | PASS / PASS. | The tightened UI smoke is lint/type clean. | Runtime behavior beyond the tested smoke. | Keep exact expected diagnostics synchronized with `ApplicationService` state contract. |
+| `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run mkdocs build --strict` / `git diff --check` | `Architecture compliant!` / `97 passed` / PASS / PASS. | The test-evidence change did not weaken architecture or docs gates. | Product completion. | Re-run dashboard only when broader artifact refresh is intended. |
 
 ## 2026-05-14 Agent Pipeline-State Exact Prompt Evidence Checkpoint
 
