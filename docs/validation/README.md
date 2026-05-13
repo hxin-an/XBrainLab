@@ -106,15 +106,16 @@ guidance. Architecture compliance now rejects generic non-empty string assertion
 ## 2026-05-14 LLM Parser Exact Parse-Result Evidence Checkpoint
 
 This test-quality slice did not change parser runtime behavior. It tightened
-`tests/unit/llm/test_parser.py` so valid JSON / alias / relaxed-code-block parser cases no longer
-pass because `CommandParser.parse(...)` returned a non-`None` object. The tests now assert the
-exact parsed `(tool_name, parameters)` list. Architecture compliance now rejects generic non-`None`
-parser assertions in this file.
+`tests/unit/llm/test_parser.py` and adjacent parser return-path coverage in
+`tests/unit/llm/test_misc_coverage.py` so valid JSON / alias / relaxed-code-block parser cases no
+longer pass because `CommandParser.parse(...)` returned a non-`None` object. The tests now assert
+the exact parsed `(tool_name, parameters)` list. Architecture compliance now rejects generic
+non-`None` parser assertions in these files.
 
 | Command / audit | Result | Claim supported | Claim not supported | Follow-up |
 | --- | --- | --- | --- | --- |
-| `poetry run pytest --capture=sys tests/unit/llm/test_parser.py -q` | `17 passed` | Parser tests assert exact command/parameter output for valid command shapes instead of object existence. | Full local-model parsing quality, tool-call benchmark accuracy, or assistant UX acceptance. | Keep additional parser cleanup tied to exact accepted/rejected shapes. |
-| Weak-evidence scan: `rg -n "assert .* is not None\|len\\(.+\\) > 0\|non-empty\|no crash\|no_crash\|does_not_crash" tests/unit/llm/test_parser.py` | No matches. | The targeted parser test file no longer contains the scanned weak assertion patterns. | Full LLM parser coverage. | Continue only where stronger exact parse expectations are available. |
+| `poetry run pytest --capture=sys tests/unit/llm/test_misc_coverage.py tests/unit/llm/test_parser.py -q` | `25 passed` | Parser tests and parser return-path coverage assert exact command/parameter output for valid command shapes instead of object existence. | Full local-model parsing quality, tool-call benchmark accuracy, or assistant UX acceptance. | Keep additional parser cleanup tied to exact accepted/rejected shapes. |
+| Weak-evidence scan: `rg -n "assert .* is not None\|len\\(.+\\) > 0\|len\\(.+\\) >= 1\|non-empty\|no crash\|no_crash\|does_not_crash" tests/unit/llm/test_parser.py tests/unit/llm/test_misc_coverage.py` | No matches. | The targeted parser test files no longer contain the scanned weak assertion patterns. | Full LLM parser coverage. | Continue only where stronger exact parse expectations are available. |
 | `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run python tests/architecture_compliance.py` | `97 passed` / `Architecture compliant!` | Architecture guard now rejects generic non-`None` parser assertions while allowing exact parse-result contracts. | Semantic proof for every LLM test file. | Extend guards narrowly after exact replacements exist. |
 | `poetry run ruff check tests/unit/llm/test_parser.py tests/architecture_compliance.py tests/unit/test_architecture_compliance.py` / `poetry run basedpyright tests/unit/llm/test_parser.py tests/architecture_compliance.py tests/unit/test_architecture_compliance.py` | PASS / `0 errors, 0 warnings, 0 notes`. | Changed parser test and guard files are lint and type clean. | Runtime behavior by itself. | Pair static checks with focused behavior tests. |
 

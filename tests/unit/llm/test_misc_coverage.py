@@ -49,9 +49,7 @@ class TestCommandParserReturnPaths:
 
         text = '{"tool_name": "load_data", "parameters": {"paths": ["/a.gdf"]}}'
         result = CommandParser.parse(text)
-        assert result is not None
-        assert len(result) >= 1
-        assert result[0][0] == "load_data"
+        assert result == [("load_data", {"paths": ["/a.gdf"]})]
 
     def test_parse_returns_none_for_chat(self):
         from XBrainLab.llm.agent.parser import CommandParser
@@ -107,7 +105,6 @@ class TestModelDownloaderCoverage:
 
         d = ModelDownloader()
         d._thread = MagicMock()
-        d.log = MagicMock()
         # Should detect existing thread and handle gracefully
         with contextlib.suppress(RuntimeError, AttributeError):
             d.start_download("test/model", "/tmp/cache")

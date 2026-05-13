@@ -195,12 +195,22 @@ def test_parse_arguments_alias():
 """,
         encoding="utf-8",
     )
+    misc_path = tmp_path / "tests" / "unit" / "llm" / "test_misc_coverage.py"
+    misc_path.write_text(
+        """
+def test_parse_returns_commands():
+    result = CommandParser.parse(text)
+    assert result is not None
+""",
+        encoding="utf-8",
+    )
 
     violations = check_llm_parser_weak_parse_assertions(tmp_path)
 
-    assert len(violations) == 2
+    assert len(violations) == 3
     assert "generic non-None parser assertion" in violations[0]
     assert "exact (tool_name, parameters) parse result" in violations[0]
+    assert "test_misc_coverage.py" in violations[2]
 
 
 def test_llm_parser_weak_parse_guard_allows_exact_parse_results(tmp_path):

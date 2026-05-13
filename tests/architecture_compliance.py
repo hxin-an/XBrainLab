@@ -171,7 +171,10 @@ MCP_EXACT_EVIDENCE_TEST_DIRS = (
     Path("tests/integration/mcp"),
 )
 PIPELINE_STATE_EXACT_EVIDENCE_TEST = Path("tests/unit/llm/test_pipeline_state.py")
-LLM_PARSER_EXACT_EVIDENCE_TEST = Path("tests/unit/llm/test_parser.py")
+LLM_PARSER_EXACT_EVIDENCE_TESTS = (
+    Path("tests/unit/llm/test_parser.py"),
+    Path("tests/unit/llm/test_misc_coverage.py"),
+)
 DOC_CURRENT_TRUTH_FILES = (
     Path("docs/current.md"),
     Path("docs/index.md"),
@@ -906,23 +909,28 @@ def check_pipeline_state_weak_string_assertions(root_dir: Path) -> list[str]:
 
 def check_llm_parser_weak_parse_assertions(root_dir: Path) -> list[str]:
     """Return parser tests that only assert parse output exists."""
-    test_file = root_dir / LLM_PARSER_EXACT_EVIDENCE_TEST
-    if not test_file.exists():
-        return []
+    violations: list[str] = []
 
-    try:
-        tree = ast.parse(test_file.read_text(encoding="utf-8"), filename=str(test_file))
-    except SyntaxError:
-        return []
+    for relative_file in LLM_PARSER_EXACT_EVIDENCE_TESTS:
+        test_file = root_dir / relative_file
+        if not test_file.exists():
+            continue
+        try:
+            tree = ast.parse(
+                test_file.read_text(encoding="utf-8"), filename=str(test_file)
+            )
+        except SyntaxError:
+            continue
 
-    visitor = _LLMParserWeakParseAssertionVisitor()
-    visitor.visit(tree)
-    return [
-        f"{LLM_PARSER_EXACT_EVIDENCE_TEST}:{name_node.lineno} uses generic "
-        f"non-None parser assertion on {name_node.id!r}; assert the exact "
-        "(tool_name, parameters) parse result instead."
-        for name_node in visitor.violations
-    ]
+        visitor = _LLMParserWeakParseAssertionVisitor()
+        visitor.visit(tree)
+        violations.extend(
+            f"{relative_file}:{name_node.lineno} uses generic non-None parser "
+            f"assertion on {name_node.id!r}; assert the exact "
+            "(tool_name, parameters) parse result instead."
+            for name_node in visitor.violations
+        )
+    return violations
 
 
 def check_docs_current_truth_overclaims(root_dir: Path) -> list[str]:
