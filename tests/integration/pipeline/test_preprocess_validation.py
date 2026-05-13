@@ -81,9 +81,9 @@ class TestPreprocessValidation:
 
         # Get events and epoch
         unique_events = pc.get_unique_events()
-        assert len(unique_events) > 0
+        assert unique_events == ["left", "right"]
 
-        target_event = unique_events[0]
+        target_event = "left"
         pc.apply_epoching(
             baseline=None,
             selected_events=[target_event],
