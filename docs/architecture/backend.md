@@ -356,6 +356,8 @@ progress message 由 `ApplicationService.get_state().training.progress_message` 
 保存 terminal status，避免後續新 training run 把舊 job 重新顯示成 active。這是 train-only HTTP
 job baseline；evaluation / visualization jobs、job persistence / recovery、multi-client
 recovery-grade resource lock 和 full remote authorization 仍是後續 architecture work。
+Architecture compliance 也會拒絕 MCP product status/progress code 直接讀 mutable `Study`
+state，例如 `service.study.trainer`；只允許 explicit legacy / fallback helper 保留相容性。
 
 `ApplicationService` 會拿同一組 cached controllers：
 

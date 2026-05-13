@@ -349,6 +349,19 @@ snapshot instead of `service.study.trainer`.
 | `poetry run pytest --capture=sys tests/unit/mcp/test_http_server.py tests/unit/mcp/test_server.py tests/unit/backend/application/test_state_service.py -q` | `17 passed` | MCP HTTP/stdio baseline and state query contracts remain green after moving progress truth into ApplicationService state. | External MCP client certification or human desktop acceptance. | Keep transport behavior separated from desktop UI refresh claims. |
 | Focused `ruff` / `basedpyright` / `ruff format --check`, plus `poetry run python tests/architecture_compliance.py` | PASS / `0 errors, 0 warnings, 0 notes` / PASS / `Architecture compliant!` | Changed MCP/backend state files are lint/type/format clean and keep current architecture guard green. | Product complete. | Run docs/diff before checkpoint commit. |
 
+## 2026-05-13 MCP Direct Study-State Guard Checkpoint
+
+This guard slice locks the MCP progress fix so future product status/progress code cannot
+quietly go back to `service.study.trainer` or another mutable `Study` state field.
+Legacy/fallback helpers remain allowed for explicit compatibility boundaries.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| Red test: `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_mcp_direct_study_state_guard_flags_service_study_progress_read -q` before the checker existed | Failed during collection because `check_mcp_direct_study_state_reads` was missing. | Reproduced the missing guard class after removing the concrete MCP progress bypass. | Semantic proof for every MCP function. | Add the checker and keep the sample close to the actual regression. |
+| `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_mcp_direct_study_state_guard_flags_service_study_progress_read tests/unit/test_architecture_compliance.py::test_mcp_direct_study_state_guard_allows_legacy_helper -q` | `2 passed` | The guard rejects direct MCP `service.study.trainer` reads and allows explicit legacy/fallback helper boundaries. | External MCP client certification. | Keep adding examples when MCP gains new job/status surfaces. |
+| `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `90 passed` | Architecture guard unit coverage remains green with MCP direct Study-state protection included. | Runtime behavior by itself. | Pair guard changes with runtime tests for every removed bypass. |
+| Focused `ruff` / `basedpyright` / `ruff format --check`, plus `poetry run python tests/architecture_compliance.py` | PASS / `0 errors, 0 warnings, 0 notes` / PASS / `Architecture compliant!` | The checker and real source tree remain lint/type/format clean and current source has no MCP direct mutable Study-state status/progress violation. | Human desktop acceptance or full MCP certification. | Run docs/diff before checkpoint commit. |
+
 ## 2026-05-13 Data Import Runtime Integration Checkpoint
 
 | Command | Result | Claim supported | Claim not supported | Follow-up |

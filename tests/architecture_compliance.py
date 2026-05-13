@@ -302,6 +302,13 @@ def check_architecture(root_dir: str) -> int:
             print(f" - {violation}")
         return 1
 
+    mcp_study_state_violations = check_mcp_direct_study_state_reads(Path(root_dir))
+    if mcp_study_state_violations:
+        print("\nMCP Direct Study State Read Violations Found:")
+        for violation in mcp_study_state_violations:
+            print(f" - {violation}")
+        return 1
+
     facade_usage_violations = check_product_runtime_backend_facade_usage(Path(root_dir))
     if facade_usage_violations:
         print("\nProduct Runtime BackendFacade Usage Violations Found:")
@@ -588,6 +595,39 @@ def check_llm_direct_study_state_reads(root_dir: Path) -> list[str]:
                 f"study.{attr.attr}; LLM product stage/tool state must come "
                 "from the ApplicationService state snapshot, with direct "
                 "Study state reads limited to explicit legacy/fallback helpers."
+                for attr in visitor.violations
+            )
+    return violations
+
+
+def check_mcp_direct_study_state_reads(root_dir: Path) -> list[str]:
+    """Return MCP product code that infers status from mutable Study fields."""
+    violations: list[str] = []
+    mcp_dir = root_dir / "XBrainLab" / "mcp"
+    if not mcp_dir.exists():
+        return violations
+
+    for py_file in mcp_dir.rglob("*.py"):
+        if py_file.name == "__init__.py":
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if _is_legacy_controller_mutation_helper(node.name):
+                continue
+            visitor = _DirectStudyStateReadVisitor()
+            visitor.visit(node)
+            violations.extend(
+                f"{py_file.relative_to(root_dir)}:{attr.lineno} reads "
+                f"{_study_state_expression(source, attr)}; MCP product "
+                "status/progress state must come from the ApplicationService "
+                "state snapshot, with direct Study state reads limited to "
+                "explicit legacy/fallback helpers."
                 for attr in visitor.violations
             )
     return violations
@@ -1579,6 +1619,14 @@ def _call_name(func: ast.expr) -> str:
     if isinstance(func, ast.Name):
         return func.id
     return ""
+
+
+def _study_state_expression(source: str, node: ast.AST) -> str:
+    expression = ast.get_source_segment(source, node)
+    if expression:
+        return expression
+    attr = getattr(node, "attr", "state")
+    return f"study.{attr}"
 
 
 def _read_poetry_default_dependency_names(pyproject: Path) -> set[str]:

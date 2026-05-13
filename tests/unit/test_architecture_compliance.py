@@ -2,6 +2,7 @@ from tests.architecture_compliance import (
     check_backend_facade_test_usage,
     check_docs_current_truth_overclaims,
     check_llm_direct_study_state_reads,
+    check_mcp_direct_study_state_reads,
     check_product_runtime_backend_facade_usage,
     check_product_success_backend_facade_tests,
     check_product_success_controller_lookup_assertions,
@@ -36,6 +37,12 @@ def _write_ui_file(root, source: str) -> None:
 
 def _write_llm_file(root, source: str) -> None:
     path = root / "XBrainLab" / "llm" / "pipeline_state.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(source, encoding="utf-8")
+
+
+def _write_mcp_file(root, source: str) -> None:
+    path = root / "XBrainLab" / "mcp" / "http_server.py"
     path.parent.mkdir(parents=True)
     path.write_text(source, encoding="utf-8")
 
@@ -1573,6 +1580,40 @@ def _legacy_study_pipeline_stage(study):
     )
 
     assert check_llm_direct_study_state_reads(tmp_path) == []
+
+
+def test_mcp_direct_study_state_guard_flags_service_study_progress_read(tmp_path):
+    _write_mcp_file(
+        tmp_path,
+        """
+def _training_progress_message(service):
+    trainer = service.study.trainer
+    if trainer is not None:
+        return trainer.get_progress_text()
+    return "Training is not running."
+""",
+    )
+
+    violations = check_mcp_direct_study_state_reads(tmp_path)
+
+    assert len(violations) == 1
+    assert "service.study.trainer" in violations[0]
+    assert "ApplicationService state snapshot" in violations[0]
+
+
+def test_mcp_direct_study_state_guard_allows_legacy_helper(tmp_path):
+    _write_mcp_file(
+        tmp_path,
+        """
+def _legacy_training_progress_message(service):
+    trainer = service.study.trainer
+    if trainer is not None:
+        return trainer.get_progress_text()
+    return "Training is not running."
+""",
+    )
+
+    assert check_mcp_direct_study_state_reads(tmp_path) == []
 
 
 def test_controller_study_get_controller_guard_flags_product_fallback(tmp_path):
