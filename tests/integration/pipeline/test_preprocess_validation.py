@@ -14,11 +14,26 @@ from XBrainLab.backend.application import (
     QueryStateCommand,
 )
 from XBrainLab.backend.controller.preprocess_controller import PreprocessController
+from XBrainLab.backend.load_data import Raw
 
 
-def _first_data(controller: PreprocessController) -> Any:
+def _first_data(controller: PreprocessController) -> Raw:
     data = controller.get_first_data()
-    assert data is not None
+    assert isinstance(data, Raw)
+    return data
+
+
+def _assert_signal_data_shape(raw: Raw) -> Any:
+    data: Any = raw.get_mne().get_data()
+    assert data.ndim in (2, 3)
+    assert data.size > 0
+    if data.ndim == 2:
+        assert data.shape[0] == raw.get_nchan()
+        assert data.shape[1] > 0
+    else:
+        assert data.shape[0] > 0
+        assert data.shape[1] == raw.get_nchan()
+        assert data.shape[2] > 0
     return data
 
 
@@ -33,7 +48,9 @@ def study_with_synthetic(tmp_path):
     duration = 10  # seconds
     ch_names = [f"EEG{i:03d}" for i in range(n_channels)]
     info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types="eeg")
-    data = np.random.randn(n_channels, int(sfreq * duration)) * 1e-6
+    rng = np.random.default_rng(42)
+    data = rng.standard_normal((n_channels, int(sfreq * duration))) * 1e-6
+    assert data.shape == (n_channels, int(sfreq * duration))
     raw = mne.io.RawArray(data, info)
 
     # Add events via annotations
@@ -62,14 +79,22 @@ class TestPreprocessValidation:
         """After resampling, event count should remain the same."""
         pc = PreprocessController(study_with_synthetic)
         data = _first_data(pc)
-        events_before = mne.events_from_annotations(data.get_mne())[0]
+        signal_before = _assert_signal_data_shape(data)
+        events_before, event_id_before = mne.events_from_annotations(data.get_mne())
+        assert event_id_before == {"left": 1, "right": 2}
+        assert events_before.shape == (4, 3)
 
         pc.apply_resample(sfreq=128)
 
         data_after = _first_data(pc)
-        events_after = mne.events_from_annotations(data_after.get_mne())[0]
-        assert len(events_after) == len(events_before)
+        signal_after = _assert_signal_data_shape(data_after)
+        events_after, event_id_after = mne.events_from_annotations(data_after.get_mne())
+        assert event_id_after == event_id_before
+        assert events_after.shape == events_before.shape
+        np.testing.assert_array_equal(events_after[:, -1], events_before[:, -1])
         assert data_after.get_mne().info["sfreq"] == 128
+        assert signal_after.shape[0] == signal_before.shape[0]
+        assert signal_after.shape[1] < signal_before.shape[1]
 
     def test_filter_then_epoch_pipeline(self, study_with_synthetic):
         """Sequential filter → epoch should produce valid epoched data."""
@@ -91,6 +116,17 @@ class TestPreprocessValidation:
             tmax=0.5,
         )
         assert pc.is_epoched()
+        epoched = _first_data(pc)
+        epoch_data = _assert_signal_data_shape(epoched)
+        epochs: Any = epoched.get_mne()
+        assert target_event in epochs.event_id
+        assert epochs.events.ndim == 2
+        assert epochs.events.shape[0] > 0
+        assert epochs.events.shape[1] == 3
+        assert set(np.unique(epochs.events[:, -1]).tolist()) == {
+            epochs.event_id[target_event]
+        }
+        assert epoch_data.shape[0] == len(epochs.events)
 
     def test_history_tracks_operations(self, study_with_synthetic):
         """Preprocessing history should record all operations."""
@@ -100,15 +136,24 @@ class TestPreprocessValidation:
         pc.apply_resample(sfreq=128)
 
         history = _first_data(pc).get_preprocess_history()
-        assert len(history) >= 2
+        assert len(history) == 2
+        assert all(isinstance(item, str) for item in history)
+        assert any("Filtering" in item for item in history)
+        assert any("Resample" in item for item in history)
 
     def test_reset_restores_original(self, study_with_synthetic):
         """Reset should restore data to original state."""
         pc = PreprocessController(study_with_synthetic)
-        original_sfreq = _first_data(pc).get_mne().info["sfreq"]
+        original = _first_data(pc)
+        original_sfreq = original.get_mne().info["sfreq"]
+        original_signal = _assert_signal_data_shape(original)
 
         pc.apply_resample(sfreq=64)
         assert _first_data(pc).get_mne().info["sfreq"] == 64
 
         pc.reset_preprocess()
-        assert _first_data(pc).get_mne().info["sfreq"] == original_sfreq
+        reset_data = _first_data(pc)
+        assert reset_data.get_mne().info["sfreq"] == original_sfreq
+        assert reset_data.get_preprocess_history() == []
+        reset_signal = _assert_signal_data_shape(reset_data)
+        assert reset_signal.shape == original_signal.shape

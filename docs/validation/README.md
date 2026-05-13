@@ -35,6 +35,7 @@
 | Real-data IO 測試是否仍只證明 no-crash | [Real-Data IO shape-evidence](#2026-05-13-real-data-io-shape-evidence-checkpoint) | compact/public EEG fixtures 會檢查 loaded data 維度、非空內容、channel axis 對齊，以及 command import summary。 | scientific reproducibility、all possible external formats、or human Data Import acceptance。 |
 | Metadata pipeline 測試是否仍靠 random label / generic assertion | [Metadata real-data event evidence](#2026-05-13-metadata-real-data-event-evidence-checkpoint) | A01T metadata test 會檢查 raw shape、fixed filename parse、deterministic label round-trip、event shape、onset alignment 和 final event IDs。 | Data Import UX acceptance、all external label heuristics、or scientific validation。 |
 | Lower-level preprocess controller 測試是否仍只是 non-`None` | [Preprocess controller shape/event evidence](#2026-05-13-preprocess-controller-shapeevent-evidence-checkpoint) | Controller integration tests 會檢查 `Raw` object、signal/epoch shape、filter shape preservation、selected event code 和 reset history。 | Product command-spine success、UI refresh acceptance、or zero-controller UI architecture。 |
+| Synthetic preprocess validation 是否仍靠 random/no-crash | [Preprocess validation deterministic evidence](#2026-05-13-preprocess-validation-deterministic-evidence-checkpoint) | Synthetic preprocess tests now use a fixed fixture and assert resample event codes, epoch shape, operation history, and reset shape. | Real-data product acceptance、UI responsiveness、or all preprocess edge cases。 |
 | 能不能宣稱桌面 MVP 人工驗收 | [Human Windows Desktop Acceptance Gap](#human-windows-desktop-acceptance-gap) | 尚缺哪些 click-through / artifact。 | release approval。 |
 
 ## Evidence 能力邊界
@@ -193,6 +194,18 @@ event code, and reset returns to raw data with cleared preprocess history.
 | `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/controller/test_preprocess_controller.py -q` | `4 passed` | Lower-level preprocess controller behavior is protected by shape/event/history assertions instead of generic `None` checks. | Product command-spine success, UI refresh acceptance, or zero-controller UI architecture. | Keep product-facing preprocess evidence in ApplicationService / command tests. |
 | Focused `ruff` / `basedpyright` / `ruff format --check` on `tests/integration/controller/test_preprocess_controller.py` | PASS / `0 errors, 0 warnings, 0 notes` / PASS | Changed test code is lint/type/format clean. | Runtime behavior by itself. | Continue keeping controller tests classified as lower-level contracts. |
 | `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `91 passed` | Strengthened controller evidence did not weaken architecture guard coverage. | Semantic proof outside guarded files. | Do not use this controller suite to justify product UI bypasses. |
+
+## 2026-05-13 Preprocess Validation Deterministic-Evidence Checkpoint
+
+This test-hygiene slice kept runtime and UI unchanged. `tests/integration/pipeline/test_preprocess_validation.py`
+now builds its synthetic EEG fixture with a fixed random seed and asserts concrete state after resample,
+filter -> epoch, history tracking, and reset. The suite no longer relies on `get_first_data()` only being
+non-`None` or on nondeterministic signal generation.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/pipeline/test_preprocess_validation.py -q` | `4 passed` | Synthetic preprocess validation now proves deterministic signal shape, event code preservation, epoch shape, operation history, and reset shape. | Real-data product acceptance, UI responsiveness, all preprocess edge cases, or scientific validation. | Keep real-GDF product preprocess evidence in command/UI smokes. |
+| Focused `ruff` / `basedpyright` / `ruff format --check` on `tests/integration/pipeline/test_preprocess_validation.py` | PASS / `0 errors, 0 warnings, 0 notes` / PASS | Changed test code is lint/type/format clean. | Runtime behavior by itself. | Prefer fixed synthetic fixtures over random data in regression tests. |
 
 ## 2026-05-13 Test Evidence Cleanup Fast Dashboard
 
