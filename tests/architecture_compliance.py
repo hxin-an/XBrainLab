@@ -247,6 +247,13 @@ def check_architecture(root_dir: str) -> int:
             print(f" - {violation}")
         return 1
 
+    llm_study_state_violations = check_llm_direct_study_state_reads(Path(root_dir))
+    if llm_study_state_violations:
+        print("\nLLM Direct Study State Read Violations Found:")
+        for violation in llm_study_state_violations:
+            print(f" - {violation}")
+        return 1
+
     facade_usage_violations = check_product_runtime_backend_facade_usage(Path(root_dir))
     if facade_usage_violations:
         print("\nProduct Runtime BackendFacade Usage Violations Found:")
@@ -495,6 +502,38 @@ def check_product_runtime_backend_facade_usage(root_dir: Path) -> list[str]:
                 "BackendFacade in product runtime; route through "
                 "ApplicationService / Command API directly."
                 for node in visitor.violations
+            )
+    return violations
+
+
+def check_llm_direct_study_state_reads(root_dir: Path) -> list[str]:
+    """Return LLM product code that infers state from mutable Study fields."""
+    violations: list[str] = []
+    llm_dir = root_dir / "XBrainLab" / "llm"
+    if not llm_dir.exists():
+        return violations
+
+    for py_file in llm_dir.rglob("*.py"):
+        if py_file.name == "__init__.py":
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if _is_legacy_controller_mutation_helper(node.name):
+                continue
+            visitor = _DirectStudyStateReadVisitor()
+            visitor.visit(node)
+            violations.extend(
+                f"{py_file.relative_to(root_dir)}:{attr.lineno} reads "
+                f"study.{attr.attr}; LLM product stage/tool state must come "
+                "from the ApplicationService state snapshot, with direct "
+                "Study state reads limited to explicit legacy/fallback helpers."
+                for attr in visitor.violations
             )
     return violations
 

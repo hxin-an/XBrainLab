@@ -1,5 +1,6 @@
 from tests.architecture_compliance import (
     check_backend_facade_test_usage,
+    check_llm_direct_study_state_reads,
     check_product_runtime_backend_facade_usage,
     check_product_success_backend_facade_tests,
     check_product_success_controller_lookup_assertions,
@@ -28,6 +29,12 @@ from tests.architecture_compliance import (
 
 def _write_ui_file(root, source: str) -> None:
     path = root / "XBrainLab" / "ui" / "panels" / "demo" / "sidebar.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(source, encoding="utf-8")
+
+
+def _write_llm_file(root, source: str) -> None:
+    path = root / "XBrainLab" / "llm" / "pipeline_state.py"
     path.parent.mkdir(parents=True)
     path.write_text(source, encoding="utf-8")
 
@@ -1421,6 +1428,38 @@ def _legacy_montage_channels(self):
     )
 
     assert check_ui_direct_study_state_reads(tmp_path) == []
+
+
+def test_llm_direct_study_state_guard_flags_product_stage_read(tmp_path):
+    _write_llm_file(
+        tmp_path,
+        """
+def compute_pipeline_stage(study):
+    if study.loaded_data_list:
+        return "data_loaded"
+    return "empty"
+""",
+    )
+
+    violations = check_llm_direct_study_state_reads(tmp_path)
+
+    assert len(violations) == 1
+    assert "study.loaded_data_list" in violations[0]
+    assert "ApplicationService state snapshot" in violations[0]
+
+
+def test_llm_direct_study_state_guard_allows_legacy_stage_helper(tmp_path):
+    _write_llm_file(
+        tmp_path,
+        """
+def _legacy_study_pipeline_stage(study):
+    if study.loaded_data_list:
+        return "data_loaded"
+    return "empty"
+""",
+    )
+
+    assert check_llm_direct_study_state_reads(tmp_path) == []
 
 
 def test_controller_study_get_controller_guard_flags_product_fallback(tmp_path):

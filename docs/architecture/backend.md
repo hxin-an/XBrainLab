@@ -154,7 +154,9 @@ calling `get_application_service(...).execute(...)` directly.
 instances now derive assistant stage from the shared ApplicationService state snapshot only; if
 that snapshot is unavailable or invalid, stage calculation fails closed to `EMPTY` instead of
 guessing from mutable `Study.loaded_data_list`, `epoch_data`, `datasets`, or `trainer`. Direct
-Study-shaped stage fallback remains only for mock / legacy compatibility tests.
+Study-shaped stage fallback remains only for mock / legacy compatibility tests, and architecture
+compliance now rejects LLM product code that adds new direct mutable `Study` stage/state reads
+outside explicit legacy / fallback helpers.
 
 ## 一句話架構
 
