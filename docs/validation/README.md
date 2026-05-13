@@ -33,6 +33,7 @@
 | Agent pipeline stage prompt / label tests 是否仍只看 non-empty | [Agent pipeline-state exact prompt evidence](#2026-05-14-agent-pipeline-state-exact-prompt-evidence-checkpoint) | Stage config tests 檢查每個 stage 的 prompt markers、action/blocked guidance、exact label map，且 architecture guard 擋回 generic non-empty string assertion。 | local-model session quality、tool-call benchmark accuracy、or assistant UX acceptance。 |
 | LLM parser tests 是否仍只看 parsed object exists | [LLM parser exact parse-result evidence](#2026-05-14-llm-parser-exact-parse-result-evidence-checkpoint) | Parser tests 檢查 exact `(tool_name, parameters)` list，且 architecture guard 擋回 generic `parsed/result is not None`。 | Full local-model parsing quality、tool-call benchmark accuracy、or assistant UX acceptance。 |
 | LLM tool/debug tests 是否仍只看 registry 非空 | [LLM tool/debug exact registry evidence](#2026-05-14-llm-tooldebug-exact-registry-evidence-checkpoint) | Tool/debug tests 檢查 exact agent tool-name set、backend resolver class identity、debug calls 和 visualization figure type。 | Full agent runtime acceptance or local-model behavior。 |
+| Agent ApplicationService tool surface 是否仍只看 result exists | [LLM application-surface exact result evidence](#2026-05-14-llm-application-surface-exact-result-evidence-checkpoint) | Application-surface tests 檢查 `ToolCommandResult` type、exact tool/command name、raw status、capability 和 state；guard 擋回 generic non-`None` result assertion。 | Full assistant UX acceptance、local-model quality、or every real-tool runtime path。 |
 | UI controller hit 是否仍代表 product legacy path | [UI controller exception-map readability checkpoint](#2026-05-14-ui-controller-exception-map-readability-checkpoint)、[UI bridge fallback cleanup](#2026-05-14-ui-training-bridge-fallback-cleanup-checkpoint)、[controller.study lookup guard](#2026-05-14-controllerstudy-lookup-guard-checkpoint) 和 [UI 目前架構](../architecture/ui.md) | Source 對照表區分 panel bootstrap、mock fallback、readonly render fallback、refresh surface、assistant adapter 和 lower-level domain object；Evaluation / Visualization training-event bridge 不再 fallback lookup training controller，guard 也不允許把 `controller.study.get_controller()` 藏在 legacy helper。 | Full zero-controller UI、human desktop acceptance、or runtime proof for every panel state。 |
 | UI navigation refresh 測試是否仍靠 mock call / 猜 index | [UI refresh duplicate-test cleanup](#2026-05-14-ui-refresh-duplicate-test-cleanup-checkpoint) | 重複的 mock-heavy integration test 已移除；replacement coverage 檢查 exact `switch_page()` coordinator delegation、target-panel scope、navigation checked state、command/observer refresh routing。 | Human UI acceptance 或每個 panel render content。 |
 | MainWindow launch/navigation 是否仍只看可啟動 | [UI integration shell contract evidence](#2026-05-14-ui-integration-shell-contract-evidence-checkpoint) | `test_ui_integration.py` now checks exact nav labels/object names, stack count/index, checked states, AI button shell, InfoPanelService non-observer wiring, and real-Study AgentManager controller quarantine. | Human visual UX approval or full desktop acceptance. |
@@ -96,6 +97,18 @@ current truth 以這些文件為準：
 - [planning/roadmap.md](../planning/roadmap.md)
 - [architecture/README.md](../architecture/README.md)
 - [validation/README.md](README.md)
+
+## 2026-05-14 LLM Application-Surface Exact Result Evidence Checkpoint
+
+This test-quality slice tightened the ApplicationService-backed agent tool surface tests. It does
+not certify local model behavior or the assistant UX; it makes the command-backed tool adapter
+evidence check structured result contracts instead of only proving a result object exists.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py -q` | `20 passed`. | `scan_source`, interpretation preview/validate/apply, preprocess routing, model/training config, query-state, evaluation, visualization, and saliency tool paths assert `ToolCommandResult` type, exact tool/command name, raw command status, capability, and state/diagnostics truth. | Full assistant UX acceptance, local-model output quality, every real-tool runtime path, or training quality. | Continue replacing weak agent tests with exact command/result/state assertions before expanding product claims. |
+| `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run python tests/architecture_compliance.py` | `105 passed` / `Architecture compliant!`. | Architecture guard now rejects generic non-`None` result assertions in the application-surface test file. | Semantic proof for every future agent tool or local LLM session. | Add narrow guards only for weak-evidence patterns that are already replaced by stronger tests. |
+| `poetry run python scripts/dev/update_quality_dashboard.py` | Overall status `PASS`. | The focused evidence change did not break the fast dashboard gate in the current checkout. | Product completion, human Windows acceptance, or UX approval. | Dashboard artifacts remain generated evidence; canonical claim boundaries stay in docs. |
 
 ## 2026-05-14 Headless Real-Tools Query Evidence Checkpoint
 

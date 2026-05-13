@@ -11,12 +11,45 @@ from XBrainLab.backend.application import CommandName, get_application_service
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.tools.application_surface import (
     CapabilityPolicyUnavailable,
+    ToolCommandResult,
     blocked_tool_reasons,
     build_agent_tool_policy,
     execute_application_tool_command,
     legacy_tool_result_succeeded,
     normalize_tool_result,
 )
+
+
+def _assert_tool_command_result(
+    result: object,
+    *,
+    tool_name: str,
+    command_name: CommandName,
+    ok: bool | None = None,
+    error_type: str | None = None,
+    raw_status: str | None = None,
+) -> ToolCommandResult:
+    assert isinstance(result, ToolCommandResult), result
+    assert result.tool_name == tool_name
+    assert result.command_name == command_name.value
+    assert isinstance(result.state, dict)
+    assert isinstance(result.capability, dict)
+    assert result.capability["tool_name"] == tool_name
+    assert result.capability["command_name"] == command_name.value
+    if ok is not None:
+        assert result.ok is ok
+    if error_type is not None:
+        assert result.error_type == error_type
+    if raw_status is not None:
+        assert isinstance(result.raw_result, dict)
+        assert result.raw_result["status"] == raw_status
+        assert result.raw_result["command_name"] == command_name.value
+    return result
+
+
+def _state(result: ToolCommandResult) -> dict[str, Any]:
+    assert isinstance(result.state, dict)
+    return result.state
 
 
 def test_agent_tool_policy_reuses_application_train_reasons():
@@ -52,11 +85,29 @@ def test_start_training_surface_preserves_backend_confirmation_boundary():
         {"confirmed": True},
     )
 
-    assert unconfirmed is not None
-    assert unconfirmed.ok is False
-    assert unconfirmed.error_type == "confirmation_required"
-    assert confirmed is not None
-    assert confirmed.ok is True
+    unconfirmed = _assert_tool_command_result(
+        unconfirmed,
+        tool_name="start_training",
+        command_name=CommandName.TRAIN,
+        ok=False,
+        error_type="confirmation_required",
+        raw_status="failed",
+    )
+    assert unconfirmed.blocked_reason == "train requires confirmation."
+    assert unconfirmed.raw_result["changed_state"]["error_changed"] is True
+    confirmed = _assert_tool_command_result(
+        confirmed,
+        tool_name="start_training",
+        command_name=CommandName.TRAIN,
+        ok=True,
+        error_type="none",
+        raw_status="ok",
+    )
+    assert confirmed.message == "Training started."
+    assert confirmed.raw_result["diagnostics"] == {
+        "append": True,
+        "interactive": True,
+    }
     training.start_training.assert_called_once()
 
 
@@ -78,10 +129,13 @@ def test_mapped_tool_missing_params_returns_input_failure():
 
     result = execute_application_tool_command(study, "apply_bandpass_filter", {})
 
-    assert result is not None
-    assert result.ok is False
-    assert result.command_name == CommandName.PREPROCESS.value
-    assert result.error_type == "input"
+    result = _assert_tool_command_result(
+        result,
+        tool_name="apply_bandpass_filter",
+        command_name=CommandName.PREPROCESS,
+        ok=False,
+        error_type="input",
+    )
     assert "Required inputs" in result.message
 
 
@@ -119,24 +173,44 @@ def test_data_interpretation_surface_preserves_autonomy_policy(tmp_path):
         "scan_source",
         {"source_path": str(source)},
     )
-    assert scan_result is not None
-    assert scan_result.ok
+    scan_result = _assert_tool_command_result(
+        scan_result,
+        tool_name="scan_source",
+        command_name=CommandName.SCAN_SOURCE,
+        ok=True,
+        error_type="none",
+        raw_status="ok",
+    )
+    assert scan_result.raw_result["diagnostics"]["payload_type"] == "scan_result"
 
     preview_result = execute_application_tool_command(
         study,
         "preview_interpretation",
         {},
     )
-    assert preview_result is not None
-    assert preview_result.ok
+    preview_result = _assert_tool_command_result(
+        preview_result,
+        tool_name="preview_interpretation",
+        command_name=CommandName.PREVIEW_INTERPRETATION,
+        ok=True,
+        error_type="none",
+        raw_status="ok",
+    )
 
     validate_result = execute_application_tool_command(
         study,
         "validate_interpretation",
         {},
     )
-    assert validate_result is not None
-    assert validate_result.ok
+    validate_result = _assert_tool_command_result(
+        validate_result,
+        tool_name="validate_interpretation",
+        command_name=CommandName.VALIDATE_INTERPRETATION,
+        ok=True,
+        error_type="none",
+        raw_status="ok",
+    )
+    assert _state(validate_result)["interpretation"]["has_validation_decision"] is True
 
     apply_interpretation = build_agent_tool_policy(study)["apply_interpretation"]
 
@@ -160,9 +234,14 @@ def test_application_tool_command_routes_data_interpretation_scan(tmp_path):
         {"source_path": str(source), "source_hint": "file"},
     )
 
-    assert result is not None
-    assert result.ok is True
-    assert result.command_name == CommandName.SCAN_SOURCE.value
+    result = _assert_tool_command_result(
+        result,
+        tool_name="scan_source",
+        command_name=CommandName.SCAN_SOURCE,
+        ok=True,
+        error_type="none",
+        raw_status="ok",
+    )
     assert result.raw_result["diagnostics"]["payload_type"] == "scan_result"
 
 
@@ -182,8 +261,14 @@ def test_application_tool_command_routes_scan_label_sources(tmp_path):
         {"source_path": str(source_dir), "label_sources": [str(label_dir)]},
     )
 
-    assert result is not None
-    assert result.ok is True
+    result = _assert_tool_command_result(
+        result,
+        tool_name="scan_source",
+        command_name=CommandName.SCAN_SOURCE,
+        ok=True,
+        error_type="none",
+        raw_status="ok",
+    )
     scan = result.raw_result["diagnostics"]["scan_result"]
     assert scan["label_sources"] == [str(label_dir.resolve())]
     assert scan["label_carriers"] == [str(label_path.resolve())]
@@ -199,31 +284,56 @@ def test_application_tool_command_apply_surfaces_confirmation_required(tmp_path)
         "scan_source",
         {"source_path": str(source)},
     )
-    assert scan_result is not None
-    assert scan_result.ok
+    scan_result = _assert_tool_command_result(
+        scan_result,
+        tool_name="scan_source",
+        command_name=CommandName.SCAN_SOURCE,
+        ok=True,
+        error_type="none",
+        raw_status="ok",
+    )
+    assert scan_result.raw_result["diagnostics"]["payload_type"] == "scan_result"
 
     preview_result = execute_application_tool_command(
         study,
         "preview_interpretation",
         {},
     )
-    assert preview_result is not None
-    assert preview_result.ok
+    preview_result = _assert_tool_command_result(
+        preview_result,
+        tool_name="preview_interpretation",
+        command_name=CommandName.PREVIEW_INTERPRETATION,
+        ok=True,
+        error_type="none",
+        raw_status="ok",
+    )
 
     validate_result = execute_application_tool_command(
         study,
         "validate_interpretation",
         {},
     )
-    assert validate_result is not None
-    assert validate_result.ok
+    validate_result = _assert_tool_command_result(
+        validate_result,
+        tool_name="validate_interpretation",
+        command_name=CommandName.VALIDATE_INTERPRETATION,
+        ok=True,
+        error_type="none",
+        raw_status="ok",
+    )
+    assert _state(validate_result)["interpretation"]["has_validation_decision"] is True
 
     result = execute_application_tool_command(study, "apply_interpretation", {})
 
-    assert result is not None
-    assert result.ok is False
-    assert result.command_name == CommandName.APPLY_INTERPRETATION.value
-    assert result.error_type == "confirmation_required"
+    result = _assert_tool_command_result(
+        result,
+        tool_name="apply_interpretation",
+        command_name=CommandName.APPLY_INTERPRETATION,
+        ok=False,
+        error_type="confirmation_required",
+        raw_status="failed",
+    )
+    assert result.blocked_reason == "apply_interpretation requires confirmation."
 
 
 def test_application_tool_command_routes_standard_preprocess(tmp_path):
@@ -245,8 +355,15 @@ def test_application_tool_command_routes_standard_preprocess(tmp_path):
         },
     )
 
-    assert result is not None
-    assert result.command_name == CommandName.PREPROCESS.value
+    result = _assert_tool_command_result(
+        result,
+        tool_name="apply_standard_preprocess",
+        command_name=CommandName.PREPROCESS,
+        ok=False,
+        error_type="validation",
+        raw_status="failed",
+    )
+    assert result.raw_result["diagnostics"]["exception_type"] == "TypeError"
 
 
 def test_application_surface_requires_real_study():
@@ -282,14 +399,16 @@ def test_application_tool_command_returns_structured_result_for_model_config():
         {"model_name": "EEGNet"},
     )
 
-    assert result is not None
-    assert result.ok is True
-    assert result.command_name == CommandName.CONFIGURE_TRAINING.value
-    assert result.raw_result["status"] == "ok"
-    model_holder = study.model_holder
-    assert model_holder is not None
-    assert model_holder.target_model is not None
-    assert model_holder.target_model.__name__ == "EEGNet"
+    result = _assert_tool_command_result(
+        result,
+        tool_name="set_model",
+        command_name=CommandName.CONFIGURE_TRAINING,
+        ok=True,
+        error_type="none",
+        raw_status="ok",
+    )
+    assert _state(result)["training"]["model_name"] == "EEGNet"
+    assert result.raw_result["changed_state"]["training_changed"] is True
 
 
 def test_application_tool_command_preserves_training_output_dir(tmp_path):
@@ -307,9 +426,14 @@ def test_application_tool_command_preserves_training_output_dir(tmp_path):
         },
     )
 
-    assert result is not None
-    assert result.ok is True
-    assert result.command_name == CommandName.CONFIGURE_TRAINING.value
+    result = _assert_tool_command_result(
+        result,
+        tool_name="configure_training",
+        command_name=CommandName.CONFIGURE_TRAINING,
+        ok=True,
+        error_type="none",
+        raw_status="ok",
+    )
     training_state = result.raw_result["state"]["training"]["training_option"]
     assert training_state["output_dir"] == str(output_dir)
 
@@ -324,10 +448,14 @@ def test_application_tool_command_routes_load_data_to_command_surface(tmp_path):
         {"paths": [str(sample)]},
     )
 
-    assert result is not None
-    assert result.ok is False
-    assert result.command_name == CommandName.LOAD_DATA.value
-    assert result.raw_result["status"] == "failed"
+    result = _assert_tool_command_result(
+        result,
+        tool_name="load_data",
+        command_name=CommandName.LOAD_DATA,
+        ok=False,
+        raw_status="failed",
+    )
+    assert result.error_type in {"unsupported_format", "runtime"}
 
 
 def test_query_state_tool_uses_application_command_surface():
@@ -343,10 +471,17 @@ def test_query_state_tool_uses_application_command_surface():
         {"query": "state"},
     )
 
-    assert result is not None
-    assert result.ok is True
-    assert result.command_name == CommandName.QUERY_STATE.value
-    assert result.raw_result["status"] == "ok"
+    result = _assert_tool_command_result(
+        result,
+        tool_name="query_state",
+        command_name=CommandName.QUERY_STATE,
+        ok=True,
+        error_type="none",
+        raw_status="ok",
+    )
+    diagnostics = result.raw_result["diagnostics"]
+    assert diagnostics["state"]["pipeline_stage"] == "empty"
+    assert diagnostics["capabilities"]["query_state"]["enabled"] is True
 
 
 def test_query_state_tool_surfaces_interpretation_review_truth(tmp_path):
@@ -386,7 +521,14 @@ def test_query_state_tool_surfaces_interpretation_review_truth(tmp_path):
     execute_application_tool_command(study, "apply_interpretation", {"confirmed": True})
     result = execute_application_tool_command(study, "query_state", {"query": "state"})
 
-    assert result is not None
+    result = _assert_tool_command_result(
+        result,
+        tool_name="query_state",
+        command_name=CommandName.QUERY_STATE,
+        ok=True,
+        error_type="none",
+        raw_status="ok",
+    )
     interpretation = result.raw_result["diagnostics"]["state"]["interpretation"]
     assert interpretation["label_carrier_plan"][0]["path"] == str(events_path)
     assert interpretation["label_carrier_plan"][0]["selected_label_field"] == (
@@ -417,23 +559,43 @@ def test_analysis_tools_are_application_service_backed():
         {"method": "Gradient", "params": {"absolute": True}},
     )
 
-    assert evaluate is not None
-    assert evaluate.command_name == CommandName.EVALUATE.value
-    assert evaluate.error_type == "precondition"
-    assert evaluate.blocked_reason is not None
-    assert "training plan" in evaluate.blocked_reason
+    evaluate = _assert_tool_command_result(
+        evaluate,
+        tool_name="evaluate",
+        command_name=CommandName.EVALUATE,
+        ok=False,
+        error_type="precondition",
+        raw_status="failed",
+    )
+    assert (
+        evaluate.blocked_reason == "Create a training plan before evaluating results."
+    )
 
-    assert visualize is not None
-    assert visualize.command_name == CommandName.VISUALIZE.value
-    assert visualize.error_type == "precondition"
-    assert visualize.blocked_reason is not None
-    assert "epochs" in visualize.blocked_reason
+    visualize = _assert_tool_command_result(
+        visualize,
+        tool_name="visualize",
+        command_name=CommandName.VISUALIZE,
+        ok=False,
+        error_type="precondition",
+        raw_status="failed",
+    )
+    assert visualize.blocked_reason == (
+        "Create epochs, complete training, or configure saliency before opening "
+        "visualization views."
+    )
 
-    assert saliency is not None
-    assert saliency.command_name == CommandName.SALIENCY.value
-    assert saliency.error_type == "precondition"
-    assert saliency.blocked_reason is not None
-    assert "training settings" in saliency.blocked_reason
+    saliency = _assert_tool_command_result(
+        saliency,
+        tool_name="saliency",
+        command_name=CommandName.SALIENCY,
+        ok=False,
+        error_type="precondition",
+        raw_status="failed",
+    )
+    assert saliency.blocked_reason == (
+        "Create epochs, generate datasets, or select a model and training settings "
+        "before querying saliency readiness."
+    )
 
 
 def test_application_tool_command_leaves_ui_request_tools_on_legacy_path():

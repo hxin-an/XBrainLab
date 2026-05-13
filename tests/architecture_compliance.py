@@ -196,6 +196,9 @@ LLM_PARSER_EXACT_EVIDENCE_TESTS = (
     Path("tests/unit/llm/test_parser.py"),
     Path("tests/unit/llm/test_misc_coverage.py"),
 )
+LLM_APPLICATION_SURFACE_EXACT_EVIDENCE_TESTS = (
+    Path("tests/unit/llm/tools/test_application_surface.py"),
+)
 DOC_CURRENT_TRUTH_FILES = (
     Path("docs/current.md"),
     Path("docs/index.md"),
@@ -435,6 +438,15 @@ def check_architecture(root_dir: str) -> int:
     if llm_parser_weak_assertion_violations:
         print("\nLLM Parser Weak Parse Assertion Violations Found:")
         for violation in llm_parser_weak_assertion_violations:
+            print(f" - {violation}")
+        return 1
+
+    llm_application_surface_weak_assertion_violations = (
+        check_llm_application_surface_weak_result_assertions(Path(root_dir))
+    )
+    if llm_application_surface_weak_assertion_violations:
+        print("\nLLM Application Surface Weak Result Assertion Violations Found:")
+        for violation in llm_application_surface_weak_assertion_violations:
             print(f" - {violation}")
         return 1
 
@@ -1071,6 +1083,33 @@ def check_llm_parser_weak_parse_assertions(root_dir: Path) -> list[str]:
     return violations
 
 
+def check_llm_application_surface_weak_result_assertions(root_dir: Path) -> list[str]:
+    """Return application-surface tests that only assert tool results exist."""
+    violations: list[str] = []
+
+    for relative_file in LLM_APPLICATION_SURFACE_EXACT_EVIDENCE_TESTS:
+        test_file = root_dir / relative_file
+        if not test_file.exists():
+            continue
+        try:
+            tree = ast.parse(
+                test_file.read_text(encoding="utf-8"), filename=str(test_file)
+            )
+        except SyntaxError:
+            continue
+
+        visitor = _GenericNonNoneAssertionVisitor()
+        visitor.visit(tree)
+        violations.extend(
+            f"{relative_file}:{name_node.lineno} uses generic non-None "
+            f"application-surface assertion on {name_node.id!r}; assert "
+            "ToolCommandResult type, tool_name, command_name, raw status, "
+            "capability, and state instead."
+            for name_node in visitor.violations
+        )
+    return violations
+
+
 def check_docs_current_truth_overclaims(root_dir: Path) -> list[str]:
     """Return current-truth docs that present target/acceptance as complete."""
     violations: list[str] = []
@@ -1104,6 +1143,17 @@ def _docs_line_has_claim_boundary(lower_line: str) -> bool:
 
 
 class _MCPWeakResponseAssertionVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.violations: list[ast.Name] = []
+
+    def visit_Assert(self, node: ast.Assert) -> None:
+        name_node = _generic_non_none_assertion_name(node.test)
+        if name_node is not None:
+            self.violations.append(name_node)
+        self.generic_visit(node)
+
+
+class _GenericNonNoneAssertionVisitor(ast.NodeVisitor):
     def __init__(self) -> None:
         self.violations: list[ast.Name] = []
 

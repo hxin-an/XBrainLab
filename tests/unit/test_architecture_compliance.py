@@ -2,6 +2,7 @@ from tests.architecture_compliance import (
     check_backend_facade_test_usage,
     check_docs_current_truth_overclaims,
     check_headless_verifier_direct_study_state,
+    check_llm_application_surface_weak_result_assertions,
     check_llm_direct_study_state_reads,
     check_llm_parser_weak_parse_assertions,
     check_mcp_direct_study_state_reads,
@@ -304,6 +305,50 @@ def test_no_json_block():
     )
 
     assert check_llm_parser_weak_parse_assertions(tmp_path) == []
+
+
+def test_llm_application_surface_result_guard_flags_generic_non_none_assertion(
+    tmp_path,
+):
+    path = tmp_path / "tests" / "unit" / "llm" / "tools" / "test_application_surface.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_scan_source_routes_to_command_surface():
+    result = execute_application_tool_command(study, "scan_source", params)
+    assert result is not None
+    assert result.command_name == "scan_source"
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_llm_application_surface_weak_result_assertions(tmp_path)
+
+    assert len(violations) == 1
+    assert "generic non-None application-surface assertion" in violations[0]
+    assert "ToolCommandResult" in violations[0]
+
+
+def test_llm_application_surface_result_guard_allows_exact_result_contract(
+    tmp_path,
+):
+    path = tmp_path / "tests" / "unit" / "llm" / "tools" / "test_application_surface.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_scan_source_routes_to_command_surface():
+    result = execute_application_tool_command(study, "scan_source", params)
+    assert isinstance(result, ToolCommandResult), result
+    assert result.tool_name == "scan_source"
+    assert result.command_name == "scan_source"
+    assert result.raw_result["status"] == "ok"
+    assert result.capability["command_name"] == "scan_source"
+    assert result.state["interpretation"]["has_scan_result"] is True
+""",
+        encoding="utf-8",
+    )
+
+    assert check_llm_application_surface_weak_result_assertions(tmp_path) == []
 
 
 def test_docs_current_truth_guard_flags_product_complete_overclaim(tmp_path):
