@@ -327,6 +327,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.rule_alignment_combo: QComboBox
         self.rule_placement_method_combo: QComboBox
         self.rule_duration_field_combo: QComboBox
+        self.rule_time_model_combo: QComboBox
         self.rule_label_unit_combo: QComboBox
         self.rule_use_as_combo: QComboBox
         self.label_values_status_label: QLabel
@@ -334,6 +335,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.time_field_numeric_value_label: QLabel
         self.time_field_range_value_label: QLabel
         self.time_field_base_value_label: QLabel
+        self.time_field_preview_value_label: QLabel
         self.placement_status_label: QLabel
         self.rule_status_label: QLabel
         self.placement_detail_stack: QStackedWidget
@@ -381,6 +383,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._internal_class_name_edits: dict[str, str] = {}
         self._target_event_code_selection: list[str] = []
         self._target_event_selection_touched = False
+        self._time_model_rule_touched = False
         self._event_detail_widgets: list[QWidget] = []
         self._tree_column_specs: dict[int, tuple[int, ...]] = {}
         self._updating_label_rule = False
@@ -2089,6 +2092,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self._common_carrier_value("selected_duration_field"),
             "Choose a duration or end-time field to pass to epoch setup.",
         )
+        self.rule_time_model_combo = self._rule_combo(
+            self._time_model_choices(),
+            self._default_time_model_value(placement_method),
+            "Choose how to interpret the selected label time field.",
+        )
         for hidden_selector in (
             self.rule_placement_method_combo,
             self.rule_alignment_combo,
@@ -2122,6 +2130,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self.rule_duration_field_combo,
         ):
             selector.currentIndexChanged.connect(self._apply_label_rule_to_preview)
+        self.rule_time_model_combo.currentIndexChanged.connect(
+            self._handle_time_model_change
+        )
 
         has_label_rows = bool(self._label_carrier_items)
         for selector in (
@@ -2129,6 +2140,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self.rule_alignment_combo,
             self.rule_label_unit_combo,
             self.rule_duration_field_combo,
+            self.rule_time_model_combo,
         ):
             selector.setEnabled(has_label_rows)
         self._sync_placement_method_buttons()
@@ -2363,7 +2375,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         time_field_combo.currentIndexChanged.connect(
             lambda _index, selector=time_field_combo: (
-                self._sync_alignment_from_visible_combo(selector)
+                self._handle_time_field_selector_change(selector)
             )
         )
         controls.addWidget(
@@ -2371,7 +2383,13 @@ class DataInterpretationPreviewDialog(BaseDialog):
             0,
             0,
         )
+        controls.addWidget(
+            self._rule_control("Interpret times as", self.rule_time_model_combo),
+            0,
+            1,
+        )
         controls.setColumnStretch(0, 1)
+        controls.setColumnStretch(1, 1)
         layout.addLayout(controls)
         layout.addWidget(self._time_field_review_strip())
         layout.addStretch(1)
@@ -2409,7 +2427,13 @@ class DataInterpretationPreviewDialog(BaseDialog):
             "Epoch handoff",
             "Window set later",
         )
-        for column in range(4):
+        self.time_field_preview_value_label = self._time_review_metric(
+            layout,
+            4,
+            "Preview rows",
+            self._time_field_preview_text(),
+        )
+        for column in range(5):
             layout.setColumnStretch(column, 1)
         return strip
 
@@ -2622,6 +2646,22 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         return choices
 
+    @staticmethod
+    def _time_model_choices() -> list[tuple[str, str]]:
+        return [
+            ("Seconds", "seconds"),
+            ("Sample index", "sample_index"),
+            ("Relative time", "relative_time"),
+            ("Timestamp", "timestamp"),
+        ]
+
+    def _default_time_model_value(self, placement_method: str) -> str:
+        common = self._common_carrier_value("time_model")
+        if common:
+            return common
+        anchor = self._default_alignment_value(placement_method)
+        return self._inferred_time_model_for_anchor(anchor)
+
     def _label_values_status_text(self) -> str:
         if not self._label_carrier_items:
             return "No loaded label files are available."
@@ -2824,6 +2864,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self.time_field_range_value_label.setText(self._time_field_range_text())
         if hasattr(self, "time_field_base_value_label"):
             self.time_field_base_value_label.setText(self._time_field_base_text())
+        if hasattr(self, "time_field_preview_value_label"):
+            self.time_field_preview_value_label.setText(self._time_field_preview_text())
 
     def _time_field_numeric_rows_text(self) -> str:
         review = self._time_field_review()
@@ -2846,6 +2888,12 @@ class DataInterpretationPreviewDialog(BaseDialog):
     def _time_field_base_text(self) -> str:
         review = self._time_field_review()
         raw = str(review.get("time_model") or "").strip()
+        if (
+            hasattr(self, "rule_time_model_combo")
+            and self._combo_current_data(self.rule_placement_method_combo)
+            == "time_field"
+        ):
+            raw = self._combo_current_data(self.rule_time_model_combo) or raw
         if not raw:
             raw = self._common_carrier_value("time_model")
         labels = {
@@ -2856,6 +2904,49 @@ class DataInterpretationPreviewDialog(BaseDialog):
             "trial_order": "Trial order",
         }
         return labels.get(raw, self._label_choice_display(raw) if raw else "Review")
+
+    def _time_field_preview_text(self) -> str:
+        rows = self._time_label_preview_rows()
+        if not rows:
+            return "Preview after apply"
+        parts = []
+        for row in rows[:3]:
+            time_value = str(row.get("time") or "").strip()
+            label_value = str(row.get("label") or "").strip()
+            if time_value and label_value:
+                parts.append(f"{time_value} -> {label_value}")
+        return "; ".join(parts) if parts else "Preview after apply"
+
+    def _time_label_preview_rows(self) -> list[dict[str, str]]:
+        current_time_field = self._combo_current_data(self.rule_alignment_combo)
+        current_label_field = self._combo_current_data(self.rule_label_field_combo)
+        rows: list[dict[str, str]] = []
+        for item, original in self._label_carrier_items:
+            carrier_key = self._label_carrier_key(item, original)
+            if carrier_key and self._is_label_carrier_excluded(carrier_key):
+                continue
+            original_time_field = str(original.get("selected_anchor") or "").strip()
+            original_label_field = str(
+                original.get("selected_label_field") or ""
+            ).strip()
+            if current_time_field and original_time_field != current_time_field:
+                continue
+            if current_label_field and original_label_field != current_label_field:
+                continue
+            preview_rows = original.get("time_label_preview")
+            if not isinstance(preview_rows, list):
+                continue
+            for row in preview_rows:
+                if not isinstance(row, dict):
+                    continue
+                time_value = str(row.get("time") or "").strip()
+                label_value = str(row.get("label") or "").strip()
+                if not time_value or not label_value:
+                    continue
+                rows.append({"time": time_value, "label": label_value})
+                if len(rows) >= 3:
+                    return rows
+        return rows
 
     @staticmethod
     def _int_value(value: Any) -> int | None:
@@ -3027,6 +3118,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if self._updating_label_rule:
             return
         self._refresh_alignment_choices_for_placement()
+        if not self._time_model_rule_touched:
+            self._sync_time_model_from_current_alignment()
         self._sync_placement_method_buttons()
         self._sync_placement_detail_stack()
         self._apply_label_rule_to_preview()
@@ -3112,6 +3205,52 @@ class DataInterpretationPreviewDialog(BaseDialog):
         value = str(selector.currentData() or "")
         self._set_combo_current_data(self.rule_alignment_combo, value)
         self._apply_label_rule_to_preview()
+
+    def _handle_time_field_selector_change(self, selector: QComboBox) -> None:
+        value = str(selector.currentData() or "")
+        self._set_combo_current_data(self.rule_alignment_combo, value)
+        if not self._time_model_rule_touched:
+            self._sync_time_model_from_current_alignment()
+        self._apply_label_rule_to_preview()
+
+    def _handle_time_model_change(self) -> None:
+        if self._updating_label_rule:
+            return
+        self._time_model_rule_touched = True
+        self._apply_label_rule_to_preview()
+
+    def _sync_time_model_from_current_alignment(self) -> None:
+        if not hasattr(self, "rule_time_model_combo"):
+            return
+        value = self._inferred_time_model_for_anchor(
+            self._combo_current_data(self.rule_alignment_combo)
+        )
+        was_blocked = self.rule_time_model_combo.blockSignals(True)
+        self._set_combo_current_data(self.rule_time_model_combo, value)
+        self.rule_time_model_combo.blockSignals(was_blocked)
+
+    def _inferred_time_model_for_anchor(self, anchor: str) -> str:
+        anchor = str(anchor or "").strip().lower()
+        if "sample" in anchor:
+            return "sample_index"
+        if any(token in anchor for token in ("timestamp", "lsl")):
+            return "timestamp"
+        if any(token in anchor for token in ("onset", "time", "latency")):
+            first_carrier = self._first_active_label_carrier_original()
+            if first_carrier and not self._carrier_uses_seconds(first_carrier):
+                return "relative_time"
+            return "seconds"
+        common = self._common_carrier_value("time_model")
+        allowed = {value for _display, value in self._time_model_choices()}
+        return common if common in allowed else "seconds"
+
+    def _first_active_label_carrier_original(self) -> dict[str, Any]:
+        for item, original in self._label_carrier_items:
+            carrier_key = self._label_carrier_key(item, original)
+            if carrier_key and self._is_label_carrier_excluded(carrier_key):
+                continue
+            return original
+        return {}
 
     def _sync_duration_from_visible_combo(self, selector: QComboBox) -> None:
         value = str(selector.currentData() or "")
@@ -5591,11 +5730,18 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 original_value = str(original.get(original_key) or "").strip()
                 if current and current != original_value:
                     changed[choice_key] = current
+            placement_method = self._combo_current_data(
+                self.rule_placement_method_combo
+            )
+            current_time_model = self._time_model_for_current_label_choice(original)
+            original_time_model = str(original.get("time_model") or "").strip()
             if (
-                self._combo_current_data(self.rule_placement_method_combo)
-                == "eeg_event"
-                and self._target_eeg_event_choices()
+                placement_method == "time_field"
+                and current_time_model
+                and current_time_model != original_time_model
             ):
+                changed["time_model"] = current_time_model
+            if placement_method == "eeg_event" and self._target_eeg_event_choices():
                 target_event_codes = self._event_order_target_codes()
                 original_target_event_codes = [
                     str(value).strip()
@@ -5664,6 +5810,13 @@ class DataInterpretationPreviewDialog(BaseDialog):
     def _time_model_for_current_label_choice(self, original: dict[str, Any]) -> str:
         original_time_model = str(original.get("time_model") or "").strip()
         placement_method = self._combo_current_data(self.rule_placement_method_combo)
+        if placement_method == "time_field" and hasattr(
+            self,
+            "rule_time_model_combo",
+        ):
+            explicit = self._combo_current_data(self.rule_time_model_combo)
+            if explicit:
+                return explicit
         anchor = self._combo_current_data(self.rule_alignment_combo).lower()
         if placement_method == "eeg_event":
             return original_time_model or "trial_order"

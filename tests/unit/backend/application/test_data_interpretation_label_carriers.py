@@ -108,6 +108,25 @@ def test_label_carrier_plan_counts_label_rows_and_values(tmp_path):
     assert plan[0]["label_value_counts"] == {"left": 2, "right": 1}
 
 
+def test_label_carrier_plan_exposes_time_label_preview(tmp_path):
+    labels = tmp_path / "events.tsv"
+    labels.write_text(
+        "onset\ttrial_type\n0\tleft\n2.5\tright\n5\tleft\n",
+        encoding="utf-8",
+    )
+
+    plan = build_label_carrier_plan(
+        [str(labels)],
+        {labels.name: {"label_field": "trial_type", "anchor": "onset"}},
+    )
+
+    assert plan[0]["time_label_preview"] == [
+        {"time": "0", "label": "left"},
+        {"time": "2.5", "label": "right"},
+        {"time": "5", "label": "left"},
+    ]
+
+
 def test_label_carrier_plan_exposes_event_code_candidates_and_stats(tmp_path):
     labels = tmp_path / "labels.tsv"
     labels.write_text(

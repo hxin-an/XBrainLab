@@ -1181,6 +1181,11 @@ def test_match_labels_placement_methods_use_mode_specific_panels(qtbot):
                     "granularity": "event",
                     "placement_method": "time_field",
                     "role": "external labels",
+                    "time_label_preview": [
+                        {"time": "0", "label": "left"},
+                        {"time": "5.5", "label": "right"},
+                        {"time": "11", "label": "left"},
+                    ],
                     "placement_reviews": {
                         "time_field": {
                             "method": "time_field",
@@ -1241,12 +1246,16 @@ def test_match_labels_placement_methods_use_mode_specific_panels(qtbot):
         assert excluded not in visible_text
         assert "Align to" not in visible_text
         if method == "time_field":
+            assert "Interpret times as" in visible_text
             assert "Numeric rows" in visible_text
             assert "12/12" in visible_text
             assert "Time range" in visible_text
             assert "0 to 11" in visible_text
             assert "Time base" in visible_text
             assert "Seconds" in visible_text
+            assert "Preview rows" in visible_text
+            assert "0 -> left" in visible_text
+            assert "5.5 -> right" in visible_text
             assert "Epoch handoff" in visible_text
         if method == "event_code":
             assert "1/2 label event codes were found" in (
@@ -1259,6 +1268,68 @@ def test_match_labels_placement_methods_use_mode_specific_panels(qtbot):
         if checkbox.objectName() == "DataImportTargetEventCheckbox"
     ]
     assert target_checks
+
+
+def test_match_labels_label_time_records_time_base_choice(qtbot):
+    label_path = "/tmp/labels/sub-01_events.tsv"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/sub-01_task-mi_raw.fif"],
+            "label_carriers": [label_path],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+            "label_carrier_preview": [
+                {
+                    "path": label_path,
+                    "name": "sub-01_events.tsv",
+                    "format": "TSV",
+                    "target_file": "sub-01_task-mi_raw.fif",
+                    "label_candidates": ["trial_type"],
+                    "anchor_candidates": ["onset", "sample"],
+                    "time_field_candidates": ["onset", "sample"],
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                    "label_row_count": 2,
+                    "time_model": "seconds",
+                    "granularity": "event",
+                    "placement_method": "time_field",
+                    "role": "external labels",
+                    "placement_reviews": {
+                        "time_field": {
+                            "method": "time_field",
+                            "status": "ready",
+                            "time_field": "onset",
+                            "label_rows": 2,
+                            "numeric_rows": 2,
+                            "time_min": 0,
+                            "time_max": 1,
+                            "time_model": "seconds",
+                            "summary": "2/2 numeric rows, range 0 to 1.",
+                        },
+                    },
+                },
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Match Labels")
+    qtbot.wait(0)
+
+    assert dialog.rule_time_model_combo.currentData() == "seconds"
+    dialog.rule_time_model_combo.setCurrentIndex(
+        dialog.rule_time_model_combo.findData("sample_index")
+    )
+    qtbot.wait(0)
+
+    choices = dialog.get_result()["choices"]["label_carrier_choices"][label_path]
+    assert choices["time_model"] == "sample_index"
+    assert choices["placement_method"] == "time_field"
+    assert choices["anchor"] == "onset"
 
 
 def test_data_interpretation_preview_dialog_records_attached_label_folder(

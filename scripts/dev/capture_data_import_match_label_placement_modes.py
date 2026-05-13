@@ -102,6 +102,11 @@ def preview_payload(method: str) -> dict[str, Any]:
                 "selected_duration_field": "duration" if method == "interval" else "",
                 "label_row_count": 282,
                 "label_value_counts": {"1": 72, "2": 70, "3": 70, "4": 70},
+                "time_label_preview": [
+                    {"time": "0", "label": "1"},
+                    {"time": "2.5", "label": "2"},
+                    {"time": "5", "label": "1"},
+                ],
                 "selected_anchor_stats": {
                     "row_count": 282,
                     "value_counts": {
@@ -207,6 +212,7 @@ def placement_reviews() -> dict[str, dict[str, Any]]:
             "numeric_rows": 282,
             "time_min": 0.0,
             "time_max": 719.5,
+            "time_model": "seconds",
             "summary": "onset: 282/282 numeric rows, range 0 to 719.5.",
         },
         "interval": {

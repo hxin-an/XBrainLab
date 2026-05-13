@@ -145,6 +145,12 @@ def _label_carrier_plan_for_path(
     label_stats = _observed_label_stats(path, selected_label)
     anchor_stats = _observed_field_stats(path, selected_anchor)
     duration_stats = _observed_field_stats(path, selected_duration)
+    time_label_preview = _time_label_preview(
+        path,
+        selected_anchor,
+        selected_label,
+        limit=3,
+    )
     return {
         "path": source_path,
         "name": path.name,
@@ -167,6 +173,7 @@ def _label_carrier_plan_for_path(
         "label_value_counts": label_stats["value_counts"],
         "selected_anchor_stats": anchor_stats,
         "selected_duration_stats": duration_stats,
+        "time_label_preview": time_label_preview,
         "time_model": time_model,
         "granularity": granularity,
         "placement_method": placement_method,
@@ -443,6 +450,109 @@ def _observed_field_stats(path: Path, field_name: str) -> dict[str, Any]:
     if suffix == ".mat":
         return _mat_field_stats(path, field_name)
     return _empty_field_stats()
+
+
+def _time_label_preview(
+    path: Path,
+    time_field: str,
+    label_field: str,
+    *,
+    limit: int,
+) -> list[dict[str, str]]:
+    time_field = str(time_field or "").strip()
+    label_field = str(label_field or "").strip()
+    if not time_field or not label_field or time_field == "trial order" or limit <= 0:
+        return []
+    suffix = path.suffix.lower()
+    if suffix in {".csv", ".tsv"} or _is_bids_events_file(path):
+        return _tabular_time_label_preview(
+            path,
+            time_field,
+            label_field,
+            limit=limit,
+        )
+    if suffix == ".mat":
+        return _mat_time_label_preview(
+            path,
+            time_field,
+            label_field,
+            limit=limit,
+        )
+    return []
+
+
+def _tabular_time_label_preview(
+    path: Path,
+    time_field: str,
+    label_field: str,
+    *,
+    limit: int,
+) -> list[dict[str, str]]:
+    delimiter = (
+        "\t" if path.suffix.lower() == ".tsv" or _is_bids_events_file(path) else ","
+    )
+    rows: list[dict[str, str]] = []
+    try:
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle, delimiter=delimiter)
+            if (
+                not reader.fieldnames
+                or time_field not in reader.fieldnames
+                or label_field not in reader.fieldnames
+            ):
+                return []
+            for row in reader:
+                time_value = _clean_label_value(row.get(time_field))
+                label_value = _clean_label_value(row.get(label_field))
+                if not time_value or not label_value:
+                    continue
+                rows.append({"time": time_value, "label": label_value})
+                if len(rows) >= limit:
+                    break
+    except (OSError, UnicodeDecodeError, csv.Error):
+        return []
+    return rows
+
+
+def _mat_time_label_preview(
+    path: Path,
+    time_field: str,
+    label_field: str,
+    *,
+    limit: int,
+) -> list[dict[str, str]]:
+    try:
+        payload = loadmat(str(path), squeeze_me=True, struct_as_record=False)
+    except Exception:
+        return []
+    time_value = _mat_variable(payload, time_field)
+    label_value = _mat_variable(payload, label_field)
+    if time_value is None or label_value is None:
+        return []
+    time_array = np.asarray(time_value)
+    label_array = np.asarray(label_value)
+    if (
+        time_array.dtype.names is not None
+        or label_array.dtype.names is not None
+        or object in (time_array.dtype, label_array.dtype)
+    ):
+        return []
+    rows: list[dict[str, str]] = []
+    time_values = time_array.reshape(-1)
+    label_values = label_array.reshape(-1)
+    for time_item, label_item in zip(time_values, label_values, strict=False):
+        time_text = _clean_label_value(
+            time_item.item() if hasattr(time_item, "item") else time_item
+        )
+        label_text = _clean_label_value(
+            label_item.item() if hasattr(label_item, "item") else label_item
+        )
+        if not time_text or not label_text:
+            continue
+        rows.append({"time": time_text, "label": label_text})
+        if len(rows) >= limit:
+            break
+    return rows
 
 
 def _empty_field_stats() -> dict[str, Any]:
