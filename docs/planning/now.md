@@ -6,52 +6,34 @@
 
 ## 目前焦點
 
-**Phase 1A 收尾：Backend Command Spine / Legacy / UI Refresh / Test Cleanup。**
+**Phase 1A 收尾：UI refresh truth、test evidence boundary、human desktop acceptance。**
 
-要先做這件事，因為 MVP 前最大的風險不是功能不夠多，而是 UI、backend、assistant、MCP
-各自保存一套 workflow truth。
+Backend command spine 已經是 product runtime 主路徑；`BackendFacade` 已物理移除。現在要避免
+把「已經沒有 facade」誤讀成「UI 已經 full zero-controller」或「產品已人工驗收」。
 
-Data Import 這條線已先補一輪 UX target alignment 並交付第一版 task-oriented step-panel
-wizard baseline：primary import actions、external label sources、selected scope vs scan location、
-structured action items、recipe preservation 和 UI / agent / MCP command surface 對齊。
-最新 UI polish 已把每個 wizard step 改成不同任務 panel，不再只是把表格搬到各 step；footer
-也已把 `Cancel` 放左下、流程導航 / apply 放右下。主 Dataset sidebar 已移除第一層
-`Add Labels to Loaded Data` / `Smart Parse Metadata` 舊入口。這仍需要 human Windows desktop
-acceptance。
+短期工作要從目前 target gap 反推，而不是再重複 audit：
+
+- real `Study` product path 已禁止 `BackendFacade` 和 direct legacy fallback success。
+- high-value UI actions 已走 command / query truth。
+- 剩餘 controller path 多半是 panel constructor / observer bridge、human-in-loop UI request、
+  mock / legacy compatibility、或 lower-level fixture setup。
+- 產品仍缺 Windows human desktop acceptance；automated smoke 不能取代。
 
 ## 本輪要達到
 
 | 工作 | 完成判準 |
 | --- | --- |
-| Legacy product path cleanup | real `Study` runtime 的主要 mutating path 不再 silent fallback 到 legacy controller mutation。 |
-| UI refresh cleanup | command 成功後的頁面更新由 shared refresh route / changed state 驅動，不由各頁自己猜。 |
-| Test cleanup | 測試不再把 legacy fallback 當作預期成功路徑；mock 只隔離外部依賴。 |
-| Validation reality-gap audit | 盤點現有 tests / artifacts / smoke 的 claim boundary，補上 human-observable product smoke，避免 dashboard PASS 但實機 workflow 仍不可用。 |
-| Data Import UX alignment | task-oriented step-panel wizard baseline 和第一輪 task-panel visual polish 已交付；後續不再以 debug-style preview 為目標。 |
-| BackendFacade boundary | Product runtime packages、product-success tests 和 unit tests 不再使用 `BackendFacade`; replacement coverage lives in `ApplicationService` / focused service / helper tests. |
-| Architecture guard | 新增或維持 guard，防止 product runtime 和 product-success tests 繞過 command spine。 |
-| Docs alignment | `current`、`roadmap`、`architecture` 不互相矛盾。 |
-
-2026-05-12 狀態：backend command spine cleanup 已補上 product-success `BackendFacade`
-guard、ApplicationService real-data / pipeline replacement coverage、dataset split default
-regression、agent stage snapshot cleanup、full type/lint/docs/dashboard PASS。Epoch UI freeze/hang
-reality gap 也已補上 command-backed real-GDF offscreen smoke：A01T/A02T/A03T epoching 回到 UI、
-不開 blocking success modal，且 epoched preview 會取消 queued plot redraw。下一個不能跳過的
-follow-up backend hardening 已補 command-time observer refresh suppression、read-only query
-state preservation、unsupported command structured result，以及 product walkthrough 對
-`TrainCommand` confirmation / `append` / `interactive` contract 的測試對齊。最新 refactor slice
-已物理移除 `BackendFacade` module 和 facade compatibility-only tests，architecture guard 現在
-拒絕任何 test 使用 facade。2026-05-13 runtime integration branch 已整合 current Data Import UX
-checkpoint，並以 focused ApplicationService、agent/MCP、UI command-refresh、architecture
-guards 驗證。下一個不能跳過的缺口仍是 docs truth / artifact hygiene closure、private docs site
-polish，以及更完整的 human-observable desktop product smoke；不能用 dashboard PASS 或單一
-offscreen smoke 取代。
+| Controller exception reduction | 從剩餘例外地圖挑一類可安全替換的 real-product read/display path；若不能替換，要寫清楚分類和原因。 |
+| UI refresh proof | 對 touched path 補 command/query truth assertion 或 product smoke；不接受 no-crash / generic string evidence。 |
+| Test evidence cleanup | product-success tests 不回到 facade、legacy fallback、direct mutable `Study` state 或 positive controller lookup。 |
+| Human acceptance prep | 明確列出 Windows desktop click-through 尚缺哪些步驟和 artifact；不把 dashboard PASS 當人工驗收。 |
+| Docs readability | current / architecture / validation / now 可以讓新工程師先讀摘要，再追 checkpoint。 |
 
 ## 接下來才做
 
 | Phase | 開始條件 |
 | --- | --- |
-| 1B Data Interpretation MVP Slice | downstream supervised-limited state、event extraction summary、metadata recipe provenance 和 screenshot artifact 補齊。 |
+| 1B Data Interpretation MVP Slice | Phase 1A 的 product runtime / refresh / evidence 邊界足夠穩，不再把 UX bug 和 backend truth 混在一起。 |
 | 1C Tool-Call Product Baseline | command surface 和 state snapshot 足夠穩定。 |
 | 1D Windows Desktop Acceptance | backend / UI / Data Interpretation / assistant baseline 可跑代表性 workflow。 |
 | 2 Release Candidate | human desktop MVP acceptance 有證據。 |

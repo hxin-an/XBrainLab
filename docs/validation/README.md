@@ -129,6 +129,19 @@ state from chronological checkpoint history.
 | `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/ui/test_product_walkthrough.py -q` | `4 passed` | Representative product walkthrough remains green while docs describe product-smoke claim boundaries. | Long-running local model session, release approval, or all data formats. | Human desktop acceptance remains required before release claims. |
 | `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 17:46:11 UTC+08:00`. | Fast engineering dashboard is green after docs readability cleanup, including full ruff, basedpyright, architecture, startup, UI baseline/dialog/unit, and real-data IO. | Product complete or human Windows acceptance. | Keep docs readability scored separately from docs correctness/completeness. |
 
+## 2026-05-13 Docs Navigation Readability Checkpoint
+
+This docs-only slice aligned `index.md`, `planning/now.md`, and `architecture/README.md` with the
+newer current/UI/validation truth. The goal was to make the site entry and short-term plan readable
+without implying that `BackendFacade` removal means full zero-controller UI or human product
+acceptance.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| Docs entry audit: compared `docs/index.md`, `docs/planning/now.md`, `docs/architecture/README.md`, `docs/current.md`, and this validation page for current-vs-target wording | Entry docs now describe remaining gaps as UI controller adapter distance, product-smoke evidence boundaries, and human desktop acceptance rather than stale facade cleanup. | New readers can reach the current state and next work without reading chronological history first. | Runtime behavior or product acceptance. | Keep `now.md` current after each major stabilization checkpoint. |
+| `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS | Documentation site and whitespace gate remain clean after entry-navigation edits. | Content correctness by itself. | Pair docs edits with source/test audits when implementation claims change. |
+| `poetry run python tests/architecture_compliance.py` | `Architecture compliant!` | The source tree still passes the architecture guard while docs classify `BackendFacade` as a guarded regression risk, not current implementation. | Human desktop acceptance or full zero-controller UI. | Keep architecture docs and guard vocabulary aligned. |
+
 ## 2026-05-13 Data Import Runtime Integration Checkpoint
 
 | Command | Result | Claim supported | Claim not supported | Follow-up |

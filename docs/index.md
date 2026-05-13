@@ -19,7 +19,7 @@ Windows Desktop MVP baseline：backend、Data Interpretation、tool-call、deskt
 
 <div markdown>
 <span class="xlb-kicker">主要缺口</span>
-Phase 1A 要清掉 product legacy path，收斂 UI page refresh，並同步清理測試。
+Phase 1A 剩下的是 zero-controller UI 距離、human desktop acceptance、以及測試證據邊界。
 </div>
 
 <div markdown>
@@ -48,7 +48,7 @@ artifact 是 evidence，不是 current truth；claim 要回到 Current / Validat
 
 - **下一步**
 
-    看下一輪施工焦點：Backend Command Spine / Legacy / Test / UI Refresh Cleanup。
+    看下一輪施工焦點：剩餘 UI controller 例外、product smoke、human acceptance。
 
     [打開 Now](planning/now.md)
 
@@ -105,7 +105,7 @@ truth. Current truth belongs in [current.md](current.md), architecture docs, and
 
 ## 目前工作主線
 
-1. Phase 1A：Backend Command Spine / Legacy / Test / UI Refresh Cleanup。
+1. Phase 1A：Backend Command Spine / UI Refresh / Test Evidence 收尾。
 2. Phase 1B：Data Interpretation MVP Slice。
 3. Phase 1C：Tool-Call Product Baseline。
 4. Phase 1D：Windows Desktop MVP Acceptance。
