@@ -127,9 +127,10 @@ def compare_ui_images(
     stat = ImageStat.Stat(diff)
     mean_diff = sum(stat.mean) / len(stat.mean)
 
-    diff_mask = diff.convert("L").point(
-        lambda value: 255 if value > PIXEL_DIFF_THRESHOLD else 0
-    )
+    def threshold_pixel(value: int) -> int:
+        return 255 if value > PIXEL_DIFF_THRESHOLD else 0
+
+    diff_mask = diff.convert("L").point(threshold_pixel)
     histogram = diff_mask.histogram()
     total_pixels = sum(histogram)
     changed_pixels = total_pixels - histogram[0]
@@ -340,9 +341,9 @@ def render_markdown(report: dict) -> str:
     lines.extend(
         [
             "",
-            "## UI Artifacts",
+            "## UI Baseline Capture",
             "",
-            "Expected artifacts:",
+            "Generated capture paths (transient, git-ignored):",
             "",
         ]
     )

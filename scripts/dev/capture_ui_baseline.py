@@ -3,7 +3,8 @@
 
 This helper launches the real application stack, waits for the main window to
 settle, and captures the rendered main-window widget across the shell and the
-five primary panels into ``artifacts/ui/``.
+five primary panels into transient ``artifacts/ui/`` PNGs. Approved references
+live in ``tests/baselines/ui/``.
 
 Expected usage in WSL/headless environments:
 

@@ -370,6 +370,25 @@ runtime behavior, Data Import UX layout, or the meaning of the retained evidence
 | Focused `ruff check` / `ruff format --check` / `basedpyright` on touched capture scripts and focused unit tests | PASS / PASS / `0 errors, 0 warnings, 0 notes`. | The changed artifact generator code is lint, format, and type clean. | Runtime behavior by itself. | Keep generator changes covered by focused tests and artifact audits. |
 | `poetry run mkdocs build --strict` / `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `git diff --check` | PASS / `Architecture compliant!` / `97 passed` / PASS. | Docs and architecture guards remain green after artifact index and generator cleanup. | Product runtime, screenshot freshness, or release acceptance. | Keep artifact cleanups paired with strict docs and stale-reference scans. |
 
+## 2026-05-14 Artifact Live-Capture Deduplication Checkpoint
+
+This artifact hygiene slice did not change runtime behavior, backend semantics, or Data Import UX.
+It removed tracked top-level UI live-capture PNGs that duplicated `tests/baselines/ui/` approved
+references byte-for-byte, pruned one unreferenced sidebar screenshot, and made future dashboard
+live captures local-only through `artifacts/ui/.gitignore`. Current UI walkthrough evidence remains
+in named `artifacts/ui/*/` subdirectories, while approved regression references remain in
+`tests/baselines/ui/`.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| Cross-tree duplicate-hash audit over `artifacts/` and `tests/baselines/ui/` | Found seven tracked top-level `artifacts/ui/*.png` files that were byte-identical to approved baseline images. | The removed files were redundant copies, not distinct current evidence. | Visual freshness, human desktop acceptance, or runtime correctness. | Keep top-level dashboard captures ignored; promote references only through `tests/baselines/ui/`. |
+| Current-doc reference audit for removed UI files | No current truth / validation / index document depends on the removed top-level UI PNGs; historical records only mention old provenance. | Current artifact entrances still point to retained evidence families. | Historical worklog references remain provenance, not current navigation. | Treat records/worklog as historical notes, not current artifact entrances. |
+| `artifacts/README.md` and `docs/architecture/validation.md` updates | Documented transient top-level UI captures, approved baseline location, and local-only dashboard history. | Future artifact refreshes have clearer retention rules. | That future agents will follow the rule without review. | Re-run duplicate audits after major screenshot refreshes. |
+| Post-cleanup duplicate-hash audit over `artifacts/` and `tests/baselines/ui` / `du -sh artifacts` | No duplicate hash groups reported / `8.1M`. | The current tree no longer stores those approved baseline duplicates and the artifact tree is smaller. | Repository history size or screenshot freshness. | Keep ignored generated captures out of commits. |
+| `poetry run pytest --capture=sys tests/unit/scripts/test_update_quality_dashboard.py tests/unit/scripts/test_capture_ui_baseline.py -q` | `11 passed`. | Dashboard markdown and UI baseline helper tests remain green after changing transient artifact wording. | Real UI screenshot capture. | Run the full dashboard only when refreshing runtime evidence. |
+| Focused `ruff check` / `ruff format --check` / `basedpyright` on touched dashboard scripts and tests | PASS / PASS / `0 errors, 0 warnings, 0 notes`. | The dashboard script/test cleanup is lint, format, and type clean. | Runtime behavior by itself. | Keep type checks paired with behavior tests when dashboard logic changes. |
+| `poetry run mkdocs build --strict` / `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `git diff --check` | PASS / `Architecture compliant!` / `100 passed` / PASS. | Docs and architecture guards remain green after artifact cleanup. | Product completion or human desktop acceptance. | Re-run dashboard only when a broader validation checkpoint needs fresh quality artifacts. |
+
 ## 2026-05-14 Product UI No-Crash Evidence Guard Checkpoint
 
 This test-quality slice rewrote one weak product-success integration test that only proved
