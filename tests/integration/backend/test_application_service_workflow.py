@@ -38,6 +38,14 @@ from XBrainLab.backend.dataset import (
     ValSplitByType,
 )
 
+EXPECTED_SYNTHETIC_SPLIT_SUMMARY = {
+    "count": 1,
+    "train_count": 4,
+    "val_count": 1,
+    "test_count": 1,
+    "audit": {"ok": True, "dataset_count": 1, "issues": []},
+}
+
 
 def _write_synthetic_raw_fif(tmp_path):
     sfreq = 128
@@ -132,7 +140,12 @@ def test_application_service_load_epoch_dataset_workflow(tmp_path):
     assert dataset_result.ok is True
     assert dataset_result.changed_state.datasets_changed is True
     assert dataset_result.state.dataset.available is True
-    assert dataset_result.state.dataset.count > 0
+    assert (
+        dataset_result.state.dataset.count == EXPECTED_SYNTHETIC_SPLIT_SUMMARY["count"]
+    )
+    assert dataset_result.state.dataset.split_summary == (
+        EXPECTED_SYNTHETIC_SPLIT_SUMMARY
+    )
     assert service.get_capabilities().get(CommandName.TRAIN).available is False
 
     model_result = service.execute(ConfigureTrainingCommand(model_name="EEGNet"))
@@ -260,9 +273,12 @@ def test_application_service_accepts_dialog_generator_split_and_updates_readines
     assert dataset_result.ok is True
     assert dataset_result.diagnostics["split_audit"]["ok"] is True
     assert dataset_result.state.dataset.available is True
-    assert dataset_result.state.dataset.split_summary["train_count"] > 0
-    assert dataset_result.state.dataset.split_summary["val_count"] > 0
-    assert dataset_result.state.dataset.split_summary["test_count"] > 0
+    assert (
+        dataset_result.state.dataset.count == EXPECTED_SYNTHETIC_SPLIT_SUMMARY["count"]
+    )
+    assert dataset_result.state.dataset.split_summary == (
+        EXPECTED_SYNTHETIC_SPLIT_SUMMARY
+    )
 
     assert service.execute(ConfigureTrainingCommand(model_name="EEGNet")).ok is True
     assert (
@@ -410,9 +426,12 @@ def test_data_interpretation_to_dataset_workflow_is_non_mocked(tmp_path):
     assert dataset_result.ok is True
     assert dataset_result.diagnostics["split_audit"]["ok"] is True
     assert dataset_result.state.dataset.available is True
-    assert dataset_result.state.dataset.split_summary["train_count"] == 4
-    assert dataset_result.state.dataset.split_summary["val_count"] == 1
-    assert dataset_result.state.dataset.split_summary["test_count"] == 1
+    assert (
+        dataset_result.state.dataset.count == EXPECTED_SYNTHETIC_SPLIT_SUMMARY["count"]
+    )
+    assert dataset_result.state.dataset.split_summary == (
+        EXPECTED_SYNTHETIC_SPLIT_SUMMARY
+    )
 
 
 def test_reload_recipe_blocks_missing_saved_eeg_file(tmp_path):
