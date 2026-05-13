@@ -196,7 +196,7 @@ FORMAT_CASES: tuple[FormatCase, ...] = (
     ),
     FormatCase(
         case_id="bids_events_root",
-        title="BIDS-like root with events.tsv",
+        title="BIDS EEG root with events.tsv",
         source_entry=".",
         source_hint="auto",
         expected_validation="needs_confirmation",

@@ -237,6 +237,7 @@ class DataInterpretationCommandService:
             loaded_files=list(candidate.selected_eeg_files),
             label_sources=list(candidate.label_sources),
             label_carriers=list(candidate.label_carriers),
+            bids=dict(candidate.bids),
             label_carrier_plan=[dict(item) for item in candidate.label_carrier_plan],
             metadata=list(candidate.metadata),
             format_capabilities=[dict(item) for item in candidate.format_capabilities],

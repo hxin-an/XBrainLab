@@ -85,6 +85,7 @@ class ApplicationService:
         self.preprocess_commands = PreprocessCommandService(
             preprocess=self.preprocess,
             dataset=self.dataset,
+            get_state=self.get_state,
         )
         self.dataset_generation = DatasetGenerationCommandService(
             study=self.study,

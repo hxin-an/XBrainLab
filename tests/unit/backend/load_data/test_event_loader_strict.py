@@ -114,6 +114,24 @@ def test_event_loader_numeric_string_labels_preserve_numeric_codes():
     assert event_id == {"Left": 769, "Right": 770}
 
 
+def test_event_loader_timestamp_labels_use_class_map_names():
+    """Timestamp labels should expose reviewed class names to Epoch setup."""
+    raw_mne = _generate_mne_raw(duration=5)
+    raw = Raw("test.fif", raw_mne)
+
+    loader = EventLoader(raw)
+    loader.label_list = [
+        {"onset": 0.1, "duration": 0.5, "label": "left"},
+        {"onset": 1.1, "duration": 0.5, "label": "right"},
+    ]
+
+    events, event_id = loader.create_event({"left": "Left hand", "right": "Right hand"})
+
+    assert events is not None
+    assert event_id is not None
+    assert sorted(event_id) == ["Left hand", "Right hand"]
+
+
 def test_event_loader_epochs_fallback_ok():
     """Test that Epochs data still allows artificial timestamps (indices)."""
     raw_mne = _generate_mne_raw()

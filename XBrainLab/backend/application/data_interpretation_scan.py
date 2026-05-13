@@ -70,9 +70,7 @@ def scan_source_path(
         for item in files
         if _has_supported_suffix(item, SUPPORTED_EEG_EXTENSIONS)
     )
-    auto_label_carriers = [
-        item for item in files if _is_label_carrier(item) or _is_bids_events_file(item)
-    ]
+    auto_label_carriers = _auto_label_carriers(files, source_kind)
     normalized_label_sources, source_label_carriers, source_warnings = (
         _label_carriers_from_sources(label_sources or [])
     )
@@ -169,6 +167,15 @@ def _label_carriers_from_sources(
     return normalized, source_carriers, warnings
 
 
+def _auto_label_carriers(files: list[Path], source_kind: str) -> list[Path]:
+    """Return auto-discovered label carriers for the selected source kind."""
+    if source_kind == "bids":
+        return [item for item in files if _is_bids_events_file(item)]
+    return [
+        item for item in files if _is_label_carrier(item) or _is_bids_events_file(item)
+    ]
+
+
 def _dedupe_paths(paths: list[Path]) -> list[Path]:
     result: list[Path] = []
     seen: set[str] = set()
@@ -199,7 +206,9 @@ def _looks_like_bids(path: Path) -> bool:
         return False
     if (path / "dataset_description.json").exists():
         return True
-    return any(item.name.startswith("sub-") for item in path.iterdir())
+    return any(
+        item.is_dir() and item.name.startswith("sub-") for item in path.iterdir()
+    )
 
 
 def _scan_warnings(
@@ -219,9 +228,18 @@ def _scan_warnings(
         warnings.append("External label/event carriers require preview before apply.")
     if source_kind == "bids" and not bids.get("events_files"):
         warnings.append(
-            "BIDS-like source has no events.tsv carrier; supervised labels "
+            "BIDS EEG source has no events.tsv carrier; supervised labels "
             "may be limited.",
         )
+    if source_kind == "bids":
+        bad_channels = int(
+            (bids.get("channel_status_summary") or {}).get("bad", 0) or 0
+        )
+        if bad_channels:
+            warnings.append(
+                f"BIDS channels.tsv marks {bad_channels} channel(s) as bad; "
+                "review channel selection before preprocessing.",
+            )
     unsupported_formats = [
         f"{item.get('format')} ({item.get('name')})"
         for item in format_capabilities

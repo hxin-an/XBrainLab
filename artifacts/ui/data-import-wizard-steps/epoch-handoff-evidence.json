@@ -1,79 +1,542 @@
 {
   "epoch_handoff": {
-    "class_map": {
-      "1": "left",
-      "2": "right"
+    "bids": {
+      "channel_status_summary": {
+        "bad": 1,
+        "good": 1,
+        "other": 0,
+        "total": 2
+      },
+      "channels_files": [
+        "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_channels.tsv"
+      ],
+      "dataset": {},
+      "dataset_description": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/dataset_description.json",
+      "datatypes": [
+        "eeg"
+      ],
+      "eeg_file_count": 1,
+      "events_files": [
+        "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_events.tsv"
+      ],
+      "is_bids": true,
+      "layout": [
+        {
+          "channels_file": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_channels.tsv",
+          "datatype": "eeg",
+          "events_file": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_events.tsv",
+          "file": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_eeg.fif",
+          "name": "sub-01_task-mi_run-1_eeg.fif",
+          "relative_path": "sub-01/eeg/sub-01_task-mi_run-1_eeg.fif",
+          "run": "1",
+          "session": "",
+          "subject": "01",
+          "task": "mi"
+        }
+      ],
+      "participant_count": 1,
+      "participants": [
+        {
+          "age": "21",
+          "participant_id": "sub-01",
+          "sex": "F"
+        }
+      ],
+      "participants_file": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/participants.tsv",
+      "root": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi",
+      "runs": [
+        "1"
+      ],
+      "scan_location": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi",
+      "selected_scope": {
+        "channels_files": [
+          "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_channels.tsv"
+        ],
+        "datatypes": [
+          "eeg"
+        ],
+        "eeg_file_count": 1,
+        "eeg_files": [
+          "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_eeg.fif"
+        ],
+        "events_files": [
+          "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_events.tsv"
+        ],
+        "runs": [
+          "1"
+        ],
+        "sessions": [],
+        "subjects": [
+          "01"
+        ],
+        "tasks": [
+          "mi"
+        ]
+      },
+      "sessions": [],
+      "subjects": [
+        "01"
+      ],
+      "tasks": [
+        "mi"
+      ]
     },
+    "class_map": {
+      "left": "Left hand",
+      "right": "Right hand"
+    },
+    "default_epoch_events": [
+      "Left hand",
+      "Right hand"
+    ],
+    "epoch_targets": [
+      {
+        "event": "Left hand",
+        "source": "bids_events"
+      },
+      {
+        "event": "Right hand",
+        "source": "bids_events"
+      }
+    ],
     "label_carrier_plan": [
       {
-        "path": "/tmp/xbrainlab_data_import_8al_14zw/A01T.mat",
-        "placement_method": "eeg_event",
-        "selected_anchor": "768",
-        "selected_label_field": "classlabel",
-        "selected_target_file": "A01T.gdf",
-        "time_model": "trial_order"
+        "path": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_events.tsv",
+        "placement_method": "interval",
+        "selected_anchor": "onset",
+        "selected_duration_field": "duration",
+        "selected_label_field": "trial_type",
+        "selected_target_file": "sub-01_task-mi_run-1_eeg.fif",
+        "time_model": "seconds"
       }
     ],
     "label_imports": [
       {
         "class_map": {
-          "1": "left",
-          "2": "right"
+          "left": "Left hand",
+          "right": "Right hand"
         },
         "file_mapping": {
-          "/tmp/xbrainlab_data_import_8al_14zw/A01T.gdf": "/tmp/xbrainlab_data_import_8al_14zw/A01T.mat"
+          "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_eeg.fif": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_events.tsv"
         },
         "label_carriers": [
-          "/tmp/xbrainlab_data_import_8al_14zw/A01T.mat"
+          "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_events.tsv"
         ],
-        "mode": "legacy",
-        "selected_event_names": [
-          "768"
-        ],
+        "mode": "timestamp",
+        "selected_event_names": [],
         "success_count": 1,
         "target_files": [
-          "/tmp/xbrainlab_data_import_8al_14zw/A01T.gdf"
+          "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_eeg.fif"
         ]
       }
     ],
+    "label_source": "bids_events",
     "placement_modes": [
-      "eeg_event"
+      "interval"
     ],
     "ready": true,
     "run_event_mappings": {},
-    "selected_event_names": [
-      "768"
-    ],
-    "source": "applied_interpretation"
+    "selected_event_names": [],
+    "source": "applied_interpretation",
+    "supervised_blockers": [],
+    "supervised_ready": true
   },
   "label_apply": {
-    "label_carrier": "/tmp/xbrainlab_data_import_8al_14zw/A01T.mat",
+    "label_carrier": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_events.tsv",
     "label_carriers": [
-      "/tmp/xbrainlab_data_import_8al_14zw/A01T.mat"
+      "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_events.tsv"
     ],
     "label_import": {
       "class_map": {
-        "1": "left",
-        "2": "right"
+        "left": "Left hand",
+        "right": "Right hand"
       },
       "file_mapping": {
-        "/tmp/xbrainlab_data_import_8al_14zw/A01T.gdf": "/tmp/xbrainlab_data_import_8al_14zw/A01T.mat"
+        "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_eeg.fif": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_events.tsv"
       },
       "label_carriers": [
-        "/tmp/xbrainlab_data_import_8al_14zw/A01T.mat"
+        "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_events.tsv"
       ],
-      "mode": "legacy",
-      "selected_event_names": [
-        "768"
-      ],
+      "mode": "timestamp",
+      "selected_event_names": [],
       "success_count": 1,
       "target_files": [
-        "/tmp/xbrainlab_data_import_8al_14zw/A01T.gdf"
+        "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_eeg.fif"
       ]
     },
-    "mode": "legacy",
+    "mode": "timestamp",
     "status": "applied",
     "success_count": 1
+  },
+  "recipe": {
+    "bids": {
+      "channel_status_summary": {
+        "bad": 1,
+        "good": 1,
+        "other": 0,
+        "total": 2
+      },
+      "channels_files": [
+        "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_channels.tsv"
+      ],
+      "dataset": {},
+      "dataset_description": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/dataset_description.json",
+      "datatypes": [
+        "eeg"
+      ],
+      "eeg_file_count": 1,
+      "events_files": [
+        "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_events.tsv"
+      ],
+      "is_bids": true,
+      "layout": [
+        {
+          "channels_file": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_channels.tsv",
+          "datatype": "eeg",
+          "events_file": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_events.tsv",
+          "file": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_eeg.fif",
+          "name": "sub-01_task-mi_run-1_eeg.fif",
+          "relative_path": "sub-01/eeg/sub-01_task-mi_run-1_eeg.fif",
+          "run": "1",
+          "session": "",
+          "subject": "01",
+          "task": "mi"
+        }
+      ],
+      "participant_count": 1,
+      "participants": [
+        {
+          "age": "21",
+          "participant_id": "sub-01",
+          "sex": "F"
+        }
+      ],
+      "participants_file": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/participants.tsv",
+      "root": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi",
+      "runs": [
+        "1"
+      ],
+      "scan_location": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi",
+      "selected_scope": {
+        "channels_files": [
+          "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_channels.tsv"
+        ],
+        "datatypes": [
+          "eeg"
+        ],
+        "eeg_file_count": 1,
+        "eeg_files": [
+          "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_eeg.fif"
+        ],
+        "events_files": [
+          "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_events.tsv"
+        ],
+        "runs": [
+          "1"
+        ],
+        "sessions": [],
+        "subjects": [
+          "01"
+        ],
+        "tasks": [
+          "mi"
+        ]
+      },
+      "sessions": [],
+      "subjects": [
+        "01"
+      ],
+      "tasks": [
+        "mi"
+      ]
+    },
+    "class_map": {
+      "left": "Left hand",
+      "right": "Right hand"
+    },
+    "confirmations": [
+      "Confirm label carrier alignment, anchor event, and class map before applying.",
+      "Confirm session metadata for sub-01_task-mi_run-1_eeg.fif."
+    ],
+    "event_roles": {
+      "duration": "event duration",
+      "label_carrier": "external label or event source",
+      "onset": "time anchor",
+      "trial_type": "class label candidate"
+    },
+    "excluded_label_carriers": [],
+    "format_capabilities": [
+      {
+        "format": "CSV / TSV labels",
+        "message": "CSV / TSV labels require label column, anchor, time model, and granularity confirmation.",
+        "name": "participants.tsv",
+        "path": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/participants.tsv",
+        "role": "external_labels",
+        "status": "needs_review"
+      },
+      {
+        "format": "CSV / TSV labels",
+        "message": "CSV / TSV labels require label column, anchor, time model, and granularity confirmation.",
+        "name": "sub-01_task-mi_run-1_channels.tsv",
+        "path": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_channels.tsv",
+        "role": "external_labels",
+        "status": "needs_review"
+      },
+      {
+        "format": "MNE FIF",
+        "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training.",
+        "name": "sub-01_task-mi_run-1_eeg.fif",
+        "path": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_eeg.fif",
+        "role": "eeg",
+        "status": "supported"
+      },
+      {
+        "format": "BIDS events",
+        "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics.",
+        "name": "sub-01_task-mi_run-1_events.tsv",
+        "path": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_events.tsv",
+        "role": "external_labels",
+        "status": "needs_review"
+      }
+    ],
+    "internal_event_selection": {},
+    "interpretation_id": "interpretation-4",
+    "label_carrier": "",
+    "label_carrier_plan": [
+      {
+        "anchor_candidates": [
+          "onset"
+        ],
+        "bids_field_descriptions": {},
+        "bids_level_labels": {
+          "left": "Left hand",
+          "right": "Right hand"
+        },
+        "bids_sidecars": [
+          "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_events.json"
+        ],
+        "decision": "needs_confirmation",
+        "duration_candidates": [
+          "duration"
+        ],
+        "event_code_candidates": [],
+        "format": "BIDS events",
+        "granularity": "event",
+        "interval_start_candidates": [
+          "onset"
+        ],
+        "label_candidates": [
+          "trial_type"
+        ],
+        "label_row_count": 2,
+        "label_value_counts": {
+          "left": 1,
+          "right": 1
+        },
+        "name": "sub-01_task-mi_run-1_events.tsv",
+        "path": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_events.tsv",
+        "placement_method": "interval",
+        "placement_review": {
+          "duration_field": "duration",
+          "duration_max": 1.0,
+          "duration_min": 1.0,
+          "duration_numeric_rows": 2,
+          "label_field": "trial_type",
+          "label_rows": 2,
+          "method": "interval",
+          "next_action": "Confirm interval semantics before epoch setup.",
+          "numeric_rows": 2,
+          "status": "ready",
+          "summary": "2 interval rows using onset and duration.",
+          "time_field": "onset",
+          "time_max": 2.0,
+          "time_min": 0.5,
+          "time_model": "seconds"
+        },
+        "placement_reviews": {
+          "eeg_event": {
+            "excluded_eeg_events": 0,
+            "label_field": "trial_type",
+            "label_rows": 2,
+            "method": "eeg_event",
+            "next_action": "Confirm the target event after the EEG file is loaded.",
+            "status": "needs_review",
+            "summary": "No EEG event preview is available for this target event.",
+            "target_event": "onset"
+          },
+          "event_code": {
+            "event_code_field": "onset",
+            "label_code_count": 2,
+            "label_field": "trial_type",
+            "label_rows": 2,
+            "matched_code_count": 0,
+            "matched_codes": [],
+            "method": "event_code",
+            "missing_codes": [
+              "0.5",
+              "2.0"
+            ],
+            "next_action": "Review internal EEG events before applying.",
+            "status": "needs_review",
+            "summary": "No EEG event-code preview is available for matching."
+          },
+          "interval": {
+            "duration_field": "duration",
+            "duration_max": 1.0,
+            "duration_min": 1.0,
+            "duration_numeric_rows": 2,
+            "label_field": "trial_type",
+            "label_rows": 2,
+            "method": "interval",
+            "next_action": "Confirm interval semantics before epoch setup.",
+            "numeric_rows": 2,
+            "status": "ready",
+            "summary": "2 interval rows using onset and duration.",
+            "time_field": "onset",
+            "time_max": 2.0,
+            "time_min": 0.5,
+            "time_model": "seconds"
+          },
+          "time_field": {
+            "label_field": "trial_type",
+            "label_rows": 2,
+            "method": "time_field",
+            "next_action": "Confirm the time base before epoch setup.",
+            "numeric_rows": 2,
+            "status": "ready",
+            "summary": "onset: 2/2 numeric rows, range 0.5 to 2.",
+            "time_field": "onset",
+            "time_max": 2.0,
+            "time_min": 0.5,
+            "time_model": "seconds"
+          }
+        },
+        "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying.",
+        "role": "external labels",
+        "selected_anchor": "onset",
+        "selected_anchor_stats": {
+          "max": 2.0,
+          "min": 0.5,
+          "numeric_count": 2,
+          "row_count": 2,
+          "value_counts": {
+            "0.5": 1,
+            "2.0": 1
+          }
+        },
+        "selected_duration_field": "duration",
+        "selected_duration_stats": {
+          "max": 1.0,
+          "min": 1.0,
+          "numeric_count": 2,
+          "row_count": 2,
+          "value_counts": {
+            "1.0": 2
+          }
+        },
+        "selected_label_field": "trial_type",
+        "selected_target_file": "sub-01_task-mi_run-1_eeg.fif",
+        "source_kind": "auto_discovered",
+        "source_location": "",
+        "time_field_candidates": [
+          "onset"
+        ],
+        "time_model": "seconds"
+      }
+    ],
+    "label_carriers": [
+      "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_events.tsv"
+    ],
+    "label_imports": [
+      {
+        "class_map": {
+          "left": "Left hand",
+          "right": "Right hand"
+        },
+        "file_mapping": {
+          "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_eeg.fif": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_events.tsv"
+        },
+        "label_carriers": [
+          "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_events.tsv"
+        ],
+        "mode": "timestamp",
+        "selected_event_names": [],
+        "success_count": 1,
+        "target_files": [
+          "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_eeg.fif"
+        ]
+      }
+    ],
+    "label_sources": [],
+    "metadata": [
+      {
+        "file": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_eeg.fif",
+        "run": {
+          "decision": "safe",
+          "field": "run",
+          "override": null,
+          "reason": "run resolved from BIDS entity.",
+          "recipe_trace": [
+            "bids:run"
+          ],
+          "source": "bids_entity",
+          "value": "1"
+        },
+        "session": {
+          "decision": "needs_confirmation",
+          "field": "session",
+          "override": null,
+          "reason": "session BIDS entity is not present for this file.",
+          "recipe_trace": [],
+          "source": "missing",
+          "value": null
+        },
+        "subject": {
+          "decision": "safe",
+          "field": "subject",
+          "override": null,
+          "reason": "subject resolved from BIDS entity.",
+          "recipe_trace": [
+            "bids:sub"
+          ],
+          "source": "bids_entity",
+          "value": "01"
+        },
+        "task": {
+          "decision": "safe",
+          "field": "task",
+          "override": null,
+          "reason": "task resolved from BIDS entity.",
+          "recipe_trace": [
+            "bids:task"
+          ],
+          "source": "bids_entity",
+          "value": "mi"
+        }
+      }
+    ],
+    "recipe_id": "recipe-5",
+    "recipe_trace": [
+      "scan:scan-1",
+      "candidate:candidate-2",
+      "choices:label_carriers",
+      "validation:needs_confirmation",
+      "applied:interpretation-4",
+      "label_import:timestamp:1",
+      "recipe:recipe-5"
+    ],
+    "run_event_mappings": {},
+    "selected_eeg_files": [
+      "/tmp/xbrainlab_data_import_co0skqjp/bids_mi/sub-01/eeg/sub-01_task-mi_run-1_eeg.fif"
+    ],
+    "skip_labels": false,
+    "source_kind": "bids",
+    "source_path": "/tmp/xbrainlab_data_import_co0skqjp/bids_mi",
+    "validation_decision": "needs_confirmation",
+    "warnings": [
+      "External label/event carriers require preview before apply.",
+      "BIDS channels.tsv marks 1 channel(s) as bad; review channel selection before preprocessing."
+    ]
   },
   "source": "ApplicationService.apply_interpretation"
 }

@@ -10,21 +10,21 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
-import numpy as np
 from PIL import Image
 from PyQt6.QtCore import QSize
 from PyQt6.QtWidgets import QApplication, QWidget
-from scipy.io import savemat
 
 from XBrainLab.backend.application import (
     ApplicationService,
     ApplyInterpretationCommand,
     PreviewInterpretationCommand,
+    SaveInterpretationRecipeCommand,
     ScanSourceCommand,
     ValidateInterpretationCommand,
 )
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.dialogs.dataset import DataInterpretationPreviewDialog
+from XBrainLab.ui.dialogs.preprocess import EpochingDialog
 
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = ROOT / "artifacts" / "ui" / "data-import-wizard-steps"
@@ -94,7 +94,7 @@ def main() -> int:
             WINDOW_SIZE,
         ),
         (
-            "04-match-labels-bids-like-events.png",
+            "04-match-labels-bids-eeg-events.png",
             "Match Labels",
             build_dialog(bids_scan(), bids_preview(), needs_confirmation()),
             WINDOW_SIZE,
@@ -103,6 +103,12 @@ def main() -> int:
             "04-match-labels-conversion-fallback.png",
             "Match Labels",
             build_dialog(conversion_scan(), conversion_preview(), blocked_conversion()),
+            WINDOW_SIZE,
+        ),
+        (
+            "05-review-and-import-bids-ready.png",
+            "Review and Import",
+            build_dialog(bids_scan(), bids_preview(), safe()),
             WINDOW_SIZE,
         ),
         (
@@ -133,6 +139,7 @@ def main() -> int:
         capture_dialog(dialog, step_title, OUTPUT_DIR / filename, app, size=size)
 
     capture_conversion_examples(app)
+    capture_epoch_after_bids(app)
     write_epoch_handoff_artifact()
     return 0
 
@@ -245,17 +252,60 @@ def internal_scan() -> dict[str, Any]:
 
 def bids_scan() -> dict[str, Any]:
     events = f"{EEG_ROOT}/sub-01/eeg/sub-01_task-mi_run-01_events.tsv"
+    eeg_file = f"{EEG_ROOT}/sub-01/eeg/sub-01_task-mi_run-01_eeg.fif"
     return {
-        "source_path": f"{EEG_ROOT}/bids_like",
+        "source_path": f"{EEG_ROOT}/bids_mi",
         "source_kind": "bids",
-        "eeg_files": [f"{EEG_ROOT}/sub-01/eeg/sub-01_task-mi_run-01_eeg.fif"],
+        "eeg_files": [eeg_file],
         "label_carriers": [events],
         "label_carrier_sources": {events: "auto"},
-        "bids": {
-            "is_bids": True,
-            "subjects": ["01"],
-            "events_files": [events],
-        },
+        "bids": bids_payload(eeg_file=eeg_file, events=events),
+    }
+
+
+def bids_payload(*, eeg_file: str, events: str) -> dict[str, Any]:
+    channels = events.replace("_events.tsv", "_channels.tsv")
+    selected_scope = {
+        "eeg_file_count": 1,
+        "subjects": ["01"],
+        "sessions": [],
+        "tasks": ["mi"],
+        "runs": ["01"],
+        "datatypes": ["eeg"],
+        "eeg_files": [eeg_file],
+        "events_files": [events],
+        "channels_files": [channels],
+    }
+    return {
+        "is_bids": True,
+        "root": f"{EEG_ROOT}/bids_mi",
+        "scan_location": f"{EEG_ROOT}/bids_mi",
+        "subjects": ["01"],
+        "sessions": [],
+        "tasks": ["mi"],
+        "runs": ["01"],
+        "datatypes": ["eeg"],
+        "eeg_file_count": 1,
+        "events_files": [events],
+        "channels_files": [channels],
+        "participant_count": 1,
+        "participants": [{"participant_id": "sub-01", "sex": "F", "age": "21"}],
+        "channel_status_summary": {"total": 3, "good": 2, "bad": 1, "other": 0},
+        "layout": [
+            {
+                "file": eeg_file,
+                "name": Path(eeg_file).name,
+                "relative_path": "sub-01/eeg/sub-01_task-mi_run-01_eeg.fif",
+                "subject": "01",
+                "session": "",
+                "task": "mi",
+                "run": "01",
+                "datatype": "eeg",
+                "events_file": events,
+                "channels_file": channels,
+            }
+        ],
+        "selected_scope": selected_scope,
     }
 
 
@@ -384,14 +434,35 @@ def internal_preview() -> dict[str, Any]:
 
 def bids_preview() -> dict[str, Any]:
     events_path = f"{EEG_ROOT}/sub-01/eeg/sub-01_task-mi_run-01_events.tsv"
+    eeg_file = f"{EEG_ROOT}/sub-01/eeg/sub-01_task-mi_run-01_eeg.fif"
+    carrier = label_carrier(
+        "sub-01_task-mi_run-01_events.tsv",
+        events_path,
+        target_file="sub-01_task-mi_run-01_eeg.fif",
+        fmt="BIDS events",
+        label_field="trial_type",
+        anchor="onset",
+        duration="duration",
+        method="interval",
+        time_model="seconds",
+        granularity="event",
+    )
+    carrier.update(
+        {
+            "bids_sidecars": [
+                f"{EEG_ROOT}/sub-01/eeg/sub-01_task-mi_run-01_events.json"
+            ],
+            "bids_level_labels": {"left": "Left hand", "right": "Right hand"},
+            "bids_field_descriptions": {"trial_type": "Cue class"},
+        }
+    )
     return {
         "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
-        "source_selection": "BIDS folder",
-        "selected_eeg_files": [
-            f"{EEG_ROOT}/sub-01/eeg/sub-01_task-mi_run-01_eeg.fif",
-        ],
+        "source_selection": "1 selected file(s)",
+        "selected_eeg_files": [eeg_file],
         "file_count": 1,
         "label_carrier_count": 1,
+        "bids": bids_payload(eeg_file=eeg_file, events=events_path),
         "metadata_preview": [
             {
                 "file": "sub-01_task-mi_run-01_eeg.fif",
@@ -401,35 +472,24 @@ def bids_preview() -> dict[str, Any]:
                 "run": field("01", "safe", "bids"),
             }
         ],
-        "label_carrier_preview": [
-            label_carrier(
-                "sub-01_task-mi_run-01_events.tsv",
-                events_path,
-                target_file="sub-01_task-mi_run-01_eeg.fif",
-                fmt="BIDS events",
-                label_field="trial_type",
-                anchor="onset",
-                duration="duration",
-                method="interval",
-                time_model="seconds",
-                granularity="event",
-            )
-        ],
+        "label_carrier_preview": [carrier],
         "event_roles": {
             "onset": "time anchor",
             "duration": "event duration",
             "trial_type": "class label candidate",
         },
+        "class_map": {"left": "Left hand", "right": "Right hand"},
+        "class_map_source": "label_carriers",
         "warnings": [
-            "BIDS-like events are supported; full BIDS validation is not claimed."
+            "BIDS channels.tsv marks 1 channel(s) as bad; review channel selection before preprocessing."
         ],
         "action_items": [
             action(
-                "BIDS sidecar levels need review.",
-                "Class names may remain generic if events.json levels are incomplete.",
-                "Review trial_type values before import.",
-                "Match Labels",
-                "needs_confirmation",
+                "BIDS channels.tsv marks 1 channel as bad.",
+                "Preprocessing should account for bad-channel status.",
+                "Review channel selection before preprocessing.",
+                "Review and Import",
+                "warning",
             )
         ],
     }
@@ -786,13 +846,60 @@ def write_epoch_handoff_artifact() -> None:
     )
 
 
+def capture_epoch_after_bids(app: QApplication) -> None:
+    data = MagicMock()
+    data.get_event_list.return_value = (
+        None,
+        {"Left hand": 1, "Right hand": 2, "Artifact": 99},
+    )
+    dialog = EpochingDialog(
+        None,
+        [data],
+        epoch_handoff={
+            "ready": True,
+            "supervised_ready": True,
+            "label_source": "bids_events",
+            "placement_modes": ["interval"],
+            "default_epoch_events": ["Left hand", "Right hand"],
+            "class_map": {"left": "Left hand", "right": "Right hand"},
+        },
+    )
+    dialog.resize(QSize(540, 620))
+    dialog.show()
+    for _ in range(3):
+        app.processEvents()
+        dialog.repaint()
+    capture_widget(dialog, OUTPUT_DIR / "epoch-after-bids-import.png")
+    dialog.close()
+
+
 def backend_epoch_handoff_evidence() -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="xbrainlab_data_import_") as tmp:
-        source_dir = Path(tmp)
-        eeg_path = source_dir / "A01T.gdf"
-        label_path = source_dir / "A01T.mat"
+        source_dir = Path(tmp) / "bids_mi"
+        eeg_dir = source_dir / "sub-01" / "eeg"
+        eeg_dir.mkdir(parents=True)
+        (source_dir / "dataset_description.json").write_text("{}", encoding="utf-8")
+        eeg_path = eeg_dir / "sub-01_task-mi_run-1_eeg.fif"
+        events_path = eeg_dir / "sub-01_task-mi_run-1_events.tsv"
+        events_json = eeg_dir / "sub-01_task-mi_run-1_events.json"
+        channels_path = eeg_dir / "sub-01_task-mi_run-1_channels.tsv"
+        (source_dir / "participants.tsv").write_text(
+            "participant_id\tsex\tage\nsub-01\tF\t21\n",
+            encoding="utf-8",
+        )
         eeg_path.write_bytes(b"not loaded during scan")
-        savemat(label_path, {"classlabel": np.array([1, 2])})
+        events_path.write_text(
+            "onset\tduration\ttrial_type\n0.5\t1.0\tleft\n2.0\t1.0\tright\n",
+            encoding="utf-8",
+        )
+        channels_path.write_text(
+            "name\ttype\tunits\tstatus\nC3\tEEG\tuV\tgood\nC4\tEEG\tuV\tbad\n",
+            encoding="utf-8",
+        )
+        events_json.write_text(
+            '{"trial_type":{"Levels":{"left":"Left hand","right":"Right hand"}}}',
+            encoding="utf-8",
+        )
 
         service = ApplicationService(Study())
         raw = MagicMock()
@@ -800,32 +907,38 @@ def backend_epoch_handoff_evidence() -> dict[str, Any]:
         raw.get_filename.return_value = eeg_path.name
         service.dataset.import_files = MagicMock(return_value=(1, []))
         service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
-        service.dataset.apply_labels_legacy = MagicMock(return_value=1)
+        service.dataset.apply_labels_batch = MagicMock(return_value=1)
 
-        service.execute(ScanSourceCommand(source_path=str(source_dir)))
+        service.execute(
+            ScanSourceCommand(source_path=str(source_dir), source_hint="bids")
+        )
         service.execute(
             PreviewInterpretationCommand(
                 choices={
                     "label_carrier_choices": {
-                        str(label_path): {
+                        str(events_path): {
                             "target_file": eeg_path.name,
-                            "label_field": "classlabel",
-                            "anchor": "768",
-                            "placement_method": "eeg_event",
-                            "time_model": "trial_order",
-                            "granularity": "trial",
+                            "label_field": "trial_type",
+                            "anchor": "onset",
+                            "duration_field": "duration",
+                            "placement_method": "interval",
+                            "time_model": "seconds",
                         }
-                    },
-                    "class_map": {"1": "left", "2": "right"},
+                    }
                 }
             )
         )
         service.execute(ValidateInterpretationCommand())
         result = service.execute(ApplyInterpretationCommand(confirmed=True))
+        recipe_path = Path(tmp) / "bids-recipe.json"
+        recipe = service.execute(
+            SaveInterpretationRecipeCommand(recipe_path=str(recipe_path))
+        )
         return {
             "source": "ApplicationService.apply_interpretation",
             "label_apply": result.diagnostics.get("label_apply", {}),
             "epoch_handoff": result.state.interpretation.epoch_handoff,
+            "recipe": recipe.diagnostics.get("recipe", {}),
         }
 
 

@@ -629,7 +629,11 @@ class PreprocessSidebar(QWidget):
         data_list = self._preprocessed_data_list_for_epoching(epoch_capability)
         if data_list is None:
             return
-        dialog = EpochingDialog(self, data_list)
+        epoch_handoff = self._epoch_handoff_for_dialog()
+        if epoch_handoff:
+            dialog = EpochingDialog(self, data_list, epoch_handoff=epoch_handoff)
+        else:
+            dialog = EpochingDialog(self, data_list)
         if dialog.exec():
             params = dialog.get_params()
             if params:
@@ -669,6 +673,22 @@ class PreprocessSidebar(QWidget):
                         self._show_epoch_success(result)
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"Epoching failed: {e}")
+
+    def _epoch_handoff_for_dialog(self) -> dict[str, Any]:
+        """Return Data Import epoch defaults when the command service is available."""
+        study = getattr(self.main_window, "study", None)
+        service = getattr(study, "_application_service", None)
+        get_state = getattr(service, "get_state", None)
+        if not callable(get_state):
+            return {}
+        try:
+            state = get_state()
+        except Exception:
+            logger.exception("Failed to read Data Import epoch handoff")
+            return {}
+        interpretation = getattr(state, "interpretation", None)
+        handoff = getattr(interpretation, "epoch_handoff", None)
+        return dict(handoff) if isinstance(handoff, dict) else {}
 
     def reset_preprocess(self):
         """Prompt the user and reset all preprocessing steps to the original data."""

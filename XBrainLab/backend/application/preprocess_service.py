@@ -23,9 +23,11 @@ class PreprocessCommandService:
         *,
         preprocess: Any,
         dataset: Any,
+        get_state: Any | None = None,
     ) -> None:
         self.preprocess = preprocess
         self.dataset = dataset
+        self._get_state = get_state
 
     def handle_preprocess(self, command: Command) -> HandlerResult:
         if not isinstance(command, PreprocessCommand):
@@ -79,13 +81,60 @@ class PreprocessCommandService:
     def handle_create_epoch(self, command: Command) -> HandlerResult:
         if not isinstance(command, CreateEpochCommand):
             raise TypeError("Invalid command for create_epoch")
+        event_ids = self._event_ids_for_epoch_command(command)
         self.preprocess.apply_epoching(
             command.baseline,
-            command.event_ids,
+            event_ids,
             command.t_min,
             command.t_max,
         )
         return f"Created epochs from {command.t_min}s to {command.t_max}s."
+
+    def _event_ids_for_epoch_command(
+        self,
+        command: CreateEpochCommand,
+    ) -> list[str] | dict[str, int] | None:
+        handoff = self._epoch_handoff()
+        if not handoff:
+            return command.event_ids
+        defaults = [
+            str(item)
+            for item in handoff.get("default_epoch_events", [])
+            if str(item).strip()
+        ]
+        blockers = [
+            str(item)
+            for item in handoff.get("supervised_blockers", [])
+            if str(item).strip()
+        ]
+        event_ids = command.event_ids
+        if event_ids is None and blockers:
+            raise PreconditionError("; ".join(blockers))
+        if event_ids is None and defaults:
+            return defaults
+        explicit_targets: list[str] = []
+        if isinstance(event_ids, list | dict):
+            explicit_targets = [str(item) for item in event_ids]
+        if explicit_targets and defaults:
+            missing = [item for item in explicit_targets if item not in set(defaults)]
+            if missing and bool(handoff.get("supervised_ready")):
+                raise PreconditionError(
+                    "Epoch target is not in the reviewed import labels: "
+                    + ", ".join(str(item) for item in missing)
+                    + ".",
+                )
+        return event_ids
+
+    def _epoch_handoff(self) -> dict[str, Any]:
+        if not callable(self._get_state):
+            return {}
+        try:
+            state = self._get_state()
+        except Exception:
+            return {}
+        interpretation = getattr(state, "interpretation", None)
+        handoff = getattr(interpretation, "epoch_handoff", None)
+        return dict(handoff) if isinstance(handoff, dict) else {}
 
     def _handle_standard_preprocess(self, command: PreprocessCommand) -> HandlerResult:
         low_freq = command.low_freq if command.low_freq is not None else 4

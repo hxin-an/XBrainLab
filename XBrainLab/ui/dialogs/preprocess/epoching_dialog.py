@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QLabel,
     QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QVBoxLayout,
 )
@@ -41,12 +42,20 @@ class EpochingDialog(BaseDialog):
 
     """
 
-    def __init__(self, parent, data_list: list):
+    def __init__(
+        self,
+        parent,
+        data_list: list,
+        *,
+        epoch_handoff: dict | None = None,
+    ):
         self.data_list = data_list
+        self.epoch_handoff = dict(epoch_handoff or {})
         self.params: tuple | None = None
 
         # UI Elements
         self.event_list: QListWidget | None = None
+        self.handoff_label: QLabel | None = None
         self.tmin_spin: QDoubleSpinBox | None = None
         self.tmax_spin: QDoubleSpinBox | None = None
         self.duration_label: QLabel | None = None
@@ -61,22 +70,33 @@ class EpochingDialog(BaseDialog):
     def init_ui(self):
         """Initialize the dialog UI with event list, parameter controls, and buttons."""
         layout = QVBoxLayout(self)
+        handoff_label = QLabel(self._handoff_summary_text())
+        handoff_label.setWordWrap(True)
+        handoff_label.setStyleSheet(Stylesheets.DIALOG_INFO_LABEL)
+        handoff_label.setVisible(bool(self.epoch_handoff))
+        self.handoff_label = handoff_label
+        layout.addWidget(handoff_label)
 
         # 1. Event Selection
         event_group = QGroupBox("Select Events")
         event_layout = QVBoxLayout()
-        self.event_list = QListWidget()
-        self.event_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        event_list = QListWidget()
+        event_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        self.event_list = event_list
 
         # Collect all unique events
         events: set[str] = set()
         for data in self.data_list:
             self._extract_events_safely(data, events)
 
+        defaults = set(self._default_epoch_events())
         for ev in sorted(events):
-            self.event_list.addItem(str(ev))
+            item = QListWidgetItem(str(ev))
+            event_list.addItem(item)
+            if str(ev) in defaults:
+                item.setSelected(True)
 
-        event_layout.addWidget(self.event_list)
+        event_layout.addWidget(event_list)
         event_group.setLayout(event_layout)
         layout.addWidget(event_group)
 
@@ -84,52 +104,58 @@ class EpochingDialog(BaseDialog):
         param_group = QGroupBox("Epoch Parameters")
         form = QFormLayout()
 
-        self.tmin_spin = QDoubleSpinBox()
-        self.tmin_spin.setRange(-10, 10)
-        self.tmin_spin.setValue(-0.2)
-        self.tmin_spin.setSingleStep(0.1)
-        self.tmin_spin.valueChanged.connect(self.update_duration_info)
+        tmin_spin = QDoubleSpinBox()
+        tmin_spin.setRange(-10, 10)
+        tmin_spin.setValue(-0.2)
+        tmin_spin.setSingleStep(0.1)
+        tmin_spin.valueChanged.connect(self.update_duration_info)
+        self.tmin_spin = tmin_spin
 
-        self.tmax_spin = QDoubleSpinBox()
-        self.tmax_spin.setRange(-10, 10)
-        self.tmax_spin.setValue(1.0)
-        self.tmax_spin.setSingleStep(0.1)
-        self.tmax_spin.valueChanged.connect(self.update_duration_info)
+        tmax_spin = QDoubleSpinBox()
+        tmax_spin.setRange(-10, 10)
+        tmax_spin.setValue(1.0)
+        tmax_spin.setSingleStep(0.1)
+        tmax_spin.valueChanged.connect(self.update_duration_info)
+        self.tmax_spin = tmax_spin
 
-        form.addRow("Start (s):", self.tmin_spin)
-        form.addRow("End (s):", self.tmax_spin)
+        form.addRow("Start (s):", tmin_spin)
+        form.addRow("End (s):", tmax_spin)
 
         # Duration info label
-        self.duration_label = QLabel()
-
-        self.duration_label.setStyleSheet(Stylesheets.DIALOG_INFO_LABEL)
-        form.addRow("Duration:", self.duration_label)
+        duration_label = QLabel()
+        duration_label.setStyleSheet(Stylesheets.DIALOG_INFO_LABEL)
+        self.duration_label = duration_label
+        form.addRow("Duration:", duration_label)
 
         # Warning label (must be created before update_duration_info is called)
-        self.warning_label = QLabel()
-        self.warning_label.setStyleSheet(Stylesheets.DIALOG_WARNING_LABEL)
-        self.warning_label.setWordWrap(True)
-        form.addRow(self.warning_label)
+        warning_label = QLabel()
+        warning_label.setStyleSheet(Stylesheets.DIALOG_WARNING_LABEL)
+        warning_label.setWordWrap(True)
+        self.warning_label = warning_label
+        form.addRow(warning_label)
 
         # Now update duration info (which uses warning_label)
         self.update_duration_info()
 
         # Baseline
-        self.baseline_check = QCheckBox("Apply Baseline Correction")
-        self.baseline_check.setChecked(True)
-        self.baseline_check.toggled.connect(self.toggle_baseline)
+        baseline_check = QCheckBox("Apply Baseline Correction")
+        baseline_check.setChecked(True)
+        baseline_check.toggled.connect(self.toggle_baseline)
+        self.baseline_check = baseline_check
 
-        self.b_min_spin = QDoubleSpinBox()
-        self.b_min_spin.setRange(-10, 10)
-        self.b_min_spin.setValue(-0.2)
+        b_min_spin = QDoubleSpinBox()
+        b_min_spin.setRange(-10, 10)
+        b_min_spin.setValue(-0.2)
+        self.b_min_spin = b_min_spin
 
-        self.b_max_spin = QDoubleSpinBox()
-        self.b_max_spin.setRange(-10, 10)
-        self.b_max_spin.setValue(0.0)
+        b_max_spin = QDoubleSpinBox()
+        b_max_spin.setRange(-10, 10)
+        b_max_spin.setValue(0.0)
+        self.b_max_spin = b_max_spin
 
-        form.addRow(self.baseline_check)
-        form.addRow("Baseline Min (s):", self.b_min_spin)
-        form.addRow("Baseline Max (s):", self.b_max_spin)
+        form.addRow(baseline_check)
+        form.addRow("Baseline Min (s):", b_min_spin)
+        form.addRow("Baseline Max (s):", b_max_spin)
 
         param_group.setLayout(form)
         layout.addWidget(param_group)
@@ -271,3 +297,34 @@ class EpochingDialog(BaseDialog):
                 events.update(ev_ids.keys())
         except Exception:
             logger.exception("Failed to get event list for data")
+
+    def _default_epoch_events(self) -> list[str]:
+        if self._handoff_blockers():
+            return []
+        values = self.epoch_handoff.get("default_epoch_events")
+        if not isinstance(values, list):
+            values = self.epoch_handoff.get("selected_event_names")
+        if not isinstance(values, list):
+            return []
+        return [str(item) for item in values if str(item).strip()]
+
+    def _handoff_summary_text(self) -> str:
+        source = str(self.epoch_handoff.get("label_source") or "").strip()
+        source_label = {
+            "bids_events": "BIDS events",
+            "loaded_label_files": "Loaded label files",
+            "internal_events": "Labels inside EEG files",
+        }.get(source, source or "Data Import")
+        blockers = self._handoff_blockers()
+        if blockers:
+            return f"Data Import needs review before supervised epochs: {blockers[0]}"
+        defaults = self._default_epoch_events()
+        if defaults:
+            return f"Data Import defaults from {source_label}: " + ", ".join(defaults)
+        return f"Data Import source: {source_label}"
+
+    def _handoff_blockers(self) -> list[str]:
+        blockers = self.epoch_handoff.get("supervised_blockers")
+        if not isinstance(blockers, list):
+            return []
+        return [str(item) for item in blockers if str(item).strip()]

@@ -497,11 +497,13 @@ class DataInterpretationPreviewDialog(BaseDialog):
         review_status_layout.setSpacing(12)
         decision_card, decision_layout = self._card("Import readiness")
         decision_layout.addWidget(self.decision_label)
+        for line in self._readiness_detail_lines():
+            decision_layout.addWidget(self._wrapped_label(line))
         review_status_layout.addWidget(decision_card, stretch=2)
-        recipe_card, recipe_layout = self._card("Recipe")
+        recipe_card, recipe_layout = self._card("Import summary")
         recipe_layout.addWidget(
             self._wrapped_label(
-                "Source, metadata edits, label choices, and confirmations"
+                "Confirm what will be imported and what Epoch will use next."
             )
         )
         for line in self._recipe_card_lines():
@@ -703,13 +705,14 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.label_source_status_label.setVisible(False)
         row.addStretch(1)
         layout.addLayout(row)
-        self.bids_like_notice_label = self._wrapped_label(
-            "BIDS-like events.tsv detected. XBrainLab reviews event columns and "
-            "events.json levels when present; this is not full BIDS validation."
+        self.bids_events_notice_label = self._wrapped_label(
+            "BIDS EEG events.tsv detected. XBrainLab reviews event columns, "
+            "events.json Levels, participants, and channel sidecars available "
+            "for this import."
         )
-        self.bids_like_notice_label.setObjectName("DataImportRuleStatus")
-        self.bids_like_notice_label.setVisible(self._is_bids_like_source())
-        layout.addWidget(self.bids_like_notice_label)
+        self.bids_events_notice_label.setObjectName("DataImportRuleStatus")
+        self.bids_events_notice_label.setVisible(self._has_bids_event_source())
+        layout.addWidget(self.bids_events_notice_label)
         self.label_source_mode_combo.currentIndexChanged.connect(
             self._refresh_label_source_mode
         )
@@ -781,8 +784,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
         if hasattr(self, "label_source_status_label"):
             self.label_source_status_label.setText(self._label_source_status_text())
-        if hasattr(self, "bids_like_notice_label"):
-            self.bids_like_notice_label.setVisible(self._is_bids_like_source())
+        if hasattr(self, "bids_events_notice_label"):
+            self.bids_events_notice_label.setVisible(self._has_bids_event_source())
         for widget in (getattr(self, "pairing_card", None),):
             if widget is not None:
                 widget.setVisible(use_loaded)
@@ -4571,6 +4574,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
         return f"{field_text} {verb} missing. Double-click a cell to edit it."
 
     def _label_source_summary_text(self) -> str:
+        if self._bids_payload().get("is_bids") and any(
+            str(carrier.get("format") or "").strip() == "BIDS events"
+            for carrier in self._label_carrier_preview_rows()
+        ):
+            return "BIDS events.tsv"
         carriers = self.label_carrier_tree.topLevelItemCount()
         if carriers <= 0:
             return "Internal events or no labels"
@@ -4592,16 +4600,27 @@ class DataInterpretationPreviewDialog(BaseDialog):
         return source_kind or "Unknown source"
 
     def _bids_status(self) -> str:
-        bids = self.scan_result.get("bids") or {}
+        bids = self._bids_payload()
         if not isinstance(bids, dict) or not bids.get("is_bids"):
             return "Not detected"
-        subjects = ", ".join(str(item) for item in bids.get("subjects", []) or [])
+        subjects = self._limited_join(bids.get("subjects", []) or [], limit=3)
+        datatypes = self._limited_join(bids.get("datatypes", []) or [], limit=2)
         events = bids.get("events_files", []) or []
         event_count = len(events) if isinstance(events, list) else 0
         subject_text = subjects or "subjects pending"
-        return f"BIDS-like source, {subject_text}, {event_count} events.tsv file(s)"
+        parts = [f"BIDS EEG folder, {subject_text}"]
+        if datatypes:
+            parts.append(f"datatype {datatypes}")
+        parts.append(f"{event_count} events.tsv file(s)")
+        channel_count = len(bids.get("channels_files", []) or [])
+        if channel_count:
+            parts.append(f"{channel_count} channels.tsv")
+        participant_count = bids.get("participant_count")
+        if isinstance(participant_count, int) and participant_count:
+            parts.append(f"{participant_count} participant row(s)")
+        return ", ".join(parts)
 
-    def _is_bids_like_source(self) -> bool:
+    def _has_bids_event_source(self) -> bool:
         bids = self.scan_result.get("bids") or {}
         if isinstance(bids, dict) and bool(bids.get("is_bids")):
             return True
@@ -4627,12 +4646,37 @@ class DataInterpretationPreviewDialog(BaseDialog):
             return "Ready to apply."
         return "Review status is unavailable."
 
+    def _readiness_detail_lines(self) -> list[str]:
+        rows = self._review_rows()
+        blocked = sum(1 for row in rows if "fix" in row[3].lower())
+        review = max(len(rows) - blocked, 0)
+        if self.decision == "safe":
+            lines = ["No blocking items. Apply action is available below."]
+        elif self.decision == "needs_confirmation":
+            lines = [f"{review or len(rows)} item(s) need confirmation before apply."]
+        elif self.decision == "blocked":
+            lines = [f"{blocked or len(rows)} blocker(s) must be fixed first."]
+        else:
+            lines = ["Review import status before applying."]
+        if self._bids_payload().get("is_bids"):
+            lines.append("BIDS EEG source and sidecars are included in the recipe.")
+        save_recipe_check = getattr(self, "save_recipe_check", None)
+        if save_recipe_check is not None and save_recipe_check.isChecked():
+            lines.append("Reusable import recipe will be saved after applying.")
+        return lines
+
     def _recipe_card_lines(self) -> list[str]:
         lines = [
-            f"Source: {self._source_selection_text()}",
-            f"Labels: {self._label_source_summary_text()}",
+            f"EEG files: {self._source_selection_text()}",
+            f"Label source: {self._label_source_summary_text()}",
         ]
+        bids_scope = self._bids_scope_summary_text()
+        if bids_scope:
+            lines.append(f"BIDS scope: {bids_scope}")
         lines.extend(self._recipe_label_choice_lines())
+        epoch_next = self._epoch_next_summary_text()
+        if epoch_next:
+            lines.append(f"Epoch next: {epoch_next}")
         trace = self.preview.get("recipe_trace") or self.scan_result.get("recipe_trace")
         trace_rows = self._recipe_trace_rows(trace)
         trace_labels: list[str] = []
@@ -4654,7 +4698,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
     def _recipe_internal_label_choice_lines(self) -> list[str]:
         candidate_rows = self._internal_candidate_label_event_rows()
         not_used_rows = self._internal_not_used_event_rows()
-        lines = ["Label source: labels inside EEG files"]
+        lines: list[str] = []
         training = self._event_code_list_text(row["code"] for row in candidate_rows)
         if training:
             lines.append(f"Training events: {training}")
@@ -4667,7 +4711,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         return lines
 
     def _recipe_loaded_label_choice_lines(self) -> list[str]:
-        lines = ["Label source: loaded label files"]
+        lines: list[str] = []
         pairing = self._recipe_pairing_summary()
         if pairing:
             lines.append(f"Pairing: {pairing}")
@@ -4683,6 +4727,78 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if class_names:
             lines.append(f"Class names: {class_names}")
         return lines
+
+    def _epoch_next_summary_text(self) -> str:
+        class_map = self._class_map_for_current_label_source()
+        class_names = [
+            str(label).strip()
+            for _code, label in sorted(class_map.items(), key=self._class_map_sort_key)
+            if str(label).strip()
+        ]
+        if class_names:
+            visible = ", ".join(class_names[:4])
+            if len(class_names) > 4:
+                visible = f"{visible}, +{len(class_names) - 4} more"
+            placement = self._recipe_placement_summary()
+            return f"{visible}" + (f" · {placement}" if placement else "")
+        if self._label_source_mode() == "internal_events":
+            events = self._event_code_list_text(
+                row["code"] for row in self._internal_candidate_label_event_rows()
+            )
+            return events or "No class events selected yet"
+        if self._label_carrier_items:
+            return "Review label values before creating supervised epochs"
+        return "No supervised labels available yet"
+
+    def _bids_payload(self) -> dict[str, Any]:
+        bids = self.preview.get("bids") or self.scan_result.get("bids")
+        return dict(bids) if isinstance(bids, dict) else {}
+
+    def _bids_scope_summary_text(self) -> str:
+        bids = self._bids_payload()
+        if not bids.get("is_bids"):
+            return ""
+        scope = bids.get("selected_scope")
+        if not isinstance(scope, dict):
+            scope = bids
+        parts: list[str] = []
+        for key, label in (
+            ("subjects", "sub"),
+            ("sessions", "ses"),
+            ("tasks", "task"),
+            ("runs", "run"),
+        ):
+            values = scope.get(key) or []
+            if isinstance(values, list) and values:
+                parts.append(
+                    f"{label}-{self._limited_join(values, limit=3)}"
+                    if len(values) == 1
+                    else f"{label}: {self._limited_join(values, limit=3)}"
+                )
+        datatypes = scope.get("datatypes") or bids.get("datatypes") or []
+        if isinstance(datatypes, list) and datatypes:
+            parts.append("datatype " + self._limited_join(datatypes, limit=2))
+        file_count = scope.get("eeg_file_count") or bids.get("eeg_file_count")
+        if isinstance(file_count, int) and file_count:
+            parts.append(f"{file_count} EEG file(s)")
+        events = scope.get("events_files") or bids.get("events_files") or []
+        if isinstance(events, list):
+            parts.append(f"{len(events)} events.tsv")
+        channels = scope.get("channels_files") or bids.get("channels_files") or []
+        if isinstance(channels, list) and channels:
+            parts.append(f"{len(channels)} channels.tsv")
+        participants = bids.get("participant_count")
+        if isinstance(participants, int) and participants:
+            parts.append(f"{participants} participant row(s)")
+        return " · ".join(parts)
+
+    @staticmethod
+    def _limited_join(values: list[Any], *, limit: int) -> str:
+        cleaned = [str(item) for item in values if str(item).strip()]
+        visible = ", ".join(cleaned[:limit])
+        if len(cleaned) > limit:
+            visible = f"{visible}, +{len(cleaned) - limit} more"
+        return visible
 
     def _recipe_pairing_summary(self, *, limit: int = 3) -> str:
         pairs: list[str] = []

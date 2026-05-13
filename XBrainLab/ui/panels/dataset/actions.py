@@ -345,7 +345,7 @@ class DatasetActionHandler:
             QMessageBox.critical(self.panel, "Error", f"Import failed: {e}")
 
     def import_bids_source(self):
-        """Interpret a BIDS-like folder through the Data Interpretation flow."""
+        """Interpret a BIDS EEG folder through the Data Interpretation flow."""
         if not self._can_start_interpretation():
             return
         source_path = QFileDialog.getExistingDirectory(

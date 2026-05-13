@@ -11,7 +11,10 @@ from XBrainLab.backend.application.data_interpretation_metadata import (
     FileMetadataResolution,
     MetadataFieldResolution,
 )
-from XBrainLab.backend.application.data_interpretation_scan import ScanResult
+from XBrainLab.backend.application.data_interpretation_scan import (
+    ScanResult,
+    scan_source_path,
+)
 
 
 def _field(name: str, value: str | None = None) -> MetadataFieldResolution:
@@ -217,7 +220,100 @@ def test_build_interpretation_candidate_previews_bids_level_labels(tmp_path):
         "left": "Left hand",
         "right": "Right hand",
     }
+
+
+def test_build_interpretation_candidate_exposes_bids_value_column_mapping(tmp_path):
+    events = tmp_path / "sub-01_task-mi_events.tsv"
+    sidecar = tmp_path / "sub-01_task-mi_events.json"
+    events.write_text(
+        "onset\tduration\ttrial_type\tvalue\n"
+        "0.0\t1.0\tleft\t769\n"
+        "1.0\t1.0\tright\t770\n",
+        encoding="utf-8",
+    )
+    sidecar.write_text(
+        '{"value":{"Levels":{"769":"Left hand","770":"Right hand"}}}',
+        encoding="utf-8",
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            label_carriers=[str(events)],
+            bids={"is_bids": True, "events_files": [str(events)]},
+        ),
+        choices={"label_carrier_choices": {str(events): {"label_field": "value"}}},
+    )
+
+    plan = candidate.label_carrier_plan[0]
+    assert "value" in plan["label_candidates"]
+    assert "value" in plan["event_code_candidates"]
+    assert candidate.class_map == {"769": "Left hand", "770": "Right hand"}
+
+
+def test_build_interpretation_candidate_scopes_bids_carriers_to_selected_run(
+    tmp_path,
+):
+    bids_root = tmp_path / "bids"
+    eeg_dir = bids_root / "sub-01" / "ses-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    run_1 = eeg_dir / "sub-01_ses-01_task-mi_run-1_eeg.fif"
+    run_2 = eeg_dir / "sub-01_ses-01_task-mi_run-2_eeg.fif"
+    events_1 = eeg_dir / "sub-01_ses-01_task-mi_run-1_events.tsv"
+    events_2 = eeg_dir / "sub-01_ses-01_task-mi_run-2_events.tsv"
+    (bids_root / "dataset_description.json").write_text("{}", encoding="utf-8")
+    run_1.write_bytes(b"not loaded during scan")
+    run_2.write_bytes(b"not loaded during scan")
+    events_1.write_text("onset\tduration\ttrial_type\n", encoding="utf-8")
+    events_2.write_text("onset\tduration\ttrial_type\n", encoding="utf-8")
+
+    scan = scan_source_path(
+        scan_id="scan-1",
+        source_path=str(bids_root),
+        source_hint="bids",
+    )
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=scan,
+        choices={"selected_eeg_files": [str(run_1)]},
+    )
+
+    assert candidate.selected_eeg_files == [str(run_1.resolve())]
+    assert candidate.label_carriers == [str(events_1.resolve())]
+    assert candidate.bids["selected_scope"]["eeg_file_count"] == 1
+    assert candidate.bids["selected_scope"]["events_files"] == [str(events_1.resolve())]
     assert "choices:class_map" not in candidate.recipe_trace
+
+
+def test_build_interpretation_candidate_does_not_fallback_to_unselected_bids_events(
+    tmp_path,
+):
+    bids_root = tmp_path / "bids"
+    eeg_dir = bids_root / "sub-01" / "ses-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    run_1 = eeg_dir / "sub-01_ses-01_task-mi_run-1_eeg.fif"
+    run_2 = eeg_dir / "sub-01_ses-01_task-mi_run-2_eeg.fif"
+    events_2 = eeg_dir / "sub-01_ses-01_task-mi_run-2_events.tsv"
+    (bids_root / "dataset_description.json").write_text("{}", encoding="utf-8")
+    run_1.write_bytes(b"not loaded during scan")
+    run_2.write_bytes(b"not loaded during scan")
+    events_2.write_text("onset\tduration\ttrial_type\n", encoding="utf-8")
+
+    scan = scan_source_path(
+        scan_id="scan-1",
+        source_path=str(bids_root),
+        source_hint="bids",
+    )
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=scan,
+        choices={"selected_eeg_files": [str(run_1)]},
+    )
+
+    assert candidate.selected_eeg_files == [str(run_1.resolve())]
+    assert candidate.label_carriers == []
+    assert candidate.label_carrier_plan == []
+    assert candidate.bids["selected_scope"]["events_files"] == []
 
 
 def test_build_interpretation_candidate_previews_mat_label_class_values(tmp_path):

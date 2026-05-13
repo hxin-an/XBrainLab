@@ -610,4 +610,4 @@ def test_apply_review_choices_updates_event_role_selector(qtbot) -> None:
     apply_review_choices(dialog)
 
     assert role_selector.currentData() == "class cue"
-    assert ["Trial type", "event role", "Class cue"] in tree_rows(dialog.event_tree)
+    assert ["Trial type", "event use", "Class cue"] in tree_rows(dialog.event_tree)

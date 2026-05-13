@@ -46,7 +46,7 @@ class DatasetSidebar(QWidget):
         info_panel: ``AggregateInfoPanel`` displaying summary statistics.
         import_btn: Button to import EEG data files.
         import_folder_btn: Button to import a folder.
-        import_bids_btn: Button to import a BIDS-like folder.
+        import_bids_btn: Button to import a BIDS EEG folder.
         reload_recipe_btn: Button to reload a saved import recipe.
         import_label_btn: Button to attach external labels to loaded data.
         smart_parse_btn: Hidden compatibility button to auto-extract metadata.
@@ -134,7 +134,7 @@ class DatasetSidebar(QWidget):
 
         self.import_bids_btn = QPushButton("Import BIDS folder")
         self.import_bids_btn.setToolTip(
-            "Choose a BIDS-like folder and review detected metadata and events",
+            "Choose a BIDS EEG folder and review detected metadata and events",
         )
         self.import_bids_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
         self.import_bids_btn.clicked.connect(
@@ -281,7 +281,7 @@ class DatasetSidebar(QWidget):
                     else source_tooltip,
                 )
                 self.import_bids_btn.setToolTip(
-                    "Choose a BIDS-like folder and review metadata and events"
+                    "Choose a BIDS EEG folder and review metadata and events"
                     if scan_capability.enabled
                     else source_tooltip,
                 )
@@ -322,7 +322,7 @@ class DatasetSidebar(QWidget):
                     "Choose an EEG folder, review metadata and labels, then import",
                 )
                 self.import_bids_btn.setToolTip(
-                    "Choose a BIDS-like folder and review metadata and events",
+                    "Choose a BIDS EEG folder and review metadata and events",
                 )
 
             if reload_capability is not None:

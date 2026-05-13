@@ -12,7 +12,7 @@ should stay in git history instead of the current tree.
 - `02-load-labels-many.png`
 - `03-review-metadata-smart-parse.png`
 - `04-match-labels-internal-eeg-labels.png`
-- `04-match-labels-bids-like-events.png`
+- `04-match-labels-bids-eeg-events.png`
 - `04-match-labels-conversion-fallback.png`
 - `04-match-labels-conversion-examples.png`
 - `match-label-placement-modes/eeg-event-order-full.png`
@@ -22,20 +22,22 @@ should stay in git history instead of the current tree.
 - `05-review-and-import-normal.png`
 - `05-review-and-import-needs-review.png`
 - `05-review-and-import-blocked.png`
+- `05-review-and-import-bids-ready.png`
+- `epoch-after-bids-import.png`
 - `epoch-handoff-evidence.json`
 
 Step 4 intentionally keeps multiple images because the product has distinct
 label source and placement states: labels inside EEG files, loaded label files,
-BIDS-like events, and blocked conversion fallback.
+BIDS-EEG events, and blocked conversion fallback.
 
 The `match-label-placement-modes/` images are current review evidence for the
 four supported loaded-label placement panels.
 
 `epoch-handoff-evidence.json` is generated through
-`ApplicationService.apply_interpretation` on a temporary GDF/MAT fixture. It is
-not a hand-written screenshot companion; it records the selected target event,
-placement mode, label import result, and state snapshot handoff that the Epoch
-step can consume.
+`ApplicationService.apply_interpretation` on temporary product fixtures. It is
+not a hand-written screenshot companion; it records BIDS selected scope,
+sidecar evidence, label import result, saved recipe data, and the state snapshot
+handoff that the Epoch step can consume.
 
 Regenerate these artifacts with:
 

@@ -19,6 +19,7 @@ class InterpretationPreview:
     label_carrier_count: int
     source_selection: str = "Source"
     selected_eeg_files: list[str] = dc_field(default_factory=list)
+    bids: dict[str, Any] = dc_field(default_factory=dict)
     action_items: list[dict[str, str]] = dc_field(default_factory=list)
     label_carrier_preview: list[dict[str, Any]] = dc_field(default_factory=list)
     metadata_preview: list[dict[str, Any]] = dc_field(default_factory=list)
@@ -87,6 +88,7 @@ def build_interpretation_preview(
         label_carrier_count=label_count,
         source_selection=_source_selection_text(candidate),
         selected_eeg_files=list(candidate.selected_eeg_files),
+        bids=dict(getattr(candidate, "bids", {}) or {}),
         action_items=_build_action_items(candidate),
         label_carrier_preview=[dict(item) for item in candidate.label_carrier_plan],
         metadata_preview=metadata_preview,

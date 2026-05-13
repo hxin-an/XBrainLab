@@ -573,6 +573,63 @@ class TestPreprocessSidebar:
         sidebar.panel.controller.get_preprocessed_data_list.assert_not_called()
         sidebar.panel.controller.apply_epoching.assert_not_called()
 
+    def test_open_epoching_passes_import_handoff_to_dialog(self, sidebar):
+        from XBrainLab.backend.application import CreateEpochCommand, QueryStateCommand
+
+        query_data = [MagicMock()]
+        sidebar.panel.main_window.study = SimpleNamespace()
+        sidebar.panel.main_window.study._application_service = SimpleNamespace(
+            get_state=MagicMock(
+                return_value=SimpleNamespace(
+                    interpretation=SimpleNamespace(
+                        epoch_handoff={
+                            "ready": True,
+                            "default_epoch_events": ["Left hand", "Right hand"],
+                            "label_source": "bids_events",
+                        }
+                    )
+                )
+            )
+        )
+
+        def execute_for(_, command, refresh=True):
+            if isinstance(command, QueryStateCommand):
+                return _command_result(preprocessed_data_list=query_data)
+            if isinstance(command, CreateEpochCommand):
+                return _command_result()
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.get_command_capability",
+                return_value=SimpleNamespace(enabled=True, reasons=[]),
+            ),
+            patch("XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog") as MockDlg,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
+                side_effect=execute_for,
+            ),
+            patch("PyQt6.QtWidgets.QMessageBox.information"),
+        ):
+            MockDlg.return_value.exec.return_value = True
+            MockDlg.return_value.get_params.return_value = (
+                (None, 0),
+                ["Left hand", "Right hand"],
+                -0.5,
+                1.0,
+            )
+            sidebar.open_epoching()
+
+        MockDlg.assert_called_once_with(
+            sidebar,
+            query_data,
+            epoch_handoff={
+                "ready": True,
+                "default_epoch_events": ["Left hand", "Right hand"],
+                "label_source": "bids_events",
+            },
+        )
+
     def test_open_epoching_refuses_real_study_query_none_controller_fallback(
         self,
         sidebar,

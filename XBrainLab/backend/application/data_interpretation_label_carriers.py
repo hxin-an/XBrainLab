@@ -129,6 +129,7 @@ def _label_carrier_plan_for_path(
     label_stats = _observed_label_stats(path, selected_label)
     anchor_stats = _observed_field_stats(path, selected_anchor)
     duration_stats = _observed_field_stats(path, selected_duration)
+    is_bids_events = _is_bids_events_file(path)
     return {
         "path": source_path,
         "name": path.name,
@@ -150,6 +151,15 @@ def _label_carrier_plan_for_path(
         "label_value_counts": label_stats["value_counts"],
         "selected_anchor_stats": anchor_stats,
         "selected_duration_stats": duration_stats,
+        "bids_sidecars": _bids_existing_events_json_sidecars(path)
+        if is_bids_events
+        else [],
+        "bids_level_labels": _bids_event_level_labels(path, selected_label)
+        if is_bids_events and selected_label
+        else {},
+        "bids_field_descriptions": _bids_event_field_descriptions(path)
+        if is_bids_events
+        else {},
         "time_model": time_model,
         "granularity": granularity,
         "placement_method": placement_method,
@@ -640,6 +650,30 @@ def _bids_events_json_candidates(path: Path) -> list[Path]:
             if candidate not in candidates:
                 candidates.append(candidate)
     return candidates
+
+
+def _bids_existing_events_json_sidecars(path: Path) -> list[str]:
+    return [
+        str(candidate)
+        for candidate in _bids_events_json_candidates(path)
+        if candidate.exists()
+    ]
+
+
+def _bids_event_field_descriptions(path: Path) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for sidecar in _bids_events_json_candidates(path):
+        payload = _json_object(sidecar)
+        for key, value in payload.items():
+            if not isinstance(value, dict):
+                continue
+            description = _case_insensitive_mapping_value(value, "Description")
+            if description is None:
+                continue
+            text = _clean_label_value(description)
+            if text and str(key) not in result:
+                result[str(key)] = text
+    return result
 
 
 def _bids_event_sidecar_names(path: Path) -> list[str]:

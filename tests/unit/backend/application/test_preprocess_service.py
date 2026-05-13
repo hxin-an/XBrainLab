@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -218,6 +219,102 @@ def test_preprocess_service_creates_epoch() -> None:
     assert preprocess.events == [
         ("epoch", ((0.0, 0.2), {"left": 1}, -0.5, 1.5)),
     ]
+
+
+def test_preprocess_service_uses_data_import_epoch_defaults() -> None:
+    preprocess = _PreprocessController()
+    dataset = _DatasetController()
+    service = PreprocessCommandService(
+        preprocess=preprocess,
+        dataset=dataset,
+        get_state=lambda: SimpleNamespace(
+            interpretation=SimpleNamespace(
+                epoch_handoff={
+                    "supervised_ready": True,
+                    "default_epoch_events": ["Left hand", "Right hand"],
+                }
+            )
+        ),
+    )
+
+    service.handle_create_epoch(CreateEpochCommand(t_min=-0.2, t_max=1.0))
+
+    assert preprocess.events == [
+        ("epoch", (None, ["Left hand", "Right hand"], -0.2, 1.0)),
+    ]
+
+
+def test_preprocess_service_rejects_epoch_targets_outside_import_handoff() -> None:
+    preprocess = _PreprocessController()
+    dataset = _DatasetController()
+    service = PreprocessCommandService(
+        preprocess=preprocess,
+        dataset=dataset,
+        get_state=lambda: SimpleNamespace(
+            interpretation=SimpleNamespace(
+                epoch_handoff={
+                    "supervised_ready": True,
+                    "default_epoch_events": ["Left hand", "Right hand"],
+                }
+            )
+        ),
+    )
+
+    with pytest.raises(PreconditionError, match="not in the reviewed import labels"):
+        service.handle_create_epoch(
+            CreateEpochCommand(t_min=-0.2, t_max=1.0, event_ids=["Artifact"]),
+        )
+
+
+def test_preprocess_service_blocks_handoff_blockers_before_defaults() -> None:
+    preprocess = _PreprocessController()
+    dataset = _DatasetController()
+    service = PreprocessCommandService(
+        preprocess=preprocess,
+        dataset=dataset,
+        get_state=lambda: SimpleNamespace(
+            interpretation=SimpleNamespace(
+                epoch_handoff={
+                    "supervised_ready": False,
+                    "supervised_blockers": ["No class labels were reviewed."],
+                    "default_epoch_events": ["Left hand", "Right hand"],
+                }
+            )
+        ),
+    )
+
+    with pytest.raises(PreconditionError, match="No class labels"):
+        service.handle_create_epoch(CreateEpochCommand(t_min=-0.2, t_max=1.0))
+
+    assert preprocess.events == []
+
+
+def test_preprocess_service_rejects_dict_epoch_targets_outside_import_handoff() -> None:
+    preprocess = _PreprocessController()
+    dataset = _DatasetController()
+    service = PreprocessCommandService(
+        preprocess=preprocess,
+        dataset=dataset,
+        get_state=lambda: SimpleNamespace(
+            interpretation=SimpleNamespace(
+                epoch_handoff={
+                    "supervised_ready": True,
+                    "default_epoch_events": ["Left hand", "Right hand"],
+                }
+            )
+        ),
+    )
+
+    with pytest.raises(PreconditionError, match="not in the reviewed import labels"):
+        service.handle_create_epoch(
+            CreateEpochCommand(
+                t_min=-0.2,
+                t_max=1.0,
+                event_ids={"Artifact": 99},
+            ),
+        )
+
+    assert preprocess.events == []
 
 
 def test_preprocess_service_preserves_safety_boundaries() -> None:

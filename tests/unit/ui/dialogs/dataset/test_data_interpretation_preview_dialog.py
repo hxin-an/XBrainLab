@@ -2496,6 +2496,67 @@ def test_data_interpretation_preview_dialog_humanizes_recipe_trace(qtbot):
     assert "choices:metadata_overrides" not in details
 
 
+def test_review_and_import_summarizes_bids_scope_and_epoch_next(qtbot):
+    bids_payload = {
+        "is_bids": True,
+        "subjects": ["01"],
+        "sessions": ["01"],
+        "tasks": ["mi"],
+        "runs": ["1"],
+        "datatypes": ["eeg"],
+        "eeg_file_count": 1,
+        "events_files": ["/tmp/bids/sub-01_task-mi_run-1_events.tsv"],
+        "channels_files": ["/tmp/bids/sub-01_task-mi_run-1_channels.tsv"],
+        "participant_count": 1,
+        "selected_scope": {
+            "subjects": ["01"],
+            "sessions": ["01"],
+            "tasks": ["mi"],
+            "runs": ["1"],
+            "datatypes": ["eeg"],
+            "eeg_file_count": 1,
+            "events_files": ["/tmp/bids/sub-01_task-mi_run-1_events.tsv"],
+            "channels_files": ["/tmp/bids/sub-01_task-mi_run-1_channels.tsv"],
+        },
+    }
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/bids",
+            "source_kind": "bids",
+            "bids": bids_payload,
+        },
+        preview={
+            "source_selection": "1 selected file(s)",
+            "bids": bids_payload,
+            "label_carrier_preview": [
+                {
+                    "path": "/tmp/bids/sub-01_task-mi_run-1_events.tsv",
+                    "name": "sub-01_task-mi_run-1_events.tsv",
+                    "format": "BIDS events",
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                    "selected_duration_field": "duration",
+                    "placement_method": "interval",
+                }
+            ],
+            "class_map": {"left": "Left hand", "right": "Right hand"},
+            "class_map_source": "label_carriers",
+        },
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+
+    _show_step(dialog, "Review and Import")
+    details = _group_text(dialog, "Review and Import")
+
+    assert "Import summary" in details
+    assert "Label source: BIDS events.tsv" in details
+    assert "BIDS scope: sub-01" in details
+    assert "Epoch next: Left hand, Right hand" in details
+    assert "BIDS-like" not in details
+
+
 def test_data_interpretation_preview_dialog_shows_recipe_reload_diff(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,

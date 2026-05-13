@@ -51,6 +51,7 @@ class AppliedInterpretation:
     loaded_files: list[str] = dc_field(default_factory=list)
     label_sources: list[str] = dc_field(default_factory=list)
     label_carriers: list[str] = dc_field(default_factory=list)
+    bids: dict[str, Any] = dc_field(default_factory=dict)
     label_carrier_plan: list[dict[str, Any]] = dc_field(default_factory=list)
     metadata: list[FileMetadataResolution] = dc_field(default_factory=list)
     format_capabilities: list[dict[str, Any]] = dc_field(default_factory=list)

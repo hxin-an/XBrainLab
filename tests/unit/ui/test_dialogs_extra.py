@@ -257,6 +257,61 @@ class TestEpochingDialog:
     def test_update_duration_info(self, dlg):
         dlg.update_duration_info()
 
+    def test_import_handoff_preselects_epoch_targets(self, qtbot):
+        from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
+
+        data = MagicMock()
+        data.get_event_list.return_value = (
+            None,
+            {"Left hand": 1, "Right hand": 2, "Artifact": 99},
+        )
+        dialog = EpochingDialog(
+            None,
+            [data],
+            epoch_handoff={
+                "ready": True,
+                "default_epoch_events": ["Left hand", "Right hand"],
+                "label_source": "bids_events",
+                "placement_modes": ["interval"],
+            },
+        )
+        qtbot.addWidget(dialog)
+
+        assert dialog.event_list is not None
+        assert dialog.handoff_label is not None
+        selected = [item.text() for item in dialog.event_list.selectedItems()]
+
+        assert selected == ["Left hand", "Right hand"]
+        assert "BIDS events" in dialog.handoff_label.text()
+
+    def test_import_handoff_blockers_override_epoch_defaults(self, qtbot):
+        from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
+
+        data = MagicMock()
+        data.get_event_list.return_value = (
+            None,
+            {"Left hand": 1, "Right hand": 2, "Artifact": 99},
+        )
+        dialog = EpochingDialog(
+            None,
+            [data],
+            epoch_handoff={
+                "ready": False,
+                "default_epoch_events": ["Left hand", "Right hand"],
+                "supervised_blockers": ["No class labels were reviewed."],
+                "label_source": "bids_events",
+            },
+        )
+        qtbot.addWidget(dialog)
+
+        assert dialog.event_list is not None
+        assert dialog.handoff_label is not None
+        selected = [item.text() for item in dialog.event_list.selectedItems()]
+
+        assert selected == []
+        assert "needs review" in dialog.handoff_label.text()
+        assert "No class labels" in dialog.handoff_label.text()
+
 
 # ============ SmartParserDialog ============
 

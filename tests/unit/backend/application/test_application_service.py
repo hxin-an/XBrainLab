@@ -441,6 +441,7 @@ def test_apply_interpretation_applies_reviewed_timestamp_label_carrier(tmp_path)
     raw.get_filename.return_value = eeg_path.name
     service.dataset.import_files = MagicMock(return_value=(1, []))
     service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    service.study.data_manager.loaded_data_list = [raw]
     service.dataset.apply_labels_batch = MagicMock(return_value=1)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
@@ -483,6 +484,180 @@ def test_apply_interpretation_applies_reviewed_timestamp_label_carrier(tmp_path)
         "label_import:timestamp:1"
         in apply_result.diagnostics["applied_interpretation"]["recipe_trace"]
     )
+
+
+def test_apply_interpretation_bids_events_populates_epoch_handoff_and_recipe(
+    tmp_path,
+):
+    bids_root = tmp_path / "bids_mi"
+    eeg_dir = bids_root / "sub-01" / "ses-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    (bids_root / "dataset_description.json").write_text("{}", encoding="utf-8")
+    eeg_path = eeg_dir / "sub-01_ses-01_task-mi_run-1_eeg.fif"
+    events_path = eeg_dir / "sub-01_ses-01_task-mi_run-1_events.tsv"
+    events_json = eeg_dir / "sub-01_ses-01_task-mi_run-1_events.json"
+    eeg_path.write_bytes(b"not loaded during scan")
+    events_path.write_text(
+        "onset\tduration\ttrial_type\tvalue\n"
+        "0.5\t2.0\tleft\t769\n"
+        "3.5\t2.0\tright\t770\n",
+        encoding="utf-8",
+    )
+    events_json.write_text(
+        '{"trial_type":{"Levels":{"left":"Left hand","right":"Right hand"}}}',
+        encoding="utf-8",
+    )
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    raw.get_filepath.return_value = str(eeg_path)
+    raw.get_filename.return_value = eeg_path.name
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    service.dataset.apply_labels_batch = MagicMock(return_value=1)
+
+    service.execute(
+        ScanSourceCommand(source_path=str(bids_root), source_hint="bids"),
+    )
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(eeg_path)],
+                "label_carrier_choices": {
+                    str(events_path): {
+                        "label_field": "trial_type",
+                        "anchor": "onset",
+                        "duration_field": "duration",
+                        "time_model": "seconds",
+                        "placement_method": "interval",
+                    }
+                },
+            },
+        ),
+    )
+    service.execute(ValidateInterpretationCommand())
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+    recipe_path = tmp_path / "recipe.json"
+    recipe_result = service.execute(
+        SaveInterpretationRecipeCommand(recipe_path=str(recipe_path)),
+    )
+
+    handoff = apply_result.state.interpretation.epoch_handoff
+    assert handoff["ready"] is True
+    assert handoff["supervised_ready"] is True
+    assert handoff["label_source"] == "bids_events"
+    assert handoff["default_epoch_events"] == ["Left hand", "Right hand"]
+    assert handoff["class_map"] == {"left": "Left hand", "right": "Right hand"}
+    assert handoff["bids"]["selected_scope"]["events_files"] == [
+        str(events_path.resolve())
+    ]
+    assert recipe_result.diagnostics["recipe"]["bids"]["root"] == str(
+        bids_root.resolve()
+    )
+    assert recipe_result.diagnostics["recipe"]["bids"]["selected_scope"][
+        "events_files"
+    ] == [str(events_path.resolve())]
+
+
+def test_bids_import_create_epoch_uses_reviewed_class_defaults(tmp_path):
+    bids_root = tmp_path / "bids_epoch"
+    eeg_dir = bids_root / "sub-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    (bids_root / "dataset_description.json").write_text("{}", encoding="utf-8")
+    eeg_path = eeg_dir / "sub-01_task-mi_run-1_eeg.fif"
+    events_path = eeg_dir / "sub-01_task-mi_run-1_events.tsv"
+    events_json = eeg_dir / "sub-01_task-mi_run-1_events.json"
+    eeg_path.write_bytes(b"not loaded during scan")
+    events_path.write_text(
+        "onset\tduration\ttrial_type\n0.5\t1.0\tleft\n2.0\t1.0\tright\n",
+        encoding="utf-8",
+    )
+    events_json.write_text(
+        '{"trial_type":{"Levels":{"left":"Left hand","right":"Right hand"}}}',
+        encoding="utf-8",
+    )
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    raw.get_filepath.return_value = str(eeg_path)
+    raw.get_filename.return_value = eeg_path.name
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    service.dataset.apply_labels_batch = MagicMock(return_value=1)
+    service.preprocess.apply_epoching = MagicMock()
+
+    service.execute(
+        ScanSourceCommand(source_path=str(bids_root), source_hint="bids"),
+    )
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(eeg_path)],
+                "label_carrier_choices": {
+                    str(events_path): {
+                        "label_field": "trial_type",
+                        "anchor": "onset",
+                        "duration_field": "duration",
+                        "time_model": "seconds",
+                        "placement_method": "interval",
+                    }
+                },
+            },
+        ),
+    )
+    service.execute(ValidateInterpretationCommand())
+    service.execute(ApplyInterpretationCommand(confirmed=True))
+    service.study.data_manager.preprocessed_data_list = [raw]
+
+    result = service.execute(CreateEpochCommand(t_min=-0.2, t_max=1.0))
+
+    assert result.ok is True
+    service.preprocess.apply_epoching.assert_called_once_with(
+        None,
+        ["Left hand", "Right hand"],
+        -0.2,
+        1.0,
+    )
+
+
+def test_bids_import_without_events_allows_raw_import_but_blocks_supervised_dataset(
+    tmp_path,
+):
+    bids_root = tmp_path / "bids_no_events"
+    eeg_dir = bids_root / "sub-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    (bids_root / "dataset_description.json").write_text("{}", encoding="utf-8")
+    eeg_path = eeg_dir / "sub-01_task-rest_run-1_eeg.fif"
+    eeg_path.write_bytes(b"not loaded during scan")
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    raw.get_filepath.return_value = str(eeg_path)
+    raw.get_filename.return_value = eeg_path.name
+
+    def import_file_side_effect(_paths):
+        service.study.data_manager.loaded_data_list = [raw]
+        return (1, [])
+
+    service.dataset.import_files = MagicMock(side_effect=import_file_side_effect)
+    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+
+    scan_result = service.execute(
+        ScanSourceCommand(source_path=str(bids_root), source_hint="bids"),
+    )
+    service.execute(PreviewInterpretationCommand())
+    service.execute(ValidateInterpretationCommand())
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+    service.study.data_manager.epoch_data = MagicMock()
+
+    assert scan_result.ok is True
+    assert scan_result.state.interpretation.label_carriers == []
+    assert apply_result.ok is True
+    assert apply_result.state.raw.loaded is True
+    handoff = apply_result.state.interpretation.epoch_handoff
+    assert handoff["ready"] is False
+    assert handoff["supervised_ready"] is False
+    assert any("No class labels" in reason for reason in handoff["supervised_blockers"])
+    capability = service.get_capabilities().get(CommandName.GENERATE_DATASET)
+    assert capability.available is False
+    assert any("No class labels" in reason for reason in capability.reasons)
 
 
 def test_apply_interpretation_applies_reviewed_timestamp_label_carriers_by_stem(
@@ -565,7 +740,7 @@ def test_apply_interpretation_skips_ambiguous_multi_file_timestamp_labels(tmp_pa
     source_dir.mkdir()
     eeg_1 = source_dir / "sub-01_task-mi_run-1_raw.fif"
     eeg_2 = source_dir / "sub-01_task-mi_run-2_raw.fif"
-    events = source_dir / "events.tsv"
+    events = source_dir / "labels.tsv"
     eeg_1.write_bytes(b"not loaded during scan")
     eeg_2.write_bytes(b"not loaded during scan")
     events.write_text("onset\ttrial_type\n0.5\tleft\n", encoding="utf-8")
@@ -603,6 +778,10 @@ def test_apply_interpretation_skips_ambiguous_multi_file_timestamp_labels(tmp_pa
         "No reviewed label carrier uniquely matches"
         in apply_result.diagnostics["label_apply"]["reason"]
     )
+    handoff = apply_result.state.interpretation.epoch_handoff
+    assert handoff["supervised_ready"] is False
+    assert handoff["default_epoch_events"] == []
+    assert "Reviewed labels were not applied" in handoff["supervised_blockers"][0]
     service.dataset.apply_labels_batch.assert_not_called()
 
 
@@ -1136,6 +1315,27 @@ def test_preprocess_capability_requires_raw_data_not_existing_preprocessed_copy(
         "Preprocess data before creating epochs"
         in (policy.get(CommandName.CREATE_EPOCH).reasons[0])
     )
+
+
+def test_dataset_generation_blocks_when_import_has_no_supervised_labels(tmp_path):
+    source_dir = tmp_path / "no_labels"
+    source_dir.mkdir()
+    eeg_path = source_dir / "subject01_raw.fif"
+    eeg_path.write_bytes(b"not loaded during scan")
+    service = ApplicationService(Study())
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+    service.dataset.get_loaded_data_list = MagicMock(return_value=[])
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    service.execute(PreviewInterpretationCommand())
+    service.execute(ValidateInterpretationCommand())
+    service.execute(ApplyInterpretationCommand(confirmed=True))
+    service.study.data_manager.epoch_data = MagicMock()
+
+    capability = service.get_capabilities().get(CommandName.GENERATE_DATASET)
+
+    assert capability.available is False
+    assert any("No class labels" in reason for reason in capability.reasons)
 
 
 def test_evaluate_command_returns_typed_service_backed_summary():
