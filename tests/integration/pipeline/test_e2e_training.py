@@ -1,8 +1,9 @@
 """
-End-to-end integration tests for training workflow.
+Training UI and Study compatibility regression tests.
 
-These tests simulate real user interactions and verify that the complete
-training pipeline works correctly, including UI updates and state management.
+These tests exercise UI panel update behavior and lower-level Study training
+delegation with mocked trainers. Product workflow success evidence belongs in
+ApplicationService command/query smokes, not direct mutable Study assertions.
 """
 
 from typing import Any, cast
@@ -13,6 +14,11 @@ import torch
 from PyQt6.QtWidgets import QWidget
 
 from XBrainLab import Study
+from XBrainLab.backend.application import (
+    ApplicationService,
+    ConfigureTrainingCommand,
+    QueryStateCommand,
+)
 from XBrainLab.backend.model_base import SCCNet
 from XBrainLab.backend.training import TrainingEvaluation, TrainingOption
 from XBrainLab.backend.training.model_holder import ModelHolder
@@ -226,27 +232,29 @@ class TestTrainingWorkflowWithUI:
     def test_progress_bar_calculation_with_string_epoch(self, qtbot):
         """Test that progress bar works even if epoch types are mixed."""
 
-        # Create option with string epoch (as from UI input)
-        study = Study()
-        option = TrainingOption(
-            output_dir="./test_output",
-            optim=torch.optim.Adam,
-            optim_params={},
-            use_cpu=True,
-            gpu_idx=None,
-            epoch=_ui_text("10"),  # String input
-            bs=_ui_text("4"),
-            lr=_ui_text("0.001"),
-            checkpoint_epoch=_ui_text("1"),
-            evaluation_option=TrainingEvaluation.TEST_ACC,
-            repeat_num=_ui_text("1"),
+        service = ApplicationService()
+        study = service.study
+        configure_result = service.execute(
+            ConfigureTrainingCommand(
+                output_dir="./test_output",
+                device="cpu",
+                epoch=_ui_text("10"),
+                batch_size=_ui_text("4"),
+                learning_rate=_ui_text("0.001"),
+                save_checkpoints_every=_ui_text("1"),
+                evaluation_option="test_acc",
+                repeat=_ui_text("1"),
+            ),
         )
-        study.set_training_option(option)
+        assert configure_result.ok is True
 
-        # Verify epoch was converted to int
-        assert study.training_option is not None
-        assert isinstance(study.training_option.epoch, int)
-        assert study.training_option.epoch == 10
+        query_result = service.execute(QueryStateCommand(query="state"))
+        assert query_result.ok is True
+        training_option = query_result.diagnostics["state"]["training"][
+            "training_option"
+        ]
+        assert isinstance(training_option["epoch"], int)
+        assert training_option["epoch"] == 10
 
         # Create panel
         parent = cast(Any, QWidget())

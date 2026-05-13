@@ -425,6 +425,27 @@ def test_training_panel_state(study):
     assert "study.training_option" in violations[1]
 
 
+def test_product_success_study_state_guard_flags_e2e_training_state_truth(
+    tmp_path,
+):
+    path = tmp_path / "tests" / "integration" / "pipeline" / "test_e2e_training.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_progress_bar_calculation_with_string_epoch(study):
+    assert study.training_option is not None
+    assert study.training_option.epoch == 10
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_product_success_direct_study_state_tests(tmp_path)
+
+    assert len(violations) == 2
+    assert "study.training_option" in violations[0]
+    assert "study.training_option" in violations[1]
+
+
 def test_product_success_study_state_guard_flags_application_workflow_generator(
     tmp_path,
 ):

@@ -16,8 +16,8 @@
 
 | Gate | 最近可信結果 | 用途 | 不能取代 |
 | --- | --- | --- | --- |
-| Fast quality dashboard | 2026-05-13 20:54:34 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
-| Architecture compliance | 最近 checkpoint `Architecture compliant!`，guard unit `86 passed` | 阻擋已知 `BackendFacade`、legacy fallback、direct state、positive controller lookup、docs overclaim 等 regression。 | runtime semantic proof for every possible path。 |
+| Fast quality dashboard | 2026-05-13 21:07:58 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
+| Architecture compliance | 最近 checkpoint `Architecture compliant!`，guard unit `87 passed` | 阻擋已知 `BackendFacade`、legacy fallback、direct state、positive controller lookup、docs overclaim 等 regression。 | runtime semantic proof for every possible path。 |
 | Focused UI integration | `test_ui_refresh.py`、`test_ui_integration.py`、`test_panel_controller_binding.py` -> `8 passed` | MainWindow launch/navigation/tab-refresh 和 injected controller event wiring 不再把 legacy lookup 當成功證據。 | full zero-controller UI 或人工桌面驗收。 |
 | Product smokes / real tools | guarded UI product smokes、epoch runtime、real-tools suites recently PASS | product evidence 轉向 `QueryStateCommand` / command diagnostics / UI-visible state。 | 所有 integration tests 都已清成 product evidence。 |
 | `mkdocs build --strict` | 最近 checkpoint PASS | 文件站可建且連結/nav 基本有效。 | 文件內容一定正確或容易讀。 |
@@ -256,6 +256,25 @@ events before epoching.
 | Focused `ruff` / `basedpyright` on changed Python files | PASS / `0 errors, 0 warnings, 0 notes` | Changed test and guard code are lint/type clean. | Runtime behavior by itself. | Run docs build and dashboard before checkpoint commit. |
 | `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS | Documentation builds strictly and whitespace remains clean after current-truth and validation updates. | Content is automatically complete. | Keep docs review separate from build success. |
 | `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 20:54:34 UTC+08:00`. | Fast engineering dashboard remains green after this command-spine test/guard slice, including full ruff, basedpyright, architecture, startup, UI baseline/dialog/unit, and real-data IO. | Product complete, training quality, or human Windows acceptance. | Dashboard remains engineering health evidence only. |
+
+## 2026-05-13 Training UI Command-State Evidence Checkpoint
+
+This test-evidence slice kept visible Training UI behavior unchanged while narrowing the claim
+boundary of `tests/integration/pipeline/test_e2e_training.py`. The file is now described as
+training UI / Study compatibility regression coverage with mocked trainers, not as complete
+product workflow evidence. Its UI-facing string-epoch coercion check now configures training
+through `ConfigureTrainingCommand` and verifies normalized state through `QueryStateCommand`
+instead of reading `study.training_option` directly.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| Red guard check after adding `tests/integration/pipeline/test_e2e_training.py` to the direct-state product-success guard | Failed on the expected `study.training_option` reads before the rewrite. | The guard would catch this E2E-named suite if it used mutable `Study` state as product evidence. | Runtime behavior by itself. | Keep mock trainer setup classified as UI panel regression, not product workflow proof. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/pipeline/test_e2e_training.py::TestTrainingWorkflowWithUI::test_progress_bar_calculation_with_string_epoch -q` | `1 passed` | String epoch / batch / learning-rate UI-style inputs normalize through ApplicationService command state before the panel renders progress. | Full training workflow or training quality. | Keep product training smokes in command/query suites. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/pipeline/test_e2e_training.py -q` | `9 passed` | Existing Training / Evaluation / Visualization panel regression coverage remains green after replacing direct training-option success truth. | Human desktop acceptance or complete zero-controller UI. | Continue splitting mock-heavy UI panel tests from product-smoke evidence. |
+| `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run python tests/architecture_compliance.py` | `87 passed` / `Architecture compliant!` | Architecture guard now includes the E2E-named training UI regression file in direct `Study` product-evidence checks. | Semantic proof outside guarded files. | Expand guard scope only after a concrete replacement assertion exists. |
+| Focused `ruff` / `basedpyright` on changed Python files | PASS / `0 errors, 0 warnings, 0 notes` | Changed test and guard code are lint/type clean. | Runtime behavior by itself. | Run docs build and dashboard before checkpoint commit. |
+| `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS | Documentation builds strictly and whitespace remains clean after current-truth and validation updates. | Content is automatically complete. | Keep docs review separate from build success. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 21:07:58 UTC+08:00`. | Fast engineering dashboard remains green after this training UI test/guard slice, including full ruff, basedpyright, architecture, startup, UI baseline/dialog/unit, and real-data IO. | Product complete, training quality, or human Windows acceptance. | Dashboard remains engineering health evidence only. |
 
 ## 2026-05-13 Data Import Runtime Integration Checkpoint
 
