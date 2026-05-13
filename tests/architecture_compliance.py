@@ -90,6 +90,7 @@ UI_CONTROLLER_RENDER_FALLBACK_METHODS = (
     "get_filenames",
     "get_formatted_history",
     "get_loaded_data_list",
+    "get_model_holder",
     "get_model_summary_str",
     "get_plans",
     "get_pooled_eval_result",

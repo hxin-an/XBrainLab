@@ -148,8 +148,9 @@ as an interpretation error and does not fall back to direct load.
 Training model selection also avoids a controller-truth echo on the service-success path:
 after `ConfigureTrainingCommand` succeeds, the user-facing success message is based on the
 command result and selected model holder instead of re-reading `TrainingController.get_model_holder()`.
-The legacy fallback branch still verifies through the controller because that branch is explicitly
-for mock / non-`Study` compatibility.
+The legacy fallback branch still verifies through `_legacy_model_holder()` because that branch is
+explicitly for mock / non-`Study` compatibility; product methods no longer call
+`TrainingController.get_model_holder()` directly in the missing-result branch.
 Training split replacement now also uses backend capability truth: when `generate_dataset` is
 blocked only by existing generated datasets / trainer and `clear_datasets` is enabled, the UI asks
 for confirmation and dispatches `ClearDatasetsCommand` before `GenerateDatasetCommand`, independent
@@ -183,7 +184,9 @@ mock / legacy fallback when table row objects are unavailable.
 `tests/architecture_compliance.py` 會靜態檢查這條 boundary，防止新的 `result is None` branch
 直接呼叫 controller mutation，也防止 service-backed success path 在
 `execute_application_command()` 後回讀 `TrainingController.get_model_holder()` 這類 controller
-echo 重新判定 command success。最新 guard 也防止有 `get_command_capability()` 的 UI command
+echo 重新判定 command success。後續 guard 又把 `get_model_holder()` 納入 missing-result
+render fallback rule，要求它只出現在 explicit legacy helper 內。最新 guard 也防止有
+`get_command_capability()` 的 UI command
 path 用 `controller.is_training()`、`has_datasets()` 或 `get_trainer()` 做 pre-command
 readiness gating，除非該 read 明確落在 `capability is None` legacy branch；guard extension
 也覆蓋 Training readiness 的 `validate_ready()`、`has_model()`、`has_training_option()` echo。

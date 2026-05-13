@@ -733,6 +733,27 @@ def update_panel(self):
     assert "run_legacy_controller_fallback" in violations[0]
 
 
+def test_controller_render_fallback_guard_flags_model_holder_echo_in_missing_result(
+    tmp_path,
+):
+    _write_ui_file(
+        tmp_path,
+        """
+def select_model(self):
+    result = execute_application_command(self, ConfigureTrainingCommand())
+    if result is None:
+        holder = self.controller.get_model_holder()
+    return holder
+""",
+    )
+
+    violations = check_ui_controller_render_fallbacks(tmp_path)
+
+    assert len(violations) == 1
+    assert "get_model_holder" in violations[0]
+    assert "run_legacy_controller_fallback" in violations[0]
+
+
 def test_controller_render_fallback_guard_allows_explicit_legacy_wrapper(tmp_path):
     _write_ui_file(
         tmp_path,

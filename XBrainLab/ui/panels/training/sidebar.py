@@ -241,6 +241,21 @@ class TrainingSidebar(QWidget):
             return False
         return True
 
+    def _legacy_model_holder(self):
+        """Return the model holder only for mock / legacy UI contexts."""
+        try:
+            return run_legacy_controller_fallback(
+                self,
+                self.controller.get_model_holder,
+            )
+        except LegacyControllerFallbackUnavailableError as exc:
+            QMessageBox.warning(
+                self,
+                "Model Selection Blocked",
+                str(exc),
+            )
+            return None
+
     def _legacy_set_training_option(self, option) -> bool:
         """Set training option only for mock / legacy UI contexts."""
         try:
@@ -608,7 +623,7 @@ class TrainingSidebar(QWidget):
             if result is None:
                 if not self._legacy_set_model_holder(model_holder):
                     return
-                model_holder = self.controller.get_model_holder()
+                model_holder = self._legacy_model_holder()
                 if model_holder is None:
                     QMessageBox.critical(
                         self,
