@@ -10,7 +10,7 @@
 
 1. 看「Evidence 能力邊界」判斷某個綠燈能支撐什麼 claim。
 2. 看「目前最可信的 gate」確認最近仍可引用的工程健康證據。
-3. 需要追溯某一輪改動時，再看下方日期 checkpoint。
+3. 看「最新證據導覽」決定要追哪個 checkpoint；只有需要細節時才往下讀日期記錄。
 
 ## 目前最可信的 gate
 
@@ -21,6 +21,18 @@
 | Focused UI integration | `test_ui_refresh.py`、`test_ui_integration.py`、`test_panel_controller_binding.py` -> `8 passed` | MainWindow launch/navigation/tab-refresh 和 injected controller event wiring 不再把 legacy lookup 當成功證據。 | full zero-controller UI 或人工桌面驗收。 |
 | Product smokes / real tools | guarded UI product smokes、epoch runtime、real-tools suites recently PASS | product evidence 轉向 `QueryStateCommand` / command diagnostics / UI-visible state。 | 所有 integration tests 都已清成 product evidence。 |
 | `mkdocs build --strict` | 最近 checkpoint PASS | 文件站可建且連結/nav 基本有效。 | 文件內容一定正確或容易讀。 |
+
+## 最新證據導覽
+
+下表是讀這頁的索引，不是新的 claim。每一列都指向下方可追溯的 checkpoint 或 gap section。
+
+| 你要判斷 | 先看 | 可以支持 | 不能支持 |
+| --- | --- | --- | --- |
+| MCP / headless status 是否仍走 command state | [MCP direct Study-state guard](#2026-05-13-mcp-direct-study-state-guard-checkpoint) 和 [MCP HTTP progress command-state](#2026-05-13-mcp-http-progress-command-state-checkpoint) | MCP progress/status 不回到 direct mutable `Study` read 或 controller lookup bypass。 | full external MCP client certification。 |
+| Evaluation panel 是否還會顯示 stale metrics | [Evaluation display command evidence](#2026-05-13-evaluation-display-command-evidence-checkpoint) | service-owned average metrics 缺失時清空 stale display。 | human evaluation UX acceptance。 |
+| Data Import runtime / agent-MCP schema 是否仍可引用 | [Data Import runtime integration](#2026-05-13-data-import-runtime-integration-checkpoint) | command/service/dialog contracts 和 agent/MCP baseline。 | final Match Labels / Review and Import UX。 |
+| 測試是否能擋 facade / legacy fallback 回流 | [Backend test hygiene inventory](#backend-test-hygiene-inventory) 和 architecture guard checkpoints | 已知 forbidden product-success evidence 被 guard。 | semantic proof for every lower-level test。 |
+| 能不能宣稱桌面 MVP 人工驗收 | [Human Windows Desktop Acceptance Gap](#human-windows-desktop-acceptance-gap) | 尚缺哪些 click-through / artifact。 | release approval。 |
 
 ## Evidence 能力邊界
 
