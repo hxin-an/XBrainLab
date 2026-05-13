@@ -1,6 +1,7 @@
 from tests.architecture_compliance import (
     check_backend_facade_test_usage,
     check_docs_current_truth_overclaims,
+    check_headless_verifier_direct_study_state,
     check_llm_direct_study_state_reads,
     check_llm_parser_weak_parse_assertions,
     check_mcp_direct_study_state_reads,
@@ -47,6 +48,12 @@ def _write_llm_file(root, source: str) -> None:
 
 def _write_mcp_file(root, source: str) -> None:
     path = root / "XBrainLab" / "mcp" / "http_server.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(source, encoding="utf-8")
+
+
+def _write_headless_verifier_file(root, source: str) -> None:
+    path = root / "scripts" / "dev" / "verify_real_tools.py"
     path.parent.mkdir(parents=True)
     path.write_text(source, encoding="utf-8")
 
@@ -758,6 +765,53 @@ def test_walkthrough(test_app):
     )
 
     assert check_product_success_direct_study_state_tests(tmp_path) == []
+
+
+def test_headless_verifier_state_guard_flags_direct_study_truth(tmp_path):
+    _write_headless_verifier_file(
+        tmp_path,
+        """
+def verify(study):
+    if study.loaded_data_list:
+        return len(study.datasets)
+    if study.is_training():
+        study.stop_training()
+    return 0
+""",
+    )
+
+    violations = check_headless_verifier_direct_study_state(tmp_path)
+
+    assert len(violations) == 4
+    assert "study.loaded_data_list" in violations[0]
+    assert "QueryStateCommand" in violations[0]
+    assert "study.datasets" in violations[1]
+    assert "study.is_training" in violations[2]
+    assert "StopTrainingCommand" in violations[2]
+    assert "study.stop_training" in violations[3]
+
+
+def test_headless_verifier_state_guard_allows_command_query_truth(tmp_path):
+    _write_headless_verifier_file(
+        tmp_path,
+        """
+from XBrainLab.backend.application import (
+    QueryStateCommand,
+    StopTrainingCommand,
+    get_application_service,
+)
+
+
+def verify(study):
+    service = get_application_service(study)
+    state = service.execute(QueryStateCommand(query="state"))
+    if state.failed:
+        raise RuntimeError(state.message)
+    service.execute(StopTrainingCommand())
+""",
+    )
+
+    assert check_headless_verifier_direct_study_state(tmp_path) == []
 
 
 def test_product_success_controller_lookup_guard_flags_direct_lookup_assertion(

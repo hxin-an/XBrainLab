@@ -122,6 +122,8 @@ PRODUCT_SUCCESS_DIRECT_STUDY_STATE_TEST_FILES = (
 )
 PRODUCT_SUCCESS_DIRECT_STUDY_METHODS = ("get_datasets_generator",)
 MCP_DIRECT_STUDY_METHODS = ("get_controller", "get_datasets_generator")
+HEADLESS_VERIFIER_STATE_TRUTH_FILES = (Path("scripts/dev/verify_real_tools.py"),)
+HEADLESS_VERIFIER_DIRECT_STUDY_METHODS = ("is_training", "stop_training")
 PRODUCT_SUCCESS_TEST_DIRS = (
     Path("tests/integration/backend"),
     Path("tests/integration/io"),
@@ -366,6 +368,15 @@ def check_architecture(root_dir: str) -> int:
     if product_success_study_state_violations:
         print("\nProduct Success Direct Study State Test Violations Found:")
         for violation in product_success_study_state_violations:
+            print(f" - {violation}")
+        return 1
+
+    headless_verifier_study_state_violations = (
+        check_headless_verifier_direct_study_state(Path(root_dir))
+    )
+    if headless_verifier_study_state_violations:
+        print("\nHeadless Verifier Direct Study State Violations Found:")
+        for violation in headless_verifier_study_state_violations:
             print(f" - {violation}")
         return 1
 
@@ -807,6 +818,43 @@ def check_product_success_direct_study_state_tests(root_dir: Path) -> list[str]:
             "as product-success setup/evidence; use ApplicationService query "
             "diagnostics or a command-owned object source instead."
             for call in visitor.study_method_calls
+        )
+    return violations
+
+
+def check_headless_verifier_direct_study_state(root_dir: Path) -> list[str]:
+    """Return headless product verifiers that bypass command/query state truth."""
+    violations: list[str] = []
+
+    for relative_file in HEADLESS_VERIFIER_STATE_TRUTH_FILES:
+        py_file = root_dir / relative_file
+        if not py_file.exists():
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+        state_visitor = _DirectStudyStateReadVisitor()
+        state_visitor.visit(tree)
+        violations.extend(
+            f"{relative_file}:{attr.lineno} reads "
+            f"{_study_state_expression(source, attr)}; headless product "
+            "verifiers must query state through ApplicationService / "
+            "QueryStateCommand."
+            for attr in state_visitor.violations
+        )
+
+        method_visitor = _DirectStudyMethodCallVisitor(
+            HEADLESS_VERIFIER_DIRECT_STUDY_METHODS
+        )
+        method_visitor.visit(tree)
+        violations.extend(
+            f"{relative_file}:{call.lineno} calls "
+            f"{_study_state_expression(source, call.func)}; headless product "
+            "verifiers must use QueryStateCommand for readiness/status and "
+            "StopTrainingCommand for cancellation."
+            for call in method_visitor.violations
         )
     return violations
 
