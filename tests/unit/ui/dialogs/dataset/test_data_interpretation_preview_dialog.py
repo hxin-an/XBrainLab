@@ -1252,15 +1252,17 @@ def test_converted_label_table_dialog_shows_required_format(qtbot):
         if label.text().strip() and label.isVisibleTo(dialog)
     )
     assert "XBrainLab label table" in visible_text
-    assert "target structure" in visible_text
-    assert "Required column" in visible_text
+    assert "which values are labels" in visible_text
+    assert "Each row means" in visible_text
+    assert "one label, trial, event, or labeled interval" in visible_text
+    assert "Required" in visible_text
     assert "label" in visible_text
-    assert "Example: match by EEG event code" in visible_text
+    assert "Also include one" in visible_text
+    assert "onset_seconds + duration_seconds" in visible_text
+    assert "Example: labels follow EEG event codes" in visible_text
     assert "769,left_hand" in visible_text
-    assert "Match by event code" in visible_text
-    assert "event_code + label" in visible_text
-    assert "Match intervals" in visible_text
-    assert "onset_seconds + duration_seconds + label" in visible_text
+    assert "Example: labels have timestamps" in visible_text
+    assert "12.50,left_hand" in visible_text
     button_texts = [button.text() for button in dialog.findChildren(QPushButton)]
     assert "Close" in button_texts
     assert "Choose CSV/TSV table" not in button_texts
@@ -1312,8 +1314,9 @@ def test_match_labels_shows_conversion_fallback_when_label_field_is_missing(
     assert "ready to place on EEG" not in visible_text
     assert "Label file needs conversion" in visible_text
     assert "cannot find a usable label column" in visible_text
-    assert "label column and one placement column" in visible_text
-    assert "Example row: event_code,label = 769,left_hand" in visible_text
+    assert "one row per label" in visible_text
+    assert "one alignment column" in visible_text
+    assert "Example: event_code,label = 769,left_hand" in visible_text
     assert "Label values and placement" not in visible_text
     assert "Read labels from" not in visible_text
     assert "Place labels by" not in visible_text

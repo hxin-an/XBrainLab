@@ -74,7 +74,7 @@ class _ConvertedLabelTableDialog(BaseDialog):
             parent=parent,
             title="Load Converted Label Table",
             width=620,
-            height=440,
+            height=560,
         )
 
     def init_ui(self) -> None:
@@ -91,8 +91,8 @@ class _ConvertedLabelTableDialog(BaseDialog):
         title = QLabel("XBrainLab label table")
         title.setObjectName("DataImportPanelTitle")
         detail = QLabel(
-            "Use this as the target structure when XBrainLab cannot read or match "
-            "the original label file."
+            "Create this CSV/TSV when a label file loads but XBrainLab cannot tell "
+            "which values are labels or where they belong in the EEG."
         )
         detail.setObjectName("DataImportPanelSubtitle")
         detail.setWordWrap(True)
@@ -108,13 +108,14 @@ class _ConvertedLabelTableDialog(BaseDialog):
         card_layout.setVerticalSpacing(8)
 
         rows = [
-            ("Required column", "label"),
-            ("Optional columns", "eeg_file, class_name, trial_id"),
-            ("One row per EEG event", "label"),
-            ("Match by event code", "event_code + label"),
-            ("Match by time", "onset_seconds + label"),
-            ("Match intervals", "onset_seconds + duration_seconds + label"),
-            ("Match by sample", "sample + label"),
+            ("Each row means", "one label, trial, event, or labeled interval"),
+            ("Required", "label"),
+            (
+                "Also include one",
+                "event_code, onset_seconds, sample, or "
+                "onset_seconds + duration_seconds",
+            ),
+            ("Optional", "eeg_file, class_name, trial_id"),
         ]
         for row_index, (label_text, value_text) in enumerate(rows):
             label = QLabel(label_text)
@@ -127,19 +128,37 @@ class _ConvertedLabelTableDialog(BaseDialog):
         card_layout.setColumnStretch(1, 1)
         layout.addWidget(card)
 
-        example_card = QFrame()
-        example_card.setObjectName("DataImportCard")
-        example_layout = QVBoxLayout(example_card)
-        example_layout.setContentsMargins(14, 12, 14, 12)
-        example_layout.setSpacing(7)
-        example_title = QLabel("Example: match by EEG event code")
-        example_title.setObjectName("DataImportSourceTitle")
-        example = QLabel("event_code,label\n769,left_hand\n770,right_hand")
-        example.setObjectName("DataImportCodeBlock")
-        example.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        example_layout.addWidget(example_title)
-        example_layout.addWidget(example)
-        layout.addWidget(example_card)
+        event_example_card = QFrame()
+        event_example_card.setObjectName("DataImportCard")
+        event_example_layout = QVBoxLayout(event_example_card)
+        event_example_layout.setContentsMargins(14, 12, 14, 12)
+        event_example_layout.setSpacing(7)
+        event_example_title = QLabel("Example: labels follow EEG event codes")
+        event_example_title.setObjectName("DataImportSourceTitle")
+        event_example = QLabel("event_code,label\n769,left_hand\n770,right_hand")
+        event_example.setObjectName("DataImportCodeBlock")
+        event_example.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        event_example_layout.addWidget(event_example_title)
+        event_example_layout.addWidget(event_example)
+        layout.addWidget(event_example_card)
+
+        time_example_card = QFrame()
+        time_example_card.setObjectName("DataImportCard")
+        time_example_layout = QVBoxLayout(time_example_card)
+        time_example_layout.setContentsMargins(14, 12, 14, 12)
+        time_example_layout.setSpacing(7)
+        time_example_title = QLabel("Example: labels have timestamps")
+        time_example_title.setObjectName("DataImportSourceTitle")
+        time_example = QLabel("onset_seconds,label\n12.50,left_hand\n16.00,right_hand")
+        time_example.setObjectName("DataImportCodeBlock")
+        time_example.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        time_example_layout.addWidget(time_example_title)
+        time_example_layout.addWidget(time_example)
+        layout.addWidget(time_example_card)
 
         footer = QHBoxLayout()
         footer.setContentsMargins(0, 0, 0, 0)
@@ -2024,12 +2043,12 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.label_table_fallback_reason_label.setObjectName("DataImportActionText")
         self.label_table_fallback_reason_label.setWordWrap(True)
         next_action = QLabel(
-            "Create a table with a label column and one placement column, such as "
-            "event_code, onset_seconds, or sample."
+            "Create a CSV/TSV with one row per label. It must include label plus "
+            "one alignment column: event_code, onset_seconds, or sample."
         )
         next_action.setObjectName("DataImportSourceDetail")
         next_action.setWordWrap(True)
-        example = QLabel("Example row: event_code,label = 769,left_hand")
+        example = QLabel("Example: event_code,label = 769,left_hand")
         example.setObjectName("DataImportSourceDetail")
         example.setWordWrap(True)
         text_layout.addWidget(title)
