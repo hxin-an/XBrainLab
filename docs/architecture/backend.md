@@ -357,7 +357,8 @@ progress message 由 `ApplicationService.get_state().training.progress_message` 
 job baseline；evaluation / visualization jobs、job persistence / recovery、multi-client
 recovery-grade resource lock 和 full remote authorization 仍是後續 architecture work。
 Architecture compliance 也會拒絕 MCP product status/progress code 直接讀 mutable `Study`
-state，例如 `service.study.trainer`；只允許 explicit legacy / fallback helper 保留相容性。
+state，例如 `service.study.trainer`，或直接呼叫 `service.study.get_controller(...)` /
+`service.study.get_datasets_generator(...)`；只允許 explicit legacy / fallback helper 保留相容性。
 
 `ApplicationService` 會拿同一組 cached controllers：
 

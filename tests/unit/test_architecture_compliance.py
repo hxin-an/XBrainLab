@@ -1616,6 +1616,25 @@ def _legacy_training_progress_message(service):
     assert check_mcp_direct_study_state_reads(tmp_path) == []
 
 
+def test_mcp_direct_study_state_guard_flags_service_study_controller_lookup(
+    tmp_path,
+):
+    _write_mcp_file(
+        tmp_path,
+        """
+def _training_progress_message(service):
+    controller = service.study.get_controller("training")
+    return controller.get_progress_text()
+""",
+    )
+
+    violations = check_mcp_direct_study_state_reads(tmp_path)
+
+    assert len(violations) == 1
+    assert "service.study.get_controller" in violations[0]
+    assert "ApplicationService" in violations[0]
+
+
 def test_controller_study_get_controller_guard_flags_product_fallback(tmp_path):
     _write_ui_file(
         tmp_path,

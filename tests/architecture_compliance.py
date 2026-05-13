@@ -121,6 +121,7 @@ PRODUCT_SUCCESS_DIRECT_STUDY_STATE_TEST_FILES = (
     Path("tests/integration/ui/test_real_tools_e2e.py"),
 )
 PRODUCT_SUCCESS_DIRECT_STUDY_METHODS = ("get_datasets_generator",)
+MCP_DIRECT_STUDY_METHODS = ("get_controller", "get_datasets_generator")
 UI_DIRECT_STUDY_CONTROLLER_LOOKUP_ALLOWED_FILES: tuple[str, ...] = ()
 UI_OBSERVER_REFRESH_EVENTS = (
     "data_changed",
@@ -629,6 +630,15 @@ def check_mcp_direct_study_state_reads(root_dir: Path) -> list[str]:
                 "state snapshot, with direct Study state reads limited to "
                 "explicit legacy/fallback helpers."
                 for attr in visitor.violations
+            )
+            method_visitor = _DirectStudyMethodCallVisitor(MCP_DIRECT_STUDY_METHODS)
+            method_visitor.visit(node)
+            violations.extend(
+                f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
+                f"{_study_state_expression(source, call.func)}; MCP product "
+                "status/progress state must come from ApplicationService "
+                "commands or state snapshots, not direct Study method access."
+                for call in method_visitor.violations
             )
     return violations
 
@@ -1515,6 +1525,22 @@ class _ProductSuccessStudyStateVisitor(ast.NodeVisitor):
             and _expression_mentions_study(node.func.value)
         ):
             self.study_method_calls.append(node)
+            return
+        self.generic_visit(node)
+
+
+class _DirectStudyMethodCallVisitor(ast.NodeVisitor):
+    def __init__(self, method_names: tuple[str, ...]) -> None:
+        self.method_names = method_names
+        self.violations: list[ast.Call] = []
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if (
+            _call_name(node.func) in self.method_names
+            and isinstance(node.func, ast.Attribute)
+            and _expression_mentions_study(node.func.value)
+        ):
+            self.violations.append(node)
             return
         self.generic_visit(node)
 
