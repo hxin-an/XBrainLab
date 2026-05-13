@@ -252,6 +252,47 @@ def test_assistant_first_open_preserves_local_runtime_confirmation(test_app, qtb
     start_system.assert_not_called()
 
 
+def test_import_command_success_refreshes_dataset_table_without_stale_controller(
+    test_app,
+    qtbot,
+    tmp_path,
+):
+    """A backend import command success must refresh UI from command/query truth."""
+    fif_path = _write_synthetic_raw_fif(tmp_path)
+
+    with (
+        patch.object(
+            test_app.dataset_panel,
+            "_legacy_loaded_data_list_for_render",
+            side_effect=AssertionError("stale loaded-data render fallback was read"),
+        ) as stale_render,
+        patch.object(
+            test_app.dataset_panel.sidebar,
+            "_legacy_sidebar_state",
+            side_effect=AssertionError("stale sidebar controller state was read"),
+        ) as stale_sidebar,
+        patch(
+            "XBrainLab.ui.panels.dataset.actions.QFileDialog.getOpenFileNames",
+            return_value=([str(fif_path)], ""),
+        ),
+        patch(
+            "XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog",
+        ) as PreviewDialog,
+    ):
+        PreviewDialog.return_value.exec.return_value = True
+        PreviewDialog.return_value.get_result.return_value = {"confirmed": True}
+        _click(qtbot, test_app.dataset_panel.sidebar.import_btn)
+
+    assert len(test_app.study.loaded_data_list) == 1
+    assert test_app.dataset_panel.table.rowCount() == 1
+    assert (
+        test_app.dataset_panel.table.item(0, 0).data(Qt.ItemDataRole.UserRole)
+        is test_app.study.loaded_data_list[0]
+    )
+    stale_render.assert_not_called()
+    stale_sidebar.assert_not_called()
+
+
 def test_pipeline_product_walkthrough_uses_user_facing_actions(
     test_app, qtbot, tmp_path
 ):
