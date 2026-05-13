@@ -500,6 +500,31 @@ def test_real_data_pipeline():
     assert "study.get_datasets_generator()" in violations[3]
 
 
+def test_product_success_study_state_guard_flags_preprocess_validation_setup_truth(
+    tmp_path,
+):
+    path = (
+        tmp_path
+        / "tests"
+        / "integration"
+        / "pipeline"
+        / "test_preprocess_validation.py"
+    )
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_preprocess_fixture_setup(study):
+    assert study.loaded_data_list
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_product_success_direct_study_state_tests(tmp_path)
+
+    assert len(violations) == 1
+    assert "study.loaded_data_list" in violations[0]
+
+
 def test_product_success_study_state_guard_allows_command_state_truth(
     tmp_path,
 ):

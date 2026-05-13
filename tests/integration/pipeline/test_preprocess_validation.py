@@ -2,20 +2,30 @@
 Integration tests for preprocessing edge cases and validation.
 """
 
+from typing import Any
+
 import mne
 import numpy as np
 import pytest
 
-from XBrainLab.backend.controller.dataset_controller import DatasetController
+from XBrainLab.backend.application import (
+    ApplicationService,
+    LoadDataCommand,
+    QueryStateCommand,
+)
 from XBrainLab.backend.controller.preprocess_controller import PreprocessController
-from XBrainLab.backend.study import Study
+
+
+def _first_data(controller: PreprocessController) -> Any:
+    data = controller.get_first_data()
+    assert data is not None
+    return data
 
 
 @pytest.fixture
 def study_with_synthetic(tmp_path):
     """Create a Study with synthetic raw data loaded via a temp .fif file."""
-    study = Study()
-    ds = DatasetController(study)
+    service = ApplicationService()
 
     # Create synthetic raw data with events
     sfreq = 256
@@ -33,13 +43,16 @@ def study_with_synthetic(tmp_path):
     )
     raw.set_annotations(annotations)
 
-    # Save to temp .fif file and load via controller
+    # Save to temp .fif file and load through the command spine
     fif_path = str(tmp_path / "test_raw.fif")
     raw.save(fif_path, overwrite=True)
 
-    ds.import_files([fif_path])
-    assert study.loaded_data_list, "Failed to load synthetic data"
-    return study
+    load_result = service.execute(LoadDataCommand(paths=[fif_path]))
+    assert load_result.ok is True
+    query_result = service.execute(QueryStateCommand(query="state"))
+    assert query_result.ok is True
+    assert query_result.diagnostics["state"]["raw"]["count"] == 1
+    return service.study
 
 
 class TestPreprocessValidation:
@@ -48,12 +61,12 @@ class TestPreprocessValidation:
     def test_resample_preserves_events(self, study_with_synthetic):
         """After resampling, event count should remain the same."""
         pc = PreprocessController(study_with_synthetic)
-        data = pc.get_first_data()
+        data = _first_data(pc)
         events_before = mne.events_from_annotations(data.get_mne())[0]
 
         pc.apply_resample(sfreq=128)
 
-        data_after = pc.get_first_data()
+        data_after = _first_data(pc)
         events_after = mne.events_from_annotations(data_after.get_mne())[0]
         assert len(events_after) == len(events_before)
         assert data_after.get_mne().info["sfreq"] == 128
@@ -86,16 +99,16 @@ class TestPreprocessValidation:
         pc.apply_filter(l_freq=1, h_freq=40)
         pc.apply_resample(sfreq=128)
 
-        history = pc.get_first_data().get_preprocess_history()
+        history = _first_data(pc).get_preprocess_history()
         assert len(history) >= 2
 
     def test_reset_restores_original(self, study_with_synthetic):
         """Reset should restore data to original state."""
         pc = PreprocessController(study_with_synthetic)
-        original_sfreq = pc.get_first_data().get_mne().info["sfreq"]
+        original_sfreq = _first_data(pc).get_mne().info["sfreq"]
 
         pc.apply_resample(sfreq=64)
-        assert pc.get_first_data().get_mne().info["sfreq"] == 64
+        assert _first_data(pc).get_mne().info["sfreq"] == 64
 
         pc.reset_preprocess()
-        assert pc.get_first_data().get_mne().info["sfreq"] == original_sfreq
+        assert _first_data(pc).get_mne().info["sfreq"] == original_sfreq
