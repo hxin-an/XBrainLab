@@ -2,6 +2,7 @@ import os
 
 import pytest
 
+from XBrainLab.backend.application import QueryStateCommand, get_application_service
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.tools.real.dataset_real import (
     RealAttachLabelsTool,
@@ -19,6 +20,25 @@ from XBrainLab.llm.tools.real.preprocess_real import (
     RealSetMontageTool,
 )
 from XBrainLab.llm.tools.real.ui_control_real import RealSwitchPanelTool
+
+
+def _query_diagnostics(study, query: str, *, include_objects: bool = False):
+    result = get_application_service(study).execute(
+        QueryStateCommand(query=query, include_objects=include_objects),
+    )
+    assert result.ok, result.message
+    return result.diagnostics
+
+
+def _state(study):
+    return _query_diagnostics(study, "state")["state"]
+
+
+def _first_preprocessed_data(study):
+    diagnostics = _query_diagnostics(study, "data_lists", include_objects=True)
+    assert diagnostics["preprocessed_count"] == 1
+    return diagnostics["preprocessed_data_list"][0]
+
 
 # Locate test data
 TEST_DATA_DIR = os.path.abspath(
@@ -48,6 +68,7 @@ class TestAllRealTools:
 
         load_tool = RealLoadDataTool()
         load_tool.execute(study, paths=[GDF_FILE])
+        assert _state(study)["raw"]["count"] == 1
         return study
 
     # --- Dataset Tools ---
@@ -71,14 +92,19 @@ class TestAllRealTools:
         """Test RealAttachLabelsTool using a dummy label file."""
         # Create dummy label file
         label_file = tmp_path / "labels.txt"
-        label_file.write_text("0,769,Target\n100,770,Standard")
+        label_file.write_text("769 770 769 770 769 770\n")
 
         tool = RealAttachLabelsTool()
         mapping = {"A01T.gdf": str(label_file)}
 
         res = tool.execute(loaded_study, mapping=mapping)
-        # Tool should run without crashing; verify it returns a status string
-        assert isinstance(res, str) and len(res) > 0
+        assert "Attached labels to 1 files" in res
+        data = _query_diagnostics(
+            loaded_study,
+            "data_lists",
+            include_objects=True,
+        )["loaded_data_list"][0]
+        assert data.is_labels_imported()
 
     def test_clear_dataset_tool(self, loaded_study):
         """Test RealClearDatasetTool."""
@@ -86,7 +112,7 @@ class TestAllRealTools:
         tool = RealClearDatasetTool()
         res = tool.execute(loaded_study)
         assert "Dataset cleared" in res
-        assert len(loaded_study.loaded_data_list) == 0
+        assert _state(loaded_study)["raw"]["count"] == 0
 
     # --- Preprocess Tools ---
 
@@ -96,12 +122,7 @@ class TestAllRealTools:
         res = tool.execute(loaded_study, freq=50)
         assert "Applied Notch Filter (50 Hz)" in res
 
-        hist = (
-            loaded_study.get_controller("preprocess")
-            .get_first_data()
-            .get_preprocess_history()
-        )
-        # History string is "Notch [{freq}] Hz", see PreprocessBase
+        hist = _first_preprocessed_data(loaded_study).get_preprocess_history()
         assert any("Notch" in h for h in hist)
 
     def test_resample_tool(self, loaded_study):
@@ -110,20 +131,19 @@ class TestAllRealTools:
         res = tool.execute(loaded_study, rate=100)
         assert "Resampled data to 100 Hz" in res
 
-        data = loaded_study.get_controller("preprocess").get_first_data()
+        data = _first_preprocessed_data(loaded_study)
         assert data.get_mne().info["sfreq"] == 100
 
     def test_channel_selection_tool(self, loaded_study):
         """Test RealChannelSelectionTool."""
-        # A01T has 25 channels usually (22 EEG + 3 EOG)
         tool = RealChannelSelectionTool()
-        # Select first 2 channels
-        channels = loaded_study.get_controller("preprocess").get_channel_names()[:2]
+        channels = _state(loaded_study)["preprocessed"]["channel_names"][:2]
+        assert len(channels) == 2
         res = tool.execute(loaded_study, channels=channels)
         assert "Selected 2 channels" in res
         assert "duplicate-channel ambiguity" not in res
 
-        data = loaded_study.get_controller("preprocess").get_first_data()
+        data = _first_preprocessed_data(loaded_study)
         assert len(data.get_mne().ch_names) == 2
 
     def test_rereference_tool(self, loaded_study):
@@ -132,13 +152,7 @@ class TestAllRealTools:
         res = tool.execute(loaded_study, method="average")
         assert "Applied reference: average" in res
 
-        hist = (
-            loaded_study.get_controller("preprocess")
-            .get_first_data()
-            .get_preprocess_history()
-        )
-        # History string depends on implementation, usually "Rereference ({method})" or similar
-        # Real implementation might check for "Rereference" or the method name
+        hist = _first_preprocessed_data(loaded_study).get_preprocess_history()
         assert any("reference" in h.lower() or "average" in h.lower() for h in hist)
 
     def test_normalize_tool(self, loaded_study):
@@ -147,12 +161,7 @@ class TestAllRealTools:
         res = tool.execute(loaded_study, method="z-score")
         assert "Normalized data" in res
 
-        hist = (
-            loaded_study.get_controller("preprocess")
-            .get_first_data()
-            .get_preprocess_history()
-        )
-        # History string is "{method} normalization"
+        hist = _first_preprocessed_data(loaded_study).get_preprocess_history()
         assert any("normalization" in h for h in hist)
 
     def test_set_montage_tool(self, loaded_study):
@@ -162,10 +171,9 @@ class TestAllRealTools:
         # Using 'standard_1020' is safest for MNE.
         res = tool.execute(loaded_study, montage_name="standard_1020")
 
-        # Tool should run without crashing and return a status string
-        assert isinstance(res, str) and len(res) > 0
         assert "confirm_montage 'standard_1020'" in res
         assert "duplicate-channel ambiguity" not in res
+        assert _state(loaded_study)["raw"]["count"] == 1
 
     # --- UI Tools ---
 

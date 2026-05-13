@@ -12,6 +12,11 @@ from matplotlib.figure import Figure
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QAbstractButton, QLabel, QMessageBox, QWidget
 
+from XBrainLab.backend.application import (
+    QueryStateCommand,
+    TrainCommand,
+    get_application_service,
+)
 from XBrainLab.backend.dataset import (
     DataSplitter,
     DataSplittingConfig,
@@ -31,6 +36,12 @@ from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
 def _click(qtbot, button) -> None:
     qtbot.mouseClick(button, Qt.MouseButton.LeftButton)
     qtbot.wait(50)
+
+
+def _application_state(study):
+    result = get_application_service(study).execute(QueryStateCommand(query="state"))
+    assert result.ok, result.message
+    return result.diagnostics["state"]
 
 
 def _write_synthetic_raw_fif(tmp_path):
@@ -296,7 +307,7 @@ def test_import_command_success_refreshes_dataset_table_without_stale_controller
 def test_pipeline_product_walkthrough_uses_user_facing_actions(
     test_app, qtbot, tmp_path
 ):
-    """Drive import -> preprocess -> epoch -> split -> configure -> dry-run train."""
+    """Drive import -> preprocess -> epoch -> split -> configure -> dry-run train UI."""
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
     with (
@@ -436,9 +447,12 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
     assert test_app.study.training_option is not None
     assert test_app.training_panel.sidebar.btn_start.isEnabled()
 
-    training_controller = test_app.study.get_controller("training")
+    service = get_application_service(test_app.study)
 
-    def fake_start_training(*_args, **_kwargs):
+    def fake_handle_train(command):
+        """Populate finished-run state through the command route without real training."""
+        assert isinstance(command, TrainCommand)
+        assert command.confirmed is True
         eval_record = SimpleNamespace(
             get_per_class_metrics=lambda: {
                 0: {"precision": 1.0, "recall": 1.0, "f1-score": 1.0, "support": 2},
@@ -483,8 +497,13 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
             is_running=lambda: False,
             current_idx=0,
         )
-        training_controller.notify("training_started")
-        training_controller.notify("training_stopped")
+        return (
+            "Training started.",
+            {
+                "append": command.append,
+                "interactive": command.interactive,
+            },
+        )
 
     with (
         patch.object(
@@ -493,12 +512,17 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
             return_value=QMessageBox.StandardButton.Yes,
         ),
         patch.object(
-            training_controller,
-            "start_training",
-            side_effect=fake_start_training,
+            service.training_commands,
+            "handle_train",
+            side_effect=fake_handle_train,
         ),
     ):
         _click(qtbot, test_app.training_panel.sidebar.btn_start)
+
+    training_state = _application_state(test_app.study)["training"]
+    assert training_state["has_trainer"] is True
+    assert training_state["plan_count"] == 1
+    assert training_state["finished_run_count"] == 1
 
     _click(qtbot, test_app.nav_btns[3])
     assert test_app.evaluation_panel.model_combo.currentText().startswith("Fold 1")

@@ -134,7 +134,11 @@ class RealStartTrainingTool(BaseStartTrainingTool):
         """
         try:
             result = get_application_service(study).execute(
-                TrainCommand(confirmed=bool(kwargs.get("confirmed", False))),
+                TrainCommand(
+                    append=bool(kwargs.get("append", True)),
+                    interactive=bool(kwargs.get("interactive", True)),
+                    confirmed=bool(kwargs.get("confirmed", False)),
+                ),
             )
             _raise_if_failed(result)
         except Exception as e:

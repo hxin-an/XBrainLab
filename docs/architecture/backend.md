@@ -15,6 +15,7 @@
 - `XBrainLab/backend/training_manager.py`
 - `XBrainLab/backend/controller/*.py`
 - `XBrainLab/ui/main_window.py`
+- `XBrainLab/ui/legacy_controller_bootstrap.py`
 - `XBrainLab/llm/tools/real/*.py`
 - `XBrainLab/llm/pipeline_state.py`
 
@@ -166,7 +167,7 @@ PyQt panels
   |       +--> ApplicationService.execute(...) for import / label / metadata / preprocess / epoch / split / query / train / reset / montage
   |       |
   |       v
-  |     Study.get_controller(...) mock fallback / read-only UI population
+  |     explicit legacy helpers for mock fallback / panel bootstrap adapters
   |
   v
 DatasetController / PreprocessController / TrainingController
@@ -245,17 +246,18 @@ ApplicationService.get_capabilities()
 
 UI 不是透過 `BackendFacade` 操作 backend。
 
-`XBrainLab/ui/main_window.py` 在初始化 panels 時直接呼叫：
+`XBrainLab/ui/main_window.py` 初始化 panels 時不再把 `study.get_controller(...)` 當成
+未命名例外散在 MainWindow 內；它呼叫
+`get_legacy_workflow_controllers_for_panel_bootstrap(study)`，由
+`XBrainLab/ui/legacy_controller_bootstrap.py` 統一取得 dataset / preprocess / training /
+evaluation / visualization controller adapters。這個 helper 是具名 legacy quarantine：目前
+panel constructors、observer bridge 和部分 read-only population 仍需要 injected controllers，
+但 product action execution、capability/readiness、command result refresh 不在這條路徑上。
 
-- `study.get_controller("dataset")`
-- `study.get_controller("preprocess")`
-- `study.get_controller("training")`
-- `study.get_controller("evaluation")`
-- `study.get_controller("visualization")`
-
-因此現在 UI 仍會取得 controller layer；這些 controller 仍是 panel refresh、dialog-local
-logic 和部分 legacy action 的現況入口。但高價值 workflow action 已不再只直接呼叫
-controller，而是先經過 UI command adapter 進 `ApplicationService.execute()`。
+因此現在 UI 仍會取得 controller layer；這些 controller 主要服務 panel bootstrap、
+observer bridge、dialog-local logic 和 read-only rendering compatibility。但高價值 workflow
+action 已不再直接呼叫 controller，而是先經過 UI command adapter 進
+`ApplicationService.execute()`。
 
 第一批 UI-facing decision 已改讀 ApplicationService capability policy：
 
@@ -297,7 +299,8 @@ controller，而是先經過 UI command adapter 進 `ApplicationService.execute(
 
 UI 測試中的 mock `Study` 仍走 explicit legacy fallback，避免 unit test 用不完整 mock state
 誤觸真 ApplicationService policy。architecture guard 現在要求這些 fallback 只能出現在
-明確的 legacy / fallback helper，不可藏在 product action method 裡。
+明確的 legacy / fallback helper，不可藏在 product action method 裡；MainWindow 的 panel
+bootstrap controller lookup 也只允許透過 named quarantine helper。
 
 仍保留 controller / UI-request path 包含：
 

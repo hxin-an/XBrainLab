@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from XBrainLab.backend.application import QueryStateCommand, get_application_service
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.tools.real.dataset_real import (
     RealGenerateDatasetTool,
@@ -18,6 +19,24 @@ from XBrainLab.llm.tools.real.training_real import (
     RealSetModelTool,
     RealStartTrainingTool,
 )
+
+
+def _query_diagnostics(study, query: str, *, include_objects: bool = False):
+    result = get_application_service(study).execute(
+        QueryStateCommand(query=query, include_objects=include_objects),
+    )
+    assert result.ok, result.message
+    return result.diagnostics
+
+
+def _state(study):
+    return _query_diagnostics(study, "state")["state"]
+
+
+def _first_preprocessed_data(study):
+    diagnostics = _query_diagnostics(study, "data_lists", include_objects=True)
+    assert diagnostics["preprocessed_count"] == 1
+    return diagnostics["preprocessed_data_list"][0]
 
 
 def _command_result(
@@ -88,7 +107,7 @@ GDF_FILE = os.path.join(TEST_DATA_DIR, "A01T.gdf")
 
 
 class TestRealToolChain:
-    """End-to-end integration tests for LLM Tools -> Backend Controller."""
+    """End-to-end integration tests for LLM Tools -> ApplicationService."""
 
     @pytest.fixture
     def study(self):
@@ -104,7 +123,7 @@ class TestRealToolChain:
         res_load = load_tool.execute(study, paths=[GDF_FILE])
 
         assert "Successfully loaded 1 files" in res_load
-        assert len(study.loaded_data_list) == 1
+        assert _state(study)["raw"]["count"] == 1
 
         # 2. Filter Data (8-12Hz)
         filter_tool = RealBandPassFilterTool()
@@ -112,16 +131,14 @@ class TestRealToolChain:
 
         assert "Applied Bandpass Filter" in res_filter
 
-        # Verify effect on controller
-        controller = study.get_controller("preprocess")
-        assert controller.has_data()
-        hist = controller.get_first_data().get_preprocess_history()
+        hist = _first_preprocessed_data(study).get_preprocess_history()
         assert any("Filtering" in h for h in hist)
 
         # 2.3 Epoch Data (Required for Dataset Generation)
         epoch_tool = RealEpochDataTool()
         res_epoch = epoch_tool.execute(study, t_min=0, t_max=2.0, event_id=None)
         assert "Data epoched" in res_epoch
+        assert _state(study)["epoch"]["exists"] is True
 
         # 2.5 Generate Dataset (Required for Training)
         gen_tool = RealGenerateDatasetTool()
@@ -129,33 +146,38 @@ class TestRealToolChain:
             study, split_strategy="trial"
         )  # trial strategy default
         assert "Dataset successfully generated" in res_gen or "Count:" in res_gen
+        state = _state(study)
+        assert state["dataset"]["count"] > 0
+        assert state["active_dataset"]["has_datasets"] is True
 
         # 3. Configure & Start Training
         # Set Model (Optional default is often set, but let's be explicit)
         model_tool = RealSetModelTool()
         res_model = model_tool.execute(study, model_name="EEGNet")
         assert "successfully set" in res_model
+        assert _state(study)["training"]["model_name"] == "EEGNet"
 
         # Configure
         config_tool = RealConfigureTrainingTool()
         res_config = config_tool.execute(study, epoch=1, batch_size=4)
         assert "Training configured" in res_config
+        training_state = _state(study)["training"]
+        assert training_state["training_option"]["epoch"] == 1
+        assert training_state["training_option"]["batch_size"] == 4
 
         # Start Training
-        # Note: In Headless mode, this starts a thread.
-        # We need to verify the controller state changes to 'training' or 'running'.
         start_tool = RealStartTrainingTool()
-        res_start = start_tool.execute(study, confirmed=True)
+        res_start = start_tool.execute(
+            study,
+            confirmed=True,
+            append=False,
+            interactive=False,
+        )
 
         assert "started success" in res_start
-
-        # Verify Controller State
-        train_ctrl = study.get_controller("training")
-        # Since it's threaded, it might be quick or slow.
-        # We just check if the request was processed and controller is aware.
-        # Ideally check train_ctrl.is_training() but it might finish instantly for 1 epoch on tiny data.
-        # We'll check if history table has entries or if logs exist.
-        # For this test, just ensuring the Tool->Facade->Controller call didn't crash is enough.
+        training_state = _state(study)["training"]
+        assert training_state["has_trainer"] is True
+        assert training_state["plan_count"] >= 1
 
     def test_tool_error_handling(self, study):
         """Verify tools return user-friendly error messages on failure."""
@@ -164,4 +186,4 @@ class TestRealToolChain:
         # Try loading non-existent file
         res = load_tool.execute(study, paths=["non_existent.gdf"])
         assert "Failed" in res or "Error" in res
-        assert len(study.loaded_data_list) == 0
+        assert _state(study)["raw"]["count"] == 0

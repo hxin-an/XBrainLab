@@ -140,6 +140,21 @@ class TestRealTrainingTools:
             assert "started successfully" in res2
             train_command = service.execute.call_args.args[0]
             assert isinstance(train_command, TrainCommand)
+            assert train_command.append is True
+            assert train_command.interactive is True
+
+            res3 = start_tool.execute(
+                mock_study,
+                confirmed=True,
+                append=False,
+                interactive=False,
+            )
+            assert "started successfully" in res3
+            train_command = service.execute.call_args.args[0]
+            assert isinstance(train_command, TrainCommand)
+            assert train_command.confirmed is True
+            assert train_command.append is False
+            assert train_command.interactive is False
 
 
 class TestRealAnalysisTools:
