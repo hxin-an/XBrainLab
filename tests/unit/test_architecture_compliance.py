@@ -3,6 +3,7 @@ from tests.architecture_compliance import (
     check_docs_current_truth_overclaims,
     check_llm_direct_study_state_reads,
     check_mcp_direct_study_state_reads,
+    check_mcp_weak_response_assertions,
     check_product_runtime_backend_facade_usage,
     check_product_success_backend_facade_tests,
     check_product_success_controller_lookup_assertions,
@@ -86,6 +87,44 @@ def test_none_figure_is_ignored():
     )
 
     assert check_weak_test_names(tmp_path) == []
+
+
+def test_mcp_weak_response_assertion_guard_flags_non_none_response(tmp_path):
+    path = tmp_path / "tests" / "unit" / "mcp" / "test_server.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_mcp_response_exists(server):
+    response = server.handle_message({"method": "tools/list", "id": 1})
+    assert response is not None
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_mcp_weak_response_assertions(tmp_path)
+
+    assert len(violations) == 1
+    assert "generic non-None MCP assertion" in violations[0]
+    assert "JSON-RPC envelope" in violations[0]
+
+
+def test_mcp_weak_response_assertion_guard_allows_exact_protocol_shape(tmp_path):
+    path = tmp_path / "tests" / "integration" / "mcp" / "test_stdio_server.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_mcp_response_shape(server):
+    response = server.handle_message({"method": "tools/list", "id": 1})
+    assert isinstance(response, dict), response
+    assert response["jsonrpc"] == "2.0"
+    assert response["id"] == 1
+    assert "error" not in response
+    assert response["result"]["tools"][0]["name"] == "scan_source"
+""",
+        encoding="utf-8",
+    )
+
+    assert check_mcp_weak_response_assertions(tmp_path) == []
 
 
 def test_docs_current_truth_guard_flags_product_complete_overclaim(tmp_path):

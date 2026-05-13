@@ -166,6 +166,10 @@ WEAK_TEST_NAME_PATTERNS = (
     "no_crash",
     "does_not_crash",
 )
+MCP_EXACT_EVIDENCE_TEST_DIRS = (
+    Path("tests/unit/mcp"),
+    Path("tests/integration/mcp"),
+)
 DOC_CURRENT_TRUTH_FILES = (
     Path("docs/current.md"),
     Path("docs/index.md"),
@@ -362,6 +366,13 @@ def check_architecture(root_dir: str) -> int:
     if weak_test_name_violations:
         print("\nWeak Test Name Violations Found:")
         for violation in weak_test_name_violations:
+            print(f" - {violation}")
+        return 1
+
+    mcp_weak_assertion_violations = check_mcp_weak_response_assertions(Path(root_dir))
+    if mcp_weak_assertion_violations:
+        print("\nMCP Weak Response Assertion Violations Found:")
+        for violation in mcp_weak_assertion_violations:
             print(f" - {violation}")
         return 1
 
@@ -823,6 +834,35 @@ def _is_weak_test_name(test_name: str) -> bool:
     )
 
 
+def check_mcp_weak_response_assertions(root_dir: Path) -> list[str]:
+    """Return MCP tests that use generic non-None response assertions."""
+    violations: list[str] = []
+
+    for relative_dir in MCP_EXACT_EVIDENCE_TEST_DIRS:
+        test_dir = root_dir / relative_dir
+        if not test_dir.exists():
+            continue
+        for py_file in test_dir.rglob("*.py"):
+            if py_file.name == "__init__.py":
+                continue
+            source = py_file.read_text(encoding="utf-8")
+            try:
+                tree = ast.parse(source, filename=str(py_file))
+            except SyntaxError:
+                continue
+            visitor = _MCPWeakResponseAssertionVisitor()
+            visitor.visit(tree)
+            violations.extend(
+                f"{py_file.relative_to(root_dir)}:{name_node.lineno} uses "
+                f"generic non-None MCP assertion on {name_node.id!r}; assert "
+                "JSON-RPC envelope, request id, error/result separation, "
+                "structuredContent, adapter metadata, and command result truth "
+                "instead."
+                for name_node in visitor.violations
+            )
+    return violations
+
+
 def check_docs_current_truth_overclaims(root_dir: Path) -> list[str]:
     """Return current-truth docs that present target/acceptance as complete."""
     violations: list[str] = []
@@ -853,6 +893,41 @@ def check_docs_current_truth_overclaims(root_dir: Path) -> list[str]:
 
 def _docs_line_has_claim_boundary(lower_line: str) -> bool:
     return any(token.lower() in lower_line for token in DOC_CLAIM_BOUNDARY_TOKENS)
+
+
+class _MCPWeakResponseAssertionVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.violations: list[ast.Name] = []
+
+    def visit_Assert(self, node: ast.Assert) -> None:
+        name_node = _generic_non_none_assertion_name(node.test)
+        if name_node is not None:
+            self.violations.append(name_node)
+        self.generic_visit(node)
+
+
+def _generic_non_none_assertion_name(node: ast.AST) -> ast.Name | None:
+    if not isinstance(node, ast.Compare):
+        return None
+    if len(node.ops) != 1 or not isinstance(node.ops[0], ast.IsNot):
+        return None
+    if len(node.comparators) != 1:
+        return None
+    left = node.left
+    right = node.comparators[0]
+    if (
+        isinstance(left, ast.Name)
+        and isinstance(right, ast.Constant)
+        and right.value is None
+    ):
+        return left
+    if (
+        isinstance(right, ast.Name)
+        and isinstance(left, ast.Constant)
+        and left.value is None
+    ):
+        return right
+    return None
 
 
 class _BackendFacadeRuntimeUsageVisitor(ast.NodeVisitor):
