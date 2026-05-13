@@ -187,8 +187,11 @@ class TestEvaluationPanelIntegration:
         assert panel.model_combo.count() > 0
         assert panel.model_combo.currentText() == "No Data Available"
 
-    def test_evaluation_panel_with_trainer(self, qtbot):
-        """Verify evaluation panel can access trainer data."""
+    def test_evaluation_panel_with_unfinished_trainer_shows_unavailable_state(
+        self,
+        qtbot,
+    ):
+        """Verify unfinished trainer data does not render as evaluation success."""
 
         study = Study()
 
@@ -214,13 +217,21 @@ class TestEvaluationPanelIntegration:
         parent = cast(Any, QWidget())
         parent.study = study
 
-        # The important thing is that get_trainers() method works
+        # The important thing is that service-backed evaluation state owns display.
         panel = EvaluationPanel(parent=parent)
         qtbot.addWidget(panel)
 
-        # Verify panel is populated
         panel.update_panel()
-        assert panel.model_combo.count() > 0
+        assert panel.last_application_query is not None
+        assert panel.last_application_query.ok
+        diagnostics = panel.last_application_query.diagnostics
+        assert diagnostics.get("payload_type") == "evaluation_summary"
+        assert diagnostics.get("available") is False
+        assert diagnostics.get("plan_count") == 1
+        assert diagnostics.get("finished_run_count") == 0
+        assert panel.model_combo.count() == 1
+        assert panel.model_combo.currentText() == "No Data Available"
+        assert panel.run_combo.count() == 0
 
 
 class TestVisualizationPanelIntegration:
