@@ -6,6 +6,22 @@ from PyQt6.QtCore import Qt
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.main_window import MainWindow
 
+EXPECTED_NAV_TEXTS = [
+    "Dataset",
+    "Preprocess",
+    "Training",
+    "Evaluation",
+    "Visualization",
+]
+
+
+def _checked_states(window):
+    return [button.isChecked() for button in window.nav_btns]
+
+
+def _checked_state_for(index: int) -> list[bool]:
+    return [button_index == index for button_index in range(len(EXPECTED_NAV_TEXTS))]
+
 
 @pytest.fixture
 def study():
@@ -13,42 +29,50 @@ def study():
     return Study()
 
 
-def test_mainwindow_launch(qtbot, study):
-    """Test that MainWindow launches without error."""
+def test_mainwindow_launches_with_product_shell_contract(qtbot, study):
+    """MainWindow launch should expose the product shell contract."""
     window = MainWindow(study)
     qtbot.addWidget(window)
 
-    # Check window title and visibility
     assert window.windowTitle() == "XBrainLab"
+    assert window.stack.count() == 5
+    assert [button.text() for button in window.nav_btns] == EXPECTED_NAV_TEXTS
+    assert [button.objectName() for button in window.nav_btns] == [
+        "NavButton",
+        "NavButton",
+        "NavButton",
+        "NavButton",
+        "NavButton",
+    ]
+    assert window.stack.currentIndex() == 0
+    assert _checked_states(window) == _checked_state_for(0)
+    assert window.ai_btn.text() == "AI Assistant"
+    assert window.ai_btn.objectName() == "ActionBtn"
+    assert window.ai_btn.isCheckable()
+    assert window.ai_btn.isChecked() is False
+    assert window.info_service.study is study
+    assert window.info_service._observes_controller_events is False
+    assert window.agent_manager.preprocess_controller is None
+
     window.show()
     assert window.isVisible()
     window.close()
 
 
-def test_navigation(qtbot, study):
-    """Test navigation between main panels."""
+def test_navigation_buttons_keep_page_and_checked_state_in_sync(qtbot, study):
+    """Navigation should keep page index and checked state in sync."""
     window = MainWindow(study)
     qtbot.addWidget(window)
     window.show()
 
-    # 1. Dataset (Default)
     assert window.stack.currentIndex() == 0
+    assert _checked_states(window) == _checked_state_for(0)
 
-    # 2. Preprocess
-    qtbot.mouseClick(window.nav_btns[1], Qt.MouseButton.LeftButton)
-    assert window.stack.currentIndex() == 1
-
-    # 3. Training
-    qtbot.mouseClick(window.nav_btns[2], Qt.MouseButton.LeftButton)
-    assert window.stack.currentIndex() == 2
-
-    # 4. Evaluation
-    qtbot.mouseClick(window.nav_btns[3], Qt.MouseButton.LeftButton)
-    assert window.stack.currentIndex() == 3
-
-    # 5. Visualization
-    qtbot.mouseClick(window.nav_btns[4], Qt.MouseButton.LeftButton)
-    assert window.stack.currentIndex() == 4
+    for index in (1, 2, 3, 4, 0):
+        qtbot.mouseClick(window.nav_btns[index], Qt.MouseButton.LeftButton)
+        assert window.stack.currentIndex() == index
+        assert _checked_states(window) == _checked_state_for(index)
+        assert window.stack.currentWidget() is window.stack.widget(index)
 
     window.close()
 

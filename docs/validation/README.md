@@ -35,6 +35,7 @@
 | LLM tool/debug tests 是否仍只看 registry 非空 | [LLM tool/debug exact registry evidence](#2026-05-14-llm-tooldebug-exact-registry-evidence-checkpoint) | Tool/debug tests 檢查 exact agent tool-name set、backend resolver class identity、debug calls 和 visualization figure type。 | Full agent runtime acceptance or local-model behavior。 |
 | UI controller hit 是否仍代表 product legacy path | [UI controller exception-map readability checkpoint](#2026-05-14-ui-controller-exception-map-readability-checkpoint)、[UI bridge fallback cleanup](#2026-05-14-ui-training-bridge-fallback-cleanup-checkpoint)、[controller.study lookup guard](#2026-05-14-controllerstudy-lookup-guard-checkpoint) 和 [UI 目前架構](../architecture/ui.md) | Source 對照表區分 panel bootstrap、mock fallback、readonly render fallback、refresh surface、assistant adapter 和 lower-level domain object；Evaluation / Visualization training-event bridge 不再 fallback lookup training controller，guard 也不允許把 `controller.study.get_controller()` 藏在 legacy helper。 | Full zero-controller UI、human desktop acceptance、or runtime proof for every panel state。 |
 | UI navigation refresh 測試是否仍靠 mock call / 猜 index | [UI refresh duplicate-test cleanup](#2026-05-14-ui-refresh-duplicate-test-cleanup-checkpoint) | 重複的 mock-heavy integration test 已移除；replacement coverage 檢查 exact `switch_page()` coordinator delegation、target-panel scope、navigation checked state、command/observer refresh routing。 | Human UI acceptance 或每個 panel render content。 |
+| MainWindow launch/navigation 是否仍只看可啟動 | [UI integration shell contract evidence](#2026-05-14-ui-integration-shell-contract-evidence-checkpoint) | `test_ui_integration.py` now checks exact nav labels/object names, stack count/index, checked states, AI button shell, InfoPanelService non-observer wiring, and real-Study AgentManager controller quarantine. | Human visual UX approval or full desktop acceptance. |
 | Evaluation / Visualization integration 是否仍只看 widget exists | [UI integration empty-state command evidence](#2026-05-14-ui-integration-empty-state-command-evidence-checkpoint) | `test_ui_integration.py` now checks exact empty-state `EvaluateCommand` / `VisualizeCommand` blocked reasons, diagnostics, combo state, fallback plot state, and visible visualization error text; architecture guard rejects product integration tests named `*_init`. | Human visual UX approval, full zero-controller UI, or loaded-data workflow. |
 | Headless UI smoke 是否仍只看 object exists | [Headless UI exact state evidence](#2026-05-14-headless-ui-exact-state-evidence-checkpoint) | `test_ui_headless.py` now checks MainWindow class, exact nav labels/check state, exact page switch state, and exact empty `QueryStateCommand(data_summary)` diagnostics. | Human Windows desktop acceptance, visual UX, or loaded-data workflow. |
 | pytest-qt UI integration 是否仍只看 widget exists / tab count >= | [pytest-qt UI exact contract evidence](#2026-05-14-pytest-qt-ui-exact-contract-evidence-checkpoint) | `test_e2e_qtbot.py` now checks exact navigation checked-state transitions, AI button contract, stack panel order/types, Evaluation/Visualization tab labels, and product InfoPanelService wiring. | Human UX approval, screenshot quality, or full data workflow. |
@@ -93,6 +94,16 @@ current truth 以這些文件為準：
 - [planning/roadmap.md](../planning/roadmap.md)
 - [architecture/README.md](../architecture/README.md)
 - [validation/README.md](README.md)
+
+## 2026-05-14 UI Integration Shell Contract Evidence Checkpoint
+
+This test-quality slice rewrote the remaining MainWindow launch/navigation checks in
+`test_ui_integration.py` so they assert product shell state instead of only showing the window.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/ui/test_ui_integration.py -q` | `4 passed`. | MainWindow launch/navigation checks cover exact nav labels, checked-state transitions, stack index, AI button shell, InfoPanelService non-observer wiring, and real-Study AgentManager controller quarantine. | Human visual UX approval, loaded-data workflow, or full zero-controller UI. | Keep this as shell contract evidence, not visual acceptance. |
+| Focused `ruff check` / `ruff format --check` / `basedpyright`, plus `poetry run mkdocs build --strict` and `git diff --check` | PASS / PASS / `0 errors`; docs and diff PASS. | Changed files remain lint/type/docs/diff clean after validation. | Product completion. | Pair future shell-contract claims with screenshot or human evidence only when visual UX changes. |
 
 ## 2026-05-14 UI Integration Empty-State Command Evidence Checkpoint
 
