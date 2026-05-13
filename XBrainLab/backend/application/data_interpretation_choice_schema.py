@@ -42,7 +42,7 @@ _LABEL_CARRIER_CHOICE_SCHEMA: dict[str, Any] = {
         },
         "placement_method": {
             "type": "string",
-            "enum": ["eeg_event", "time_field", "interval"],
+            "enum": ["eeg_event", "time_field", "interval", "event_code"],
             "description": (
                 "How label rows are positioned on the EEG timeline for review "
                 "and downstream epoch setup."
@@ -187,6 +187,14 @@ _CHOICES_SCHEMA: dict[str, Any] = {
         "class_map": {
             **_STRING_MAP_SCHEMA,
             "description": "Map raw event or label values to class names.",
+        },
+        "run_event_mappings": {
+            "type": "object",
+            "additionalProperties": _STRING_MAP_SCHEMA,
+            "description": (
+                "Per-run event-code semantics for formats where the same marker "
+                "can mean different classes by task or run."
+            ),
         },
         "anchor": {
             "type": "string",

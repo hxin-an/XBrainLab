@@ -1,0 +1,79 @@
+{
+  "epoch_handoff": {
+    "class_map": {
+      "1": "left",
+      "2": "right"
+    },
+    "label_carrier_plan": [
+      {
+        "path": "/tmp/xbrainlab_data_import_8al_14zw/A01T.mat",
+        "placement_method": "eeg_event",
+        "selected_anchor": "768",
+        "selected_label_field": "classlabel",
+        "selected_target_file": "A01T.gdf",
+        "time_model": "trial_order"
+      }
+    ],
+    "label_imports": [
+      {
+        "class_map": {
+          "1": "left",
+          "2": "right"
+        },
+        "file_mapping": {
+          "/tmp/xbrainlab_data_import_8al_14zw/A01T.gdf": "/tmp/xbrainlab_data_import_8al_14zw/A01T.mat"
+        },
+        "label_carriers": [
+          "/tmp/xbrainlab_data_import_8al_14zw/A01T.mat"
+        ],
+        "mode": "legacy",
+        "selected_event_names": [
+          "768"
+        ],
+        "success_count": 1,
+        "target_files": [
+          "/tmp/xbrainlab_data_import_8al_14zw/A01T.gdf"
+        ]
+      }
+    ],
+    "placement_modes": [
+      "eeg_event"
+    ],
+    "ready": true,
+    "run_event_mappings": {},
+    "selected_event_names": [
+      "768"
+    ],
+    "source": "applied_interpretation"
+  },
+  "label_apply": {
+    "label_carrier": "/tmp/xbrainlab_data_import_8al_14zw/A01T.mat",
+    "label_carriers": [
+      "/tmp/xbrainlab_data_import_8al_14zw/A01T.mat"
+    ],
+    "label_import": {
+      "class_map": {
+        "1": "left",
+        "2": "right"
+      },
+      "file_mapping": {
+        "/tmp/xbrainlab_data_import_8al_14zw/A01T.gdf": "/tmp/xbrainlab_data_import_8al_14zw/A01T.mat"
+      },
+      "label_carriers": [
+        "/tmp/xbrainlab_data_import_8al_14zw/A01T.mat"
+      ],
+      "mode": "legacy",
+      "selected_event_names": [
+        "768"
+      ],
+      "success_count": 1,
+      "target_files": [
+        "/tmp/xbrainlab_data_import_8al_14zw/A01T.gdf"
+      ]
+    },
+    "mode": "legacy",
+    "status": "applied",
+    "success_count": 1
+  },
+  "source": "ApplicationService.apply_interpretation"
+}

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from scipy.io import savemat
+
 from XBrainLab.backend.application import data_interpretation_internal_events
 from XBrainLab.backend.application.data_interpretation_candidate import (
     InterpretationCandidate,
@@ -292,6 +294,66 @@ def test_build_interpretation_candidate_reviews_bids_interval_placement(tmp_path
     assert review["numeric_rows"] == 2
     assert review["duration_numeric_rows"] == 2
     assert review["summary"] == "2 interval rows using onset and duration."
+
+
+def test_build_interpretation_candidate_blocks_bids_events_without_onset(tmp_path):
+    events = tmp_path / "sub-01_task-mi_events.tsv"
+    sidecar = tmp_path / "sub-01_task-mi_events.json"
+    events.write_text("duration\ttrial_type\n1.0\tleft\n", encoding="utf-8")
+    sidecar.write_text(
+        '{"trial_type":{"Levels":{"left":"Left hand"}}}', encoding="utf-8"
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            label_carriers=[str(events)],
+            bids={"is_bids": True, "events_files": [str(events)]},
+        ),
+    )
+
+    assert any(
+        "missing required onset column" in reason
+        for reason in candidate.blocked_reasons
+    )
+
+
+def test_build_interpretation_candidate_warns_for_bids_events_without_sidecar(
+    tmp_path,
+):
+    events = tmp_path / "sub-01_task-mi_events.tsv"
+    events.write_text("onset\tduration\ttrial_type\n0.0\t1.0\tleft\n", encoding="utf-8")
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            label_carriers=[str(events)],
+            bids={"is_bids": True, "events_files": [str(events)]},
+        ),
+    )
+
+    assert any("no events.json sidecar" in warning for warning in candidate.warnings)
+
+
+def test_build_interpretation_candidate_warns_for_bids_events_without_duration(
+    tmp_path,
+):
+    events = tmp_path / "sub-01_task-mi_events.tsv"
+    sidecar = tmp_path / "sub-01_task-mi_events.json"
+    events.write_text("onset\ttrial_type\n0.0\tleft\n", encoding="utf-8")
+    sidecar.write_text(
+        '{"trial_type":{"Levels":{"left":"Left hand"}}}', encoding="utf-8"
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            label_carriers=[str(events)],
+            bids={"is_bids": True, "events_files": [str(events)]},
+        ),
+    )
+
+    assert any("has no duration/end field" in warning for warning in candidate.warnings)
 
 
 def test_build_interpretation_candidate_blocks_empty_selection():
@@ -665,6 +727,77 @@ def test_build_interpretation_candidate_reviews_external_event_order_placement(
     assert review["selected_eeg_events"] == 4
     assert review["matched"] == 4
     assert review["excluded_eeg_events"] == 1
+
+
+def test_build_interpretation_candidate_blocks_missing_target_event(
+    tmp_path,
+    monkeypatch,
+):
+    label_path = tmp_path / "A01T.mat"
+    savemat(label_path, {"classlabel": [1, 2, 1, 2]})
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "build_internal_event_preview",
+        lambda _files: {
+            "not_used_events": [
+                {"event_code": "768", "use_as": "Trial timing", "event_count": 4}
+            ]
+        },
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            source_kind="folder",
+            eeg_files=["/data/A01T.gdf"],
+            label_carriers=[str(label_path)],
+            label_carrier_sources={str(label_path): "auto"},
+            bids={"is_bids": False, "events_files": []},
+        ),
+        choices={
+            "label_carrier_choices": {
+                str(label_path): {
+                    "target_file": "A01T.gdf",
+                    "label_field": "classlabel",
+                    "anchor": "999",
+                    "placement_method": "eeg_event",
+                    "time_model": "trial_order",
+                    "granularity": "trial",
+                }
+            },
+            "class_map": {"1": "left", "2": "right"},
+        },
+    )
+
+    assert any(
+        "Target EEG event 999 was not found" in reason
+        for reason in candidate.blocked_reasons
+    )
+    assert not any(
+        "Target EEG event 999 was not found" in item
+        for item in candidate.confirmation_items
+    )
+
+
+def test_build_interpretation_candidate_blocks_unreadable_label_file(tmp_path):
+    label_path = tmp_path / "custom_labels.mat"
+    label_path.write_text("not a readable mat file", encoding="utf-8")
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            eeg_files=["/data/A01T.gdf"],
+            label_carriers=[str(label_path)],
+            label_carrier_sources={str(label_path): "user_added"},
+            bids={"is_bids": False, "events_files": []},
+        ),
+    )
+
+    assert candidate.label_carrier_plan[0]["label_candidates"] == []
+    assert any(
+        "custom_labels.mat" in reason and "conversion before matching" in reason
+        for reason in candidate.blocked_reasons
+    )
 
 
 def test_build_interpretation_candidate_reviews_event_code_placement(

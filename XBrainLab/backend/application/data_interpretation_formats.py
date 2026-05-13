@@ -133,6 +133,34 @@ def format_capability(path: Path) -> dict[str, Any]:
             "yet. Convert streams to a supported EEG format or provide a "
             "prepared recipe.",
         )
+    if suffix in {".pkl", ".pickle"}:
+        return _capability(
+            path,
+            "Pickle sidecar",
+            "sidecar",
+            "blocked",
+            "Pickle label or metadata files are not loaded by this import "
+            "wizard. Convert the labels to MAT, CSV, TSV, or TXT with one "
+            "label column and one placement column.",
+        )
+    if suffix == ".log":
+        return _capability(
+            path,
+            "Proprietary log",
+            "sidecar",
+            "limited",
+            "Proprietary log sidecars are not interpreted by this wizard. "
+            "Convert relevant labels or events to MAT, CSV, TSV, or TXT.",
+        )
+    if suffix and suffix not in {".json", ".md"}:
+        return _capability(
+            path,
+            "Unknown sidecar",
+            "sidecar",
+            "limited",
+            "This sidecar format is not interpreted by this wizard. Convert "
+            "relevant labels or events to MAT, CSV, TSV, or TXT.",
+        )
     return {}
 
 

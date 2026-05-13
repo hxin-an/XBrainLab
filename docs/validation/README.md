@@ -100,6 +100,21 @@ status.
 | `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run python tests/architecture_compliance.py` | `93 passed` / `Architecture compliant!` | Architecture guard now rejects generic non-`None` MCP response assertions in `tests/unit/mcp` and `tests/integration/mcp`, while allowing exact JSON-RPC shape assertions. | Semantic proof for every MCP assertion or external MCP client behavior. | Add concrete guard examples when new MCP evidence patterns appear. |
 | `poetry run ruff check tests/architecture_compliance.py tests/unit/test_architecture_compliance.py tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_server.py` / `poetry run basedpyright tests/architecture_compliance.py tests/unit/test_architecture_compliance.py tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_server.py` | PASS / `0 errors, 0 warnings, 0 notes`. | Changed MCP and architecture guard files are lint and type clean. | Runtime behavior by itself. | Pair lint/type checks with focused behavior tests. |
 
+## 2026-05-14 Data Import Tier 1 / Tier 2 Product Checkpoint
+
+This Data Import slice covers the agreed Tier 1 / Tier 2 classes only: GDF / BNCI-style internal
+and external labels, BIDS-like events, generic internal EEG events / annotations, and MAT / CSV /
+TSV / TXT external label carriers. It does not claim P300/ERP hierarchy, SSVEP/c-VEP semantics,
+clinical long recordings, XDF/LSL synchronization, OpenBCI/BrainFlow semantics, MOABB adapters,
+proprietary logs, pickle, or executable user Python converters.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| Focused backend Data Interpretation suites | `133 passed` plus label loader/service `52 passed` | Selected EEG scope versus scan location, external labels outside the EEG folder, selected target EEG events, BIDS-like warnings/blockers, unsupported sidecar boundaries, run-dependent internal event mapping, recipe/state snapshot, and label apply semantics are covered by unit tests. | All possible EEG datasets, scientific correctness, or human Windows acceptance. | Keep adding concrete fixtures when a new supported format class is added. |
+| Focused UI/dialog and replay tests | `64 passed` | Load Labels, Match Labels, Review and Import visible behavior, footer visibility, conversion fallback, and replayed product flow remain green. | Visual approval by itself or manual desktop acceptance. | Pair UI tests with screenshot review and human click-through before release claims. |
+| Screenshot/product smoke scripts | PASS | Canonical wizard screenshots, four loaded-label placement panels, conversion fallback/examples, BIDS-like state, Review and Import states, and backend-generated epoch handoff evidence were regenerated. | Full BIDS support or exhaustive non-goal format support. | Keep `artifacts/ui/data-import-wizard-steps/README.md` as the screenshot index. |
+| `ruff check` / `ruff format --check` / `basedpyright` / `mkdocs build --strict` / architecture guards / `git diff --check` | PASS / PASS / `0 errors, 0 warnings, 0 notes` / PASS / `Architecture compliant!`, guard unit `93 passed` / PASS | Changed code, tests, docs, and artifacts are lint/type/docs/architecture/whitespace clean. | Product complete or human Windows click-through acceptance. | Run fast dashboard only when a broader integration checkpoint is needed. |
+
 ## 2026-05-14 Data Interpretation Label-Semantics Backend Evidence Checkpoint
 
 This backend/test slice did not redesign Match Labels, Review and Import, or any Data Import

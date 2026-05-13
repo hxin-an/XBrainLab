@@ -51,6 +51,17 @@ class TestGetEpochCountForFile:
         count = service.get_epoch_count_for_file(data, {"EventA"})
         assert count == 2  # EventA has id=1, appears twice
 
+    def test_raw_filter_matches_numeric_alias_from_event_name(self, service):
+        data = _make_data_mock()
+        data.get_event_list.return_value = (
+            np.array([[0, 0, 1], [1, 0, 2], [2, 0, 1]]),
+            {"Stimulus/S 768": 1, "Stimulus/S 769": 2},
+        )
+
+        count = service.get_epoch_count_for_file(data, {"768"})
+
+        assert count == 2
+
     def test_raw_filter_no_match(self, service):
         data = _make_data_mock()
         count = service.get_epoch_count_for_file(data, {"NoMatch"})
@@ -105,6 +116,24 @@ class TestApplyLabelsToSingleFile:
             service.apply_labels_to_single_file(data, labels, mapping, selected)
 
             mock_loader.create_event.assert_called_once()
+            call_kwargs = mock_loader.create_event.call_args[1]
+            assert call_kwargs["selected_event_ids"] == [1]
+
+    def test_sequence_mode_with_numeric_event_alias_filter(self, service):
+        data = _make_data_mock()
+        data.get_event_list.return_value = (
+            np.array([[0, 0, 1], [1, 0, 2], [2, 0, 1]]),
+            {"Stimulus/S 768": 1, "Stimulus/S 769": 2},
+        )
+        labels = [1, 2]
+        mapping = {1: "A", 2: "B"}
+
+        with patch(
+            "XBrainLab.backend.services.label_import_service.EventLoader"
+        ) as MockLoader:
+            mock_loader = MockLoader.return_value
+            service.apply_labels_to_single_file(data, labels, mapping, {"768"})
+
             call_kwargs = mock_loader.create_event.call_args[1]
             assert call_kwargs["selected_event_ids"] == [1]
 

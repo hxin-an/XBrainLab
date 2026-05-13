@@ -14,7 +14,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import mne
 import numpy as np
@@ -588,6 +588,21 @@ def apply_replay_review_choices(
     label_item = dialog.label_carrier_tree.topLevelItem(0)
     if label_item is not None:
         target_selector = dialog.label_carrier_tree.itemWidget(label_item, 1)
+        pairing_selector = getattr(dialog, "_eeg_label_widgets", {}).get(
+            SECOND_SOURCE_PATH.name
+        )
+        if isinstance(pairing_selector, QComboBox):
+            pairing_combo = cast(QComboBox, pairing_selector)
+            carrier_key = ""
+            for item, original in getattr(dialog, "_label_carrier_items", []):
+                if item is label_item and isinstance(original, dict):
+                    carrier_key = str(
+                        original.get("path") or original.get("name") or item.text(0)
+                    )
+                    break
+            pairing_index = pairing_combo.findData(carrier_key)
+            if pairing_index >= 0:
+                pairing_combo.setCurrentIndex(pairing_index)
         if isinstance(target_selector, QComboBox):
             target_index = target_selector.findData(SECOND_SOURCE_PATH.name)
             if target_index >= 0:

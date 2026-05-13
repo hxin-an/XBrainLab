@@ -1,6 +1,6 @@
 # Data Pipeline Architecture
 
-最後更新：`2026-05-13`
+最後更新：`2026-05-14`
 
 ## 可信度
 
@@ -104,6 +104,29 @@ label import 目前集中在 `LabelImportService`。
 5. 成功後 reset preprocess，因為 label/event 變更會讓下游狀態失效。
 
 這裡的風險是：label/event 正確性不是 import 成功就能保證。它需要 event count、event ID mapping、timestamp/sequence mode 都對上。
+
+Data Interpretation 的 `apply_interpretation` 目前會把使用者 review 過的 label choices
+轉成同一套 label import record / recipe trace：
+
+- external label file 的 `EEG event order` mode 會保存並套用使用者選定的 target EEG
+  event，而不是把 label sequence 套到所有 events；numeric selection 例如 `768` 會同時
+  match `Stimulus/S 768` 類 event name alias。
+- `Label time`、`Label interval`、`Label event code` 的 active review 會保存 label field、
+  placement field、duration / end / stop / offset field、selected event / code coverage 與
+  check summary，供 recipe reload 與 epoch setup 使用。
+- 選擇 `Labels inside EEG files` 時，apply 不會讀 loaded label files。若使用者確認了
+  run-dependent internal mapping，例如 PhysioNet EEGMMI `T1` / `T2` 在不同 run 的語意，
+  mapping 會直接套到對應 loaded EEG file 的 internal events，並寫入 label import record。
+- applied interpretation 會把 `selected_event_names`、placement mode、label source 與
+  limitation summary 暴露在 state snapshot 的 `epoch_handoff`，讓後續 Epoch UI 可以預填
+  或限制 target events / interval timing。
+
+Data Interpretation scan 會把可支援和不可支援的 label/event sidecar 分開呈現。`.mat`、
+`.csv`、`.tsv`、`.txt` 和 BIDS-like `events.tsv` 是本輪支援的 external carrier；pickle
+sidecar 是 blocked，proprietary `.log` 和未知 sidecar 只會標 limited / unsupported，不會被
+默默當成可訓練 label。BIDS-like carrier review 只在 BIDS-like scan context 內套用：缺
+`onset` 是 blocked；缺 `events.json`、缺 duration / end field 或 duration 欄位歧義會成為
+warning / action item。這不是 full BIDS validator support。
 
 ### Internal Event Evidence Preview
 

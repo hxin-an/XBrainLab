@@ -61,6 +61,7 @@ class AppliedInterpretation:
     confirmations: list[str] = dc_field(default_factory=list)
     event_roles: dict[str, str] = dc_field(default_factory=dict)
     class_map: dict[str, str] = dc_field(default_factory=dict)
+    internal_event_selection: dict[str, Any] = dc_field(default_factory=dict)
     run_event_mappings: dict[str, dict[str, str]] = dc_field(default_factory=dict)
     label_imports: list[dict[str, Any]] = dc_field(default_factory=list)
     recipe_trace: list[str] = dc_field(default_factory=list)

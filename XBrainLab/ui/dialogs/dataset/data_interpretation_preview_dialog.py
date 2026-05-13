@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
+    QDialog,
     QDialogButtonBox,
     QFileDialog,
     QFrame,
@@ -97,6 +98,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.internal_event_card: QFrame
         self.internal_event_status_label: QLabel
         self.pairing_card: QFrame
+        self.label_conversion_card: QFrame
         self.label_values_card: QFrame
         self.placement_card: QFrame
         self.match_check_card: QFrame
@@ -442,6 +444,13 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._build_pairing_card(pairing_layout)
         label_panel_layout.addWidget(self.pairing_card)
 
+        self.label_conversion_card, conversion_layout = self._card(
+            "Label format needs conversion"
+        )
+        self.label_conversion_card.setObjectName("DataImportLabelConversionCard")
+        self._build_label_conversion_card(conversion_layout)
+        label_panel_layout.addWidget(self.label_conversion_card)
+
         self.label_values_card, label_values_layout = self._card(
             "Label values and placement"
         )
@@ -495,6 +504,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 "Source, metadata edits, label choices, and confirmations"
             )
         )
+        for line in self._recipe_card_lines():
+            recipe_layout.addWidget(self._wrapped_label(line))
         review_status_layout.addWidget(recipe_card, stretch=2)
         review_panel_layout.addLayout(review_status_layout)
         self.review_actions_panel = QWidget()
@@ -692,6 +703,13 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.label_source_status_label.setVisible(False)
         row.addStretch(1)
         layout.addLayout(row)
+        self.bids_like_notice_label = self._wrapped_label(
+            "BIDS-like events.tsv detected. XBrainLab reviews event columns and "
+            "events.json levels when present; this is not full BIDS validation."
+        )
+        self.bids_like_notice_label.setObjectName("DataImportRuleStatus")
+        self.bids_like_notice_label.setVisible(self._is_bids_like_source())
+        layout.addWidget(self.bids_like_notice_label)
         self.label_source_mode_combo.currentIndexChanged.connect(
             self._refresh_label_source_mode
         )
@@ -763,15 +781,22 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
         if hasattr(self, "label_source_status_label"):
             self.label_source_status_label.setText(self._label_source_status_text())
+        if hasattr(self, "bids_like_notice_label"):
+            self.bids_like_notice_label.setVisible(self._is_bids_like_source())
+        for widget in (getattr(self, "pairing_card", None),):
+            if widget is not None:
+                widget.setVisible(use_loaded)
+        conversion_needed = use_loaded and self._label_format_needs_conversion()
+        if hasattr(self, "label_conversion_card"):
+            self.label_conversion_card.setVisible(conversion_needed)
         for widget in (
-            getattr(self, "pairing_card", None),
             getattr(self, "label_values_card", None),
             getattr(self, "placement_card", None),
         ):
             if widget is not None:
-                widget.setVisible(use_loaded)
+                widget.setVisible(use_loaded and not conversion_needed)
         if hasattr(self, "match_check_card"):
-            self.match_check_card.setVisible(use_loaded)
+            self.match_check_card.setVisible(use_loaded and not conversion_needed)
         if hasattr(self, "internal_event_card"):
             internal_details_available = bool(
                 self._internal_candidate_label_event_rows()
@@ -784,11 +809,14 @@ class DataInterpretationPreviewDialog(BaseDialog):
             )
         if hasattr(self, "event_group"):
             self.event_group.setVisible(
-                has_event_details and (not use_loaded or has_class_map)
+                has_event_details
+                and not conversion_needed
+                and (not use_loaded or has_class_map)
             )
         if hasattr(self, "rule_status_label"):
             self.rule_status_label.setText(self._label_rule_status_text())
         self._sync_scroll_policy()
+        self._sync_apply_state()
 
     def _refresh_event_detail_view(self) -> None:
         if not hasattr(self, "event_tree") or not hasattr(self, "event_layout"):
@@ -933,7 +961,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         headers = [
             "Event",
             "Use as",
-            "Evidence",
+            "Suggestion evidence",
             "Count / coverage",
             "Class name",
             "",
@@ -989,7 +1017,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         headers = [
             "Event",
             "Suggested use",
-            "Evidence / reason",
+            "Suggestion evidence / reason",
             "Count / coverage",
             "",
         ]
@@ -1176,6 +1204,101 @@ class DataInterpretationPreviewDialog(BaseDialog):
             "recording contains usable events, they can still be reviewed after load "
             "before epoching."
         )
+
+    def _build_label_conversion_card(self, layout: QVBoxLayout) -> None:
+        issue = QLabel(
+            "XBrainLab loaded the label file, but cannot identify the rows and "
+            "label value column yet."
+        )
+        issue.setObjectName("DataImportSourceTitle")
+        issue.setWordWrap(True)
+        detail = QLabel(
+            "Use a simple table where each row describes one label, trial, event, "
+            "or interval. Then load that converted file again."
+        )
+        detail.setObjectName("DataImportSourceDetail")
+        detail.setWordWrap(True)
+        layout.addWidget(issue)
+        layout.addWidget(detail)
+
+        action_row = QHBoxLayout()
+        action_row.setContentsMargins(0, 0, 0, 0)
+        action_row.setSpacing(8)
+        examples = QPushButton("View required table")
+        examples.setObjectName("DataImportToolButton")
+        examples.setToolTip("Show supported label table examples.")
+        examples.clicked.connect(self._show_label_format_examples)
+        action_row.addWidget(examples)
+        action_row.addStretch()
+        layout.addLayout(action_row)
+
+    def _show_label_format_examples(self) -> None:
+        self._label_format_examples_dialog().exec()
+
+    def _label_format_examples_dialog(self) -> QDialog:
+        dialog = QDialog(self)
+        dialog.setObjectName("DataImportFormatExamplesDialog")
+        dialog.setWindowTitle("Required label table")
+        dialog.resize(560, 430)
+        dialog.setStyleSheet(self.styleSheet())
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(10)
+
+        intro = QLabel(
+            "XBrainLab expects one row per label, trial, event, or interval. "
+            "Use one column for the label value and one placement column."
+        )
+        intro.setObjectName("DataImportSourceDetail")
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        examples = [
+            (
+                "EEG event order",
+                "label\nleft_hand\nright_hand\nleft_hand",
+            ),
+            (
+                "Label time",
+                "onset_seconds,label\n12.5,left_hand\n16.0,right_hand",
+            ),
+            (
+                "Label interval",
+                "onset_seconds,duration,label\n12.5,4.0,left_hand",
+            ),
+            (
+                "Label event code",
+                "event_code,label\n769,left_hand\n770,right_hand",
+            ),
+        ]
+        for title, body in examples:
+            layout.addWidget(self._label_format_example_block(title, body, dialog))
+
+        close_button = QPushButton("Close")
+        close_button.setObjectName("DataImportSecondaryButton")
+        close_button.clicked.connect(dialog.accept)
+        button_row = QHBoxLayout()
+        button_row.addStretch()
+        button_row.addWidget(close_button)
+        layout.addLayout(button_row)
+        return dialog
+
+    @staticmethod
+    def _label_format_example_block(title: str, body: str, parent: QWidget) -> QFrame:
+        frame = QFrame(parent)
+        frame.setObjectName("DataImportEventRulesTable")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(5)
+        title_label = QLabel(title)
+        title_label.setObjectName("DataImportSourceTitle")
+        body_label = QLabel(body)
+        body_label.setObjectName("DataImportSourceDetail")
+        body_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        body_label.setStyleSheet('font-family: "Consolas", "Courier New", monospace;')
+        layout.addWidget(title_label)
+        layout.addWidget(body_label)
+        return frame
 
     def _internal_event_summary_text(self) -> str:
         payload = self._internal_event_preview_payload()
@@ -1573,8 +1696,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         layout = QHBoxLayout(header)
         layout.setContentsMargins(10, 0, 10, 0)
         layout.setSpacing(10)
-        layout.addWidget(self._pairing_header_label("Label file"), stretch=3)
         layout.addWidget(self._pairing_header_label("EEG file"), stretch=3)
+        layout.addWidget(self._pairing_header_label("Label file"), stretch=3)
         layout.addWidget(self._pairing_header_label("Status", 92))
         return header
 
@@ -1592,6 +1715,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
         layout.setContentsMargins(10, 5, 10, 5)
         layout.setSpacing(10)
 
+        eeg_label = QLabel(eeg_file)
+        eeg_label.setObjectName("DataImportPairingFile")
+        eeg_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(eeg_label, stretch=3)
+
         selector = self._label_file_selector(eeg_file)
         self._eeg_label_widgets[eeg_file] = selector
         selector.currentIndexChanged.connect(
@@ -1601,11 +1729,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
             )
         )
         layout.addWidget(selector, stretch=3)
-
-        eeg_label = QLabel(eeg_file)
-        eeg_label.setObjectName("DataImportPairingFile")
-        eeg_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        layout.addWidget(eeg_label, stretch=3)
 
         matched = bool(selector.currentData())
         badge = QLabel("Matched" if matched else "Needs label")
@@ -1857,6 +1980,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._updating_label_rule = False
 
         layout.addWidget(self._placement_method_selector())
+        self.placement_status_label = QLabel(self._placement_status_text())
+        self.placement_status_label.setObjectName("DataImportRuleStatus")
+        self.placement_status_label.setWordWrap(True)
+        layout.addWidget(self.placement_status_label)
+
         self.placement_detail_stack = QStackedWidget()
         self.placement_detail_stack.setObjectName("DataImportPlacementDetailStack")
         self.placement_detail_stack.setSizePolicy(
@@ -1865,11 +1993,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         self._build_placement_detail_pages()
         layout.addWidget(self.placement_detail_stack)
-
-        self.placement_status_label = QLabel(self._placement_status_text())
-        self.placement_status_label.setObjectName("DataImportRuleStatus")
-        self.placement_status_label.setWordWrap(True)
-        layout.addWidget(self.placement_status_label)
 
         self.rule_placement_method_combo.currentIndexChanged.connect(
             self._handle_placement_method_change
@@ -1982,6 +2105,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 "Label rows are assigned in file order only to the selected EEG event.",
             )
         )
+        self.target_event_status_label = QLabel(self._target_event_status_text())
+        self.target_event_status_label.setObjectName("DataImportRuleStatus")
+        self.target_event_status_label.setWordWrap(True)
+        layout.addWidget(self.target_event_status_label)
         self.target_event_buttons = {}
         self.target_event_option_frames = {}
         choices = self._target_eeg_event_choices()
@@ -1996,10 +2123,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
                     "the recording exposes event markers.",
                 )
             )
-        self.target_event_status_label = QLabel(self._target_event_status_text())
-        self.target_event_status_label.setObjectName("DataImportRuleStatus")
-        self.target_event_status_label.setWordWrap(True)
-        layout.addWidget(self.target_event_status_label)
         return page
 
     def _placement_time_field_page(self) -> QFrame:
@@ -2162,7 +2285,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         layout.addWidget(self._pairing_header_label("Target", 64))
         layout.addWidget(self._pairing_header_label("Event", 58))
         layout.addWidget(self._pairing_header_label("Use as"), stretch=2)
-        layout.addWidget(self._pairing_header_label("Evidence"), stretch=3)
+        layout.addWidget(self._pairing_header_label("Suggestion evidence"), stretch=3)
         layout.addWidget(self._pairing_header_label("Count", 92))
         return header
 
@@ -2727,6 +2850,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 "No external label files are selected. Import will rely on usable "
                 "events inside each EEG file, if available."
             )
+        if self._label_format_needs_conversion():
+            return (
+                "Label format needs conversion before label values can be placed "
+                "on EEG events or time."
+            )
         total = len(self._selected_eeg_file_names())
         matched = self._matched_eeg_pair_count()
         needs_review = max(total - matched, 0)
@@ -2845,42 +2973,54 @@ class DataInterpretationPreviewDialog(BaseDialog):
             layout.addWidget(
                 self._empty_state("No nearby label/event source detected.")
             )
-        for carrier in carriers[:5]:
-            name = str(
-                carrier.get("name")
-                or Path(str(carrier.get("path", ""))).name
-                or "Label source"
-            )
-            carrier_path = str(carrier.get("path") or "").strip()
-            layout.addWidget(
-                self._source_row(
-                    name,
-                    self._label_source_detail(carrier, carrier_path),
-                    remove_callback=(
-                        lambda _checked=False, item=carrier_path: (
-                            self._remove_label_carrier(item)
+        else:
+            layout.addWidget(self._source_section_label("Label files"))
+            for carrier in carriers[:5]:
+                name = str(
+                    carrier.get("name")
+                    or Path(str(carrier.get("path", ""))).name
+                    or "Label file"
+                )
+                carrier_path = str(carrier.get("path") or "").strip()
+                layout.addWidget(
+                    self._source_row(
+                        name,
+                        self._label_source_detail(carrier, carrier_path),
+                        remove_callback=(
+                            lambda _checked=False, item=carrier_path: (
+                                self._remove_label_carrier(item)
+                            )
                         )
+                        if carrier_path
+                        else None,
                     )
-                    if carrier_path
-                    else None,
                 )
-            )
-        if len(carriers) > 5:
-            layout.addWidget(self._empty_state(f"{len(carriers) - 5} more source(s)."))
+            if len(carriers) > 5:
+                layout.addWidget(
+                    self._empty_state(f"{len(carriers) - 5} more label/event file(s).")
+                )
 
-        for source in self._extra_label_sources:
-            layout.addWidget(
-                self._source_row(
-                    *self._user_label_source_row(source),
-                    remove_callback=lambda _checked=False, item=source: (
-                        self._remove_label_source(item)
-                    ),
+        if self._extra_label_sources:
+            layout.addWidget(self._source_section_label("Loaded label sources"))
+            for source in self._extra_label_sources:
+                layout.addWidget(
+                    self._source_row(
+                        *self._user_label_source_row(source),
+                        remove_callback=lambda _checked=False, item=source: (
+                            self._remove_label_source(item)
+                        ),
+                    )
                 )
-            )
 
     def _refresh_label_source_rows(self) -> None:
         self._clear_layout(self.label_source_rows_layout)
         self._add_label_source_rows(self.label_source_rows_layout)
+
+    @staticmethod
+    def _source_section_label(text: str) -> QLabel:
+        label = QLabel(text)
+        label.setObjectName("DataImportPairingHeaderLabel")
+        return label
 
     @staticmethod
     def _clear_layout(layout: QVBoxLayout) -> None:
@@ -3018,6 +3158,38 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if hasattr(self, "pairing_status_label"):
             self._refresh_pairing_status()
         self._refresh_label_source_mode()
+        self._sync_apply_state()
+
+    def _label_format_needs_conversion(self) -> bool:
+        if not getattr(self, "_label_carrier_items", None):
+            return False
+        for item, original in self._label_carrier_items:
+            carrier_key = self._label_carrier_key(item, original)
+            if carrier_key and self._is_label_carrier_excluded(carrier_key):
+                continue
+            has_candidate_evidence = "label_candidates" in original
+            raw_candidates = original.get("label_candidates", [])
+            if not isinstance(raw_candidates, list):
+                raw_candidates = []
+            label_candidates = [
+                str(value).strip() for value in raw_candidates if str(value).strip()
+            ]
+            selected_label = str(original.get("selected_label_field") or "").strip()
+            row_count = original.get("label_row_count")
+            value_counts = original.get("label_value_counts")
+            has_value_counts = isinstance(value_counts, dict) and bool(value_counts)
+            has_rows = isinstance(row_count, int) and row_count > 0
+            has_row_count_evidence = "label_row_count" in original
+            if has_candidate_evidence and not selected_label and not label_candidates:
+                return True
+            if (
+                selected_label
+                and has_row_count_evidence
+                and not has_rows
+                and not has_value_counts
+            ):
+                return True
+        return False
 
     @staticmethod
     def _empty_state(text: str) -> QLabel:
@@ -3322,9 +3494,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         return ""
 
     def _user_label_source_row(self, source: str) -> tuple[str, str]:
-        source_path = Path(source)
-        source_type = "File path" if self._looks_like_file(source) else "Folder path"
-        title = source_path.name or source
+        is_file = self._looks_like_file(source)
+        source_type = "File path" if is_file else "Folder path"
+        title = "Loaded label file" if is_file else "Loaded label folder"
         return title, f"{source_type}: {source}"
 
     @staticmethod
@@ -3542,7 +3714,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
     def _apply_product_tree_style(self) -> None:
         self.setStyleSheet(
             f"""
-            QDialog#DataImportWizardDialog {{
+            QDialog#DataImportWizardDialog,
+            QDialog#DataImportFormatExamplesDialog {{
                 background-color: {Theme.BACKGROUND_DARK};
                 color: {Theme.TEXT_MUTED};
                 font-family: "Segoe UI", Arial, sans-serif;
@@ -3594,6 +3767,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 font-size: 12px;
             }}
             QFrame#DataImportCard,
+            QFrame#DataImportLabelConversionCard,
             QFrame#DataImportMetricCard {{
                 background-color: #252526;
                 border: 1px solid {Theme.BACKGROUND_LIGHT};
@@ -4427,6 +4601,15 @@ class DataInterpretationPreviewDialog(BaseDialog):
         subject_text = subjects or "subjects pending"
         return f"BIDS-like source, {subject_text}, {event_count} events.tsv file(s)"
 
+    def _is_bids_like_source(self) -> bool:
+        bids = self.scan_result.get("bids") or {}
+        if isinstance(bids, dict) and bool(bids.get("is_bids")):
+            return True
+        return any(
+            str(carrier.get("format") or "").strip() == "BIDS events"
+            for carrier in self._label_carrier_preview_rows()
+        )
+
     def _decision_text(self) -> str:
         if self.decision == "blocked":
             has_eeg_remap = self._has_eeg_file_remap_options()
@@ -4443,6 +4626,117 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if self.decision == "safe":
             return "Ready to apply."
         return "Review status is unavailable."
+
+    def _recipe_card_lines(self) -> list[str]:
+        lines = [
+            f"Source: {self._source_selection_text()}",
+            f"Labels: {self._label_source_summary_text()}",
+        ]
+        lines.extend(self._recipe_label_choice_lines())
+        trace = self.preview.get("recipe_trace") or self.scan_result.get("recipe_trace")
+        trace_rows = self._recipe_trace_rows(trace)
+        trace_labels: list[str] = []
+        for _target_step, item, _impact, _next_action in trace_rows:
+            if item not in trace_labels:
+                trace_labels.append(item)
+        if trace_labels:
+            visible = ", ".join(trace_labels[:7])
+            if len(trace_labels) > 7:
+                visible = f"{visible}, +{len(trace_labels) - 7} more"
+            lines.append(f"Recipe records: {visible}")
+        return lines
+
+    def _recipe_label_choice_lines(self) -> list[str]:
+        if self._label_source_mode() == "internal_events":
+            return self._recipe_internal_label_choice_lines()
+        return self._recipe_loaded_label_choice_lines()
+
+    def _recipe_internal_label_choice_lines(self) -> list[str]:
+        candidate_rows = self._internal_candidate_label_event_rows()
+        not_used_rows = self._internal_not_used_event_rows()
+        lines = ["Label source: labels inside EEG files"]
+        training = self._event_code_list_text(row["code"] for row in candidate_rows)
+        if training:
+            lines.append(f"Training events: {training}")
+        excluded = self._event_code_list_text(row["code"] for row in not_used_rows)
+        if excluded:
+            lines.append(f"Not used as labels: {excluded}")
+        class_names = self._recipe_class_name_summary(candidate_rows)
+        if class_names:
+            lines.append(f"Class names: {class_names}")
+        return lines
+
+    def _recipe_loaded_label_choice_lines(self) -> list[str]:
+        lines = ["Label source: loaded label files"]
+        pairing = self._recipe_pairing_summary()
+        if pairing:
+            lines.append(f"Pairing: {pairing}")
+        label_field = self.rule_label_field_combo.currentText().strip()
+        use_as = self.rule_use_as_combo.currentText().strip()
+        if label_field:
+            value_text = label_field if not use_as else f"{label_field} as {use_as}"
+            lines.append(f"Read labels from: {value_text}")
+        placement = self._recipe_placement_summary()
+        if placement:
+            lines.append(f"Place labels by: {placement}")
+        class_names = self._recipe_class_name_summary([])
+        if class_names:
+            lines.append(f"Class names: {class_names}")
+        return lines
+
+    def _recipe_pairing_summary(self, *, limit: int = 3) -> str:
+        pairs: list[str] = []
+        for item, original in self._label_carrier_items:
+            carrier_key = self._label_carrier_key(item, original)
+            if carrier_key and self._is_label_carrier_excluded(carrier_key):
+                continue
+            label_file = self._label_file_display(item, original)
+            eeg_file = self._label_carrier_choice_text(
+                "target_file",
+                self._label_carrier_item_text(item, 1),
+            )
+            eeg_name = Path(eeg_file).name if eeg_file else "needs review"
+            if label_file:
+                pairs.append(f"{eeg_name} <- {label_file}")
+        if not pairs:
+            return ""
+        visible = "; ".join(pairs[:limit])
+        if len(pairs) > limit:
+            visible = f"{visible}; +{len(pairs) - limit} more"
+        return visible
+
+    def _recipe_placement_summary(self) -> str:
+        method = self.rule_placement_method_combo.currentText().strip()
+        placement_method = self._combo_current_data(self.rule_placement_method_combo)
+        target = self.rule_alignment_combo.currentText().strip()
+        if placement_method == "interval":
+            duration = self.rule_duration_field_combo.currentText().strip()
+            if duration and duration != "No duration field":
+                return f"{method} · {target} + {duration}"
+        if target:
+            return f"{method} · {target}"
+        return method
+
+    def _recipe_class_name_summary(
+        self,
+        candidate_rows: list[dict[str, str]],
+        *,
+        limit: int = 4,
+    ) -> str:
+        codes = {str(row.get("code") or "").strip() for row in candidate_rows}
+        pairs: list[str] = []
+        for tree_item, code, _original in self._class_map_items:
+            if codes and code not in codes:
+                continue
+            value = self._class_map_item_text(tree_item).strip()
+            if value:
+                pairs.append(f"{code}={value}")
+        if not pairs:
+            return ""
+        visible = ", ".join(pairs[:limit])
+        if len(pairs) > limit:
+            visible = f"{visible}, +{len(pairs) - limit} more"
+        return visible
 
     def _populate_files(self) -> None:
         metadata_preview = self.preview.get("metadata_preview") or []
@@ -4693,6 +4987,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         event_roles = self._event_role_overrides()
         if self._label_source_mode() == "internal_events":
             event_roles.update(self._internal_event_role_overrides())
+            internal_event_selection = self._internal_event_selection_choices()
+            if internal_event_selection:
+                choices["internal_event_selection"] = internal_event_selection
         if event_roles:
             choices["event_roles"] = event_roles
         eeg_file_remap = self._eeg_file_remap_choices()
@@ -4716,7 +5013,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if not hasattr(self, "label_source_mode_combo"):
             return ""
         mode = self._label_source_mode()
-        if mode == "internal_events" and self._label_carrier_items:
+        if mode == "internal_events" and (
+            self._label_carrier_items or self._has_internal_event_preview_rows()
+        ):
             return "embedded_events"
         return ""
 
@@ -4828,6 +5127,47 @@ class DataInterpretationPreviewDialog(BaseDialog):
             )
             if role in {"class label", "not a label"}
         }
+
+    def _internal_event_selection_choices(self) -> dict[str, Any]:
+        if not self._has_internal_event_preview_rows():
+            return {}
+        self._remember_internal_class_name_edits()
+        label_event_codes = [
+            str(row.get("code") or "").strip()
+            for row in self._internal_candidate_label_event_rows()
+            if str(row.get("code") or "").strip()
+        ]
+        not_label_event_codes = [
+            str(row.get("code") or "").strip()
+            for row in self._internal_not_used_event_rows()
+            if str(row.get("code") or "").strip()
+        ]
+        if not label_event_codes and not not_label_event_codes:
+            return {}
+        class_map = {
+            code: self._class_map_item_text(tree_item).strip()
+            for tree_item, code, _original in self._class_map_items
+            if code in set(label_event_codes)
+            and self._class_map_item_text(tree_item).strip()
+        }
+        result: dict[str, Any] = {
+            "label_event_codes": label_event_codes,
+            "not_label_event_codes": not_label_event_codes,
+        }
+        if class_map:
+            result["class_map"] = {
+                key: class_map[key]
+                for key in sorted(class_map, key=lambda value: value.casefold())
+            }
+        return result
+
+    def _has_internal_event_preview_rows(self) -> bool:
+        payload = self._internal_event_preview_payload()
+        for key in ("candidate_label_events", "candidate_events", "not_used_events"):
+            value = payload.get(key)
+            if isinstance(value, list) and value:
+                return True
+        return False
 
     def _install_event_role_selector(
         self,
@@ -5014,6 +5354,12 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
 
     def _apply_allowed(self) -> bool:
+        if (
+            hasattr(self, "label_source_mode_combo")
+            and self._label_source_mode() == "loaded_label_files"
+            and self._label_format_needs_conversion()
+        ):
+            return False
         return self.decision != "blocked" or self._has_complete_remap_choices()
 
     def _has_complete_remap_choices(self) -> bool:
@@ -5441,22 +5787,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 )
                 for item in values
             )
-        impacts = self.preview.get(
-            "downstream_impacts"
-        ) or self.validation_decision.get("downstream_impacts")
-        if impacts:
-            rows.extend(
-                (
-                    "Review and Import",
-                    "After import",
-                    str(item),
-                    "No action needed.",
-                )
-                for item in impacts
-            )
-        trace = self.preview.get("recipe_trace") or self.scan_result.get("recipe_trace")
-        if trace:
-            rows.extend(self._recipe_trace_rows(trace))
         format_capabilities = self.preview.get(
             "format_capabilities",
         ) or self.scan_result.get("format_capabilities")
@@ -5519,8 +5849,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
         for value in values:
             if not isinstance(value, dict):
                 continue
+            raw_status = str(value.get("status") or "review")
+            if raw_status not in {"blocked", "limited"}:
+                continue
             format_name = str(value.get("format") or value.get("name") or "Source")
-            status = str(value.get("status") or "review").replace("_", " ")
+            status = raw_status.replace("_", " ")
             message = str(value.get("message") or "").strip()
             grouped[(format_name, status, message)] = (
                 grouped.get((format_name, status, message), 0) + 1

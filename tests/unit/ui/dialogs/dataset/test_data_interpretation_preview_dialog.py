@@ -96,8 +96,8 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
         "Review the items marked Needs confirmation, then confirm and apply."
     )
     assert "Confirm session metadata." in review_text
-    assert "After import" in review_text
-    assert "Training uses this recipe trace." in review_text
+    assert "After import" not in review_text
+    assert "Training uses this recipe trace." not in review_text
     assert not dialog.findChildren(QPlainTextEdit)
     assert dialog.apply_button.text() == "Confirm and Apply"
     assert dialog.get_result() == {
@@ -408,6 +408,16 @@ def test_match_labels_uses_selected_scope_not_scanned_folder(qtbot):
         "A01T.gdf",
         "A02T.gdf",
         "A03T.gdf",
+    ]
+    header = dialog.label_pairing_rows_widget.findChild(
+        QFrame,
+        "DataImportPairingHeader",
+    )
+    assert header is not None
+    assert [label.text() for label in header.findChildren(QLabel)] == [
+        "EEG file",
+        "Label file",
+        "Status",
     ]
 
     first_carrier = dialog.label_carrier_tree.topLevelItem(0)
@@ -1029,7 +1039,7 @@ def test_match_labels_eeg_event_order_shows_target_event_check(qtbot):
     assert "Target EEG events" in visible_text
     assert "Target" in visible_text
     assert "Event" in visible_text
-    assert "Evidence" in visible_text
+    assert "Suggestion evidence" in visible_text
     assert "Use" in visible_text
     assert "768" in visible_text
     assert "288 selected EEG events" in visible_text
@@ -1143,6 +1153,63 @@ def test_match_labels_placement_methods_use_mode_specific_panels(qtbot):
         if button.objectName() == "DataImportTargetEventRadio"
     ]
     assert target_buttons
+
+
+def test_match_labels_shows_conversion_card_when_label_rows_are_unknown(qtbot):
+    label_path = "/tmp/labels/custom_labels.mat"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+            "label_carriers": [label_path],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+            "label_carrier_preview": [
+                {
+                    "path": label_path,
+                    "name": "custom_labels.mat",
+                    "format": "MAT",
+                    "target_file": "A01T.gdf",
+                    "label_candidates": [],
+                    "anchor_candidates": [],
+                    "selected_label_field": "",
+                    "selected_anchor": "",
+                    "label_row_count": 0,
+                    "label_value_counts": {},
+                    "time_model": "unknown",
+                    "granularity": "unknown",
+                    "placement_method": "eeg_event",
+                    "role": "external labels",
+                },
+            ],
+        },
+        validation_decision={
+            "decision": "blocked",
+            "blocked_reasons": ["Label file needs conversion before matching."],
+        },
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(1040, 760)
+    dialog.show()
+    _show_step(dialog, "Match Labels")
+    qtbot.wait(0)
+
+    assert dialog.label_conversion_card.isVisible()
+    assert not dialog.label_values_card.isVisible()
+    assert not dialog.match_check_card.isVisible()
+    assert not dialog.apply_button.isEnabled()
+
+    visible_text = _visible_step_text(dialog, "Match Labels")
+    assert "Label format needs conversion" in visible_text
+    assert "loaded the label file" in visible_text
+    assert "one label, trial, event, or interval" in visible_text
+    assert "Label values and placement" not in visible_text
+
+    examples_button = dialog.label_conversion_card.findChild(QPushButton)
+    assert examples_button is not None
+    assert examples_button.text() == "View required table"
 
 
 def test_data_interpretation_preview_dialog_records_attached_label_folder(
@@ -1812,7 +1879,7 @@ def test_data_interpretation_preview_dialog_review_summary_shows_whole_rows(qtbo
     qtbot.wait(0)
 
     review_tree = dialog.review_tree
-    assert review_tree.topLevelItemCount() == 7
+    assert review_tree.topLevelItemCount() == 5
     viewport = review_tree.viewport()
     assert viewport is not None
     viewport_rect = viewport.rect()
@@ -2364,7 +2431,7 @@ def test_data_interpretation_preview_dialog_shows_format_boundaries(qtbot):
 
     assert "Format support" in details
     assert "Check format" in details
-    assert "BrainVision: needs review" in details
+    assert "BrainVision: needs review" not in details
     assert "XDF / LSL: blocked" in details
     assert "stream selection is not available" in details
 
@@ -2411,7 +2478,8 @@ def test_data_interpretation_preview_dialog_humanizes_recipe_trace(qtbot):
     )
     qtbot.addWidget(dialog)
 
-    details = _tree_text(dialog.review_tree)
+    details = _group_text(dialog, "Review and Import")
+    review_tree_text = _tree_text(dialog.review_tree)
 
     assert "Source scan" in details
     assert "Interpretation candidate" in details
@@ -2420,7 +2488,8 @@ def test_data_interpretation_preview_dialog_humanizes_recipe_trace(qtbot):
     assert "Metadata choices" in details
     assert "Event use choices" in details
     assert "Label carrier choices" in details
-    assert "saved in the import recipe" in details
+    assert "Recipe records:" in details
+    assert "Source scan" not in review_tree_text
     assert "scan:scan-1" not in details
     assert "candidate:candidate-1" not in details
     assert "metadata:subject" not in details

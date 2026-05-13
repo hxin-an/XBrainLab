@@ -154,7 +154,15 @@ class DataInterpretationCommandService:
         metadata_apply = self.apply_service.apply_candidate_metadata_to_loaded_data(
             candidate,
         )
-        label_apply = self.apply_service.apply_label_carriers(candidate)
+        external_label_apply = self.apply_service.apply_label_carriers(candidate)
+        internal_event_apply = self.apply_service.apply_internal_event_mappings(
+            candidate,
+        )
+        label_apply = (
+            internal_event_apply
+            if internal_event_apply.get("status") == "applied"
+            else external_label_apply
+        )
         applied_payload = self.state.resolve_applied_interpretation().to_dict()
         label_message = ""
         if label_apply.get("status") == "applied":
@@ -177,6 +185,8 @@ class DataInterpretationCommandService:
                 "metadata_apply": metadata_apply,
                 "label_carriers_pending": list(candidate.label_carriers),
                 "label_apply": label_apply,
+                "external_label_apply": external_label_apply,
+                "internal_event_apply": internal_event_apply,
             },
         )
 
@@ -241,6 +251,7 @@ class DataInterpretationCommandService:
             confirmations=confirmations,
             event_roles=dict(candidate.event_roles),
             class_map=dict(candidate.class_map),
+            internal_event_selection=dict(candidate.internal_event_selection),
             run_event_mappings={
                 str(key): dict(value)
                 for key, value in candidate.run_event_mappings.items()

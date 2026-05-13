@@ -478,11 +478,19 @@ class DataInterpretationSessionState:
                 if str(item.get("placement_method") or "").strip()
             }
         )
-        selected_event_names = sorted(
+        internal_event_selection = dict(
+            getattr(source, "internal_event_selection", {}) or {}
+        )
+        selected_event_names = DataInterpretationSessionState._sorted_event_names(
             {
                 str(name)
                 for item in label_imports
                 for name in item.get("selected_event_names", [])
+                if str(name).strip()
+            }
+            | {
+                str(name)
+                for name in internal_event_selection.get("label_event_codes", [])
                 if str(name).strip()
             }
         )
@@ -502,6 +510,8 @@ class DataInterpretationSessionState:
             "selected_event_names": selected_event_names,
             "run_event_mappings": run_event_mappings,
         }
+        if internal_event_selection:
+            handoff["internal_event_selection"] = internal_event_selection
         if label_imports:
             handoff["label_imports"] = label_imports
         if carrier_plan:
@@ -528,3 +538,13 @@ class DataInterpretationSessionState:
         if not isinstance(mapping, dict):
             return {}
         return {str(key): str(value) for key, value in mapping.items()}
+
+    @staticmethod
+    def _sorted_event_names(values: set[str]) -> list[str]:
+        def sort_key(value: str) -> tuple[int, int | str]:
+            text = str(value).strip()
+            return (0, int(text)) if text.isdigit() else (1, text.casefold())
+
+        return sorted(
+            {str(item).strip() for item in values if str(item).strip()}, key=sort_key
+        )

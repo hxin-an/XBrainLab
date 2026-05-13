@@ -109,3 +109,23 @@ def test_scan_source_path_merges_external_label_sources(tmp_path: Path):
     assert scan.label_carrier_sources[str(external_events.resolve())] == (
         str(label_dir.resolve())
     )
+
+
+def test_scan_source_path_reports_unsupported_sidecars_with_eeg(tmp_path: Path):
+    eeg_file = tmp_path / "subject.fif"
+    pickle_file = tmp_path / "labels.pkl"
+    log_file = tmp_path / "vendor.log"
+    unknown_file = tmp_path / "session.sidecar"
+    eeg_file.write_bytes(b"not loaded during scan")
+    pickle_file.write_bytes(b"pickle")
+    log_file.write_text("proprietary export", encoding="utf-8")
+    unknown_file.write_text("unknown sidecar", encoding="utf-8")
+
+    scan = scan_source_path(scan_id="scan-1", source_path=str(tmp_path))
+    capabilities = {item["name"]: item for item in scan.format_capabilities}
+
+    assert capabilities["labels.pkl"]["status"] == "blocked"
+    assert capabilities["vendor.log"]["status"] == "limited"
+    assert capabilities["session.sidecar"]["status"] == "limited"
+    assert any("not interpreted by this wizard" in item for item in scan.warnings)
+    assert scan.blocked_reasons == []

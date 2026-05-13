@@ -21,7 +21,7 @@ OUTPUT_DIR = (
     / "data-import-wizard-steps"
     / "match-label-placement-modes"
 )
-WINDOW_SIZE = QSize(1220, 1320)
+WINDOW_SIZE = QSize(1220, 920)
 
 
 MODE_OUTPUTS = {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, is_dataclass
 from dataclasses import field as dc_field
 from pathlib import Path
@@ -25,6 +26,9 @@ from .data_interpretation_placement import (
     annotate_label_carrier_placements as _annotate_label_carrier_placements,
 )
 from .data_interpretation_placement import (
+    placement_blocked_reasons as _placement_blocked_reasons,
+)
+from .data_interpretation_placement import (
     placement_confirmation_items as _placement_confirmation_items,
 )
 from .data_interpretation_scan import ScanResult
@@ -46,6 +50,7 @@ class InterpretationCandidate:
     class_map: dict[str, str] = dc_field(default_factory=dict)
     class_map_source: str = ""
     internal_event_preview: dict[str, Any] = dc_field(default_factory=dict)
+    internal_event_selection: dict[str, Any] = dc_field(default_factory=dict)
     run_event_mappings: dict[str, dict[str, str]] = dc_field(default_factory=dict)
     time_model: str = "unknown"
     granularity: str = "unknown"
@@ -169,13 +174,50 @@ def build_interpretation_candidate(
                 "artifacts, or boundaries.",
             )
 
+    event_roles.update(_string_mapping(choices.get("event_roles")))
+    explicit_internal_event_selection = isinstance(
+        choices.get("internal_event_selection"),
+        dict,
+    ) and bool(choices.get("internal_event_selection"))
+    internal_event_selection = (
+        _internal_event_selection(
+            internal_event_preview,
+            choices.get("internal_event_selection"),
+            event_roles,
+        )
+        if label_carrier_source == "embedded_events"
+        or explicit_internal_event_selection
+        else {}
+    )
+    if label_carrier_source == "embedded_events" and not class_map:
+        selection_class_map = _string_mapping(internal_event_selection.get("class_map"))
+        if selection_class_map:
+            class_map = selection_class_map
+            class_map_source = "internal_events"
+
     label_carrier_plan = _annotate_label_carrier_placements(
         label_carrier_plan,
         internal_event_preview,
     )
+    if scan.bids.get("is_bids"):
+        bids_warnings, bids_blocked_reasons = _bids_like_label_carrier_review_items(
+            label_carrier_plan
+        )
+        warnings.extend(bids_warnings)
+        blocked_reasons.extend(bids_blocked_reasons)
+    blocked_reasons.extend(
+        (
+            "Label file needs conversion before matching: "
+            f"{carrier_name}. Provide a table with one label value column and "
+            "one placement column."
+        )
+        for carrier_name in _label_carriers_needing_conversion(label_carrier_plan)
+    )
+    blocked_reasons.extend(_placement_blocked_reasons(label_carrier_plan))
+    blocked_reasons.extend(
+        _unsupported_mat_placement_blocked_reasons(label_carrier_plan)
+    )
     confirmation_items.extend(_placement_confirmation_items(label_carrier_plan))
-
-    event_roles.update(_string_mapping(choices.get("event_roles")))
 
     for item in metadata:
         fields = (item.subject, item.session, item.task, item.run)
@@ -222,6 +264,7 @@ def build_interpretation_candidate(
         class_map=class_map,
         class_map_source=class_map_source,
         internal_event_preview=internal_event_preview,
+        internal_event_selection=internal_event_selection,
         run_event_mappings=run_event_mappings,
         time_model="sample_index_or_annotation_time"
         if event_roles
@@ -432,6 +475,264 @@ def _required_label_carriers_missing_from_scan(
     return _paths_missing_from_scan(required, scanned_carriers)
 
 
+def _label_carriers_needing_conversion(
+    label_carrier_plan: list[dict[str, Any]],
+) -> list[str]:
+    """Return carriers that cannot expose any label rows to the wizard."""
+    names: list[str] = []
+    for carrier in label_carrier_plan:
+        path = Path(str(carrier.get("path") or ""))
+        if not path.exists():
+            continue
+        selected_label = str(carrier.get("selected_label_field") or "").strip()
+        raw_candidates = carrier.get("label_candidates") or []
+        candidates = raw_candidates if isinstance(raw_candidates, list) else []
+        row_count = carrier.get("label_row_count")
+        value_counts = carrier.get("label_value_counts")
+        has_rows = isinstance(row_count, int) and row_count > 0
+        has_values = isinstance(value_counts, dict) and bool(value_counts)
+        if selected_label and (has_rows or has_values):
+            continue
+        if candidates and not selected_label:
+            continue
+        name = str(carrier.get("name") or path.name)
+        if name:
+            names.append(name)
+    return sorted(set(names))
+
+
+def _unsupported_mat_placement_blocked_reasons(
+    label_carrier_plan: list[dict[str, Any]],
+) -> list[str]:
+    """Return reviewed MAT placement modes that this apply path cannot honor."""
+    reasons: list[str] = []
+    for carrier in label_carrier_plan:
+        fmt = str(carrier.get("format") or "").strip()
+        if fmt not in {"MAT", "MAT labels"}:
+            continue
+        method = str(carrier.get("placement_method") or "").strip()
+        time_model = str(carrier.get("time_model") or "").strip().lower()
+        name = str(carrier.get("name") or Path(str(carrier.get("path") or "")).name)
+        if method == "interval":
+            reasons.append(
+                "MAT label file uses interval placement, which is not supported "
+                f"directly yet: {name!s}. Convert interval labels to CSV/TSV "
+                "or choose event order, sample index, or event-code placement."
+            )
+        elif method == "time_field" and time_model not in {"sample_index", ""}:
+            reasons.append(
+                "MAT label file uses time-field placement that is not supported "
+                f"directly yet: {name!s}. Convert time labels to CSV/TSV "
+                "or choose sample-index/event-order placement."
+            )
+    return sorted(set(reasons))
+
+
+def _internal_event_selection(
+    internal_event_preview: dict[str, Any],
+    payload: Any,
+    event_roles: dict[str, str],
+) -> dict[str, Any]:
+    """Build a replayable internal-event selection from preview evidence."""
+    if not internal_event_preview:
+        return {}
+    explicit = payload if isinstance(payload, dict) else {}
+    selected = _string_list(explicit.get("label_event_codes"))
+    not_label = _string_list(explicit.get("not_label_event_codes"))
+    class_map = _string_mapping(explicit.get("class_map"))
+    if not selected:
+        selected = _internal_event_codes(
+            internal_event_preview.get("candidate_label_events")
+            or internal_event_preview.get("candidate_events")
+        )
+    if not not_label:
+        not_label = _internal_not_label_event_codes(
+            internal_event_preview.get("not_used_events")
+            or internal_event_preview.get("non_label_events")
+            or internal_event_preview.get("excluded_events")
+        )
+    for code, role in event_roles.items():
+        normalized_role = str(role).strip().lower()
+        code_text = str(code).strip()
+        if not code_text:
+            continue
+        if normalized_role == "class label":
+            if code_text not in selected:
+                selected.append(code_text)
+            not_label = [item for item in not_label if item != code_text]
+        elif normalized_role == "not a label":
+            if code_text not in not_label:
+                not_label.append(code_text)
+            selected = [item for item in selected if item != code_text]
+    if not class_map:
+        class_map = _class_map_from_internal_event_rows(
+            internal_event_preview.get("candidate_label_events")
+            or internal_event_preview.get("candidate_events")
+        )
+    selected = _sorted_event_codes(selected)
+    not_label = [item for item in not_label if item not in selected]
+    result: dict[str, Any] = {
+        "label_event_codes": selected,
+        "not_label_event_codes": not_label,
+    }
+    if class_map:
+        result["class_map"] = {
+            key: class_map[key] for key in _sorted_event_codes(class_map)
+        }
+    return result
+
+
+def _internal_event_codes(rows: Any) -> list[str]:
+    if not isinstance(rows, list):
+        return []
+    codes: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        code = _internal_event_code_from_row(row)
+        if code and code not in codes:
+            codes.append(code)
+    return codes
+
+
+def _internal_not_label_event_codes(rows: Any) -> list[str]:
+    if not isinstance(rows, list):
+        return []
+    typed_rows = [row for row in rows if isinstance(row, dict)]
+    typed_rows.sort(key=_not_label_event_sort_key)
+    return _internal_event_codes(typed_rows)
+
+
+def _not_label_event_sort_key(row: dict[str, Any]) -> tuple[int, tuple[int, int | str]]:
+    text = " ".join(
+        str(row.get(key) or "").lower() for key in ("use_as", "reason", "evidence")
+    )
+    if any(token in text for token in ("artifact", "artefact", "exclude", "bad")):
+        rank = 0
+    elif any(token in text for token in ("boundary", "system", "ignore")):
+        rank = 1
+    elif any(token in text for token in ("trial", "start", "anchor", "timing")):
+        rank = 2
+    else:
+        rank = 3
+    code = _internal_event_code_from_row(row)
+    return (rank, _event_code_sort_key(code))
+
+
+def _class_map_from_internal_event_rows(rows: Any) -> dict[str, str]:
+    if not isinstance(rows, list):
+        return {}
+    result: dict[str, str] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        code = _internal_event_code_from_row(row)
+        label = str(row.get("class_name") or row.get("name") or "").strip()
+        if code and label:
+            result[code] = label
+    return result
+
+
+def _internal_event_code_from_row(row: dict[str, Any]) -> str:
+    for key in (
+        "event_code",
+        "original_event_code",
+        "original_code",
+        "original_label",
+        "value",
+        "raw_value",
+        "code",
+        "label",
+        "event_label",
+    ):
+        value = str(row.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _sorted_event_codes(values: Iterable[Any] | dict[Any, Any]) -> list[str]:
+    raw_values = values.keys() if isinstance(values, dict) else values
+    return sorted(
+        {str(item).strip() for item in raw_values if str(item).strip()},
+        key=_event_code_sort_key,
+    )
+
+
+def _event_code_sort_key(value: str) -> tuple[int, int | str]:
+    return (0, int(value)) if str(value).isdigit() else (1, str(value).casefold())
+
+
+def _bids_like_label_carrier_review_items(
+    label_carrier_plan: list[dict[str, Any]],
+) -> tuple[list[str], list[str]]:
+    warnings: list[str] = []
+    blocked_reasons: list[str] = []
+    for carrier in label_carrier_plan:
+        if str(carrier.get("format") or "") != "BIDS events":
+            continue
+        path = Path(str(carrier.get("path") or ""))
+        if not path.exists():
+            continue
+        name = str(carrier.get("name") or path.name)
+        time_fields = {
+            str(item).strip().lower()
+            for item in _string_list(carrier.get("time_field_candidates"))
+        }
+        duration_fields = _string_list(carrier.get("duration_candidates"))
+        if "onset" not in time_fields:
+            blocked_reasons.append(
+                f"BIDS-like events file {name} is missing required onset column."
+            )
+        if path.exists() and not _bids_events_json_sidecar_exists(path):
+            warnings.append(
+                f"BIDS-like events file {name} has no events.json sidecar; "
+                "class names and level meanings need review."
+            )
+        if not duration_fields:
+            warnings.append(
+                f"BIDS-like events file {name} has no duration/end field; "
+                "interval epochs will need review in epoch setup."
+            )
+        elif len(duration_fields) > 1:
+            selected_duration = str(
+                carrier.get("selected_duration_field") or ""
+            ).strip()
+            warnings.append(
+                f"BIDS-like events file {name} has multiple duration/end fields; "
+                f"confirm {selected_duration or 'the selected duration field'}."
+            )
+    return sorted(set(warnings)), sorted(set(blocked_reasons))
+
+
+def _bids_events_json_sidecar_exists(path: Path) -> bool:
+    for sidecar_name in _bids_event_sidecar_names(path):
+        for directory in [path.parent, *path.parents[1:8]]:
+            if (directory / sidecar_name).exists():
+                return True
+    return False
+
+
+def _bids_event_sidecar_names(path: Path) -> list[str]:
+    names: list[str] = []
+    if path.name.endswith(".tsv"):
+        stem = path.name[: -len(".tsv")]
+        names.append(f"{stem}.json")
+    prefix = path.name.removesuffix(".tsv").removesuffix("_events")
+    parts = [part for part in prefix.split("_") if part]
+    semantic_parts = [
+        part for part in parts if not part.startswith(("sub-", "ses-", "run-"))
+    ]
+    if semantic_parts:
+        names.append("_".join([*semantic_parts, "events"]) + ".json")
+    names.append("events.json")
+    result: list[str] = []
+    for name in names:
+        if name not in result:
+            result.append(name)
+    return result
+
+
 def _label_carrier_source_choice(choices: dict[str, Any]) -> str:
     return str(choices.get("label_carrier") or "").strip()
 
@@ -548,6 +849,8 @@ def _choice_recipe_trace(choices: dict[str, Any]) -> list[str]:
         traces.append("choices:label_carrier_remap")
     if _nested_string_mapping(choices.get("run_event_mappings")):
         traces.append("choices:run_event_mappings")
+    if isinstance(choices.get("internal_event_selection"), dict):
+        traces.append("choices:internal_event_selection")
     return traces
 
 
