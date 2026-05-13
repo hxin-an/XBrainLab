@@ -9,6 +9,32 @@ from XBrainLab.backend.study import Study
 from XBrainLab.mcp.server import PROTOCOL_VERSION, MCPServer
 
 
+def _jsonrpc_result(
+    response: dict[str, Any] | None,
+    request_id: int,
+) -> dict[str, Any]:
+    assert isinstance(response, dict), response
+    assert response["jsonrpc"] == "2.0"
+    assert response["id"] == request_id
+    assert "error" not in response
+    result = response.get("result")
+    assert isinstance(result, dict), response
+    return result
+
+
+def _jsonrpc_error(
+    response: dict[str, Any] | None,
+    request_id: int,
+) -> dict[str, Any]:
+    assert isinstance(response, dict), response
+    assert response["jsonrpc"] == "2.0"
+    assert response["id"] == request_id
+    assert "result" not in response
+    error = response.get("error")
+    assert isinstance(error, dict), response
+    return error
+
+
 def test_initialize_declares_tools_capability():
     server = MCPServer()
 
@@ -25,9 +51,7 @@ def test_initialize_declares_tools_capability():
         }
     )
 
-    assert response is not None
-    assert response["id"] == 1
-    result = response["result"]
+    result = _jsonrpc_result(response, 1)
     assert result["protocolVersion"] == PROTOCOL_VERSION
     assert result["capabilities"] == {"tools": {"listChanged": False}}
     assert result["serverInfo"]["name"] == "xbrainlab"
@@ -48,8 +72,8 @@ def test_tools_list_uses_application_command_schema():
         {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
     )
 
-    assert response is not None
-    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    result = _jsonrpc_result(response, 2)
+    tools = {tool["name"]: tool for tool in result["tools"]}
     scan = tools[CommandName.SCAN_SOURCE.value]
     assert scan["inputSchema"]["required"] == ["source_path"]
     assert scan["inputSchema"]["properties"]["label_sources"] == {
@@ -101,21 +125,27 @@ def test_tools_call_reuses_one_application_service_session(tmp_path: Path):
         }
     )
 
-    assert scan is not None
-    assert scan["result"]["isError"] is False
-    assert scan["result"]["structuredContent"]["result"]["status"] == "ok"
-    assert "Scanned" in scan["result"]["content"][0]["text"]
-    assert preview is not None
-    assert preview["result"]["isError"] is False
-    assert preview["result"]["structuredContent"]["result"]["status"] == "ok"
+    scan_result = _jsonrpc_result(scan, 2)
+    assert scan_result["isError"] is False
+    assert scan_result["structuredContent"]["command_name"] == "scan_source"
+    assert scan_result["structuredContent"]["accepted"] is True
+    assert scan_result["structuredContent"]["verification"]["schema_valid"] is True
+    assert scan_result["structuredContent"]["result"]["status"] == "ok"
+    assert "Scanned" in scan_result["content"][0]["text"]
+    preview_result = _jsonrpc_result(preview, 3)
+    assert preview_result["isError"] is False
+    assert preview_result["structuredContent"]["command_name"] == (
+        "preview_interpretation"
+    )
+    assert preview_result["structuredContent"]["accepted"] is True
+    assert preview_result["structuredContent"]["verification"]["schema_valid"] is True
+    assert preview_result["structuredContent"]["result"]["status"] == "ok"
     assert (
-        preview["result"]["structuredContent"]["state"]["interpretation"][
-            "has_candidate"
-        ]
+        preview_result["structuredContent"]["state"]["interpretation"]["has_candidate"]
         is True
     )
-    scan_adapter = scan["result"]["structuredContent"]["adapter"]
-    preview_adapter = preview["result"]["structuredContent"]["adapter"]
+    scan_adapter = scan_result["structuredContent"]["adapter"]
+    preview_adapter = preview_result["structuredContent"]["adapter"]
     assert scan_adapter["mode"] == "headless_mcp_stdio"
     assert scan_adapter["transport"] == "stdio"
     assert scan_adapter["session_id"]
@@ -144,8 +174,7 @@ def test_tools_call_returns_tool_error_for_schema_repair():
         }
     )
 
-    assert response is not None
-    result = response["result"]
+    result = _jsonrpc_result(response, 2)
     assert result["isError"] is True
     assert "missing required arguments" in result["content"][0]["text"]
     assert result["structuredContent"]["accepted"] is False
@@ -172,8 +201,7 @@ def test_stdio_mcp_reports_precondition_before_long_running_job_boundary():
         }
     )
 
-    assert response is not None
-    result = response["result"]
+    result = _jsonrpc_result(response, 2)
     assert result["isError"] is True
     assert "Generate datasets before training" in result["content"][0]["text"]
     structured = result["structuredContent"]
@@ -213,8 +241,7 @@ def test_stdio_mcp_blocks_enabled_long_running_commands_until_job_api_exists():
         }
     )
 
-    assert response is not None
-    result = response["result"]
+    result = _jsonrpc_result(response, 2)
     assert result["isError"] is True
     assert "long-running" in result["content"][0]["text"]
     structured = result["structuredContent"]
@@ -252,6 +279,6 @@ def test_unknown_tool_is_protocol_error():
         }
     )
 
-    assert response is not None
-    assert response["error"]["code"] == -32602
-    assert "Unknown tool" in response["error"]["message"]
+    error = _jsonrpc_error(response, 2)
+    assert error["code"] == -32602
+    assert "Unknown tool" in error["message"]

@@ -10,13 +10,26 @@ from XBrainLab.mcp.server import PROTOCOL_VERSION
 
 
 def _send(proc: subprocess.Popen[str], payload: dict[str, Any]) -> dict[str, Any]:
-    assert proc.stdin is not None
-    assert proc.stdout is not None
-    proc.stdin.write(json.dumps(payload) + "\n")
-    proc.stdin.flush()
-    line = proc.stdout.readline()
-    assert line, proc.stderr.read() if proc.stderr is not None else ""
+    stdin = proc.stdin
+    stdout = proc.stdout
+    if stdin is None or stdout is None:
+        raise AssertionError("stdio server process was not created with pipes")
+    stdin.write(json.dumps(payload) + "\n")
+    stdin.flush()
+    line = stdout.readline()
+    if line == "":
+        stderr = proc.stderr.read() if proc.stderr is not None else ""
+        raise AssertionError(stderr)
     return json.loads(line)
+
+
+def _jsonrpc_result(message: dict[str, Any], request_id: int) -> dict[str, Any]:
+    assert message["jsonrpc"] == "2.0"
+    assert message["id"] == request_id
+    assert "error" not in message
+    result = message.get("result")
+    assert isinstance(result, dict), message
+    return result
 
 
 def test_stdio_mcp_server_lists_and_calls_application_tools(tmp_path: Path):
@@ -40,13 +53,16 @@ def test_stdio_mcp_server_lists_and_calls_application_tools(tmp_path: Path):
                 "params": {"protocolVersion": PROTOCOL_VERSION},
             },
         )
-        assert initialized["result"]["capabilities"]["tools"]["listChanged"] is False
+        initialized_result = _jsonrpc_result(initialized, 1)
+        assert initialized_result["capabilities"]["tools"]["listChanged"] is False
 
         listed = _send(
             proc,
             {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
         )
-        assert any(tool["name"] == "scan_source" for tool in listed["result"]["tools"])
+        listed_result = _jsonrpc_result(listed, 2)
+        tools = {tool["name"]: tool for tool in listed_result["tools"]}
+        assert tools["scan_source"]["inputSchema"]["required"] == ["source_path"]
 
         scanned = _send(
             proc,
@@ -60,6 +76,7 @@ def test_stdio_mcp_server_lists_and_calls_application_tools(tmp_path: Path):
                 },
             },
         )
+        scanned_result = _jsonrpc_result(scanned, 3)
         previewed = _send(
             proc,
             {
@@ -69,11 +86,18 @@ def test_stdio_mcp_server_lists_and_calls_application_tools(tmp_path: Path):
                 "params": {"name": "preview_interpretation", "arguments": {}},
             },
         )
+        previewed_result = _jsonrpc_result(previewed, 4)
 
-        assert scanned["result"]["isError"] is False
-        assert previewed["result"]["isError"] is False
+        assert scanned_result["isError"] is False
+        assert scanned_result["structuredContent"]["command_name"] == "scan_source"
+        assert scanned_result["structuredContent"]["accepted"] is True
+        assert previewed_result["isError"] is False
+        assert previewed_result["structuredContent"]["command_name"] == (
+            "preview_interpretation"
+        )
+        assert previewed_result["structuredContent"]["accepted"] is True
         assert (
-            previewed["result"]["structuredContent"]["state"]["interpretation"][
+            previewed_result["structuredContent"]["state"]["interpretation"][
                 "has_candidate"
             ]
             is True

@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-05-13`
+最後更新：`2026-05-14`
 
 這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
@@ -29,6 +29,7 @@
 | 你要判斷 | 先看 | 可以支持 | 不能支持 |
 | --- | --- | --- | --- |
 | MCP / headless status 是否仍走 command state | [MCP direct Study-state guard](#2026-05-13-mcp-direct-study-state-guard-checkpoint) 和 [MCP HTTP progress command-state](#2026-05-13-mcp-http-progress-command-state-checkpoint) | MCP progress/status 不回到 direct mutable `Study` read 或 controller lookup bypass。 | full external MCP client certification。 |
+| MCP stdio / HTTP tests 是否仍只證明有 response | [MCP JSON-RPC exact evidence](#2026-05-14-mcp-json-rpc-exact-evidence-checkpoint) | MCP tests 檢查 JSON-RPC envelope、request id、error/result separation、tool schema、structuredContent、adapter session、command name 和 accepted/status。 | external MCP client certification、remote security review、or long-running job durability。 |
 | Evaluation panel 是否還會顯示 stale metrics | [Evaluation display command evidence](#2026-05-13-evaluation-display-command-evidence-checkpoint) | service-owned average metrics 缺失時清空 stale display。 | human evaluation UX acceptance。 |
 | Data Import runtime / agent-MCP schema 是否仍可引用 | [Data Import runtime integration](#2026-05-13-data-import-runtime-integration-checkpoint) | command/service/dialog contracts 和 agent/MCP baseline。 | final Match Labels / Review and Import UX。 |
 | 測試是否能擋 facade / legacy fallback 回流 | [Backend test hygiene inventory](#backend-test-hygiene-inventory) 和 architecture guard checkpoints | 已知 forbidden product-success evidence 被 guard。 | semantic proof for every lower-level test。 |
@@ -83,6 +84,20 @@ current truth 以這些文件為準：
 - [planning/roadmap.md](../planning/roadmap.md)
 - [architecture/README.md](../architecture/README.md)
 - [validation/README.md](README.md)
+
+## 2026-05-14 MCP JSON-RPC Exact Evidence Checkpoint
+
+This test-quality slice did not change MCP runtime behavior. It tightened MCP stdio / HTTP
+adapter evidence so tests no longer treat a non-`None` response as product success. The focused
+tests now assert the JSON-RPC envelope, request id, error/result separation, tool schema,
+structured command content, adapter session metadata, command name, `accepted`, and command result
+status.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `poetry run pytest --capture=sys tests/unit/mcp/test_server.py tests/unit/mcp/test_http_server.py tests/integration/mcp/test_stdio_server.py -q` | `15 passed` | MCP stdio / HTTP baseline tests assert protocol and command-result shape instead of generic response existence. | External MCP client certification, remote security review, or durable long-running job persistence. | Keep exact JSON-RPC assertions when new MCP tools or job APIs are added. |
+| Weak-evidence scan: `rg -n "assert .* is not None\|len\\(.+\\) > 0\|non-empty\|no crash\|no_crash\|does_not_crash" tests/unit/mcp/test_server.py tests/unit/mcp/test_http_server.py tests/integration/mcp -g '*.py'` | No matches in the focused MCP stdio / HTTP evidence set. | The targeted MCP tests no longer contain the scanned weak assertion patterns. | Full test-suite quality; this scan is pattern-based and not semantic proof for every assertion. | Continue replacing weak assertions only when stronger behavior evidence is available. |
+| `poetry run ruff check tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_server.py` / `poetry run basedpyright tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_server.py` | PASS / `0 errors, 0 warnings, 0 notes`. | Changed MCP test files are lint and type clean. | Runtime behavior by itself. | Pair lint/type checks with focused behavior tests. |
 
 ## 2026-05-14 Data Interpretation Label-Semantics Backend Evidence Checkpoint
 
