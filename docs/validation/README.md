@@ -39,6 +39,7 @@
 | Evaluation / Visualization integration 是否仍只看 widget exists | [UI integration empty-state command evidence](#2026-05-14-ui-integration-empty-state-command-evidence-checkpoint) | `test_ui_integration.py` now checks exact empty-state `EvaluateCommand` / `VisualizeCommand` blocked reasons, diagnostics, combo state, fallback plot state, and visible visualization error text; architecture guard rejects product integration tests named `*_init`. | Human visual UX approval, full zero-controller UI, or loaded-data workflow. |
 | UI dialog acceptance 是否仍只看 OK exists | [UI dialog acceptance contract evidence](#2026-05-14-ui-dialog-acceptance-contract-evidence-checkpoint) | `test_dialog_acceptance.py` now checks the Ok/Cancel button-box contract, enabled OK button, accepted result, exact mapping/selection/epoching payloads, and typed `TrainingOption` values. | Full dialog UX approval, screenshots, or Data Import redesign acceptance. |
 | Headless UI smoke 是否仍只看 object exists | [Headless UI exact state evidence](#2026-05-14-headless-ui-exact-state-evidence-checkpoint) | `test_ui_headless.py` now checks MainWindow class, exact nav labels/check state, exact page switch state, and exact empty `QueryStateCommand(data_summary)` diagnostics. | Human Windows desktop acceptance, visual UX, or loaded-data workflow. |
+| Dev real-tools verifier 是否仍直接讀 Study state | [Headless real-tools query evidence](#2026-05-14-headless-real-tools-query-evidence-checkpoint) | `scripts/dev/verify_real_tools.py` now checks load/clear/channel/dataset/training state via `QueryStateCommand` and stops training via `StopTrainingCommand` instead of direct mutable `Study` reads. | A full real-tools integration test, human assistant acceptance, or long training quality. |
 | pytest-qt UI integration 是否仍只看 widget exists / tab count >= | [pytest-qt UI exact contract evidence](#2026-05-14-pytest-qt-ui-exact-contract-evidence-checkpoint) | `test_e2e_qtbot.py` now checks exact navigation checked-state transitions, AI button contract, stack panel order/types, Evaluation/Visualization tab labels, and product InfoPanelService wiring. | Human UX approval, screenshot quality, or full data workflow. |
 | Real UI tools smoke 是否仍靠 substring / non-`None` | [Real-tools UI exact state evidence](#2026-05-14-real-tools-ui-exact-state-evidence-checkpoint) | `test_real_tools_e2e.py` now uses deterministic FIF data and checks exact list/load/info/preprocess/config/UI messages plus exact ApplicationService state deltas. | Full agent benchmark, training quality, or human UI acceptance. |
 | Evaluation panel 是否還會顯示 stale metrics | [Evaluation display command evidence](#2026-05-13-evaluation-display-command-evidence-checkpoint) | service-owned average metrics 缺失時清空 stale display。 | human evaluation UX acceptance。 |
@@ -95,6 +96,17 @@ current truth 以這些文件為準：
 - [planning/roadmap.md](../planning/roadmap.md)
 - [architecture/README.md](../architecture/README.md)
 - [validation/README.md](README.md)
+
+## 2026-05-14 Headless Real-Tools Query Evidence Checkpoint
+
+This headless-script cleanup does not change the real tool implementations. It updates the legacy
+dev verifier so its success/failure decisions use ApplicationService state queries instead of
+direct mutable `Study` fields.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| Focused source audit of `scripts/dev/verify_real_tools.py` | Direct checks of `study.loaded_data_list`, `study.datasets`, `study.is_training()`, and `study.stop_training()` were replaced with `QueryStateCommand` / `StopTrainingCommand` boundaries. | The dev verifier no longer teaches headless callers to treat mutable Study fields as product success evidence. | Runtime success of the full verifier or training quality. | Prefer maintained pytest real-tool suites for automated gates. |
+| Focused `ruff check` / `ruff format --check` / `basedpyright`, plus `poetry run mkdocs build --strict`, `poetry run python tests/architecture_compliance.py`, and `git diff --check` | PASS / PASS / `0 errors`; docs, architecture, and diff PASS. | Changed script/docs remain lint/type/docs/diff clean after validation. | Product completion or full verifier runtime behavior. | Run full verifier only when the local A01T fixture and runtime cost are appropriate. |
 
 ## 2026-05-14 UI Dialog Acceptance Contract Evidence Checkpoint
 

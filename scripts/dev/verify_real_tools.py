@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import time
+from typing import Any
 
 # Setup paths
 # Setup paths
@@ -10,6 +11,11 @@ sys.path.append(PROJECT_ROOT)
 sys.path.append(os.getcwd())
 
 # Import Real Tools
+from XBrainLab.backend.application import (
+    QueryStateCommand,
+    StopTrainingCommand,
+    get_application_service,
+)
 from XBrainLab.backend.load_data.raw_data_loader import (
     RawDataLoaderFactory,
     load_gdf_file,
@@ -42,6 +48,41 @@ from XBrainLab.llm.tools.real.training_real import (
     RealStartTrainingTool,
 )
 from XBrainLab.llm.tools.real.ui_control_real import RealSwitchPanelTool
+
+
+def _query_diagnostics(study: Study, query: str) -> dict[str, Any]:
+    result = get_application_service(study).execute(QueryStateCommand(query=query))
+    if result.failed:
+        raise RuntimeError(f"QueryStateCommand({query!r}) failed: {result.message}")
+    return dict(result.diagnostics)
+
+
+def _state(study: Study) -> dict[str, Any]:
+    return dict(_query_diagnostics(study, "state")["state"])
+
+
+def _raw_count(study: Study) -> int:
+    return int(_query_diagnostics(study, "data_summary")["count"])
+
+
+def _raw_channels(study: Study) -> list[str]:
+    raw_state = _state(study).get("raw", {})
+    channels = raw_state.get("channels", []) if isinstance(raw_state, dict) else []
+    return [str(channel) for channel in channels]
+
+
+def _dataset_count(study: Study) -> int:
+    dataset_state = _state(study).get("dataset", {})
+    if not isinstance(dataset_state, dict):
+        return 0
+    return int(dataset_state.get("count", 0) or 0)
+
+
+def _training_running(study: Study) -> bool:
+    training_state = _state(study).get("training", {})
+    if not isinstance(training_state, dict):
+        return False
+    return bool(training_state.get("is_running", False))
 
 
 def run_verification():
@@ -91,7 +132,7 @@ def run_verification():
     res_load = load_tool.execute(study, paths=[data_path])
     logger.info(f"Load Result: {res_load}")
 
-    if not study.loaded_data_list:
+    if _raw_count(study) == 0:
         logger.error("Data load failed!")
         return
 
@@ -112,7 +153,7 @@ def run_verification():
     res_clear = clear_tool.execute(study)
     logger.info(f"Clear Result: {res_clear}")
 
-    if study.loaded_data_list:
+    if _raw_count(study) != 0:
         logger.error("Dataset was NOT cleared!")
         return
     logger.info("Dataset successfully cleared.")
@@ -137,7 +178,10 @@ def run_verification():
     # For safety, let's select first 3 channels dynamically if possible,
     # or skip to avoid error.
     # If we are using A01T, it has 22 EEG + 3 EOG.
-    sel_channels = study.loaded_data_list[0].mne_data.info["ch_names"][:3]
+    sel_channels = _raw_channels(study)[:3]
+    if len(sel_channels) < 3:
+        logger.error("State query did not return enough raw channels for selection")
+        return
     logger.info(f"Selecting channels: {sel_channels}")
 
     chan_tool = RealChannelSelectionTool()
@@ -219,7 +263,7 @@ def run_verification():
     )
     logger.info(f"Split Result: {res_split}")
 
-    if not study.datasets:
+    if _dataset_count(study) == 0:
         logger.error("Dataset generation failed!")
         return
 
@@ -230,9 +274,9 @@ def run_verification():
     logger.info(f"Start Training Result: {res_start}")
 
     time.sleep(2)
-    if study.is_training():
+    if _training_running(study):
         logger.info("Training is running!")
-        study.stop_training()
+        get_application_service(study).execute(StopTrainingCommand())
         logger.info("Training stopped.")
     else:
         logger.warning("Training did not appear to start.")
