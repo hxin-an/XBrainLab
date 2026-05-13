@@ -110,13 +110,13 @@ label import 目前集中在 `LabelImportService`。
 
 這裡的風險是：label/event 正確性不是 import 成功就能保證。它需要 event count、event ID mapping、timestamp/sequence mode 都對上。
 
-### Internal Event Evidence Preview
+### Internal Event Suggestion Evidence Preview
 
 Data Import 的 `Labels inside EEG files` preview 目前不使用單一 dataset 或格式專屬 code
 table 來硬猜 class label。後端先讀 EEG 內建 event / annotation，再用下列 evidence 分群；
-UI 的 `Evidence` 欄只顯示短句，完整判斷規則以這裡為準。
+UI 的 `Suggestion evidence` 欄只顯示短句，完整判斷規則以這裡為準。
 
-| Evidence | 來源 | 用途 |
+| Suggestion evidence | 來源 | 用途 |
 | --- | --- | --- |
 | `Class-like text` | event description 包含 `left`、`right`、`hand`、`foot`、`feet`、`tongue`、`target`、`non-target`、`nontarget`、`standard`、`deviant` 或 `rest`。 | 建議列為 `Class label` candidate。 |
 | `Repeated count` | 尚未有明確語意且仍是 `Review` 的 events；每個 code 的 per-file count 完全一致、每 file 至少 `5` 次、出現在至少 `total_files - 1` 個 selected EEG file；同一 count 的 code 數量在 `2` 到 `12` 之間。 | 建議這組 repeated event codes 可能是 class labels。 |

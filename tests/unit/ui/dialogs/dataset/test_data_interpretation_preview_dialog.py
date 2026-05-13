@@ -1040,7 +1040,7 @@ def test_match_labels_eeg_event_order_shows_target_event_check(qtbot):
     assert "Target EEG events" in visible_text
     assert "Target" in visible_text
     assert "Event" in visible_text
-    assert "Evidence" in visible_text
+    assert "Suggestion evidence" in visible_text
     assert "Use" in visible_text
     assert "768" in visible_text
     assert "288 selected EEG events" in visible_text
@@ -1409,17 +1409,23 @@ def test_match_labels_shows_conversion_fallback_when_label_field_is_missing(
     assert "ready to place on EEG" not in visible_text
     assert "XBrainLab cannot match this label file yet" in visible_text
     assert "cannot tell which column or variable contains the labels" in visible_text
-    assert "One row per label" in visible_text
-    assert "One placement column" in visible_text
-    assert "event_code,label" in visible_text
-    assert "769,left_hand" in visible_text
+    visible_buttons = [
+        button.text()
+        for button in dialog.step_stack.currentWidget().findChildren(QPushButton)
+        if button.isVisibleTo(dialog.step_stack.currentWidget())
+    ]
+    assert "View required format" in visible_buttons
+    assert "One row per label" not in visible_text
+    assert "One placement column" not in visible_text
+    assert "event_code,label" not in visible_text
+    assert "769,left_hand" not in visible_text
     assert "Label values and placement" not in visible_text
     assert "Read labels from" not in visible_text
     assert "Place labels by" not in visible_text
     assert "Check" not in visible_text
     assert "converted CSV/TSV" not in visible_text
 
-    _click_button(dialog, "View examples")
+    _click_button(dialog, "View required format")
     qtbot.wait(0)
 
     assert opened["value"] is True

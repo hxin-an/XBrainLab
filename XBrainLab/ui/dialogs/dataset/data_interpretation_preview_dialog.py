@@ -1165,7 +1165,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         headers = [
             "Event",
             "Use as",
-            "Evidence",
+            "Suggestion evidence",
             "Count / coverage",
             "Class name",
             "",
@@ -1221,7 +1221,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         headers = [
             "Event",
             "Suggested use",
-            "Evidence / reason",
+            "Suggestion / reason",
             "Count / coverage",
             "",
         ]
@@ -2158,7 +2158,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         text_layout.addWidget(self.label_table_fallback_reason_label)
         layout.addLayout(text_layout, 0, 0, 1, 2)
 
-        self.view_label_table_format_btn = QPushButton("View examples")
+        self.view_label_table_format_btn = QPushButton("View required format")
         self.view_label_table_format_btn.setObjectName("DataImportToolButton")
         self.view_label_table_format_btn.clicked.connect(
             self._show_converted_label_table_format
@@ -2169,50 +2169,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
             2,
             alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
         )
-
-        checklist = QFrame()
-        checklist.setObjectName("DataImportFormatChecklist")
-        checklist_layout = QVBoxLayout(checklist)
-        checklist_layout.setContentsMargins(10, 8, 10, 8)
-        checklist_layout.setSpacing(5)
-        checklist_title = QLabel("Required format")
-        checklist_title.setObjectName("DataImportSourceTitle")
-        checklist_layout.addWidget(checklist_title)
-        checklist_layout.addWidget(
-            self._conversion_check_line("One row per label, trial, event, or interval")
-        )
-        checklist_layout.addWidget(
-            self._conversion_check_line("Required column: label")
-        )
-        checklist_layout.addWidget(
-            self._conversion_check_line(
-                "One placement column: event_code, onset_seconds, sample, or interval"
-            )
-        )
-        layout.addWidget(checklist, 1, 0, 1, 2)
-
-        example_layout = QVBoxLayout()
-        example_layout.setContentsMargins(0, 0, 0, 0)
-        example_layout.setSpacing(5)
-        example_title = QLabel("Example table")
-        example_title.setObjectName("DataImportSourceTitle")
-        example = QLabel("event_code,label\n769,left_hand\n770,right_hand")
-        example.setObjectName("DataImportCodeBlock")
-        example.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        example_layout.addWidget(example_title)
-        example_layout.addWidget(example)
-        layout.addLayout(example_layout, 1, 2)
         layout.setColumnStretch(0, 2)
         layout.setColumnStretch(1, 1)
         layout.setColumnStretch(2, 1)
         return card
-
-    @staticmethod
-    def _conversion_check_line(text: str) -> QLabel:
-        label = QLabel(text)
-        label.setObjectName("DataImportChecklistLine")
-        label.setWordWrap(True)
-        return label
 
     def _refresh_label_table_fallback(self) -> None:
         if not hasattr(self, "label_table_fallback_card"):
@@ -2537,7 +2497,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         layout.addWidget(self._pairing_header_label("Target", 64))
         layout.addWidget(self._pairing_header_label("Event", 58))
         layout.addWidget(self._pairing_header_label("Use as"), stretch=2)
-        layout.addWidget(self._pairing_header_label("Evidence"), stretch=3)
+        layout.addWidget(self._pairing_header_label("Suggestion evidence"), stretch=3)
         layout.addWidget(self._pairing_header_label("Count", 92))
         return header
 
