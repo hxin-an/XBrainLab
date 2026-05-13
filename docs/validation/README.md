@@ -230,6 +230,21 @@ Import redesign.
 | `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 13:15:27 UTC+08:00`. Includes full ruff, basedpyright, architecture, startup smoke, UI baseline, UI dialog acceptance, UI unit suite, and real-data IO. | Fast engineering dashboard is green after this checkpoint. | Product complete, release approval, or human Windows acceptance. | Human-observable desktop smoke remains required before release claims. |
 | `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS. | Canonical docs build strictly and the diff has no whitespace errors after this checkpoint record. | Documentation content is automatically complete. | Keep current/architecture/validation records tied to executed commands. |
 
+## 2026-05-13 UI Product Smoke Query-Truth Checkpoint
+
+This slice kept UX work separate: no Data Import UX redesign, no Match Labels / Review and
+Import redesign, and no answer UI redesign.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/ui/test_product_walkthrough.py tests/integration/ui/test_epoch_runtime.py -q` | `5 passed`. | Guarded UI product smokes now assert import/preprocess/epoch/split/model/training/evaluation success through `QueryStateCommand`, command diagnostics, and UI-visible state instead of direct mutable `Study` state reads. | Human Windows desktop acceptance or full zero-controller UI. | Continue migrating remaining product-evidence suites case by case. |
+| `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run python tests/architecture_compliance.py` | `75 passed` / `Architecture compliant!`. | Architecture guard now rejects direct mutable `Study` state reads and `study.get_datasets_generator()` usage in guarded UI product smokes, while existing facade/fallback/UI runtime guards remain green. | Semantic proof outside the guarded files. | Extend guard scope only after replacing existing direct-state setup patterns with command/query evidence. |
+| Product-smoke direct-state scan: `rg -n "\\.study\\.(loaded_data_list\|preprocessed_data_list\|epoch_data\|datasets\|dataset_generator\|model_holder\|training_option\|get_datasets_generator)" tests/integration/ui/test_product_walkthrough.py tests/integration/ui/test_epoch_runtime.py` | No matches. | The guarded UI product smokes no longer use mutable `Study` state as success truth. | Other integration suites that still use direct `Study` state for fixture setup or lower-level pipeline assertions. | Review those suites separately before broadening the guard. |
+| Weak-evidence scan: `rg -n -i "without crashing\|no crash\|does_not_crash\|crash\|len\\(res\\) > 0\|isinstance\\(res, str\\)\|non-empty\|not empty" tests/integration/ui/test_product_walkthrough.py tests/integration/ui/test_epoch_runtime.py` | No matches. | These product smokes do not rely on no-crash wording or generic string evidence. | Full test quality beyond the scanned patterns. | Keep behavior/state assertions as the standard for product evidence. |
+| Focused `poetry run ruff check <changed Python files>` / `poetry run basedpyright <changed Python files>` | PASS / `0 errors, 0 warnings, 0 notes`. | Changed Python files are lint/type clean. | Full repo quality by itself. | Fast dashboard also ran below. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 13:39:20 UTC+08:00`. Includes full ruff, basedpyright, architecture, startup smoke, UI baseline, UI dialog acceptance, UI unit suite, and real-data IO. | Fast engineering dashboard is green after this checkpoint. | Product complete, release approval, or human Windows acceptance. | Human-observable desktop smoke remains required before release claims. |
+| `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS. | Canonical docs build strictly and the diff has no whitespace errors after this checkpoint record. | Runtime behavior. | Re-run after future docs edits. |
+
 ## BackendFacade Retirement Map
 
 2026-05-12 physical removal status:

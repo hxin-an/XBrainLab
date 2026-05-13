@@ -2,6 +2,7 @@ from tests.architecture_compliance import (
     check_backend_facade_test_usage,
     check_product_runtime_backend_facade_usage,
     check_product_success_backend_facade_tests,
+    check_product_success_direct_study_state_tests,
     check_product_success_legacy_fallback_tests,
     check_ui_capability_gated_controller_readiness,
     check_ui_command_execution_suppresses_observer_refresh,
@@ -305,6 +306,53 @@ def test_legacy_compat():
     )
 
     assert check_product_success_legacy_fallback_tests(tmp_path) == []
+
+
+def test_product_success_study_state_guard_flags_walkthrough_state_truth(
+    tmp_path,
+):
+    path = tmp_path / "tests" / "integration" / "ui" / "test_product_walkthrough.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_walkthrough(test_app):
+    assert len(test_app.study.loaded_data_list) == 1
+    assert test_app.study.epoch_data is not None
+    generator = test_app.study.get_datasets_generator(config)
+    return generator
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_product_success_direct_study_state_tests(tmp_path)
+
+    assert len(violations) == 3
+    assert "study.loaded_data_list" in violations[0]
+    assert "study.epoch_data" in violations[1]
+    assert "study.get_datasets_generator" in violations[2]
+
+
+def test_product_success_study_state_guard_allows_command_state_truth(
+    tmp_path,
+):
+    path = tmp_path / "tests" / "integration" / "ui" / "test_product_walkthrough.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_walkthrough(test_app):
+    state = _application_state(test_app.study)
+    assert state["raw"]["count"] == 1
+    split_context = _query_diagnostics(
+        test_app.study,
+        "dataset_generation_context",
+        include_objects=True,
+    )
+    assert split_context["epoch_available"] is True
+""",
+        encoding="utf-8",
+    )
+
+    assert check_product_success_direct_study_state_tests(tmp_path) == []
 
 
 def test_direct_backend_service_execute_guard_flags_ui_bypass(tmp_path):

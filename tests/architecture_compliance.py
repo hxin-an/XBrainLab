@@ -107,6 +107,11 @@ UI_DIRECT_STUDY_STATE_ATTRIBUTES = (
     "training_option",
     "trainer",
 )
+PRODUCT_SUCCESS_DIRECT_STUDY_STATE_TEST_FILES = (
+    Path("tests/integration/ui/test_epoch_runtime.py"),
+    Path("tests/integration/ui/test_product_walkthrough.py"),
+)
+PRODUCT_SUCCESS_DIRECT_STUDY_METHODS = ("get_datasets_generator",)
 UI_DIRECT_STUDY_CONTROLLER_LOOKUP_ALLOWED_FILES: tuple[str, ...] = ()
 UI_OBSERVER_REFRESH_EVENTS = (
     "data_changed",
@@ -256,6 +261,15 @@ def check_architecture(root_dir: str) -> int:
     if fallback_test_violations:
         print("\nProduct Success Legacy Fallback Test Violations Found:")
         for violation in fallback_test_violations:
+            print(f" - {violation}")
+        return 1
+
+    product_success_study_state_violations = (
+        check_product_success_direct_study_state_tests(Path(root_dir))
+    )
+    if product_success_study_state_violations:
+        print("\nProduct Success Direct Study State Test Violations Found:")
+        for violation in product_success_study_state_violations:
             print(f" - {violation}")
         return 1
 
@@ -544,6 +558,36 @@ def check_product_success_legacy_fallback_tests(root_dir: Path) -> list[str]:
                 "coverage into explicit legacy-only unit tests."
                 for node in visitor.violations
             )
+    return violations
+
+
+def check_product_success_direct_study_state_tests(root_dir: Path) -> list[str]:
+    """Return product-success tests that use mutable Study state as success truth."""
+    violations: list[str] = []
+
+    for relative_file in PRODUCT_SUCCESS_DIRECT_STUDY_STATE_TEST_FILES:
+        py_file = root_dir / relative_file
+        if not py_file.exists():
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+        visitor = _ProductSuccessStudyStateVisitor()
+        visitor.visit(tree)
+        violations.extend(
+            f"{relative_file}:{attr.lineno} reads study.{attr.attr} as "
+            "product-success evidence; assert ApplicationService / "
+            "QueryStateCommand state or UI-visible state instead."
+            for attr in visitor.state_reads
+        )
+        violations.extend(
+            f"{relative_file}:{call.lineno} calls study.{_call_name(call.func)}() "
+            "as product-success setup/evidence; use ApplicationService query "
+            "diagnostics or a command-owned object source instead."
+            for call in visitor.study_method_calls
+        )
     return violations
 
 
@@ -1231,6 +1275,32 @@ class _DirectStudyStateReadVisitor(ast.NodeVisitor):
             return
         if _expression_mentions_study(node.value):
             self.violations.append(node)
+            return
+        self.generic_visit(node)
+
+
+class _ProductSuccessStudyStateVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.state_reads: list[ast.Attribute] = []
+        self.study_method_calls: list[ast.Call] = []
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        if (
+            isinstance(node.ctx, ast.Load)
+            and node.attr in UI_DIRECT_STUDY_STATE_ATTRIBUTES
+            and _expression_mentions_study(node.value)
+        ):
+            self.state_reads.append(node)
+            return
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if (
+            _call_name(node.func) in PRODUCT_SUCCESS_DIRECT_STUDY_METHODS
+            and isinstance(node.func, ast.Attribute)
+            and _expression_mentions_study(node.func.value)
+        ):
+            self.study_method_calls.append(node)
             return
         self.generic_visit(node)
 

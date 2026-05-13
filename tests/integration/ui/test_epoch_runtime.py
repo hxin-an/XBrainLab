@@ -67,7 +67,9 @@ def test_real_gdf_epoching_does_not_block_on_success_modal(qtbot, monkeypatch):
     elapsed = perf_counter() - start
 
     assert elapsed < 10.0
-    assert study.epoch_data is not None
+    state_result = service.execute(QueryStateCommand(query="state"))
+    assert state_result.ok, state_result.message
+    assert state_result.diagnostics["state"]["epoch"]["exists"] is True
     success_dialog.assert_not_called()
     status_bar = window.statusBar()
     assert status_bar is not None

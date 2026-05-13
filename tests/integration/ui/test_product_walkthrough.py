@@ -18,6 +18,7 @@ from XBrainLab.backend.application import (
     get_application_service,
 )
 from XBrainLab.backend.dataset import (
+    DatasetGenerator,
     DataSplitter,
     DataSplittingConfig,
     SplitByType,
@@ -39,9 +40,15 @@ def _click(qtbot, button) -> None:
 
 
 def _application_state(study):
-    result = get_application_service(study).execute(QueryStateCommand(query="state"))
+    return _query_diagnostics(study, "state")["state"]
+
+
+def _query_diagnostics(study, query: str, *, include_objects: bool = False):
+    result = get_application_service(study).execute(
+        QueryStateCommand(query=query, include_objects=include_objects),
+    )
     assert result.ok, result.message
-    return result.diagnostics["state"]
+    return result.diagnostics
 
 
 def _write_synthetic_raw_fif(tmp_path):
@@ -294,11 +301,16 @@ def test_import_command_success_refreshes_dataset_table_without_stale_controller
         PreviewDialog.return_value.get_result.return_value = {"confirmed": True}
         _click(qtbot, test_app.dataset_panel.sidebar.import_btn)
 
-    assert len(test_app.study.loaded_data_list) == 1
+    assert _application_state(test_app.study)["raw"]["count"] == 1
+    loaded_objects = _query_diagnostics(
+        test_app.study,
+        "data_lists",
+        include_objects=True,
+    )["loaded_data_list"]
     assert test_app.dataset_panel.table.rowCount() == 1
     assert (
         test_app.dataset_panel.table.item(0, 0).data(Qt.ItemDataRole.UserRole)
-        is test_app.study.loaded_data_list[0]
+        is loaded_objects[0]
     )
     stale_render.assert_not_called()
     stale_sidebar.assert_not_called()
@@ -324,7 +336,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         assert test_app.dataset_panel.sidebar.import_btn.text() == "Import file"
         _click(qtbot, test_app.dataset_panel.sidebar.import_btn)
 
-    assert test_app.study.loaded_data_list
+    assert _application_state(test_app.study)["raw"]["count"] == 1
     assert test_app.dataset_panel.table.rowCount() == 1
 
     _click(qtbot, test_app.nav_btns[1])
@@ -354,14 +366,14 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         FakeFilteringDialog,
     ):
         _click(qtbot, test_app.preprocess_panel.sidebar.btn_filter)
-    assert test_app.study.preprocessed_data_list
+    assert _application_state(test_app.study)["preprocessed"]["count"] == 1
 
     with patch(
         "XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog",
         FakeEpochingDialog,
     ):
         _click(qtbot, test_app.preprocess_panel.sidebar.btn_epoch)
-    assert test_app.study.epoch_data is not None
+    assert _application_state(test_app.study)["epoch"]["exists"] is True
 
     _click(qtbot, test_app.nav_btns[2])
 
@@ -383,7 +395,13 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
             )
         ],
     )
-    generator = test_app.study.get_datasets_generator(split_config)
+    split_context = _query_diagnostics(
+        test_app.study,
+        "dataset_generation_context",
+        include_objects=True,
+    )
+    assert split_context["epoch_available"] is True
+    generator = DatasetGenerator(split_context["epoch_data"], config=split_config)
 
     class FakeSplitDialog:
         def __init__(self, _parent, _controller, **_dialog_context):
@@ -405,6 +423,8 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         def get_result(self):
             return ModelHolder(EEGNet, {}, None)
 
+    training_option_holder = {}
+
     class FakeTrainingSettingDialog:
         def __init__(self, _parent, _controller, **_dialog_context):
             pass
@@ -413,7 +433,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
             return True
 
         def get_result(self):
-            return TrainingOption(
+            option = TrainingOption(
                 output_dir=str(tmp_path / "training-output"),
                 optim=torch.optim.Adam,
                 optim_params={},
@@ -426,25 +446,33 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
                 evaluation_option=TrainingEvaluation.TEST_ACC,
                 repeat_num=1,
             )
+            training_option_holder["option"] = option
+            return option
 
     with patch(
         "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog", FakeSplitDialog
     ):
         _click(qtbot, test_app.training_panel.sidebar.btn_split)
-    assert test_app.study.datasets
+    dataset_state = _application_state(test_app.study)["dataset"]
+    assert dataset_state["count"] > 0
 
     with patch(
         "XBrainLab.ui.panels.training.sidebar.ModelSelectionDialog", FakeModelDialog
     ):
         _click(qtbot, test_app.training_panel.sidebar.btn_model)
-    assert test_app.study.model_holder is not None
+    training_state = _application_state(test_app.study)["training"]
+    assert training_state["has_model"] is True
+    assert training_state["model_name"] == "EEGNet"
 
     with patch(
         "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog",
         FakeTrainingSettingDialog,
     ):
         _click(qtbot, test_app.training_panel.sidebar.btn_setting)
-    assert test_app.study.training_option is not None
+    training_state = _application_state(test_app.study)["training"]
+    assert training_state["has_training_option"] is True
+    assert training_state["training_option"]["epoch"] == 1
+    assert training_state["training_option"]["batch_size"] == 2
     assert test_app.training_panel.sidebar.btn_start.isEnabled()
 
     service = get_application_service(test_app.study)
@@ -484,7 +512,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
             get_confusion_figure=lambda show_percentage=False: Figure(figsize=(3, 2)),
         )
         model_holder = ModelHolder(EEGNet, {}, None)
-        option = test_app.study.training_option
+        option = training_option_holder["option"]
         plan = SimpleNamespace(
             model_holder=model_holder,
             option=option,
