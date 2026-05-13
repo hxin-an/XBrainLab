@@ -15,6 +15,61 @@ from XBrainLab.llm.pipeline_state import (
     compute_pipeline_stage,
 )
 
+EXPECTED_STAGE_LABELS = {
+    PipelineStage.EMPTY: "Empty (No Data)",
+    PipelineStage.DATA_LOADED: "Data Loaded",
+    PipelineStage.PREPROCESSED: "Preprocessed",
+    PipelineStage.DATASET_READY: "Dataset Ready",
+    PipelineStage.TRAINING: "Training In Progress",
+    PipelineStage.TRAINED: "Trained",
+}
+
+EXPECTED_STAGE_PROMPT_MARKERS = {
+    PipelineStage.EMPTY: (
+        "## Current Stage: Empty (No Data)",
+        "start the Data Interpretation workflow",
+        "'scan_source'",
+        "'reload_interpretation_recipe'",
+        "Do NOT suggest preprocessing or training",
+    ),
+    PipelineStage.DATA_LOADED: (
+        "## Current Stage: Data Loaded",
+        "EEG preprocessing guide",
+        "'apply_standard_preprocess'",
+        "Data Interpretation tools",
+        "Do NOT suggest training-related steps yet",
+    ),
+    PipelineStage.PREPROCESSED: (
+        "## Current Stage: Preprocessed",
+        "EEG dataset generation guide",
+        "'generate_dataset'",
+        "Data Interpretation preview",
+        "Do NOT suggest model selection or training",
+    ),
+    PipelineStage.DATASET_READY: (
+        "## Current Stage: Dataset Ready",
+        "EEG model training guide",
+        "'set_model'",
+        "'configure_training'",
+        "'start_training'",
+        "dataset is locked",
+    ),
+    PipelineStage.TRAINING: (
+        "## Current Stage: Training In Progress",
+        "training job is currently running",
+        "'switch_panel'",
+        "Do NOT try to start another training run",
+    ),
+    PipelineStage.TRAINED: (
+        "## Current Stage: Trained",
+        "EEG results & iteration",
+        "'evaluate'",
+        "'visualize'",
+        "'saliency'",
+        "'clear_dataset'",
+    ),
+}
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -145,7 +200,15 @@ class TestStageConfig:
             assert "system_prompt" in config, f"{stage}: missing 'system_prompt'"
             assert isinstance(config["tools"], list)
             assert isinstance(config["system_prompt"], str)
-            assert len(config["system_prompt"]) > 0
+
+    def test_every_system_prompt_matches_stage_contract(self):
+        for stage, markers in EXPECTED_STAGE_PROMPT_MARKERS.items():
+            prompt = STAGE_CONFIG[stage]["system_prompt"]
+            assert prompt.startswith("You are XBrainLab Assistant"), stage
+            assert "### What you should do" in prompt, stage
+            assert "### What you should NOT do" in prompt, stage
+            for marker in markers:
+                assert marker in prompt, f"{stage}: missing prompt marker {marker!r}"
 
     def test_switch_panel_available_in_all_stages(self):
         for stage, config in STAGE_CONFIG.items():
@@ -220,15 +283,8 @@ class TestStageConfig:
 
 
 class TestPipelineStageLabel:
-    def test_every_stage_has_label(self):
-        for stage in PipelineStage:
-            assert isinstance(stage.label, str)
-            assert len(stage.label) > 0
-
-    def test_label_is_human_friendly(self):
-        assert PipelineStage.EMPTY.label == "Empty (No Data)"
-        assert PipelineStage.DATA_LOADED.label == "Data Loaded"
-        assert PipelineStage.TRAINING.label == "Training In Progress"
+    def test_every_stage_label_matches_display_contract(self):
+        assert {stage: stage.label for stage in PipelineStage} == EXPECTED_STAGE_LABELS
 
 
 # ---------------------------------------------------------------------------

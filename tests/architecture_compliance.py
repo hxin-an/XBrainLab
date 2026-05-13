@@ -170,6 +170,7 @@ MCP_EXACT_EVIDENCE_TEST_DIRS = (
     Path("tests/unit/mcp"),
     Path("tests/integration/mcp"),
 )
+PIPELINE_STATE_EXACT_EVIDENCE_TEST = Path("tests/unit/llm/test_pipeline_state.py")
 DOC_CURRENT_TRUTH_FILES = (
     Path("docs/current.md"),
     Path("docs/index.md"),
@@ -373,6 +374,15 @@ def check_architecture(root_dir: str) -> int:
     if mcp_weak_assertion_violations:
         print("\nMCP Weak Response Assertion Violations Found:")
         for violation in mcp_weak_assertion_violations:
+            print(f" - {violation}")
+        return 1
+
+    pipeline_state_weak_assertion_violations = (
+        check_pipeline_state_weak_string_assertions(Path(root_dir))
+    )
+    if pipeline_state_weak_assertion_violations:
+        print("\nPipeline State Weak String Assertion Violations Found:")
+        for violation in pipeline_state_weak_assertion_violations:
             print(f" - {violation}")
         return 1
 
@@ -863,6 +873,27 @@ def check_mcp_weak_response_assertions(root_dir: Path) -> list[str]:
     return violations
 
 
+def check_pipeline_state_weak_string_assertions(root_dir: Path) -> list[str]:
+    """Return pipeline-state tests that use generic non-empty string assertions."""
+    test_file = root_dir / PIPELINE_STATE_EXACT_EVIDENCE_TEST
+    if not test_file.exists():
+        return []
+
+    try:
+        tree = ast.parse(test_file.read_text(encoding="utf-8"), filename=str(test_file))
+    except SyntaxError:
+        return []
+
+    visitor = _PipelineStateWeakStringAssertionVisitor()
+    visitor.visit(tree)
+    return [
+        f"{PIPELINE_STATE_EXACT_EVIDENCE_TEST}:{node.lineno} uses a generic "
+        "non-empty pipeline state string assertion; assert exact stage prompt "
+        "markers or the full stage-label display contract instead."
+        for node in visitor.violations
+    ]
+
+
 def check_docs_current_truth_overclaims(root_dir: Path) -> list[str]:
     """Return current-truth docs that present target/acceptance as complete."""
     violations: list[str] = []
@@ -904,6 +935,49 @@ class _MCPWeakResponseAssertionVisitor(ast.NodeVisitor):
         if name_node is not None:
             self.violations.append(name_node)
         self.generic_visit(node)
+
+
+class _PipelineStateWeakStringAssertionVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.violations: list[ast.Assert] = []
+
+    def visit_Assert(self, node: ast.Assert) -> None:
+        if _is_generic_non_empty_string_assertion(node.test):
+            self.violations.append(node)
+        self.generic_visit(node)
+
+
+def _is_generic_non_empty_string_assertion(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Compare):
+        return False
+    if len(node.ops) != 1 or not isinstance(node.ops[0], ast.Gt):
+        return False
+    if len(node.comparators) != 1:
+        return False
+    comparator = node.comparators[0]
+    if not isinstance(comparator, ast.Constant) or comparator.value != 0:
+        return False
+    if not isinstance(node.left, ast.Call):
+        return False
+    if _call_name(node.left.func) != "len" or len(node.left.args) != 1:
+        return False
+    target = node.left.args[0]
+    return _is_pipeline_state_string_target(target)
+
+
+def _is_pipeline_state_string_target(node: ast.AST) -> bool:
+    if isinstance(node, ast.Subscript):
+        if not isinstance(node.value, ast.Name) or node.value.id != "config":
+            return False
+        key = node.slice
+        return isinstance(key, ast.Constant) and key.value == "system_prompt"
+    if isinstance(node, ast.Attribute):
+        return (
+            node.attr == "label"
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "stage"
+        )
+    return False
 
 
 def _generic_non_none_assertion_name(node: ast.AST) -> ast.Name | None:

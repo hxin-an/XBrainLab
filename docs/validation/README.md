@@ -17,7 +17,7 @@
 | Gate | 最近可信結果 | 用途 | 不能取代 |
 | --- | --- | --- | --- |
 | Fast quality dashboard | 2026-05-14 00:11:43 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
-| Architecture compliance | 最近 checkpoint `Architecture compliant!`，guard unit `91 passed` | 阻擋已知 `BackendFacade`、legacy fallback、direct state、positive controller lookup、docs overclaim 等 regression。 | runtime semantic proof for every possible path。 |
+| Architecture compliance | 最近 checkpoint `Architecture compliant!`，guard unit `95 passed` | 阻擋已知 `BackendFacade`、legacy fallback、direct state、positive controller lookup、docs overclaim、weak protocol/string evidence 等 regression。 | runtime semantic proof for every possible path。 |
 | Focused UI integration | `test_ui_refresh.py`、`test_ui_integration.py`、`test_panel_controller_binding.py` -> `8 passed` | MainWindow launch/navigation/tab-refresh 和 injected controller event wiring 不再把 legacy lookup 當成功證據。 | full zero-controller UI 或人工桌面驗收。 |
 | Product smokes / real tools | guarded UI product smokes、epoch runtime、real-tools suites recently PASS | product evidence 轉向 `QueryStateCommand` / command diagnostics / UI-visible state。 | 所有 integration tests 都已清成 product evidence。 |
 | `mkdocs build --strict` | 最近 checkpoint PASS | 文件站可建且連結/nav 基本有效。 | 文件內容一定正確或容易讀。 |
@@ -30,6 +30,7 @@
 | --- | --- | --- | --- |
 | MCP / headless status 是否仍走 command state | [MCP direct Study-state guard](#2026-05-13-mcp-direct-study-state-guard-checkpoint) 和 [MCP HTTP progress command-state](#2026-05-13-mcp-http-progress-command-state-checkpoint) | MCP progress/status 不回到 direct mutable `Study` read 或 controller lookup bypass。 | full external MCP client certification。 |
 | MCP stdio / HTTP tests 是否仍只證明有 response | [MCP JSON-RPC exact evidence](#2026-05-14-mcp-json-rpc-exact-evidence-checkpoint) | MCP tests 檢查 JSON-RPC envelope、request id、error/result separation、tool schema、structuredContent、adapter session、command name 和 accepted/status。 | external MCP client certification、remote security review、or long-running job durability。 |
+| Agent pipeline stage prompt / label tests 是否仍只看 non-empty | [Agent pipeline-state exact prompt evidence](#2026-05-14-agent-pipeline-state-exact-prompt-evidence-checkpoint) | Stage config tests 檢查每個 stage 的 prompt markers、action/blocked guidance、exact label map，且 architecture guard 擋回 generic non-empty string assertion。 | local-model session quality、tool-call benchmark accuracy、or assistant UX acceptance。 |
 | Evaluation panel 是否還會顯示 stale metrics | [Evaluation display command evidence](#2026-05-13-evaluation-display-command-evidence-checkpoint) | service-owned average metrics 缺失時清空 stale display。 | human evaluation UX acceptance。 |
 | Data Import runtime / agent-MCP schema 是否仍可引用 | [Data Import runtime integration](#2026-05-13-data-import-runtime-integration-checkpoint) | command/service/dialog contracts 和 agent/MCP baseline。 | final Match Labels / Review and Import UX。 |
 | 測試是否能擋 facade / legacy fallback 回流 | [Backend test hygiene inventory](#backend-test-hygiene-inventory) 和 architecture guard checkpoints | 已知 forbidden product-success evidence 被 guard。 | semantic proof for every lower-level test。 |
@@ -84,6 +85,22 @@ current truth 以這些文件為準：
 - [planning/roadmap.md](../planning/roadmap.md)
 - [architecture/README.md](../architecture/README.md)
 - [validation/README.md](README.md)
+
+## 2026-05-14 Agent Pipeline-State Exact Prompt Evidence Checkpoint
+
+This test-quality slice did not change agent runtime behavior. It tightened
+`tests/unit/llm/test_pipeline_state.py` so stage configuration no longer passes because
+`system_prompt` or `PipelineStage.label` is merely non-empty. The tests now assert exact
+stage-label display text and stage-specific prompt markers for Data Interpretation entry,
+preprocessing, dataset generation, training readiness, locked training, and trained-analysis
+guidance. Architecture compliance now rejects generic non-empty string assertions in this file.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `poetry run pytest --capture=sys tests/unit/llm/test_pipeline_state.py -q` | `25 passed` | Pipeline stage tests check exact labels and prompt contract markers instead of generic non-empty strings. | Assistant UX acceptance, local-model quality, or tool-call benchmark accuracy. | Keep prompt checks tied to workflow guidance, not incidental wording. |
+| Weak-evidence scan: `rg -n "assert .* is not None\|len\\(.+\\) > 0\|non-empty\|no crash\|no_crash\|does_not_crash" tests/unit/llm/test_pipeline_state.py` | No matches. | The targeted pipeline-state test file no longer contains the scanned weak assertion patterns. | Full LLM test-suite quality. | Continue case-by-case cleanup where stronger behavior evidence exists. |
+| `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `poetry run python tests/architecture_compliance.py` | `95 passed` / `Architecture compliant!` | Architecture guard now rejects generic non-empty pipeline-state string assertions while allowing exact prompt/label contracts. | Semantic proof for every LLM test file. | Extend only after targeted files have replacement exact evidence. |
+| `poetry run ruff check tests/unit/llm/test_pipeline_state.py tests/architecture_compliance.py tests/unit/test_architecture_compliance.py` / `poetry run basedpyright tests/unit/llm/test_pipeline_state.py tests/architecture_compliance.py tests/unit/test_architecture_compliance.py` | PASS / `0 errors, 0 warnings, 0 notes`. | Changed test and guard files are lint and type clean. | Runtime behavior by itself. | Pair static checks with focused behavior tests. |
 
 ## 2026-05-14 MCP JSON-RPC Exact Evidence Checkpoint
 

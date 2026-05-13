@@ -4,6 +4,7 @@ from tests.architecture_compliance import (
     check_llm_direct_study_state_reads,
     check_mcp_direct_study_state_reads,
     check_mcp_weak_response_assertions,
+    check_pipeline_state_weak_string_assertions,
     check_product_runtime_backend_facade_usage,
     check_product_success_backend_facade_tests,
     check_product_success_controller_lookup_assertions,
@@ -125,6 +126,54 @@ def test_mcp_response_shape(server):
     )
 
     assert check_mcp_weak_response_assertions(tmp_path) == []
+
+
+def test_pipeline_state_weak_string_guard_flags_generic_non_empty_assertions(tmp_path):
+    path = tmp_path / "tests" / "unit" / "llm" / "test_pipeline_state.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_every_config_has_tools_and_system_prompt():
+    for stage, config in STAGE_CONFIG.items():
+        assert len(config["system_prompt"]) > 0
+
+
+def test_every_stage_has_label():
+    for stage in PipelineStage:
+        assert len(stage.label) > 0
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_pipeline_state_weak_string_assertions(tmp_path)
+
+    assert len(violations) == 2
+    assert "generic non-empty pipeline state string assertion" in violations[0]
+    assert "exact stage prompt markers" in violations[0]
+    assert "stage-label display contract" in violations[1]
+
+
+def test_pipeline_state_weak_string_guard_allows_exact_contracts(tmp_path):
+    path = tmp_path / "tests" / "unit" / "llm" / "test_pipeline_state.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_every_system_prompt_matches_stage_contract():
+    for stage, markers in EXPECTED_STAGE_PROMPT_MARKERS.items():
+        prompt = STAGE_CONFIG[stage]["system_prompt"]
+        assert prompt.startswith("You are XBrainLab Assistant"), stage
+        assert "### What you should do" in prompt, stage
+        for marker in markers:
+            assert marker in prompt, f"{stage}: missing prompt marker {marker!r}"
+
+
+def test_every_stage_label_matches_display_contract():
+    assert {stage: stage.label for stage in PipelineStage} == EXPECTED_STAGE_LABELS
+""",
+        encoding="utf-8",
+    )
+
+    assert check_pipeline_state_weak_string_assertions(tmp_path) == []
 
 
 def test_docs_current_truth_guard_flags_product_complete_overclaim(tmp_path):
