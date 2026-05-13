@@ -1253,12 +1253,14 @@ def test_converted_label_table_dialog_shows_required_format(qtbot):
     )
     assert "XBrainLab label table" in visible_text
     assert "which values are labels" in visible_text
-    assert "Each row means" in visible_text
-    assert "one label, trial, event, or labeled interval" in visible_text
-    assert "Required" in visible_text
-    assert "label" in visible_text
-    assert "Also include one" in visible_text
-    assert "onset_seconds + duration_seconds" in visible_text
+    assert "One row per label" in visible_text
+    assert "Column named label" in visible_text
+    assert "One placement column" in visible_text
+    assert "Choose the placement that matches your file" in visible_text
+    assert "event_code,label" in visible_text
+    assert "onset_seconds,label" in visible_text
+    assert "sample,label" in visible_text
+    assert "onset_seconds,duration_seconds,label" in visible_text
     assert "Example: labels follow EEG event codes" in visible_text
     assert "769,left_hand" in visible_text
     assert "Example: labels have timestamps" in visible_text
@@ -1312,18 +1314,19 @@ def test_match_labels_shows_conversion_fallback_when_label_field_is_missing(
     visible_text = _visible_step_text(dialog, "Match Labels")
     assert "label format needs conversion" in visible_text
     assert "ready to place on EEG" not in visible_text
-    assert "Label file needs conversion" in visible_text
-    assert "cannot find a usable label column" in visible_text
-    assert "one row per label" in visible_text
-    assert "one alignment column" in visible_text
-    assert "Example: event_code,label = 769,left_hand" in visible_text
+    assert "XBrainLab cannot match this label file yet" in visible_text
+    assert "cannot tell which column or variable contains the labels" in visible_text
+    assert "One row per label" in visible_text
+    assert "One placement column" in visible_text
+    assert "event_code,label" in visible_text
+    assert "769,left_hand" in visible_text
     assert "Label values and placement" not in visible_text
     assert "Read labels from" not in visible_text
     assert "Place labels by" not in visible_text
     assert "Check" not in visible_text
     assert "converted CSV/TSV" not in visible_text
 
-    _click_button(dialog, "View table format")
+    _click_button(dialog, "View examples")
     qtbot.wait(0)
 
     assert opened["value"] is True
