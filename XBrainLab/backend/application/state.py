@@ -75,6 +75,7 @@ class TrainingStateSnapshot:
     plan_count: int = 0
     run_count: int = 0
     finished_run_count: int = 0
+    progress_message: str | None = None
     missing_requirements: list[str] = field(default_factory=list)
 
 

@@ -128,6 +128,9 @@ class _TrainingController:
     def is_training(self) -> bool:
         return False
 
+    def get_progress_text(self) -> str:
+        return "Epoch 2/10"
+
     def get_missing_requirements(self) -> list[str]:
         return ["model"]
 
@@ -200,6 +203,7 @@ def test_state_snapshot_service_builds_workflow_snapshot() -> None:
     assert state.epoch.available is True
     assert state.epoch.event_ids == {"left": 1}
     assert state.dataset.count == 1
+    assert state.training.progress_message == "Epoch 2/10"
     assert state.visualization.saliency_configured is True
     assert state.interpretation.has_scan_result is True
     assert state.active_dataset.has_epoch_data is True

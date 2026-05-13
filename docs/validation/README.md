@@ -335,6 +335,20 @@ still refuses stale controller pooled-metric fallback for real `Study` contexts.
 | `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS | Documentation builds strictly and the checkpoint diff is whitespace clean after current-truth updates. | Runtime behavior by itself. | Re-run after future docs edits. |
 | `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 21:51:50 UTC+08:00`; UI unit suite `1137 passed`, real-data IO `31 passed, 8 warnings`. | Fast engineering dashboard remains green after the EvaluationPanel display fix. | Product complete, human Windows acceptance, or long local-model session. | Treat dashboard as health evidence only. |
 
+## 2026-05-13 MCP HTTP Progress Command-State Checkpoint
+
+This headless/MCP slice removed a direct mutable `Study` read from HTTP job progress reporting.
+`TrainingStateSnapshot` now carries an optional `progress_message`, populated through the backend
+training controller inside the ApplicationService state builder. HTTP MCP job status reads that
+snapshot instead of `service.study.trainer`.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| Red tests: `poetry run pytest --capture=sys tests/unit/mcp/test_http_server.py::test_training_progress_message_uses_application_state_not_study_trainer -q` and `poetry run pytest --capture=sys tests/unit/backend/application/test_state_service.py::test_state_snapshot_service_builds_workflow_snapshot -q` before the fix | Failed as expected: MCP progress read `service.study.trainer`, and state snapshot had no `training.progress_message`. | Reproduced a concrete headless runtime bypass of ApplicationService state truth. | Full MCP client certification or durable job persistence. | Keep HTTP job status state-owned. |
+| Same focused tests after the fix | `1 passed` / `1 passed` | MCP progress message can be served from ApplicationService state without reading `service.study.trainer`; state snapshot exposes training progress text. | All job types or long-running training acceptance. | Extend this pattern if evaluation / visualization jobs are added. |
+| `poetry run pytest --capture=sys tests/unit/mcp/test_http_server.py tests/unit/mcp/test_server.py tests/unit/backend/application/test_state_service.py -q` | `17 passed` | MCP HTTP/stdio baseline and state query contracts remain green after moving progress truth into ApplicationService state. | External MCP client certification or human desktop acceptance. | Keep transport behavior separated from desktop UI refresh claims. |
+| Focused `ruff` / `basedpyright` / `ruff format --check`, plus `poetry run python tests/architecture_compliance.py` | PASS / `0 errors, 0 warnings, 0 notes` / PASS / `Architecture compliant!` | Changed MCP/backend state files are lint/type/format clean and keep current architecture guard green. | Product complete. | Run docs/diff before checkpoint commit. |
+
 ## 2026-05-13 Data Import Runtime Integration Checkpoint
 
 | Command | Result | Claim supported | Claim not supported | Follow-up |

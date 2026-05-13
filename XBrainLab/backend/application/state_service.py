@@ -128,6 +128,9 @@ class StateSnapshotService:
             plan_count=evaluation.total_plans,
             run_count=evaluation.total_runs,
             finished_run_count=evaluation.finished_runs,
+            progress_message=self._safe_string_call(
+                getattr(self.training, "get_progress_text", None),
+            ),
             missing_requirements=self._safe_list(
                 self.training.get_missing_requirements,
             ),
@@ -544,6 +547,19 @@ class StateSnapshotService:
             return bool(call())
         except Exception:
             return False
+
+    @staticmethod
+    def _safe_string_call(call: Callable[[], Any] | None) -> str | None:
+        if not callable(call):
+            return None
+        try:
+            value = call()
+        except Exception:
+            return None
+        if value is None:
+            return None
+        text = str(value)
+        return text if text else None
 
 
 class QueryStateCommandService:

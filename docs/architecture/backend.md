@@ -348,7 +348,8 @@ token；token 比對使用 constant-time compare，JSON-RPC body 也有 bounded 
 local external-agent adapter，不是遠端多使用者服務或完整 authorization server。Backend-ready
 long-running `train` over HTTP 現在會建立 in-memory job，並提供 `GET /jobs` list、
 `GET /jobs/{id}` status / progress snapshot 和 `POST /jobs/{id}/cancel` cancellation endpoint；
-cancel 仍透過
+progress message 由 `ApplicationService.get_state().training.progress_message` 提供，不直接讀
+`service.study.trainer`；cancel 仍透過
 `StopTrainingCommand` / `ApplicationService.execute()`，不直接碰 controller。HTTP registry 也會
 拒絕同一 session 內 duplicate train start：既有 job 正在 start 或 running 時回
 `job_already_running`，不會啟動第二個 training command；cancelled / completed job records 會

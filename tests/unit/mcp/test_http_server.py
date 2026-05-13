@@ -5,12 +5,13 @@ import socket
 from http.client import HTTPConnection
 from pathlib import Path
 from threading import Event, Thread
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
 
 from XBrainLab.backend.application import ApplicationService
 from XBrainLab.backend.study import Study
-from XBrainLab.mcp.http_server import build_http_server
+from XBrainLab.mcp.http_server import _training_progress_message, build_http_server
 from XBrainLab.mcp.server import PROTOCOL_VERSION
 
 
@@ -315,6 +316,21 @@ def test_http_mcp_train_uses_job_api_with_status_and_cancel():
         httpd.shutdown()
         httpd.server_close()
         thread.join(timeout=10)
+
+
+def test_training_progress_message_uses_application_state_not_study_trainer():
+    class ForbiddenStudy:
+        @property
+        def trainer(self):
+            raise AssertionError("MCP progress must not read service.study.trainer")
+
+    state = SimpleNamespace(
+        training=SimpleNamespace(progress_message="Epoch 2/10"),
+        active_training=SimpleNamespace(is_running=True),
+    )
+    service = SimpleNamespace(study=ForbiddenStudy(), get_state=lambda: state)
+
+    assert _training_progress_message(cast(Any, service)) == "Epoch 2/10"
 
 
 def test_http_mcp_rejects_duplicate_train_start_while_job_is_starting():

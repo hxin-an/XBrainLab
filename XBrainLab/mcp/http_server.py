@@ -525,19 +525,10 @@ def _job_status(record: MCPHTTPJobRecord, running: bool) -> str:
 
 
 def _training_progress_message(service: ApplicationService) -> str:
-    trainer = getattr(service.study, "trainer", None)
-    if trainer is not None and hasattr(trainer, "get_progress_text"):
-        try:
-            message = trainer.get_progress_text()
-        except Exception:
-            logging.getLogger("XBrainLab.mcp.http").debug(
-                "Training progress text lookup failed",
-                exc_info=True,
-            )
-        else:
-            if isinstance(message, str) and message:
-                return message
     state = service.get_state()
+    progress_message = getattr(state.training, "progress_message", None)
+    if isinstance(progress_message, str) and progress_message:
+        return progress_message
     if state.active_training.is_running:
         return "Training is running."
     return "Training is not running."

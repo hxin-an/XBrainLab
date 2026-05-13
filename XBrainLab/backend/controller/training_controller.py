@@ -173,6 +173,17 @@ class TrainingController(Observable):
         """
         return self._study.trainer
 
+    def get_progress_text(self) -> str:
+        """Return the active trainer progress text, if available."""
+        trainer = self._study.trainer
+        if trainer is None or not hasattr(trainer, "get_progress_text"):
+            return ""
+        try:
+            progress = trainer.get_progress_text()
+        except Exception:
+            return ""
+        return str(progress or "")
+
     def get_formatted_history(self) -> list[dict]:
         """Return structured training history for UI display.
 
