@@ -55,7 +55,6 @@ TRAINING_OUTPUT_DIR = TEMP_ROOT / "xbrainlab-chatpanel-training-completion-outpu
 SOURCE_DIR = TEMP_ROOT / "xbrainlab_chatpanel_training_completion"
 SOURCE_PATH = SOURCE_DIR / "training_completion_raw.fif"
 READY_SCREENSHOT = "chatpanel-training-completion-ready.png"
-TRAINED_SCREENSHOT = "chatpanel-training-completion-trained.png"
 JSON_ARTIFACT = "chatpanel-local-training-completion-walkthrough.json"
 MD_ARTIFACT = "chatpanel-local-training-completion-walkthrough.md"
 
@@ -500,11 +499,10 @@ def run_training_completion_walkthrough(
             if int(training.get("finished_run_count") or 0) < 1:
                 fail("Training stopped without a completed run.")
                 return
-            trained_path = output_dir / TRAINED_SCREENSHOT
-            if _capture_current_window(window, trained_path) != 0:
-                fail("Trained-state screenshot was blank or could not be saved.")
+            if not state["turns"]:
+                fail("Training completed before a turn screenshot was captured.")
                 return
-            state["trained_screenshot"] = str(trained_path)
+            state["trained_screenshot"] = state["turns"][-1]["screenshot"]
             if index + 1 < len(prompts):
                 QTimer.singleShot(500, lambda: send_prompt(index + 1))
             else:

@@ -40,7 +40,6 @@ TEMP_ROOT = Path(tempfile.gettempdir())
 TRAINING_OUTPUT_DIR = TEMP_ROOT / "xbrainlab-visualization-render-output"
 JSON_ARTIFACT = "visualization-render-walkthrough.json"
 MD_ARTIFACT = "visualization-render-walkthrough.md"
-READY_SCREENSHOT = "visualization-render-ready.png"
 RENDER_TAB_SPECS: list[dict[str, str]] = [
     {
         "tab": "Saliency Map",
@@ -176,17 +175,6 @@ def run_visualization_render_walkthrough(
     window.switch_page(4)
     _process_events(app, 800)
 
-    ready_path = output_dir / READY_SCREENSHOT
-    if _capture_current_window(window, ready_path) != 0:
-        window.close()
-        return _finish_payload(
-            payload,
-            service,
-            started_at,
-            "Ready visualization screenshot was blank or could not be saved.",
-        )
-    payload["screenshots"]["ready"] = str(ready_path)
-
     panel = window.visualization_panel
     payload["ui_state"] = {
         "current_panel": "Visualization",
@@ -206,6 +194,8 @@ def run_visualization_render_walkthrough(
         payload["renders"].append(render)
         if not render["ok"]:
             break
+    if payload["renders"]:
+        payload["screenshots"]["ready"] = payload["renders"][0]["screenshot"]
     if all(render.get("ok") for render in payload["renders"]):
         for spec in BLOCKED_TAB_SPECS:
             payload["blocked_renders"].append(

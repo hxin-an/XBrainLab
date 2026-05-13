@@ -11,7 +11,7 @@
 
 - passed: `True`
 - phases: `26` / `26`
-- screenshots: `20`
+- screenshots: `19`
 - human desktop acceptance: `not performed`
 - resource smoke passed: `True`
 - RSS growth: `235188` KB / limit `600000` KB
@@ -20,7 +20,7 @@
 
 - main_initial: `artifacts/ui/human-like-walkthrough/01-main-initial.png`
 - dataset_page: `artifacts/ui/human-like-walkthrough/02-dataset-page.png`
-- source_selection: `artifacts/ui/human-like-walkthrough/03-source-selection.png`
+- source_selection: `artifacts/ui/human-like-walkthrough/02-dataset-page.png`
 - wizard_preview: `artifacts/ui/human-like-walkthrough/04-interpretation-preview.png`
 - wizard_confirm: `artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png`
 - applied: `artifacts/ui/human-like-walkthrough/06-interpretation-applied.png`
@@ -65,8 +65,8 @@
 
 - `app_startup` -> `artifacts/ui/human-like-walkthrough/01-main-initial.png`
 - `main_window_initial_state` -> `artifacts/ui/human-like-walkthrough/02-dataset-page.png`
-- `data_source_selection` -> `artifacts/ui/human-like-walkthrough/03-source-selection.png`
-- `data_interpretation_select_source` -> `artifacts/ui/human-like-walkthrough/03-source-selection.png`
+- `data_source_selection` -> `artifacts/ui/human-like-walkthrough/02-dataset-page.png`
+- `data_interpretation_select_source` -> `artifacts/ui/human-like-walkthrough/02-dataset-page.png`
 - `data_interpretation_scan_result` -> `artifacts/ui/human-like-walkthrough/04-interpretation-preview.png`
 - `data_interpretation_preview` -> `artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png`
 - `data_interpretation_confirm_metadata_labels` -> `artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png`

@@ -636,7 +636,7 @@
   },
   "screenshots": {
     "ready": "artifacts/ui/chatpanel-local-training-completion/chatpanel-training-completion-ready.png",
-    "trained": "artifacts/ui/chatpanel-local-training-completion/chatpanel-training-completion-trained.png"
+    "trained": "artifacts/ui/chatpanel-local-training-completion/chatpanel-training-completion-turn-3.png"
   },
   "turns": [
     {

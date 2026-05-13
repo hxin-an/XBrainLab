@@ -85,7 +85,7 @@ RECIPE_ARTIFACT = "walkthrough-import.recipe.json"
 SCREENSHOT_NAMES: dict[str, str] = {
     "main_initial": "01-main-initial.png",
     "dataset_page": "02-dataset-page.png",
-    "source_selection": "03-source-selection.png",
+    "source_selection": "02-dataset-page.png",
     "wizard_preview": "04-interpretation-preview.png",
     "wizard_confirm": "05-interpretation-confirm.png",
     "applied": "06-interpretation-applied.png",
@@ -1456,7 +1456,7 @@ def build_pass_fail_summary(
         "failed_checks": failed,
         "required_phase_count": len(REQUIRED_PHASES),
         "observed_phase_count": len(phase_names),
-        "screenshot_count": len(screenshots),
+        "screenshot_count": len(set(screenshots.values())),
         "human_desktop_acceptance": "not performed",
         "resource_smoke": resource_smoke,
     }

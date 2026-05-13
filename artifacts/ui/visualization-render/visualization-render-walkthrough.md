@@ -8,7 +8,7 @@
 - finished runs: `1`
 - metrics available: `True`
 - saliency available: `True`
-- ready screenshot: `artifacts/ui/visualization-render/visualization-render-ready.png`
+- ready screenshot: `artifacts/ui/visualization-render/visualization-render-saliency-map.png`
 - elapsed seconds: `7.164`
 
 ## Rendered Tabs

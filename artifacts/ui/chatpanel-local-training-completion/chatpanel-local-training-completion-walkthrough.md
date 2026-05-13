@@ -11,7 +11,7 @@
 - HF offline: `1`
 - Transformers offline: `1`
 - ready screenshot: `artifacts/ui/chatpanel-local-training-completion/chatpanel-training-completion-ready.png`
-- trained screenshot: `artifacts/ui/chatpanel-local-training-completion/chatpanel-training-completion-trained.png`
+- trained screenshot: `artifacts/ui/chatpanel-local-training-completion/chatpanel-training-completion-turn-3.png`
 - training confirmations observed: `1`
 - confirmation approved: `True`
 - finished runs: `1`

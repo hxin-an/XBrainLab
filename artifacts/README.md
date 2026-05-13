@@ -104,6 +104,22 @@
   deleted variants remain recoverable from git history or can be regenerated for a
   targeted UX review.
 
+2026-05-14 duplicate-screenshot cleanup removed:
+
+- root `artifacts/.gitkeep`; `artifacts/README.md` now keeps the root directory present.
+- `ui/human-like-walkthrough/03-source-selection.png`; it was byte-identical to
+  `02-dataset-page.png`, so both screenshot labels now point at the same canonical
+  PNG.
+- `ui/chatpanel-local-training-completion/chatpanel-training-completion-trained.png`;
+  it was byte-identical to `chatpanel-training-completion-turn-3.png`, so the
+  trained checkpoint now reuses the turn-3 screenshot path.
+- `ui/visualization-render/visualization-render-ready.png`; it was byte-identical
+  to `visualization-render-saliency-map.png`, so the ready checkpoint now reuses
+  the saliency render screenshot path.
+
+The corresponding capture scripts were updated so these exact duplicates should not
+be regenerated during the next artifact refresh.
+
 ## 新 artifact 要寫清楚
 
 ```text

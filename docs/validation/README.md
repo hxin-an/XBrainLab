@@ -309,6 +309,20 @@ minimal Data Import wizard screenshot set.
 | `poetry run mkdocs build --strict` / `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | PASS / `Architecture compliant!` / `93 passed`. | Canonical docs still build strictly and architecture/doc guards stay green after artifact pruning. | Runtime behavior, screenshot freshness, or human desktop acceptance. | Re-run dashboard only when runtime artifacts need refreshing; it was skipped here to avoid unrelated `artifacts/quality/*` churn. |
 | `git diff --check` / `git diff --cached --check` / current-doc stale-path scan | PASS / PASS / no current-doc matches for pruned wizard variants or legacy replay paths. | The cleanup diff is whitespace clean and current docs no longer point readers to removed artifact variants. | Historical records may still mention old paths intentionally. | Keep historical references in records/worklog as provenance, not current artifact entrances. |
 
+## 2026-05-14 Artifact Duplicate-Screenshot Cleanup Checkpoint
+
+This artifact hygiene slice removed exact duplicate current-tree screenshots and updated the
+capture scripts so the same duplicate PNGs should not be regenerated. It did not change backend
+runtime behavior, Data Import UX layout, or the meaning of the retained evidence.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `find artifacts -type f -print0 | xargs -0 sha256sum ...` before and after cleanup | Before cleanup, exact duplicates existed for human-like `02/03`, training-completion `trained/turn-3`, and visualization `ready/saliency-map`; after cleanup, no duplicate hashes remain. | Current artifact tree no longer stores the same PNG bytes under multiple current evidence paths. | Visual freshness, human desktop acceptance, or product correctness. | Re-run the duplicate-hash audit after future screenshot refreshes. |
+| Updated `scripts/dev/capture_human_like_product_walkthrough.py`, `scripts/dev/capture_chatpanel_local_training_completion_walkthrough.py`, and `scripts/dev/capture_visualization_render_walkthrough.py` | Source-selection now reuses the dataset-page screenshot path, training-completion reuses the start-training turn screenshot for the trained checkpoint, and visualization readiness reuses the saliency render screenshot. | The duplicate cleanup is generator-backed instead of only deleting current files. | That the full walkthroughs still pass when regenerated on every platform. | Re-run full walkthrough capture only when refreshing UI evidence; this slice avoided rerunning Data Import UX artifacts while UX work is still in progress. |
+| `poetry run pytest --capture=sys tests/unit/scripts/test_capture_chatpanel_local_training_completion_walkthrough.py tests/unit/scripts/test_capture_visualization_render_walkthrough.py -q` | `14 passed`. | The script payload render/validation contracts for the touched local-training and visualization artifacts remain green. | Full local-model walkthrough runtime, human desktop acceptance, or human-like walkthrough regeneration. | Pair with full capture scripts before claiming refreshed runtime evidence. |
+| Focused `ruff check` / `ruff format --check` / `basedpyright` on touched capture scripts and focused unit tests | PASS / PASS / `0 errors, 0 warnings, 0 notes`. | The changed artifact generator code is lint, format, and type clean. | Runtime behavior by itself. | Keep generator changes covered by focused tests and artifact audits. |
+| `poetry run mkdocs build --strict` / `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` / `git diff --check` | PASS / `Architecture compliant!` / `97 passed` / PASS. | Docs and architecture guards remain green after artifact index and generator cleanup. | Product runtime, screenshot freshness, or release acceptance. | Keep artifact cleanups paired with strict docs and stale-reference scans. |
+
 ## Reality-Gap Audit
 
 當 human walkthrough 發現 dashboard / automated smoke 沒抓到的問題時，不能只修單點 bug。

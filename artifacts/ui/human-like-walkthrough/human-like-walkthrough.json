@@ -444,7 +444,7 @@
     },
     {
       "phase": "data_source_selection",
-      "screenshot": "artifacts/ui/human-like-walkthrough/03-source-selection.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/02-dataset-page.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -602,7 +602,7 @@
     },
     {
       "phase": "data_interpretation_select_source",
-      "screenshot": "artifacts/ui/human-like-walkthrough/03-source-selection.png",
+      "screenshot": "artifacts/ui/human-like-walkthrough/02-dataset-page.png",
       "visible_text": [
         "Interpret Data Source",
         "Interpret Folder / BIDS",
@@ -5267,7 +5267,7 @@
   "screenshots": {
     "main_initial": "artifacts/ui/human-like-walkthrough/01-main-initial.png",
     "dataset_page": "artifacts/ui/human-like-walkthrough/02-dataset-page.png",
-    "source_selection": "artifacts/ui/human-like-walkthrough/03-source-selection.png",
+    "source_selection": "artifacts/ui/human-like-walkthrough/02-dataset-page.png",
     "wizard_preview": "artifacts/ui/human-like-walkthrough/04-interpretation-preview.png",
     "wizard_confirm": "artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
     "applied": "artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
@@ -9963,8 +9963,8 @@
     "phase_screenshots": {
       "app_startup": "artifacts/ui/human-like-walkthrough/01-main-initial.png",
       "main_window_initial_state": "artifacts/ui/human-like-walkthrough/02-dataset-page.png",
-      "data_source_selection": "artifacts/ui/human-like-walkthrough/03-source-selection.png",
-      "data_interpretation_select_source": "artifacts/ui/human-like-walkthrough/03-source-selection.png",
+      "data_source_selection": "artifacts/ui/human-like-walkthrough/02-dataset-page.png",
+      "data_interpretation_select_source": "artifacts/ui/human-like-walkthrough/02-dataset-page.png",
       "data_interpretation_scan_result": "artifacts/ui/human-like-walkthrough/04-interpretation-preview.png",
       "data_interpretation_preview": "artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
       "data_interpretation_confirm_metadata_labels": "artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
@@ -20523,7 +20523,7 @@
       },
       {
         "screenshot": "source_selection",
-        "path": "artifacts/ui/human-like-walkthrough/03-source-selection.png",
+        "path": "artifacts/ui/human-like-walkthrough/02-dataset-page.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
@@ -21430,7 +21430,7 @@
     "failed_checks": [],
     "required_phase_count": 26,
     "observed_phase_count": 26,
-    "screenshot_count": 20,
+    "screenshot_count": 19,
     "human_desktop_acceptance": "not performed",
     "resource_smoke": {
       "checked": true,

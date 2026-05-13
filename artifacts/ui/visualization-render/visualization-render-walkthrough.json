@@ -773,7 +773,7 @@
     }
   ],
   "screenshots": {
-    "ready": "artifacts/ui/visualization-render/visualization-render-ready.png"
+    "ready": "artifacts/ui/visualization-render/visualization-render-saliency-map.png"
   },
   "final_state": {
     "pipeline_stage": "trained",
