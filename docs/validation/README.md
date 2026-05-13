@@ -36,6 +36,7 @@
 | Metadata pipeline 測試是否仍靠 random label / generic assertion | [Metadata real-data event evidence](#2026-05-13-metadata-real-data-event-evidence-checkpoint) | A01T metadata test 會檢查 raw shape、fixed filename parse、deterministic label round-trip、event shape、onset alignment 和 final event IDs。 | Data Import UX acceptance、all external label heuristics、or scientific validation。 |
 | Lower-level preprocess controller 測試是否仍只是 non-`None` | [Preprocess controller shape/event evidence](#2026-05-13-preprocess-controller-shapeevent-evidence-checkpoint) | Controller integration tests 會檢查 `Raw` object、signal/epoch shape、filter shape preservation、selected event code 和 reset history。 | Product command-spine success、UI refresh acceptance、or zero-controller UI architecture。 |
 | Synthetic preprocess validation 是否仍靠 random/no-crash | [Preprocess validation deterministic evidence](#2026-05-13-preprocess-validation-deterministic-evidence-checkpoint) | Synthetic preprocess tests now use a fixed fixture and assert resample event codes, epoch shape, operation history, and reset shape. | Real-data product acceptance、UI responsiveness、or all preprocess edge cases。 |
+| AgentManager montage 測試是否仍靠 `Study.epoch_data` side effect | [AgentManager montage command evidence](#2026-05-13-agentmanager-montage-command-evidence-checkpoint) | Montage picker 的 channel source 來自 `QueryStateCommand`，apply payload 以 `ApplyMontageCommand` 檢查 channels / positions / montage name。 | Human montage UX acceptance 或 full zero-controller UI。 |
 | 能不能宣稱桌面 MVP 人工驗收 | [Human Windows Desktop Acceptance Gap](#human-windows-desktop-acceptance-gap) | 尚缺哪些 click-through / artifact。 | release approval。 |
 
 ## Evidence 能力邊界
@@ -206,6 +207,21 @@ non-`None` or on nondeterministic signal generation.
 | --- | --- | --- | --- | --- |
 | `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/pipeline/test_preprocess_validation.py -q` | `4 passed` | Synthetic preprocess validation now proves deterministic signal shape, event code preservation, epoch shape, operation history, and reset shape. | Real-data product acceptance, UI responsiveness, all preprocess edge cases, or scientific validation. | Keep real-GDF product preprocess evidence in command/UI smokes. |
 | Focused `ruff` / `basedpyright` / `ruff format --check` on `tests/integration/pipeline/test_preprocess_validation.py` | PASS / `0 errors, 0 warnings, 0 notes` / PASS | Changed test code is lint/type/format clean. | Runtime behavior by itself. | Prefer fixed synthetic fixtures over random data in regression tests. |
+
+## 2026-05-13 AgentManager Montage Command-Evidence Checkpoint
+
+This test-hygiene slice did not change runtime behavior or redesign montage UX. It tightened
+`tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker` so real-Study montage evidence
+no longer treats `Study.epoch_data.set_channels(...)` as product success. The suite now checks
+that the dialog's channel list is read through `QueryStateCommand(query="state")`, then verifies
+the exact `ApplyMontageCommand` payload for channels, normalized 3D positions, and montage name.
+Mock / legacy fallback coverage remains separate compatibility evidence.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker -q` | `9 passed` | AgentManager montage tests now assert command-visible channel source and apply payload instead of `Study.epoch_data` side effects. | Human montage-dialog acceptance, full zero-controller UI, or final Data Import UX. | Continue retiring UI controller/read-only exceptions one behavior at a time. |
+| Focused `ruff` / `basedpyright` / `ruff format --check` on `tests/unit/ui/test_agent_manager_coverage.py` | PASS / `0 errors, 0 warnings, 0 notes` / PASS | Changed test code is lint/type/format clean. | Runtime behavior by itself. | Keep command-shape assertions paired with compatibility fallback tests. |
+| `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `91 passed` | The command-evidence rewrite did not weaken current architecture guards. | Semantic proof for every UI controller path. | Add guard examples only after concrete replacement behavior exists. |
 
 ## 2026-05-13 Test Evidence Cleanup Fast Dashboard
 
