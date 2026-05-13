@@ -38,6 +38,7 @@
 | Checked-in GDF+MAT training smoke 是否仍只看 non-empty | [Checked-in GDF+MAT exact evidence](#2026-05-13-checked-in-gdfmat-exact-evidence-checkpoint) | A01T/A02T/A03T label-attached smokes 現在檢查 exact label events、epoch counts、trial split summaries 和 one-row training history。 | Scientific claim、all subjects/formats、or long training quality。 |
 | Public cross-source training smoke 是否只證明 no-crash | [Public cross-source command evidence](#2026-05-13-public-cross-source-command-evidence-checkpoint) | EDF/GDF/SET/CNT smokes 檢查 fixture event mapping、epoch count 與 split total 對齊、one-run training history。 | Training quality、full format certification、or human desktop acceptance。 |
 | ApplicationService workflow split 是否仍只看 non-empty | [ApplicationService exact split evidence](#2026-05-13-applicationservice-exact-split-evidence-checkpoint) | Core command-spine workflow 現在檢查 synthetic split summary 含 train/val/test count 與 audit payload。 | UI refresh acceptance、real-data breadth、or human desktop acceptance。 |
+| Real-tool chain 是否仍只看 dataset count | [Real-tool chain exact evidence](#2026-05-13-real-tool-chain-exact-evidence-checkpoint) | LLM real-tool A01T chain 現在檢查 exact epoch state、dataset split summary、tool result string 和 one-run training state。 | Tool-call benchmark accuracy、human assistant UX、or long local-model session。 |
 | Lower-level preprocess controller 測試是否仍只是 non-`None` | [Preprocess controller shape/event evidence](#2026-05-13-preprocess-controller-shapeevent-evidence-checkpoint) | Controller integration tests 會檢查 `Raw` object、signal/epoch shape、filter shape preservation、selected event code 和 reset history。 | Product command-spine success、UI refresh acceptance、or zero-controller UI architecture。 |
 | Synthetic preprocess validation 是否仍靠 random/no-crash | [Preprocess validation deterministic evidence](#2026-05-13-preprocess-validation-deterministic-evidence-checkpoint) | Synthetic preprocess tests now use a fixed fixture and assert resample event codes, epoch shape, operation history, and reset shape. | Real-data product acceptance、UI responsiveness、or all preprocess edge cases。 |
 | AgentManager montage 測試是否仍靠 `Study.epoch_data` side effect | [AgentManager montage command evidence](#2026-05-13-agentmanager-montage-command-evidence-checkpoint) | Montage picker 的 channel source 來自 `QueryStateCommand`，apply payload 以 `ApplyMontageCommand` 檢查 channels / positions / montage name。 | 不能支持 Human montage UX acceptance 或完整零 controller UI。 |
@@ -284,6 +285,20 @@ counts and the split-audit payload.
 | `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py -q` | `8 passed` | Core ApplicationService load -> preprocess -> epoch -> dataset workflow and dialog-generator split evidence use exact split summaries instead of non-empty counts. | UI refresh acceptance, real-data breadth, or human Windows acceptance. | Keep this as synthetic command-spine evidence paired with real-data smokes. |
 | Focused `ruff` / `basedpyright` / `ruff format --check` on `tests/integration/backend/test_application_service_workflow.py` | PASS / `0 errors, 0 warnings, 0 notes` / PASS | Changed test code is lint/type/format clean. | Runtime behavior by itself. | Preserve exact split-audit assertions when refactoring dataset generation. |
 | `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `91 passed` | The exact-split rewrite did not weaken current architecture guards. | Semantic proof for every backend workflow. | Expand product-success guards only with replacement command/query evidence. |
+
+## 2026-05-13 Real-Tool Chain Exact-Evidence Checkpoint
+
+This test-evidence slice kept real tool behavior unchanged. It tightened
+`tests/integration/pipeline/test_integration_real_tools.py` so the A01T LLM real-tool chain no
+longer treats dataset `count > 0` or `plan_count >= 1` as enough. The chain now checks exact
+ApplicationService state after tool-driven epoching, exact generated dataset split summary, exact
+dataset tool result text, and one completed training run.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/pipeline/test_integration_real_tools.py -q` | `4 passed` | LLM real tools still route through ApplicationService and now expose exact A01T epoch, dataset, and training state evidence. | Tool-call benchmark accuracy, human assistant UX, or long local-model runtime. | Keep tool-call eval separate from real-tool backend state smokes. |
+| Focused `ruff` / `basedpyright` / `ruff format --check` on `tests/integration/pipeline/test_integration_real_tools.py` | PASS / `0 errors, 0 warnings, 0 notes` / PASS | Changed test code is lint/type/format clean. | Runtime behavior by itself. | Keep exact state assertions aligned with command result schema. |
+| `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `91 passed` | The real-tool test rewrite did not weaken current architecture guards. | Semantic proof for every assistant path. | Broaden real-tool exact evidence only after stable fixture expectations exist. |
 
 ## 2026-05-13 Test Evidence Cleanup Fast Dashboard
 

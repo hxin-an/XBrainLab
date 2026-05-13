@@ -104,6 +104,21 @@ TEST_DATA_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "../../fixtures/data")
 )
 GDF_FILE = os.path.join(TEST_DATA_DIR, "A01T.gdf")
+EXPECTED_A01T_REAL_TOOL_EPOCH_EVENT_IDS = {
+    "32766": 0,
+    "768": 1,
+    "769": 2,
+    "770": 3,
+    "771": 4,
+    "772": 5,
+}
+EXPECTED_A01T_REAL_TOOL_SPLIT_SUMMARY = {
+    "count": 1,
+    "train_count": 375,
+    "val_count": 93,
+    "test_count": 117,
+    "audit": {"ok": True, "dataset_count": 1, "issues": []},
+}
 
 
 class TestRealToolChain:
@@ -138,16 +153,28 @@ class TestRealToolChain:
         epoch_tool = RealEpochDataTool()
         res_epoch = epoch_tool.execute(study, t_min=0, t_max=2.0, event_id=None)
         assert "Data epoched" in res_epoch
-        assert _state(study)["epoch"]["exists"] is True
+        epoch_state = _state(study)["epoch"]
+        assert epoch_state["exists"] is True
+        assert epoch_state["epoch_count"] == 585
+        assert epoch_state["n_channels"] == 25
+        assert epoch_state["n_times"] == 501
+        assert epoch_state["event_ids"] == EXPECTED_A01T_REAL_TOOL_EPOCH_EVENT_IDS
 
         # 2.5 Generate Dataset (Required for Training)
         gen_tool = RealGenerateDatasetTool()
         res_gen = gen_tool.execute(
             study, split_strategy="trial"
         )  # trial strategy default
-        assert "Dataset successfully generated" in res_gen or "Count:" in res_gen
+        assert (
+            res_gen == "Dataset successfully generated. Count: 1 (Test: 0.2, Val: 0.2)."
+        )
         state = _state(study)
-        assert state["dataset"]["count"] > 0
+        assert (
+            state["dataset"]["count"] == EXPECTED_A01T_REAL_TOOL_SPLIT_SUMMARY["count"]
+        )
+        assert (
+            state["dataset"]["split_summary"] == EXPECTED_A01T_REAL_TOOL_SPLIT_SUMMARY
+        )
         assert state["active_dataset"]["has_datasets"] is True
 
         # 3. Configure & Start Training
@@ -177,7 +204,9 @@ class TestRealToolChain:
         assert "started success" in res_start
         training_state = _state(study)["training"]
         assert training_state["has_trainer"] is True
-        assert training_state["plan_count"] >= 1
+        assert training_state["plan_count"] == 1
+        assert training_state["run_count"] == 1
+        assert training_state["finished_run_count"] == 1
 
     def test_tool_error_handling(self, study):
         """Verify tools return user-friendly error messages on failure."""
