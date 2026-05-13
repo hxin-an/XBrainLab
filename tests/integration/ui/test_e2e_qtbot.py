@@ -14,17 +14,58 @@ from __future__ import annotations
 
 import pytest
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QPushButton
+from PyQt6.QtWidgets import QPushButton, QWidget
+
+from XBrainLab.ui.components.info_panel_service import InfoPanelService
+from XBrainLab.ui.panels.dataset.panel import DatasetPanel
+from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
+from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
+from XBrainLab.ui.panels.training.panel import TrainingPanel
+from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+EXPECTED_NAV_TEXTS = [
+    "Dataset",
+    "Preprocess",
+    "Training",
+    "Evaluation",
+    "Visualization",
+]
+EXPECTED_PANEL_TYPES = [
+    DatasetPanel,
+    PreprocessPanel,
+    TrainingPanel,
+    EvaluationPanel,
+    VisualizationPanel,
+]
+EXPECTED_EVALUATION_TABS = ["Metrics Summary", "Model Summary"]
+EXPECTED_VISUALIZATION_TABS = [
+    "Saliency Map",
+    "Spectrogram",
+    "Topographic Map",
+    "3D Plot",
+]
 
 
 def _click(qtbot, btn: QPushButton):
     """Convenience wrapper for mouseClick on a button."""
     qtbot.mouseClick(btn, Qt.MouseButton.LeftButton)
     qtbot.wait(50)  # Let Qt's event loop process the click
+
+
+def _checked_states(test_app):
+    return [button.isChecked() for button in test_app.nav_btns]
+
+
+def _checked_state_for(index: int) -> list[bool]:
+    return [button_index == index for button_index in range(len(EXPECTED_NAV_TEXTS))]
+
+
+def _tab_texts(tab_widget):
+    return [tab_widget.tabText(index) for index in range(tab_widget.count())]
 
 
 # ---------------------------------------------------------------------------
@@ -38,7 +79,8 @@ class TestNavigation:
     def test_initial_panel_is_dataset(self, test_app):
         """Dataset panel (index 0) should be active on launch."""
         assert test_app.stack.currentIndex() == 0
-        assert test_app.nav_btns[0].isChecked()
+        assert [button.text() for button in test_app.nav_btns] == EXPECTED_NAV_TEXTS
+        assert _checked_states(test_app) == _checked_state_for(0)
 
     @pytest.mark.parametrize(
         "btn_index, expected_panel",
@@ -54,20 +96,21 @@ class TestNavigation:
         """Clicking a nav button switches the stacked widget."""
         _click(qtbot, test_app.nav_btns[btn_index])
         assert test_app.stack.currentIndex() == expected_panel
+        assert _checked_states(test_app) == _checked_state_for(expected_panel)
 
     def test_only_one_btn_checked_at_a_time(self, test_app, qtbot):
         """At most one nav button should be checked after a click."""
         _click(qtbot, test_app.nav_btns[2])  # Training
-        checked = [b.isChecked() for b in test_app.nav_btns]
-        assert checked.count(True) == 1
-        assert checked[2] is True
+        assert _checked_states(test_app) == _checked_state_for(2)
 
     def test_round_trip_returns_to_original(self, test_app, qtbot):
         """Navigate away and back — panel index should be restored."""
         _click(qtbot, test_app.nav_btns[3])
         assert test_app.stack.currentIndex() == 3
+        assert _checked_states(test_app) == _checked_state_for(3)
         _click(qtbot, test_app.nav_btns[0])
         assert test_app.stack.currentIndex() == 0
+        assert _checked_states(test_app) == _checked_state_for(0)
 
 
 class TestAIAssistantDock:
@@ -75,7 +118,9 @@ class TestAIAssistantDock:
 
     def test_ai_button_exists(self, test_app):
         """The AI toggle button should be present and checkable."""
-        assert test_app.ai_btn is not None
+        assert isinstance(test_app.ai_btn, QPushButton)
+        assert test_app.ai_btn.text() == "AI Assistant"
+        assert test_app.ai_btn.objectName() == "ActionBtn"
         assert test_app.ai_btn.isCheckable()
 
     def test_ai_button_default_state(self, test_app):
@@ -100,36 +145,29 @@ class TestAIAssistantDock:
 class TestPanelWidgets:
     """Verify that key widgets exist inside each panel."""
 
-    def test_dataset_panel_has_expected_children(self, test_app):
-        panel = test_app.dataset_panel
-        # DatasetPanel should have a load button or file-list widget.
-        # We only assert the panel type to avoid coupling to internal layout.
-        from XBrainLab.ui.panels.dataset.panel import DatasetPanel
+    def test_panel_types_match_stack_order(self, test_app):
+        panels = [
+            test_app.stack.widget(index) for index in range(test_app.stack.count())
+        ]
 
-        assert isinstance(panel, DatasetPanel)
-
-    def test_preprocess_panel_type(self, test_app, qtbot):
-        _click(qtbot, test_app.nav_btns[1])
-        from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
-
-        assert isinstance(test_app.preprocess_panel, PreprocessPanel)
-
-    def test_training_panel_type(self, test_app, qtbot):
-        _click(qtbot, test_app.nav_btns[2])
-        from XBrainLab.ui.panels.training.panel import TrainingPanel
-
-        assert isinstance(test_app.training_panel, TrainingPanel)
+        assert [type(panel) for panel in panels] == EXPECTED_PANEL_TYPES
+        assert panels == [
+            test_app.dataset_panel,
+            test_app.preprocess_panel,
+            test_app.training_panel,
+            test_app.evaluation_panel,
+            test_app.visualization_panel,
+        ]
 
     def test_evaluation_panel_tabs(self, test_app, qtbot):
         _click(qtbot, test_app.nav_btns[3])
         ep = test_app.evaluation_panel
-        assert ep.bottom_tabs.count() >= 2
-        assert ep.bottom_tabs.tabText(0) == "Metrics Summary"
+        assert _tab_texts(ep.bottom_tabs) == EXPECTED_EVALUATION_TABS
 
     def test_visualization_panel_tabs(self, test_app, qtbot):
         _click(qtbot, test_app.nav_btns[4])
         vp = test_app.visualization_panel
-        assert vp.tabs.count() >= 3
+        assert _tab_texts(vp.tabs) == EXPECTED_VISUALIZATION_TABS
 
 
 class TestStackedWidgetIntegrity:
@@ -139,8 +177,6 @@ class TestStackedWidgetIntegrity:
         assert test_app.stack.count() == 5
 
     def test_panels_are_qwidgets(self, test_app):
-        from PyQt6.QtWidgets import QWidget
-
         for i in range(test_app.stack.count()):
             assert isinstance(test_app.stack.widget(i), QWidget)
 
@@ -148,8 +184,7 @@ class TestStackedWidgetIntegrity:
 class TestInfoService:
     """Verify the InfoPanelService is wired up."""
 
-    def test_info_service_exists(self, test_app):
-        assert test_app.info_service is not None
-
     def test_info_service_has_study_ref(self, test_app):
+        assert isinstance(test_app.info_service, InfoPanelService)
         assert test_app.info_service.study is test_app.study
+        assert test_app.info_service._observes_controller_events is False
