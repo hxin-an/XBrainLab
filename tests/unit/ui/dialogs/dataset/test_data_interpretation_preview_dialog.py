@@ -2,6 +2,7 @@
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFrame,
     QGroupBox,
@@ -9,7 +10,6 @@ from PyQt6.QtWidgets import (
     QLabel,
     QPlainTextEdit,
     QPushButton,
-    QRadioButton,
     QScrollArea,
 )
 
@@ -1026,9 +1026,13 @@ def test_match_labels_eeg_event_order_shows_target_event_check(qtbot):
         for index in range(dialog.rule_alignment_combo.count())
     ]
 
-    dialog.rule_alignment_combo.setCurrentIndex(
-        dialog.rule_alignment_combo.findData("768")
-    )
+    target_checks = {
+        check.property("event_code"): check
+        for check in dialog.findChildren(QCheckBox)
+        if check.objectName() == "DataImportTargetEventCheckbox"
+    }
+    for code, check in target_checks.items():
+        check.setChecked(code == "768")
     qtbot.wait(0)
 
     visible_text = _visible_step_text(dialog, "Match Labels")
@@ -1044,14 +1048,102 @@ def test_match_labels_eeg_event_order_shows_target_event_check(qtbot):
     assert "6 unlabeled EEG events" in visible_text
     assert "6 EEG events excluded" in visible_text
     assert "Label file needs conversion" not in visible_text
+    assert visible_text.count("Check:") == 1
+    assert not dialog.match_check_card.isVisibleTo(dialog.step_stack.currentWidget())
 
     result = dialog.get_result()
 
     assert result["choices"]["label_carrier_choices"][label_path]["anchor"] == "768"
+    assert result["choices"]["label_carrier_choices"][label_path][
+        "target_event_codes"
+    ] == ["768"]
     assert (
         result["choices"]["label_carrier_choices"][label_path]["placement_method"]
         == "eeg_event"
     )
+
+
+def test_match_labels_eeg_event_order_allows_multiple_target_events(qtbot):
+    label_path = "/tmp/labels/A01T.mat"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+            "label_carriers": [label_path],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+            "label_carrier_preview": [
+                {
+                    "path": label_path,
+                    "name": "A01T.mat",
+                    "format": "MAT",
+                    "target_file": "A01T.gdf",
+                    "label_candidates": ["classlabel"],
+                    "anchor_candidates": ["trial order"],
+                    "selected_label_field": "classlabel",
+                    "selected_anchor": "trial order",
+                    "selected_target_event_codes": [],
+                    "label_row_count": 4,
+                    "label_value_counts": {"1": 2, "2": 2},
+                    "time_model": "trial_order",
+                    "granularity": "trial",
+                    "placement_method": "eeg_event",
+                    "role": "external labels",
+                },
+            ],
+            "internal_event_preview": {
+                "candidate_label_events": [
+                    {
+                        "event_code": "769",
+                        "use_as": "Class label",
+                        "event_count": 2,
+                        "evidence": "Balanced candidate label event",
+                    },
+                    {
+                        "event_code": "770",
+                        "use_as": "Class label",
+                        "event_count": 2,
+                        "evidence": "Balanced candidate label event",
+                    },
+                ],
+                "not_used_events": [
+                    {
+                        "event_code": "768",
+                        "use_as": "Trial timing",
+                        "event_count": 4,
+                    },
+                ],
+            },
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Match Labels")
+    qtbot.wait(0)
+
+    target_checks = {
+        check.property("event_code"): check
+        for check in dialog.findChildren(QCheckBox)
+        if check.objectName() == "DataImportTargetEventCheckbox"
+    }
+    assert set(target_checks) >= {"768", "769", "770"}
+
+    target_checks["768"].setChecked(False)
+    target_checks["769"].setChecked(True)
+    target_checks["770"].setChecked(True)
+    qtbot.wait(0)
+
+    visible_text = _visible_step_text(dialog, "Match Labels")
+    assert "4 selected EEG events" in visible_text
+    assert "4 label rows" in visible_text
+
+    choices = dialog.get_result()["choices"]["label_carrier_choices"][label_path]
+    assert choices["target_event_codes"] == ["769", "770"]
+    assert choices["anchor"] == "769"
+    assert choices["placement_method"] == "eeg_event"
 
 
 def test_match_labels_placement_methods_use_mode_specific_panels(qtbot):
@@ -1145,12 +1237,12 @@ def test_match_labels_placement_methods_use_mode_specific_panels(qtbot):
                 dialog.placement_status_label.text()
             )
 
-    target_buttons = [
-        button
-        for button in dialog.findChildren(QRadioButton)
-        if button.objectName() == "DataImportTargetEventRadio"
+    target_checks = [
+        checkbox
+        for checkbox in dialog.findChildren(QCheckBox)
+        if checkbox.objectName() == "DataImportTargetEventCheckbox"
     ]
-    assert target_buttons
+    assert target_checks
 
 
 def test_data_interpretation_preview_dialog_records_attached_label_folder(

@@ -77,6 +77,21 @@ def test_normalize_label_carrier_choices_accepts_event_code_placement(tmp_path):
     assert choices[carrier.name]["placement_method"] == "event_code"
 
 
+def test_normalize_label_carrier_choices_accepts_event_order_targets(tmp_path):
+    carrier = tmp_path / "labels.mat"
+    choices = normalize_label_carrier_choices(
+        {
+            carrier.name: {
+                "label_field": "classlabel",
+                "target_event_codes": ["769", "770", "", "770"],
+                "placement_method": "eeg_event",
+            }
+        }
+    )
+
+    assert choices[carrier.name]["target_event_codes"] == ["769", "770"]
+
+
 def test_label_carrier_plan_counts_label_rows_and_values(tmp_path):
     labels = tmp_path / "labels.csv"
     labels.write_text(

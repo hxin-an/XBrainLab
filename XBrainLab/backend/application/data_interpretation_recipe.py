@@ -204,8 +204,8 @@ def _metadata_overrides_from_recipe(
 
 def _label_carrier_choices_from_recipe(
     label_carrier_plan: list[dict[str, Any]],
-) -> dict[str, dict[str, str]]:
-    choices: dict[str, dict[str, str]] = {}
+) -> dict[str, dict[str, Any]]:
+    choices: dict[str, dict[str, Any]] = {}
     field_map = {
         "selected_target_file": "target_file",
         "selected_label_field": "label_field",
@@ -225,6 +225,13 @@ def _label_carrier_choices_from_recipe(
             for recipe_key, choice_key in field_map.items()
             if str(carrier.get(recipe_key) or "").strip()
         }
+        target_event_codes = [
+            str(item).strip()
+            for item in carrier.get("selected_target_event_codes", [])
+            if str(item).strip()
+        ]
+        if target_event_codes:
+            carrier_choices["target_event_codes"] = target_event_codes
         if carrier_choices:
             choices[path] = carrier_choices
     return choices

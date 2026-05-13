@@ -336,7 +336,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.placement_detail_stack: QStackedWidget
         self.placement_method_buttons: dict[str, QRadioButton]
         self.placement_method_option_frames: dict[str, QFrame]
-        self.target_event_buttons: dict[str, QRadioButton]
+        self.target_event_buttons: dict[str, QCheckBox]
         self.target_event_option_frames: dict[str, QFrame]
         self.class_map_rows_widget: QWidget | None = None
         self.save_recipe_check: QCheckBox
@@ -376,6 +376,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._class_map_widgets: dict[int, QComboBox] = {}
         self._internal_event_user_roles: dict[str, str] = {}
         self._internal_class_name_edits: dict[str, str] = {}
+        self._target_event_code_selection: list[str] = []
+        self._target_event_selection_touched = False
         self._event_detail_widgets: list[QWidget] = []
         self._tree_column_specs: dict[int, tuple[int, ...]] = {}
         self._updating_label_rule = False
@@ -999,7 +1001,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 widget.setVisible(use_loaded and not fallback_visible)
         self._refresh_label_table_fallback()
         if hasattr(self, "match_check_card"):
-            self.match_check_card.setVisible(use_loaded and not fallback_visible)
+            self.match_check_card.setVisible(False)
         if hasattr(self, "internal_event_card"):
             internal_details_available = bool(
                 self._internal_candidate_label_event_rows()
@@ -2299,7 +2301,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         group = QButtonGroup(frame)
         group.setExclusive(True)
         copy = {
-            "eeg_event": "Use label rows in order on selected EEG events.",
+            "eeg_event": "Use label rows in order across selected EEG events.",
             "time_field": "Use a time column from the label file.",
             "interval": "Use onset plus duration or end time.",
             "event_code": "Match label rows by event code values.",
@@ -2351,11 +2353,12 @@ class DataInterpretationPreviewDialog(BaseDialog):
         layout.addWidget(
             self._placement_section_title(
                 "Target EEG events",
-                "Label rows are assigned in file order only to the selected EEG event.",
+                "Label rows are assigned in file order across the selected EEG events.",
             )
         )
         self.target_event_buttons = {}
         self.target_event_option_frames = {}
+        self._target_event_code_selection = self._default_event_order_target_codes()
         choices = self._target_eeg_event_choices()
         if choices:
             layout.addWidget(self._target_event_header_row())
@@ -2543,21 +2546,18 @@ class DataInterpretationPreviewDialog(BaseDialog):
         row = QFrame()
         row.setObjectName("DataImportTargetEventRow")
         row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        selected = value == self._combo_current_data(self.rule_alignment_combo)
+        selected = value in self._event_order_target_codes()
         row.setProperty("selected", selected)
         layout = QHBoxLayout(row)
         layout.setContentsMargins(10, 7, 10, 7)
         layout.setSpacing(10)
-        radio = QRadioButton("Use")
-        radio.setObjectName("DataImportTargetEventRadio")
-        radio.setChecked(selected)
-        radio.setFixedWidth(64)
-        radio.toggled.connect(
-            lambda checked, target=value: (
-                self._select_target_event(target) if checked else None
-            )
-        )
-        layout.addWidget(radio)
+        checkbox = QCheckBox("Use")
+        checkbox.setObjectName("DataImportTargetEventCheckbox")
+        checkbox.setProperty("event_code", value)
+        checkbox.setChecked(selected)
+        checkbox.setFixedWidth(64)
+        checkbox.toggled.connect(self._handle_target_event_selection_change)
+        layout.addWidget(checkbox)
         code = QLabel(value)
         code.setObjectName("DataImportTargetEventCode")
         code.setFixedWidth(58)
@@ -2575,7 +2575,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         count.setAlignment(Qt.AlignmentFlag.AlignCenter)
         count.setFixedWidth(92)
         layout.addWidget(count)
-        self.target_event_buttons[value] = radio
+        self.target_event_buttons[value] = checkbox
         self.target_event_option_frames[value] = row
         return row
 
@@ -2628,15 +2628,14 @@ class DataInterpretationPreviewDialog(BaseDialog):
         placement_method = self._combo_current_data(self.rule_placement_method_combo)
         if placement_method != "eeg_event":
             return ""
-        target = self._combo_current_data(self.rule_alignment_combo)
-        event = self._target_event_row(target)
-        if event:
-            count = self._event_count_text(event) or "unknown count"
-            meaning = str(event.get("use_as") or event.get("reason") or "").strip()
-            meaning_text = f" · {meaning}" if meaning else ""
-            return f"Target EEG events: {target}{meaning_text} · {count}."
+        targets = self._event_order_target_codes()
+        if targets:
+            count = self._selected_target_event_count()
+            count_text = f"{count} events" if count is not None else "unknown count"
+            target_text = ", ".join(targets)
+            return f"Target EEG events: {target_text} · {count_text}."
         return (
-            "Target EEG events: choose the event subset that this label series "
+            "Target EEG events: choose the event set that this label sequence "
             "should follow in order."
         )
 
@@ -2931,18 +2930,39 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._sync_target_event_buttons()
 
     def _select_target_event(self, target: str) -> None:
-        self._set_combo_current_data(self.rule_alignment_combo, target)
+        self._target_event_selection_touched = True
+        self._target_event_code_selection = [str(target).strip()] if target else []
+        if self._target_event_code_selection:
+            self._set_combo_current_data(
+                self.rule_alignment_combo,
+                self._target_event_code_selection[0],
+            )
+        self._sync_target_event_buttons()
+        self._apply_label_rule_to_preview()
+
+    def _handle_target_event_selection_change(self) -> None:
+        self._target_event_selection_touched = True
+        self._target_event_code_selection = [
+            value
+            for value, checkbox in getattr(self, "target_event_buttons", {}).items()
+            if checkbox.isChecked()
+        ]
+        if self._target_event_code_selection:
+            self._set_combo_current_data(
+                self.rule_alignment_combo,
+                self._target_event_code_selection[0],
+            )
         self._sync_target_event_buttons()
         self._apply_label_rule_to_preview()
 
     def _sync_target_event_buttons(self) -> None:
-        current = self._combo_current_data(self.rule_alignment_combo)
+        selected = set(self._event_order_target_codes())
         for value, button in getattr(self, "target_event_buttons", {}).items():
             was_blocked = button.blockSignals(True)
-            button.setChecked(value == current)
+            button.setChecked(value in selected)
             button.blockSignals(was_blocked)
         for value, frame in getattr(self, "target_event_option_frames", {}).items():
-            frame.setProperty("selected", value == current)
+            frame.setProperty("selected", value in selected)
             style = frame.style()
             if style is not None:
                 style.unpolish(frame)
@@ -3178,11 +3198,78 @@ class DataInterpretationPreviewDialog(BaseDialog):
         return total if has_count else None
 
     def _selected_target_event_count(self) -> int | None:
-        row = self._target_event_row(
-            self._combo_current_data(self.rule_alignment_combo)
-        )
-        if not row:
+        rows = [
+            self._target_event_row(code) for code in self._event_order_target_codes()
+        ]
+        rows = [row for row in rows if row]
+        if not rows:
             return None
+        total = 0
+        for row in rows:
+            row_count = self._event_count_value(row)
+            if row_count is None:
+                return None
+            total += row_count
+        return total
+
+    def _event_order_target_codes(self) -> list[str]:
+        if self._target_event_code_selection or self._target_event_selection_touched:
+            return list(self._target_event_code_selection)
+        return self._default_event_order_target_codes()
+
+    def _default_event_order_target_codes(self) -> list[str]:
+        values: list[str] = []
+        for _item, original in self._label_carrier_items:
+            raw_values = original.get("selected_target_event_codes")
+            if isinstance(raw_values, (list, tuple, set)):
+                for value in raw_values:
+                    text = str(value).strip()
+                    if text and text not in values:
+                        values.append(text)
+        if values:
+            return values
+        original_anchor = self._common_carrier_value("selected_anchor")
+        if original_anchor and original_anchor != "trial order":
+            return [original_anchor]
+        suggested = self._suggested_event_order_target_codes()
+        if suggested:
+            return suggested
+        current = self._combo_current_data(self.rule_alignment_combo)
+        if current and current != "trial order":
+            return [current]
+        return []
+
+    def _suggested_event_order_target_codes(self) -> list[str]:
+        label_rows = self._active_label_row_count()
+        if label_rows is None:
+            return []
+        candidate_rows = [
+            row
+            for row in self._target_eeg_event_rows()
+            if "class label" in str(row.get("use_as") or "").lower()
+        ]
+        candidate_codes = [
+            self._internal_event_code_from_row(row)
+            for row in sorted(candidate_rows, key=self._target_event_sort_key)
+            if self._internal_event_code_from_row(row)
+        ]
+        candidate_total = sum(
+            self._event_count_value(row) or 0 for row in candidate_rows
+        )
+        if candidate_codes and candidate_total == label_rows:
+            return candidate_codes
+        for row in sorted(
+            self._target_eeg_event_rows(), key=self._target_event_sort_key
+        ):
+            if self._event_row_is_excluded(row):
+                continue
+            code = self._internal_event_code_from_row(row)
+            if code and self._event_count_value(row) == label_rows:
+                return [code]
+        return []
+
+    @staticmethod
+    def _event_count_value(row: dict[str, Any]) -> int | None:
         for key in ("event_count", "total_events", "count", "total_count"):
             value = row.get(key)
             if isinstance(value, int) and value >= 0:
@@ -3192,24 +3279,19 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 return int(value_text)
         return None
 
+    @staticmethod
+    def _event_row_is_excluded(row: dict[str, Any]) -> bool:
+        use_as = str(row.get("use_as") or row.get("reason") or "").lower()
+        return any(
+            token in use_as for token in ("artifact", "boundary", "ignore", "system")
+        )
+
     def _excluded_eeg_event_count(self) -> int:
         total = 0
         for row in self._target_eeg_event_rows():
-            use_as = str(row.get("use_as") or row.get("reason") or "").lower()
-            if not any(
-                token in use_as
-                for token in ("artifact", "boundary", "ignore", "system")
-            ):
+            if not self._event_row_is_excluded(row):
                 continue
-            for key in ("event_count", "total_events", "count", "total_count"):
-                value = row.get(key)
-                if isinstance(value, int) and value >= 0:
-                    total += value
-                    break
-                value_text = str(value or "").strip()
-                if value_text.isdigit():
-                    total += int(value_text)
-                    break
+            total += self._event_count_value(row) or 0
         return total
 
     def _add_label_source_rows(self, layout: QVBoxLayout) -> None:
@@ -4419,7 +4501,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 font-weight: 700;
                 spacing: 7px;
             }}
-            QRadioButton#DataImportTargetEventRadio {{
+            QCheckBox#DataImportTargetEventCheckbox {{
                 color: #eeeeee;
                 background-color: transparent;
                 border: none;
@@ -4427,9 +4509,19 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 font-weight: 600;
                 spacing: 6px;
             }}
-            QRadioButton::indicator {{
+            QRadioButton::indicator,
+            QCheckBox::indicator {{
                 width: 12px;
                 height: 12px;
+            }}
+            QCheckBox#DataImportTargetEventCheckbox::indicator {{
+                border: 1px solid #6b6b6b;
+                border-radius: 2px;
+                background-color: #1b1b1b;
+            }}
+            QCheckBox#DataImportTargetEventCheckbox::indicator:checked {{
+                border: 1px solid #2d8fc3;
+                background-color: #0b6ea8;
             }}
             QTreeWidget {{
                 background-color: #1f1f1f;
@@ -5284,8 +5376,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
             return str(value) if value is not None else selector.currentText()
         return item.text(2)
 
-    def _label_carrier_choices(self) -> dict[str, dict[str, str]]:
-        choices: dict[str, dict[str, str]] = {}
+    def _label_carrier_choices(self) -> dict[str, dict[str, Any]]:
+        choices: dict[str, dict[str, Any]] = {}
         fields = (
             ("target_file", "_matched_eeg_text", 1),
             ("label_field", "selected_label_field", 2),
@@ -5333,6 +5425,23 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 original_value = str(original.get(original_key) or "").strip()
                 if current and current != original_value:
                     changed[choice_key] = current
+            if (
+                self._combo_current_data(self.rule_placement_method_combo)
+                == "eeg_event"
+                and self._target_eeg_event_choices()
+            ):
+                target_event_codes = self._event_order_target_codes()
+                original_target_event_codes = [
+                    str(value).strip()
+                    for value in original.get("selected_target_event_codes", [])
+                    if str(value).strip()
+                ]
+                if (
+                    target_event_codes
+                    and target_event_codes != original_target_event_codes
+                ):
+                    changed["target_event_codes"] = target_event_codes
+                    changed["anchor"] = target_event_codes[0]
             if changed:
                 time_model = self._time_model_for_current_label_choice(original)
                 if time_model:

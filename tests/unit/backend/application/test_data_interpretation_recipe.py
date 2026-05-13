@@ -180,6 +180,35 @@ def test_choices_from_import_recipe_recreates_review_choices():
     assert choices["class_map"] == {"1": "left", "2": "right"}
 
 
+def test_choices_from_import_recipe_preserves_event_order_targets():
+    recipe = ImportRecipe(
+        recipe_id="recipe-1",
+        interpretation_id="interp-1",
+        source_path="/data",
+        source_kind="folder",
+        label_carriers=["/data/A01T.mat"],
+        label_carrier_plan=[
+            {
+                "path": "/data/A01T.mat",
+                "selected_label_field": "classlabel",
+                "selected_anchor": "769",
+                "selected_target_event_codes": ["769", "770"],
+                "time_model": "trial_order",
+                "placement_method": "eeg_event",
+                "granularity": "trial",
+                "role": "external labels",
+            }
+        ],
+    )
+
+    choices = choices_from_import_recipe(recipe)
+
+    assert choices["label_carrier_choices"]["/data/A01T.mat"]["target_event_codes"] == [
+        "769",
+        "770",
+    ]
+
+
 def test_import_recipe_to_dict_is_json_ready():
     recipe = ImportRecipe(
         recipe_id="recipe-1",

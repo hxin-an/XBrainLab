@@ -667,6 +667,58 @@ def test_build_interpretation_candidate_reviews_external_event_order_placement(
     assert review["excluded_eeg_events"] == 1
 
 
+def test_build_interpretation_candidate_reviews_multiple_event_order_targets(
+    tmp_path,
+    monkeypatch,
+):
+    from scipy.io import savemat
+
+    label_path = tmp_path / "A01T.mat"
+    savemat(label_path, {"classlabel": [1, 2, 1, 2]})
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "768": {"count": 4, "description": "trial start"},
+                "769": {"count": 2, "description": "769"},
+                "770": {"count": 2, "description": "770"},
+                "1023": {"count": 1, "description": "artifact"},
+            }
+        },
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            eeg_files=["/data/A01T.gdf"],
+            label_carriers=[str(label_path)],
+            bids={"is_bids": False, "events_files": []},
+        ),
+        choices={
+            "label_carrier_choices": {
+                str(label_path): {
+                    "label_field": "classlabel",
+                    "target_event_codes": ["769", "770"],
+                    "placement_method": "eeg_event",
+                }
+            }
+        },
+    )
+
+    plan = candidate.label_carrier_plan[0]
+    review = plan["placement_review"]
+
+    assert plan["selected_target_event_codes"] == ["769", "770"]
+    assert plan["selected_anchor"] == "769"
+    assert review["method"] == "eeg_event"
+    assert review["status"] == "ready"
+    assert review["target_events"] == ["769", "770"]
+    assert review["selected_eeg_events"] == 4
+    assert review["matched"] == 4
+    assert review["excluded_eeg_events"] == 1
+
+
 def test_build_interpretation_candidate_reviews_event_code_placement(
     tmp_path,
     monkeypatch,

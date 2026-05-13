@@ -54,7 +54,7 @@ def infer_class_map_from_label_carrier_plan(
     return class_map
 
 
-def normalize_label_carrier_choices(payload: Any) -> dict[str, dict[str, str]]:
+def normalize_label_carrier_choices(payload: Any) -> dict[str, dict[str, Any]]:
     """Return cleaned wizard choices keyed by carrier path or file name."""
     if not isinstance(payload, dict):
         return {}
@@ -68,15 +68,24 @@ def normalize_label_carrier_choices(payload: Any) -> dict[str, dict[str, str]]:
         "target_file",
         "placement_method",
         "duration_field",
+        "target_event_codes",
     }
     for carrier_key, carrier_choices in payload.items():
         if not isinstance(carrier_choices, dict):
             continue
-        cleaned = {
-            str(key): str(value).strip()
-            for key, value in carrier_choices.items()
-            if str(key) in allowed and str(value).strip()
-        }
+        cleaned: dict[str, Any] = {}
+        for key, value in carrier_choices.items():
+            key_text = str(key)
+            if key_text not in allowed:
+                continue
+            if key_text == "target_event_codes":
+                values = _string_list(value)
+                if values:
+                    cleaned[key_text] = values
+                continue
+            value_text = str(value).strip()
+            if value_text:
+                cleaned[key_text] = value_text
         if cleaned:
             result[str(carrier_key)] = cleaned
     return result
@@ -84,7 +93,7 @@ def normalize_label_carrier_choices(payload: Any) -> dict[str, dict[str, str]]:
 
 def _label_carrier_plan_for_path(
     path: Path,
-    choices: dict[str, dict[str, str]],
+    choices: dict[str, dict[str, Any]],
     *,
     raw_path: str | None = None,
     source_location: str = "",
@@ -126,6 +135,13 @@ def _label_carrier_plan_for_path(
         interval_start_candidates=interval_start_candidates,
         event_code_candidates=event_code_candidates,
     )
+    selected_target_event_codes = _target_event_codes_for_choice(
+        carrier_choice,
+        selected_anchor,
+        placement_method,
+    )
+    if selected_target_event_codes and selected_anchor in {"", "trial order"}:
+        selected_anchor = selected_target_event_codes[0]
     label_stats = _observed_label_stats(path, selected_label)
     anchor_stats = _observed_field_stats(path, selected_anchor)
     duration_stats = _observed_field_stats(path, selected_duration)
@@ -145,6 +161,7 @@ def _label_carrier_plan_for_path(
         "duration_candidates": duration_candidates,
         "selected_label_field": selected_label,
         "selected_anchor": selected_anchor,
+        "selected_target_event_codes": selected_target_event_codes,
         "selected_duration_field": selected_duration,
         "label_row_count": label_stats["row_count"],
         "label_value_counts": label_stats["value_counts"],
@@ -162,9 +179,9 @@ def _label_carrier_plan_for_path(
 
 def _choice_for_label_carrier(
     path: Path,
-    choices: dict[str, dict[str, str]],
+    choices: dict[str, dict[str, Any]],
     raw_path: str,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     return choices.get(
         raw_path,
         choices.get(
@@ -841,6 +858,37 @@ def _default_anchor_for_placement(
     if placement_method == "time_field" and time_field_candidates:
         return time_field_candidates[0]
     return anchor_candidates[0] if anchor_candidates else ""
+
+
+def _target_event_codes_for_choice(
+    carrier_choice: dict[str, Any],
+    selected_anchor: str,
+    placement_method: str,
+) -> list[str]:
+    if placement_method != "eeg_event":
+        return []
+    values = _string_list(carrier_choice.get("target_event_codes"))
+    if values:
+        return values
+    anchor = str(selected_anchor or "").strip()
+    if anchor and anchor != "trial order":
+        return [anchor]
+    return []
+
+
+def _string_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        raw_values: Iterable[Any] = value.split(",")
+    elif isinstance(value, (list, tuple, set)):
+        raw_values = value
+    else:
+        return []
+    result: list[str] = []
+    for item in raw_values:
+        text = str(item).strip()
+        if text and text not in result:
+            result.append(text)
+    return result
 
 
 def _label_carrier_reason(

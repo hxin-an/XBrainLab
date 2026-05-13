@@ -28,6 +28,14 @@ _LABEL_CARRIER_CHOICE_SCHEMA: dict[str, Any] = {
             "type": "string",
             "description": "Column, variable, or event anchor used for timing.",
         },
+        "target_event_codes": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "EEG event codes selected for event-order label placement. "
+                "Labels are assigned in row order across this selected event set."
+            ),
+        },
         "time_model": {
             "type": "string",
             "enum": [
