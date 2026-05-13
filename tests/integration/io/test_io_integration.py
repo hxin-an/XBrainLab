@@ -47,6 +47,20 @@ def _mne_data(raw: Raw) -> Any:
     return raw.get_mne().get_data()
 
 
+def _assert_real_data_shape(raw: Raw) -> Any:
+    data = _mne_data(raw)
+    assert data.ndim in (2, 3)
+    assert data.size > 0
+    if data.ndim == 2:
+        assert data.shape[0] == raw.get_nchan()
+        assert data.shape[1] > 0
+    else:
+        assert data.shape[0] > 0
+        assert data.shape[1] == raw.get_nchan()
+        assert data.shape[2] > 0
+    return data
+
+
 class TestIOIntegration:
     """
     Integration tests for data loading module.
@@ -71,8 +85,7 @@ class TestIOIntegration:
 
         # 3. Verify data access (preload=False by default now)
         # Use get_data() instead of private _data
-        data = _mne_data(raw)
-        assert data is not None
+        data = _assert_real_data_shape(raw)
 
         # 4. Check shape
         n_channels = raw.get_nchan()
@@ -108,7 +121,7 @@ class TestIOIntegration:
         assert raw.has_gdf_duplicate_channel_detail()
 
         detail = raw.get_gdf_duplicate_channel_detail()
-        assert detail is not None
+        assert isinstance(detail, dict)
         assert detail["kind"] == "gdf_duplicate_channel_names"
         assert detail["filepath"] == GDF_FILE
         assert detail["resolved"] is True
@@ -129,16 +142,7 @@ class TestIOIntegration:
         assert raw.get_nchan() > 0
         assert raw.get_sfreq() > 0
 
-        data = _mne_data(raw)
-        assert data is not None
-        assert data.ndim in (2, 3)
-        if data.ndim == 2:
-            assert data.shape[0] == raw.get_nchan()
-            assert data.shape[1] > 0
-        else:
-            assert data.shape[1] == raw.get_nchan()
-            assert data.shape[0] > 0
-            assert data.shape[2] > 0
+        _assert_real_data_shape(raw)
 
     @pytest.mark.parametrize("filepath", REAL_DATA_FIXTURES)
     def test_application_service_import_supported_real_formats(self, filepath):
@@ -192,9 +196,7 @@ class TestIOIntegration:
         assert raw.get_nchan() > 0
         assert raw.get_sfreq() > 0
 
-        data = _mne_data(raw)
-        assert data is not None
-        assert data.ndim in (2, 3)
+        _assert_real_data_shape(raw)
 
     @pytest.mark.parametrize("filepath", PUBLIC_REAL_DATA_FIXTURES)
     def test_application_service_import_public_real_formats(self, filepath):

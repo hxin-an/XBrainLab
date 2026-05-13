@@ -32,6 +32,7 @@
 | Evaluation panel 是否還會顯示 stale metrics | [Evaluation display command evidence](#2026-05-13-evaluation-display-command-evidence-checkpoint) | service-owned average metrics 缺失時清空 stale display。 | human evaluation UX acceptance。 |
 | Data Import runtime / agent-MCP schema 是否仍可引用 | [Data Import runtime integration](#2026-05-13-data-import-runtime-integration-checkpoint) | command/service/dialog contracts 和 agent/MCP baseline。 | final Match Labels / Review and Import UX。 |
 | 測試是否能擋 facade / legacy fallback 回流 | [Backend test hygiene inventory](#backend-test-hygiene-inventory) 和 architecture guard checkpoints | 已知 forbidden product-success evidence 被 guard。 | semantic proof for every lower-level test。 |
+| Real-data IO 測試是否仍只證明 no-crash | [Real-Data IO shape-evidence](#2026-05-13-real-data-io-shape-evidence-checkpoint) | compact/public EEG fixtures 會檢查 loaded data 維度、非空內容、channel axis 對齊，以及 command import summary。 | scientific reproducibility、all possible external formats、or human Data Import acceptance。 |
 | 能不能宣稱桌面 MVP 人工驗收 | [Human Windows Desktop Acceptance Gap](#human-windows-desktop-acceptance-gap) | 尚缺哪些 click-through / artifact。 | release approval。 |
 
 ## Evidence 能力邊界
@@ -148,6 +149,20 @@ Offscreen screenshots include:
 - `artifacts/ui/data-import-wizard-steps/04-match-labels-internal-suggested-events-full.png`
 - `artifacts/ui/data-import-wizard-steps/04-match-labels-final-loaded-label-files.png`
 - `artifacts/ui/data-import-wizard-steps/05-review-and-import.png`
+
+## 2026-05-13 Real-Data IO Shape-Evidence Checkpoint
+
+This test-hygiene slice did not change runtime behavior or Data Import UX. It strengthened
+`tests/integration/io/test_io_integration.py` so fixture loading no longer passes only because
+MNE returned a non-`None` object. Compact and public EEG fixture checks now assert loaded data
+rank, non-empty sample content, and channel-axis agreement with `Raw.get_nchan()`; resolved GDF
+duplicate-channel detail is also asserted as a dictionary before key checks.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q` | `31 passed, 8 warnings` | Real-data IO fixture tests load data arrays with expected dimensionality and channel axis instead of generic no-crash / non-`None` evidence. | Scientific reproducibility, all possible external EEG files, or human Data Import acceptance. | Continue replacing generic assertions in nearby metadata / pipeline integration tests only when replacement evidence is stronger. |
+| Focused `ruff` / `basedpyright` / `ruff format --check` on `tests/integration/io/test_io_integration.py` | PASS / `0 errors, 0 warnings, 0 notes` / PASS | Changed test code is lint/type/format clean. | Runtime behavior by itself. | Keep focused gates paired with the behavior test. |
+| `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `91 passed` | Strengthened IO evidence did not weaken architecture guard coverage. | Semantic proof outside guarded files. | Broaden guard scope only with concrete replacement behavior. |
 
 ## 2026-05-13 Docs Readability and UI Refresh Truth Checkpoint
 
