@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import torch
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QDialog, QDialogButtonBox
+from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QPushButton
 
+from XBrainLab.backend.training import TrainingOption
 from XBrainLab.ui.dialogs.dataset.event_filter_dialog import EventFilterDialog
 from XBrainLab.ui.dialogs.dataset.label_mapping_dialog import LabelMappingDialog
 from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
@@ -20,9 +22,13 @@ def _show_dialog(qtbot, dialog: QDialog) -> None:
 
 def _click_ok(qtbot, dialog: QDialog) -> None:
     buttons = dialog.findChild(QDialogButtonBox)
-    assert buttons is not None
+    assert isinstance(buttons, QDialogButtonBox)
+    standard_buttons = buttons.standardButtons()
+    assert standard_buttons & QDialogButtonBox.StandardButton.Ok
+    assert standard_buttons & QDialogButtonBox.StandardButton.Cancel
     ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
-    assert ok_button is not None
+    assert isinstance(ok_button, QPushButton)
+    assert ok_button.isEnabled()
     qtbot.mouseClick(ok_button, Qt.MouseButton.LeftButton)
     qtbot.wait(50)
 
@@ -57,7 +63,9 @@ def test_event_filter_dialog_accepts_checked_selection_via_ok_button(qtbot):
     _show_dialog(qtbot, dialog)
 
     dialog.set_all_checked(False)
-    dialog.list_widget.item(1).setCheckState(Qt.CheckState.Checked)
+    selected_item = cast(Any, dialog.list_widget).item(1)
+    assert selected_item.text() == "right_hand"
+    selected_item.setCheckState(Qt.CheckState.Checked)
 
     _click_ok(qtbot, dialog)
 
@@ -76,10 +84,12 @@ def test_epoching_dialog_accepts_selected_event_and_baseline_toggle(qtbot):
 
     _show_dialog(qtbot, dialog)
 
-    dialog.event_list.item(0).setSelected(True)
-    dialog.baseline_check.setChecked(False)
-    dialog.tmin_spin.setValue(-0.1)
-    dialog.tmax_spin.setValue(0.8)
+    event_item = cast(Any, dialog.event_list).item(0)
+    assert event_item.text() == "left"
+    event_item.setSelected(True)
+    cast(Any, dialog.baseline_check).setChecked(False)
+    cast(Any, dialog.tmin_spin).setValue(-0.1)
+    cast(Any, dialog.tmax_spin).setValue(0.8)
 
     _click_ok(qtbot, dialog)
 
@@ -99,21 +109,21 @@ def test_training_setting_dialog_accepts_user_edits_via_ok_button(qtbot):
 
     _show_dialog(qtbot, dialog)
 
-    dialog.epoch_entry.setText("12")
-    dialog.bs_entry.setText("16")
-    dialog.lr_entry.setText("0.0005")
-    dialog.checkpoint_entry.setText("2")
-    dialog.repeat_entry.setText("3")
+    cast(Any, dialog.epoch_entry).setText("12")
+    cast(Any, dialog.bs_entry).setText("16")
+    cast(Any, dialog.lr_entry).setText("0.0005")
+    cast(Any, dialog.checkpoint_entry).setText("2")
+    cast(Any, dialog.repeat_entry).setText("3")
     dialog.output_dir = "/tmp/train-output"
-    dialog.output_dir_label.setText("/tmp/train-output")
-    dialog.evaluation_combo.setCurrentText("Last Epoch")
+    cast(Any, dialog.output_dir_label).setText("/tmp/train-output")
+    cast(Any, dialog.evaluation_combo).setCurrentText("Last Epoch")
 
     _click_ok(qtbot, dialog)
 
     option = dialog.get_result()
 
     assert dialog.result() == QDialog.DialogCode.Accepted
-    assert option is not None
+    assert isinstance(option, TrainingOption)
     assert option.epoch == 12
     assert option.bs == 16
     assert option.lr == 0.0005
