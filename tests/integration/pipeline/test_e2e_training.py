@@ -123,12 +123,16 @@ class TestTrainingPanelRealUsage:
 
         mock_trainer.get_training_plan_holders.return_value = [mock_plan]
         mock_trainer.is_running.return_value = True
+        mock_trainer.current_idx = 0
         mock_trainer.get_progress_text.return_value = "Training..."
         mock_plan.get_epoch_progress_text.return_value = "Epoch 1/10"
         mock_plan.model_holder.target_model.__name__ = "TestModel"
+        mock_plan.get_training_repeat.return_value = 0
 
         # Mock get_plans
         mock_record = MagicMock()
+        mock_record.repeat = 0
+        mock_record.is_finished.return_value = False
         mock_record.get_epoch.return_value = 1
         mock_record.train = {
             "loss": [0.5],
@@ -144,13 +148,23 @@ class TestTrainingPanelRealUsage:
 
         panel.update_loop()
 
-        # Verify progress bar was updated
-        # Verify progress in history table
-        assert panel.history_table.rowCount() > 0
-        progress_item = panel.history_table.item(0, 4)
-        assert progress_item is not None
-        progress_text = progress_item.text()
-        assert "/" in progress_text
+        assert panel.history_table.rowCount() == 1
+
+        def cell_text(column: int) -> str:
+            item = panel.history_table.item(0, column)
+            assert item is not None
+            return item.text()
+
+        assert cell_text(0) == "Group 1"
+        assert cell_text(1) == "1"
+        assert cell_text(2) == "TestModel"
+        assert cell_text(3) == "Running"
+        assert cell_text(4) == "1/10"
+        assert cell_text(5) == "0.5000"
+        assert cell_text(6) == "0.80%"
+        assert cell_text(7) == "0.6000"
+        assert cell_text(8) == "0.75%"
+        assert cell_text(9) == "0.001000"
 
 
 class TestEvaluationPanelIntegration:
