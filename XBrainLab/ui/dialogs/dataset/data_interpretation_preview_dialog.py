@@ -334,6 +334,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.target_event_status_label: QLabel
         self.time_field_check_label: QLabel
         self.time_field_preview_empty_label: QLabel
+        self.time_field_preview_row_widgets: list[QFrame]
         self.time_field_preview_row_labels: list[tuple[QLabel, QLabel]]
         self.placement_status_label: QLabel
         self.rule_status_label: QLabel
@@ -2094,7 +2095,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.rule_time_model_combo = self._rule_combo(
             self._time_model_choices(),
             self._default_time_model_value(placement_method),
-            "Choose how to interpret the selected label time field.",
+            "Choose how to interpret actual time or sample numbers.",
         )
         for hidden_selector in (
             self.rule_placement_method_combo,
@@ -2360,7 +2361,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         layout.addWidget(
             self._placement_section_title(
                 "Label time",
-                "Use this when each label row has a time or sample position.",
+                "Use this when each label row has a time or sample position. "
+                "If rows simply follow EEG events, use EEG event order.",
             )
         )
         controls = QGridLayout()
@@ -2399,31 +2401,52 @@ class DataInterpretationPreviewDialog(BaseDialog):
         table = QFrame()
         table.setObjectName("DataImportTimePreviewTable")
         table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        layout = QGridLayout(table)
+        layout = QVBoxLayout(table)
         layout.setContentsMargins(12, 10, 12, 12)
-        layout.setHorizontalSpacing(18)
-        layout.setVerticalSpacing(7)
+        layout.setSpacing(6)
 
         title = QLabel("Preview")
         title.setObjectName("DataImportSourceTitle")
-        layout.addWidget(title, 0, 0, 1, 2)
+        layout.addWidget(title)
 
+        header = QFrame()
+        header.setObjectName("DataImportTimePreviewHeader")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(8)
         time_header = QLabel("Time")
         time_header.setObjectName("DataImportPairingHeaderLabel")
+        time_header.setFixedWidth(96)
         label_header = QLabel("Label")
         label_header.setObjectName("DataImportPairingHeaderLabel")
-        layout.addWidget(time_header, 1, 0)
-        layout.addWidget(label_header, 1, 1)
+        header_layout.addWidget(time_header)
+        header_layout.addSpacing(20)
+        header_layout.addWidget(label_header, stretch=1)
+        layout.addWidget(header)
 
         self.time_field_preview_row_labels = []
-        for row_index in range(3):
+        self.time_field_preview_row_widgets = []
+        for _row_index in range(3):
+            row = QFrame()
+            row.setObjectName("DataImportTimePreviewRow")
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(9, 5, 9, 5)
+            row_layout.setSpacing(8)
             time_label = QLabel("")
-            time_label.setObjectName("DataImportTimePreviewValue")
+            time_label.setObjectName("DataImportTimePreviewTime")
+            time_label.setFixedWidth(96)
+            arrow = QLabel("->")
+            arrow.setObjectName("DataImportTimePreviewArrow")
+            arrow.setFixedWidth(20)
+            arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
             label_value = QLabel("")
             label_value.setObjectName("DataImportTimePreviewValue")
             label_value.setWordWrap(True)
-            layout.addWidget(time_label, row_index + 2, 0)
-            layout.addWidget(label_value, row_index + 2, 1)
+            row_layout.addWidget(time_label)
+            row_layout.addWidget(arrow)
+            row_layout.addWidget(label_value, stretch=1)
+            layout.addWidget(row)
+            self.time_field_preview_row_widgets.append(row)
             self.time_field_preview_row_labels.append((time_label, label_value))
 
         self.time_field_preview_empty_label = QLabel(
@@ -2432,11 +2455,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         self.time_field_preview_empty_label.setObjectName("DataImportSourceDetail")
         self.time_field_preview_empty_label.setWordWrap(True)
-        layout.addWidget(self.time_field_preview_empty_label, 2, 0, 1, 2)
+        layout.addWidget(self.time_field_preview_empty_label)
 
-        layout.setColumnMinimumWidth(0, 220)
-        layout.setColumnStretch(0, 0)
-        layout.setColumnStretch(1, 2)
         self._refresh_time_field_preview_rows()
         return table
 
@@ -2648,8 +2668,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         return [
             ("Seconds from EEG start", "seconds"),
             ("Sample index", "sample_index"),
-            ("Relative time from EEG start", "relative_time"),
-            ("Absolute timestamp", "timestamp"),
+            ("Other relative time value", "relative_time"),
+            ("Device timestamp", "timestamp"),
         ]
 
     def _default_time_model_value(self, placement_method: str) -> str:
@@ -2867,6 +2887,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self.time_field_preview_row_labels
         ):
             visible = index < len(rows)
+            row_widgets = getattr(self, "time_field_preview_row_widgets", [])
+            if index < len(row_widgets):
+                row_widgets[index].setVisible(visible)
             if visible:
                 time_label.setText(str(rows[index].get("time") or ""))
                 label_value.setText(str(rows[index].get("label") or ""))
@@ -4503,6 +4526,14 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 background-color: transparent;
                 border: none;
             }}
+            QFrame#DataImportTimePreviewHeader {{
+                background-color: transparent;
+                border: none;
+            }}
+            QFrame#DataImportTimePreviewRow {{
+                background-color: transparent;
+                border: none;
+            }}
             QFrame#DataImportClassMapEntry {{
                 background-color: #202020;
                 border: 1px solid #343434;
@@ -4553,6 +4584,22 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 color: #eeeeee;
                 font-size: 13px;
                 font-weight: 600;
+            }}
+            QLabel#DataImportTimePreviewTime {{
+                color: #eeeeee;
+                background-color: #191919;
+                border: 1px solid #303030;
+                border-radius: 4px;
+                padding: 3px 0;
+                font-size: 12px;
+                font-weight: 700;
+            }}
+            QLabel#DataImportTimePreviewArrow {{
+                color: {Theme.TEXT_SECONDARY};
+                background-color: transparent;
+                border: none;
+                font-size: 12px;
+                font-weight: 700;
             }}
             QLabel#DataImportTimePreviewValue {{
                 color: #eeeeee;

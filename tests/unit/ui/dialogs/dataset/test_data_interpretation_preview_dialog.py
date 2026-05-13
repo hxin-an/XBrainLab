@@ -1246,7 +1246,15 @@ def test_match_labels_placement_methods_use_mode_specific_panels(qtbot):
         assert excluded not in visible_text
         assert "Align to" not in visible_text
         if method == "time_field":
+            assert (
+                "If rows simply follow EEG events, use EEG event order" in visible_text
+            )
             assert "Time numbers mean" in visible_text
+            time_model_values = [
+                dialog.rule_time_model_combo.itemData(index)
+                for index in range(dialog.rule_time_model_combo.count())
+            ]
+            assert "trial_order" not in time_model_values
             assert "Preview" in visible_text
             assert "Time" in visible_text
             assert "Label" in visible_text
