@@ -4,7 +4,25 @@
 
 這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
-## 原則
+## 快速讀法
+
+先用這三步判讀 validation，不要從歷史 checkpoint 逐段倒推：
+
+1. 看「Evidence 能力邊界」判斷某個綠燈能支撐什麼 claim。
+2. 看「目前最可信的 gate」確認最近仍可引用的工程健康證據。
+3. 需要追溯某一輪改動時，再看下方日期 checkpoint。
+
+## 目前最可信的 gate
+
+| Gate | 最近可信結果 | 用途 | 不能取代 |
+| --- | --- | --- | --- |
+| Fast quality dashboard | 2026-05-13 17:46:11 UTC+08:00 `PASS` | lint、type、architecture guard、startup smoke、UI baseline/dialog/unit、real-data IO 的快速健康檢查。 | product complete、human Windows acceptance、long local-model session。 |
+| Architecture compliance | 最近 checkpoint `Architecture compliant!`，guard unit `79 passed` | 阻擋已知 `BackendFacade`、legacy fallback、direct state、positive controller lookup 等 regression。 | runtime semantic proof for every possible path。 |
+| Focused UI integration | `test_ui_refresh.py`、`test_ui_integration.py`、`test_panel_controller_binding.py` -> `8 passed` | MainWindow launch/navigation/tab-refresh 和 injected controller event wiring 不再把 legacy lookup 當成功證據。 | full zero-controller UI 或人工桌面驗收。 |
+| Product smokes / real tools | guarded UI product smokes、epoch runtime、real-tools suites recently PASS | product evidence 轉向 `QueryStateCommand` / command diagnostics / UI-visible state。 | 所有 integration tests 都已清成 product evidence。 |
+| `mkdocs build --strict` | 最近 checkpoint PASS | 文件站可建且連結/nav 基本有效。 | 文件內容一定正確或容易讀。 |
+
+## Evidence 能力邊界
 
 不要把一種 evidence 放大成所有 claim。
 
@@ -93,6 +111,23 @@ Offscreen screenshots include:
 - `artifacts/ui/data-import-wizard-steps/04-match-labels-internal-suggested-events-full.png`
 - `artifacts/ui/data-import-wizard-steps/04-match-labels-final-loaded-label-files.png`
 - `artifacts/ui/data-import-wizard-steps/05-review-and-import.png`
+
+## 2026-05-13 Docs Readability and UI Refresh Truth Checkpoint
+
+This slice kept UX work separate: no Data Import UX redesign, no Match Labels / Review and
+Import redesign, and no answer UI redesign. The change was docs-first: `current.md`,
+`architecture/ui.md`, and this validation page now start with concise current-truth summaries,
+remaining-exception maps, and evidence-reading guidance instead of forcing readers to infer the
+state from chronological checkpoint history.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| Source audit: `rg` over `XBrainLab/ui`, `XBrainLab/llm`, `XBrainLab/mcp`, guarded integration tests, and architecture guards for `run_legacy_controller_fallback`, `get_legacy_controller_from_study`, `study.get_controller`, direct mutable `Study` state, and `BackendFacade` | Remaining hits classified as panel bootstrap / observer bridge, mock / legacy compatibility, human-in-loop UI request, or lower-level setup/evidence boundary. | Docs now expose the actual remaining controller exception classes instead of presenting a vague clean/dirty claim. | Full zero-controller UI or proof that every lower-level integration test is product evidence. | Continue retiring one exception class at a time; do not broaden guards before replacement coverage exists. |
+| `poetry run mkdocs build --strict` / `git diff --check` | PASS / PASS | Docs site still builds strictly and docs diff has clean whitespace after readability rewrite. | Content correctness by itself. | Keep readability edits tied to source/test audits. |
+| `poetry run python tests/architecture_compliance.py` / `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` | `Architecture compliant!` / `79 passed` | Existing architecture guards still reject known UI/backend legacy regressions after the docs rewrite. | Runtime acceptance for paths outside guard scope. | Add new guard examples only with concrete replacement behavior. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/ui/test_ui_refresh.py tests/integration/ui/test_ui_integration.py tests/integration/ui/test_panel_controller_binding.py -q` | `8 passed` | UI launch/navigation/tab-refresh and injected controller event wiring evidence still matches the documented UI refresh truth. | Human Windows desktop acceptance or full zero-controller UI. | Keep UI refresh smokes paired with command/query truth assertions. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/integration/ui/test_product_walkthrough.py -q` | `4 passed` | Representative product walkthrough remains green while docs describe product-smoke claim boundaries. | Long-running local model session, release approval, or all data formats. | Human desktop acceptance remains required before release claims. |
+| `QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py` | Dashboard `PASS`, generated `2026-05-13 17:46:11 UTC+08:00`. | Fast engineering dashboard is green after docs readability cleanup, including full ruff, basedpyright, architecture, startup, UI baseline/dialog/unit, and real-data IO. | Product complete or human Windows acceptance. | Keep docs readability scored separately from docs correctness/completeness. |
 
 ## 2026-05-13 Data Import Runtime Integration Checkpoint
 
