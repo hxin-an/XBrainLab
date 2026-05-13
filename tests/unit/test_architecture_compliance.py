@@ -2,6 +2,7 @@ from tests.architecture_compliance import (
     check_backend_facade_test_usage,
     check_docs_current_truth_overclaims,
     check_llm_direct_study_state_reads,
+    check_llm_parser_weak_parse_assertions,
     check_mcp_direct_study_state_reads,
     check_mcp_weak_response_assertions,
     check_pipeline_state_weak_string_assertions,
@@ -174,6 +175,52 @@ def test_every_stage_label_matches_display_contract():
     )
 
     assert check_pipeline_state_weak_string_assertions(tmp_path) == []
+
+
+def test_llm_parser_weak_parse_guard_flags_generic_non_none_assertion(tmp_path):
+    path = tmp_path / "tests" / "unit" / "llm" / "test_parser.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_valid_json_command():
+    parsed = CommandParser.parse(text)
+    assert parsed is not None
+    cmd, params = parsed[0]
+    assert cmd == "load_data"
+
+
+def test_parse_arguments_alias():
+    result = CommandParser.parse(text)
+    assert result is not None
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_llm_parser_weak_parse_assertions(tmp_path)
+
+    assert len(violations) == 2
+    assert "generic non-None parser assertion" in violations[0]
+    assert "exact (tool_name, parameters) parse result" in violations[0]
+
+
+def test_llm_parser_weak_parse_guard_allows_exact_parse_results(tmp_path):
+    path = tmp_path / "tests" / "unit" / "llm" / "test_parser.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_valid_json_command():
+    parsed = CommandParser.parse(text)
+    assert parsed == [("load_data", {"file_paths": ["/data/A.gdf"]})]
+
+
+def test_no_json_block():
+    result = CommandParser.parse(text)
+    assert result is None
+""",
+        encoding="utf-8",
+    )
+
+    assert check_llm_parser_weak_parse_assertions(tmp_path) == []
 
 
 def test_docs_current_truth_guard_flags_product_complete_overclaim(tmp_path):

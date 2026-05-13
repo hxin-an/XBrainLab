@@ -171,6 +171,7 @@ MCP_EXACT_EVIDENCE_TEST_DIRS = (
     Path("tests/integration/mcp"),
 )
 PIPELINE_STATE_EXACT_EVIDENCE_TEST = Path("tests/unit/llm/test_pipeline_state.py")
+LLM_PARSER_EXACT_EVIDENCE_TEST = Path("tests/unit/llm/test_parser.py")
 DOC_CURRENT_TRUTH_FILES = (
     Path("docs/current.md"),
     Path("docs/index.md"),
@@ -383,6 +384,15 @@ def check_architecture(root_dir: str) -> int:
     if pipeline_state_weak_assertion_violations:
         print("\nPipeline State Weak String Assertion Violations Found:")
         for violation in pipeline_state_weak_assertion_violations:
+            print(f" - {violation}")
+        return 1
+
+    llm_parser_weak_assertion_violations = check_llm_parser_weak_parse_assertions(
+        Path(root_dir)
+    )
+    if llm_parser_weak_assertion_violations:
+        print("\nLLM Parser Weak Parse Assertion Violations Found:")
+        for violation in llm_parser_weak_assertion_violations:
             print(f" - {violation}")
         return 1
 
@@ -894,6 +904,27 @@ def check_pipeline_state_weak_string_assertions(root_dir: Path) -> list[str]:
     ]
 
 
+def check_llm_parser_weak_parse_assertions(root_dir: Path) -> list[str]:
+    """Return parser tests that only assert parse output exists."""
+    test_file = root_dir / LLM_PARSER_EXACT_EVIDENCE_TEST
+    if not test_file.exists():
+        return []
+
+    try:
+        tree = ast.parse(test_file.read_text(encoding="utf-8"), filename=str(test_file))
+    except SyntaxError:
+        return []
+
+    visitor = _LLMParserWeakParseAssertionVisitor()
+    visitor.visit(tree)
+    return [
+        f"{LLM_PARSER_EXACT_EVIDENCE_TEST}:{name_node.lineno} uses generic "
+        f"non-None parser assertion on {name_node.id!r}; assert the exact "
+        "(tool_name, parameters) parse result instead."
+        for name_node in visitor.violations
+    ]
+
+
 def check_docs_current_truth_overclaims(root_dir: Path) -> list[str]:
     """Return current-truth docs that present target/acceptance as complete."""
     violations: list[str] = []
@@ -978,6 +1009,17 @@ def _is_pipeline_state_string_target(node: ast.AST) -> bool:
             and node.value.id == "stage"
         )
     return False
+
+
+class _LLMParserWeakParseAssertionVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.violations: list[ast.Name] = []
+
+    def visit_Assert(self, node: ast.Assert) -> None:
+        name_node = _generic_non_none_assertion_name(node.test)
+        if name_node is not None and name_node.id in {"parsed", "parsed2", "result"}:
+            self.violations.append(name_node)
+        self.generic_visit(node)
 
 
 def _generic_non_none_assertion_name(node: ast.AST) -> ast.Name | None:

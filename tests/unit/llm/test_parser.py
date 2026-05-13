@@ -12,10 +12,7 @@ def test_valid_json_command():
     ```
     """
     parsed = CommandParser.parse(text)
-    assert parsed is not None
-    cmd, params = parsed[0]
-    assert cmd == "load_data"
-    assert params == {"file_paths": ["/data/A.gdf"]}
+    assert parsed == [("load_data", {"file_paths": ["/data/A.gdf"]})]
 
 
 def test_no_json_block():
@@ -94,10 +91,7 @@ def test_parse_analysis_bare_tool_names():
 def test_parse_arguments_alias():
     text = '{"tool_name":"scan_source","arguments":{"source_path":"/data"}}'
     parsed = CommandParser.parse(text)
-    assert parsed is not None
-    cmd, params = parsed[0]
-    assert cmd == "scan_source"
-    assert params == {"source_path": "/data"}
+    assert parsed == [("scan_source", {"source_path": "/data"})]
 
 
 def test_parse_tool_alias():
@@ -160,10 +154,7 @@ def test_parse_relaxed_json_block():
     ```
     """
     parsed = CommandParser.parse(text_caps)
-    assert parsed is not None
-    cmd, params = parsed[0]
-    assert cmd == "test_cmd"
-    assert params == {"k": "v"}
+    assert parsed == [("test_cmd", {"k": "v"})]
 
     # Case 2: No language identifier
     text_no_lang = """
@@ -175,7 +166,4 @@ def test_parse_relaxed_json_block():
     ```
     """
     parsed2 = CommandParser.parse(text_no_lang)
-    assert parsed2 is not None
-    cmd2, params2 = parsed2[0]
-    assert cmd2 == "test_cmd_2"
-    assert params2 == {"x": 1}
+    assert parsed2 == [("test_cmd_2", {"x": 1})]
