@@ -1196,6 +1196,61 @@ def test_load_labels_step_removes_loaded_label_source(qtbot):
     assert dialog.label_sources_label.text() == "Removed label source."
 
 
+def test_load_labels_step_shows_converted_label_table_fallback(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+        },
+        preview={"summary": "Found 1 EEG file(s)."},
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Load Labels")
+    qtbot.wait(0)
+
+    visible_text = _visible_step_text(dialog, "Load Labels")
+    assert "Custom label format?" in visible_text
+    assert "Required: label" in visible_text
+    assert "event_code" in visible_text
+    assert "onset_seconds" in visible_text
+    assert "duration_seconds" in visible_text
+    assert "sample" in visible_text
+    assert "Python file" not in visible_text
+    assert "custom parser" not in visible_text
+
+
+def test_load_labels_step_loads_converted_label_table(qtbot, monkeypatch):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+        },
+        preview={"summary": "Found 1 EEG file(s)."},
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Load Labels")
+    qtbot.wait(0)
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog.QFileDialog.getOpenFileNames",
+        lambda *_args, **_kwargs: (["/tmp/custom-labels/xbrainlab_labels.tsv"], ""),
+    )
+
+    dialog.load_converted_label_btn.click()
+    qtbot.wait(0)
+
+    result = dialog.get_result()
+    assert result["label_sources"] == ["/tmp/custom-labels/xbrainlab_labels.tsv"]
+    assert result["label_sources_changed"] is True
+    assert "xbrainlab_labels.tsv" in _group_text(dialog, "Load Labels")
+
+
 def test_load_labels_step_can_remove_auto_detected_label_carrier(qtbot):
     auto_label = "/tmp/source/labels/A01T.mat"
     dialog = DataInterpretationPreviewDialog(

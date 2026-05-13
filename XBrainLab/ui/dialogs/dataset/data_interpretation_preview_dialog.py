@@ -89,6 +89,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.label_source_rows_layout: QVBoxLayout
         self.add_label_file_btn: QPushButton
         self.add_label_folder_btn: QPushButton
+        self.load_converted_label_btn: QPushButton
         self.skip_labels_btn: QPushButton
         self.smart_parse_btn: QPushButton
         self.label_source_mode_combo: QComboBox
@@ -319,6 +320,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         label_button_layout.addStretch()
         label_button_layout.addWidget(self.skip_labels_btn)
         label_sources_layout.addLayout(label_button_layout)
+        label_sources_layout.addWidget(self._converted_label_table_row())
         attach_panel_layout.addWidget(label_sources_card)
         attach_panel_layout.addStretch()
         self.step_stack.addWidget(attach_panel)
@@ -2953,6 +2955,48 @@ class DataInterpretationPreviewDialog(BaseDialog):
             layout.addWidget(remove_btn)
         return row
 
+    def _converted_label_table_row(self) -> QFrame:
+        row = QFrame()
+        row.setObjectName("DataImportConvertedLabelTableRow")
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(10)
+
+        text_layout = QVBoxLayout()
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(3)
+
+        title_label = QLabel("Custom label format?")
+        title_label.setObjectName("DataImportSourceTitle")
+        detail_label = QLabel(
+            "Convert it outside XBrainLab to CSV/TSV, then load the table here."
+        )
+        detail_label.setObjectName("DataImportSourceDetail")
+        detail_label.setWordWrap(True)
+        format_label = QLabel(
+            "Required: label. Placement: row order, event_code, onset_seconds, "
+            "duration_seconds, or sample."
+        )
+        format_label.setObjectName("DataImportSourceDetail")
+        format_label.setWordWrap(True)
+
+        text_layout.addWidget(title_label)
+        text_layout.addWidget(detail_label)
+        text_layout.addWidget(format_label)
+        layout.addLayout(text_layout, stretch=1)
+
+        self.load_converted_label_btn = QPushButton("Load converted table")
+        self.load_converted_label_btn.setObjectName("DataImportToolButton")
+        self.load_converted_label_btn.setToolTip(
+            "Load a CSV or TSV table created from a custom label format."
+        )
+        self.load_converted_label_btn.clicked.connect(self._add_converted_label_table)
+        layout.addWidget(
+            self.load_converted_label_btn,
+            alignment=Qt.AlignmentFlag.AlignVCenter,
+        )
+        return row
+
     def _remove_label_source(self, source: str) -> None:
         source_key = self._normalized_label_source_key(source)
         if not source_key:
@@ -3457,6 +3501,15 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         self._add_label_sources([path] if path else [])
 
+    def _add_converted_label_table(self) -> None:
+        paths, _selected_filter = QFileDialog.getOpenFileNames(
+            self,
+            "Load converted label table",
+            "",
+            "XBrainLab Label Tables (*.csv *.tsv);;All Files (*)",
+        )
+        self._add_label_sources(paths)
+
     def _add_label_sources(self, paths: list[str]) -> None:
         changed = False
         skipped_duplicate = False
@@ -3658,6 +3711,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 border: none;
             }}
             QFrame#DataImportSourceRow,
+            QFrame#DataImportConvertedLabelTableRow,
             QFrame#DataImportActionCard,
             QFrame#DataImportRuleControl,
             QFrame#DataImportInlineRuleControl,
