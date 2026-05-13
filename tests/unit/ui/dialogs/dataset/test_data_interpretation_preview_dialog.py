@@ -1186,6 +1186,11 @@ def test_match_labels_placement_methods_use_mode_specific_panels(qtbot):
                             "method": "time_field",
                             "status": "ready",
                             "time_field": "onset",
+                            "label_rows": 12,
+                            "numeric_rows": 12,
+                            "time_min": 0,
+                            "time_max": 11,
+                            "time_model": "seconds",
                             "summary": "12/12 numeric rows, range 0 to 11.",
                         },
                         "interval": {
@@ -1235,6 +1240,14 @@ def test_match_labels_placement_methods_use_mode_specific_panels(qtbot):
         assert included in visible_text
         assert excluded not in visible_text
         assert "Align to" not in visible_text
+        if method == "time_field":
+            assert "Numeric rows" in visible_text
+            assert "12/12" in visible_text
+            assert "Time range" in visible_text
+            assert "0 to 11" in visible_text
+            assert "Time base" in visible_text
+            assert "Seconds" in visible_text
+            assert "Epoch handoff" in visible_text
         if method == "event_code":
             assert "1/2 label event codes were found" in (
                 dialog.placement_status_label.text()

@@ -331,6 +331,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.rule_use_as_combo: QComboBox
         self.label_values_status_label: QLabel
         self.target_event_status_label: QLabel
+        self.time_field_numeric_value_label: QLabel
+        self.time_field_range_value_label: QLabel
+        self.time_field_base_value_label: QLabel
         self.placement_status_label: QLabel
         self.rule_status_label: QLabel
         self.placement_detail_stack: QStackedWidget
@@ -2370,11 +2373,67 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         controls.setColumnStretch(0, 1)
         layout.addLayout(controls)
-        layout.addWidget(
-            self._placement_note("Epoch window will be set later in epoch setup.")
-        )
+        layout.addWidget(self._time_field_review_strip())
         layout.addStretch(1)
         return page
+
+    def _time_field_review_strip(self) -> QFrame:
+        strip = QFrame()
+        strip.setObjectName("DataImportTimeReviewStrip")
+        strip.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout = QGridLayout(strip)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setHorizontalSpacing(10)
+        layout.setVerticalSpacing(6)
+        self.time_field_numeric_value_label = self._time_review_metric(
+            layout,
+            0,
+            "Numeric rows",
+            self._time_field_numeric_rows_text(),
+        )
+        self.time_field_range_value_label = self._time_review_metric(
+            layout,
+            1,
+            "Time range",
+            self._time_field_range_text(),
+        )
+        self.time_field_base_value_label = self._time_review_metric(
+            layout,
+            2,
+            "Time base",
+            self._time_field_base_text(),
+        )
+        self._time_review_metric(
+            layout,
+            3,
+            "Epoch handoff",
+            "Window set later",
+        )
+        for column in range(4):
+            layout.setColumnStretch(column, 1)
+        return strip
+
+    def _time_review_metric(
+        self,
+        layout: QGridLayout,
+        column: int,
+        title: str,
+        value: str,
+    ) -> QLabel:
+        metric = QFrame()
+        metric.setObjectName("DataImportTimeReviewMetric")
+        metric_layout = QVBoxLayout(metric)
+        metric_layout.setContentsMargins(8, 6, 8, 6)
+        metric_layout.setSpacing(3)
+        title_label = QLabel(title)
+        title_label.setObjectName("DataImportMetricTitle")
+        value_label = QLabel(value)
+        value_label.setObjectName("DataImportTimeReviewValue")
+        value_label.setWordWrap(True)
+        metric_layout.addWidget(title_label)
+        metric_layout.addWidget(value_label)
+        layout.addWidget(metric, 0, column)
+        return value_label
 
     def _placement_interval_page(self) -> QFrame:
         page = self._placement_detail_frame()
@@ -2679,8 +2738,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         summary = str(review.get("summary") or "").strip().rstrip(".")
         status = str(review.get("status") or "needs_review").replace("_", " ")
         if method == "time_field":
-            field = str(review.get("time_field") or "").strip()
-            prefix = f"Check: Label time · {field}" if field else "Check: Label time"
+            prefix = "Check: Label time"
         elif method == "interval":
             start = str(review.get("time_field") or "").strip()
             duration = str(review.get("duration_field") or "").strip()
@@ -2702,6 +2760,127 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if summary:
             return f"{prefix} · {summary} · {status}."
         return f"{prefix} · {status}."
+
+    def _time_field_review(self) -> dict[str, Any]:
+        reviews = self._active_backend_placement_reviews("time_field")
+        if not reviews:
+            return {}
+        current = self._combo_current_data(self.rule_alignment_combo)
+        for review in reviews:
+            if str(review.get("time_field") or "").strip() == current:
+                return review
+        return (
+            reviews[0]
+            if len(reviews) == 1
+            else self._combined_time_field_review(reviews)
+        )
+
+    def _combined_time_field_review(
+        self,
+        reviews: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        combined: dict[str, Any] = {"method": "time_field"}
+        label_rows = [
+            value
+            for value in (
+                self._int_value(review.get("label_rows")) for review in reviews
+            )
+            if value is not None
+        ]
+        numeric_rows = [
+            value
+            for value in (
+                self._int_value(review.get("numeric_rows")) for review in reviews
+            )
+            if value is not None
+        ]
+        if label_rows:
+            combined["label_rows"] = sum(label_rows)
+        if numeric_rows:
+            combined["numeric_rows"] = sum(numeric_rows)
+        mins = [self._float_value(review.get("time_min")) for review in reviews]
+        maxes = [self._float_value(review.get("time_max")) for review in reviews]
+        mins = [value for value in mins if value is not None]
+        maxes = [value for value in maxes if value is not None]
+        if mins:
+            combined["time_min"] = min(mins)
+        if maxes:
+            combined["time_max"] = max(maxes)
+        models = {
+            str(review.get("time_model") or "").strip()
+            for review in reviews
+            if str(review.get("time_model") or "").strip()
+        }
+        if len(models) == 1:
+            combined["time_model"] = next(iter(models))
+        return combined
+
+    def _refresh_time_field_review(self) -> None:
+        if hasattr(self, "time_field_numeric_value_label"):
+            self.time_field_numeric_value_label.setText(
+                self._time_field_numeric_rows_text()
+            )
+        if hasattr(self, "time_field_range_value_label"):
+            self.time_field_range_value_label.setText(self._time_field_range_text())
+        if hasattr(self, "time_field_base_value_label"):
+            self.time_field_base_value_label.setText(self._time_field_base_text())
+
+    def _time_field_numeric_rows_text(self) -> str:
+        review = self._time_field_review()
+        numeric_rows = self._int_value(review.get("numeric_rows"))
+        label_rows = self._int_value(review.get("label_rows"))
+        if numeric_rows is None:
+            return "Needs review"
+        if label_rows is not None:
+            return f"{numeric_rows}/{label_rows}"
+        return f"{numeric_rows} rows"
+
+    def _time_field_range_text(self) -> str:
+        review = self._time_field_review()
+        start = self._float_value(review.get("time_min"))
+        end = self._float_value(review.get("time_max"))
+        if start is None or end is None:
+            return "Needs review"
+        return f"{self._number_text(start)} to {self._number_text(end)}"
+
+    def _time_field_base_text(self) -> str:
+        review = self._time_field_review()
+        raw = str(review.get("time_model") or "").strip()
+        if not raw:
+            raw = self._common_carrier_value("time_model")
+        labels = {
+            "seconds": "Seconds",
+            "relative_time": "Relative time",
+            "sample_index": "Sample index",
+            "timestamp": "Timestamp",
+            "trial_order": "Trial order",
+        }
+        return labels.get(raw, self._label_choice_display(raw) if raw else "Review")
+
+    @staticmethod
+    def _int_value(value: Any) -> int | None:
+        if isinstance(value, int):
+            return value
+        text = str(value or "").strip()
+        return int(text) if text.isdigit() else None
+
+    @staticmethod
+    def _float_value(value: Any) -> float | None:
+        if isinstance(value, (int, float)):
+            return float(value)
+        text = str(value or "").strip()
+        if not text:
+            return None
+        try:
+            return float(text)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _number_text(value: float) -> str:
+        if value.is_integer():
+            return str(int(value))
+        return f"{value:g}"
 
     def _label_value_count_summary(self) -> str:
         row_count = self._active_label_row_count()
@@ -2732,6 +2911,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self.label_values_status_label.setText(self._label_values_status_text())
         if hasattr(self, "target_event_status_label"):
             self.target_event_status_label.setText(self._target_event_status_text())
+        self._refresh_time_field_review()
         if hasattr(self, "placement_status_label"):
             self.placement_status_label.setText(self._placement_status_text())
         if hasattr(self, "rule_status_label"):
@@ -4136,6 +4316,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
             QFrame#DataImportRuleControl,
             QFrame#DataImportInlineRuleControl,
             QFrame#DataImportPairingRow,
+            QFrame#DataImportTimeReviewStrip,
+            QFrame#DataImportTimeReviewMetric,
             QFrame#DataImportEventRulesTable,
             QFrame#DataImportClassMapTable,
             QFrame#DataImportInternalLabelsTable,
@@ -4145,6 +4327,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 border-radius: 5px;
             }}
             QFrame#DataImportPairingBlock {{
+                background-color: transparent;
+                border: none;
+            }}
+            QFrame#DataImportTimeReviewStrip {{
                 background-color: transparent;
                 border: none;
             }}
@@ -4230,6 +4416,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 color: #eeeeee;
                 font-size: 13px;
                 font-weight: 600;
+            }}
+            QLabel#DataImportTimeReviewValue {{
+                color: #eeeeee;
+                font-size: 13px;
+                font-weight: 700;
             }}
             QLabel#DataImportPlacementOptionDetail {{
                 color: {Theme.TEXT_SECONDARY};
