@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
-    QDialog,
     QDialogButtonBox,
     QFileDialog,
     QFrame,
@@ -67,11 +66,10 @@ class _StepScrollArea(QScrollArea):
 
 
 class _ConvertedLabelTableDialog(BaseDialog):
-    """Explain the converted label table format before opening the file picker."""
+    """Explain the converted label table format."""
 
     def __init__(self, parent=None):
-        self.choose_button: QPushButton
-        self.cancel_button: QPushButton
+        self.close_button: QPushButton
         super().__init__(
             parent=parent,
             title="Load Converted Label Table",
@@ -93,8 +91,8 @@ class _ConvertedLabelTableDialog(BaseDialog):
         title = QLabel("XBrainLab label table")
         title.setObjectName("DataImportPanelTitle")
         detail = QLabel(
-            "Use this when labels come from a custom lab format. Convert outside "
-            "XBrainLab, then load the CSV or TSV table."
+            "Use this when XBrainLab cannot read or match the original label file. "
+            "Convert outside XBrainLab, then load the CSV/TSV with Load label file."
         )
         detail.setObjectName("DataImportPanelSubtitle")
         detail.setWordWrap(True)
@@ -112,11 +110,11 @@ class _ConvertedLabelTableDialog(BaseDialog):
         rows = [
             ("Required column", "label"),
             ("Optional columns", "eeg_file, class_name, trial_id"),
-            ("Row order", "one row per target EEG event"),
-            ("Event code", "event_code + label"),
-            ("Time", "onset_seconds + label"),
-            ("Interval", "onset_seconds + duration_seconds + label"),
-            ("Sample", "sample + label"),
+            ("One row per EEG event", "label"),
+            ("Match by event code", "event_code + label"),
+            ("Match by time", "onset_seconds + label"),
+            ("Match intervals", "onset_seconds + duration_seconds + label"),
+            ("Match by sample", "sample + label"),
         ]
         for row_index, (label_text, value_text) in enumerate(rows):
             label = QLabel(label_text)
@@ -132,14 +130,10 @@ class _ConvertedLabelTableDialog(BaseDialog):
         footer = QHBoxLayout()
         footer.setContentsMargins(0, 0, 0, 0)
         footer.addStretch()
-        self.cancel_button = QPushButton("Cancel")
-        self.cancel_button.setObjectName("DataImportSecondaryButton")
-        self.cancel_button.clicked.connect(self.reject)
-        self.choose_button = QPushButton("Choose CSV/TSV table")
-        self.choose_button.setObjectName("DataImportPrimaryButton")
-        self.choose_button.clicked.connect(self.accept)
-        footer.addWidget(self.cancel_button)
-        footer.addWidget(self.choose_button)
+        self.close_button = QPushButton("Close")
+        self.close_button.setObjectName("DataImportPrimaryButton")
+        self.close_button.clicked.connect(self.accept)
+        footer.addWidget(self.close_button)
         layout.addLayout(footer)
 
     def get_result(self) -> dict[str, Any]:
@@ -170,7 +164,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.label_source_rows_layout: QVBoxLayout
         self.add_label_file_btn: QPushButton
         self.add_label_folder_btn: QPushButton
-        self.load_converted_label_btn: QPushButton
         self.skip_labels_btn: QPushButton
         self.smart_parse_btn: QPushButton
         self.label_source_mode_combo: QComboBox
@@ -181,6 +174,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.pairing_card: QFrame
         self.label_values_card: QFrame
         self.placement_card: QFrame
+        self.label_table_fallback_card: QFrame
+        self.label_table_fallback_reason_label: QLabel
+        self.view_label_table_format_btn: QPushButton
         self.match_check_card: QFrame
         self.pairing_status_label: QLabel
         self.label_pairing_rows_widget: QWidget
@@ -401,7 +397,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
         label_button_layout.addStretch()
         label_button_layout.addWidget(self.skip_labels_btn)
         label_sources_layout.addLayout(label_button_layout)
-        label_sources_layout.addWidget(self._converted_label_table_row())
         attach_panel_layout.addWidget(label_sources_card)
         attach_panel_layout.addStretch()
         self.step_stack.addWidget(attach_panel)
@@ -524,6 +519,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.pairing_card, pairing_layout = self._card("File pairing")
         self._build_pairing_card(pairing_layout)
         label_panel_layout.addWidget(self.pairing_card)
+
+        self.label_table_fallback_card = self._label_table_fallback_card()
+        label_panel_layout.addWidget(self.label_table_fallback_card)
 
         self.label_values_card, label_values_layout = self._card(
             "Label values and placement"
@@ -853,6 +851,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         ):
             if widget is not None:
                 widget.setVisible(use_loaded)
+        self._refresh_label_table_fallback()
         if hasattr(self, "match_check_card"):
             self.match_check_card.setVisible(use_loaded)
         if hasattr(self, "internal_event_card"):
@@ -1981,6 +1980,99 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.rule_status_label.setWordWrap(True)
         layout.addWidget(self.rule_status_label)
 
+    def _label_table_fallback_card(self) -> QFrame:
+        card = QFrame()
+        card.setObjectName("DataImportConversionActionCard")
+        card.setVisible(False)
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(12)
+
+        text_layout = QVBoxLayout()
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(4)
+        title = QLabel("Label file needs conversion")
+        title.setObjectName("DataImportActionIssue")
+        self.label_table_fallback_reason_label = QLabel("")
+        self.label_table_fallback_reason_label.setObjectName("DataImportActionText")
+        self.label_table_fallback_reason_label.setWordWrap(True)
+        next_action = QLabel(
+            "Convert the custom structure to an XBrainLab label table, then load "
+            "the converted CSV/TSV with Load label file."
+        )
+        next_action.setObjectName("DataImportSourceDetail")
+        next_action.setWordWrap(True)
+        text_layout.addWidget(title)
+        text_layout.addWidget(self.label_table_fallback_reason_label)
+        text_layout.addWidget(next_action)
+        layout.addLayout(text_layout, stretch=1)
+
+        self.view_label_table_format_btn = QPushButton("View table format")
+        self.view_label_table_format_btn.setObjectName("DataImportToolButton")
+        self.view_label_table_format_btn.clicked.connect(
+            self._show_converted_label_table_format
+        )
+        layout.addWidget(
+            self.view_label_table_format_btn,
+            alignment=Qt.AlignmentFlag.AlignVCenter,
+        )
+        return card
+
+    def _refresh_label_table_fallback(self) -> None:
+        if not hasattr(self, "label_table_fallback_card"):
+            return
+        visible = self._should_show_label_table_fallback()
+        self.label_table_fallback_card.setVisible(visible)
+        if visible:
+            self.label_table_fallback_reason_label.setText(
+                self._label_table_fallback_reason()
+            )
+
+    def _should_show_label_table_fallback(self) -> bool:
+        if not hasattr(self, "label_source_mode_combo"):
+            return False
+        if self._label_source_mode() != "loaded_label_files":
+            return False
+        if not self._label_carrier_items:
+            return False
+        return bool(self._label_table_fallback_reason())
+
+    def _label_table_fallback_reason(self) -> str:
+        if not self._label_carrier_items:
+            return ""
+        label_field = ""
+        if hasattr(self, "rule_label_field_combo"):
+            label_field = self._combo_current_data(self.rule_label_field_combo)
+        if not label_field:
+            return (
+                "This file was loaded, but XBrainLab cannot find a usable label "
+                "column or variable."
+            )
+        placement_method = ""
+        alignment = ""
+        if hasattr(self, "rule_placement_method_combo"):
+            placement_method = self._combo_current_data(
+                self.rule_placement_method_combo
+            )
+        if hasattr(self, "rule_alignment_combo"):
+            alignment = self._combo_current_data(self.rule_alignment_combo)
+        if not alignment:
+            return (
+                "This file was loaded, but XBrainLab cannot find a field that places "
+                "labels on the EEG timeline."
+            )
+        blocked_reviews = [
+            review
+            for review in self._active_backend_placement_reviews(placement_method)
+            if str(review.get("status") or "").strip().lower() == "blocked"
+        ]
+        if blocked_reviews:
+            summary = str(blocked_reviews[0].get("summary") or "").strip().rstrip(".")
+            if summary:
+                return f"XBrainLab cannot match this label file yet: {summary}."
+            return "This file was loaded, but XBrainLab cannot match it to EEG events."
+        return ""
+
     def _build_label_rule_card(self, layout: QVBoxLayout) -> None:
         """Compatibility wrapper for older tests and callers."""
         self._build_label_values_card(layout)
@@ -2490,6 +2582,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self.rule_status_label.setText(self._label_rule_status_text())
         if hasattr(self, "placement_detail_stack"):
             self._sync_placement_detail_stack()
+        self._refresh_label_table_fallback()
 
     def _rule_control(self, label: str, selector: QComboBox) -> QFrame:
         frame = QFrame()
@@ -3036,41 +3129,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
             layout.addWidget(remove_btn)
         return row
 
-    def _converted_label_table_row(self) -> QFrame:
-        row = QFrame()
-        row.setObjectName("DataImportConvertedLabelTableRow")
-        layout = QHBoxLayout(row)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(10)
-
-        text_layout = QVBoxLayout()
-        text_layout.setContentsMargins(0, 0, 0, 0)
-        text_layout.setSpacing(3)
-
-        title_label = QLabel("Custom label format?")
-        title_label.setObjectName("DataImportSourceTitle")
-        detail_label = QLabel(
-            "Convert it to an XBrainLab label table, then load the CSV or TSV."
-        )
-        detail_label.setObjectName("DataImportSourceDetail")
-        detail_label.setWordWrap(True)
-
-        text_layout.addWidget(title_label)
-        text_layout.addWidget(detail_label)
-        layout.addLayout(text_layout, stretch=1)
-
-        self.load_converted_label_btn = QPushButton("Load converted table")
-        self.load_converted_label_btn.setObjectName("DataImportToolButton")
-        self.load_converted_label_btn.setToolTip(
-            "Load a CSV or TSV table created from a custom label format."
-        )
-        self.load_converted_label_btn.clicked.connect(self._add_converted_label_table)
-        layout.addWidget(
-            self.load_converted_label_btn,
-            alignment=Qt.AlignmentFlag.AlignVCenter,
-        )
-        return row
-
     def _remove_label_source(self, source: str) -> None:
         source_key = self._normalized_label_source_key(source)
         if not source_key:
@@ -3575,21 +3633,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         self._add_label_sources([path] if path else [])
 
-    def _add_converted_label_table(self) -> None:
-        if not self._confirm_converted_label_table_format():
-            return
-        paths, _selected_filter = QFileDialog.getOpenFileNames(
-            self,
-            "Load converted label table",
-            "",
-            "XBrainLab Label Tables (*.csv *.tsv);;All Files (*)",
-        )
-        self._add_label_sources(paths)
-
-    def _confirm_converted_label_table_format(self) -> bool:
+    def _show_converted_label_table_format(self) -> None:
         dialog = _ConvertedLabelTableDialog(self)
         dialog.setStyleSheet(self.styleSheet())
-        return dialog.exec() == QDialog.DialogCode.Accepted
+        dialog.exec()
 
     def _add_label_sources(self, paths: list[str]) -> None:
         changed = False
@@ -3793,7 +3840,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 border: none;
             }}
             QFrame#DataImportSourceRow,
-            QFrame#DataImportConvertedLabelTableRow,
+            QFrame#DataImportConversionActionCard,
             QFrame#DataImportActionCard,
             QFrame#DataImportRuleControl,
             QFrame#DataImportInlineRuleControl,

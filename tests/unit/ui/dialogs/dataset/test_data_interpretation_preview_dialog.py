@@ -1026,6 +1026,7 @@ def test_match_labels_eeg_event_order_shows_target_event_check(qtbot):
     assert "282 label rows" in visible_text
     assert "6 unlabeled EEG events" in visible_text
     assert "6 EEG events excluded" in visible_text
+    assert "Label file needs conversion" not in visible_text
 
     result = dialog.get_result()
 
@@ -1197,7 +1198,7 @@ def test_load_labels_step_removes_loaded_label_source(qtbot):
     assert dialog.label_sources_label.text() == "Removed label source."
 
 
-def test_load_labels_step_shows_converted_label_table_fallback(qtbot):
+def test_load_labels_step_keeps_custom_fallback_out_of_first_layer(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,
         scan_result={
@@ -1213,9 +1214,9 @@ def test_load_labels_step_shows_converted_label_table_fallback(qtbot):
     qtbot.wait(0)
 
     visible_text = _visible_step_text(dialog, "Load Labels")
-    assert "Custom label format?" in visible_text
-    assert "XBrainLab label table" in visible_text
-    assert "CSV or TSV" in visible_text
+    assert "Load label file" not in visible_text
+    assert "Custom label format?" not in visible_text
+    assert "XBrainLab label table" not in visible_text
     assert "Required: label" not in visible_text
     assert "event_code" not in visible_text
     assert "Python file" not in visible_text
@@ -1236,44 +1237,65 @@ def test_converted_label_table_dialog_shows_required_format(qtbot):
     assert "XBrainLab label table" in visible_text
     assert "Required column" in visible_text
     assert "label" in visible_text
-    assert "Event code" in visible_text
+    assert "Match by event code" in visible_text
     assert "event_code + label" in visible_text
-    assert "Interval" in visible_text
+    assert "Match intervals" in visible_text
     assert "onset_seconds + duration_seconds + label" in visible_text
+    button_texts = [button.text() for button in dialog.findChildren(QPushButton)]
+    assert "Close" in button_texts
+    assert "Choose CSV/TSV table" not in button_texts
 
 
-def test_load_labels_step_loads_converted_label_table(qtbot, monkeypatch):
+def test_match_labels_shows_conversion_fallback_when_label_field_is_missing(
+    qtbot,
+    monkeypatch,
+):
+    label_path = "/tmp/labels/custom_labels.mat"
+    opened = {"value": False}
+    monkeypatch.setattr(
+        DataInterpretationPreviewDialog,
+        "_show_converted_label_table_format",
+        lambda _dialog: opened.__setitem__("value", True),
+    )
     dialog = DataInterpretationPreviewDialog(
         parent=None,
         scan_result={
             "source_path": "/tmp/source",
             "eeg_files": ["/tmp/source/A01T.gdf"],
+            "label_carriers": [label_path],
         },
-        preview={"summary": "Found 1 EEG file(s)."},
-        validation_decision={"decision": "safe"},
+        preview={
+            "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+            "label_carrier_preview": [
+                {
+                    "path": label_path,
+                    "name": "custom_labels.mat",
+                    "format": "MAT",
+                    "target_file": "A01T.gdf",
+                    "label_candidates": [],
+                    "anchor_candidates": [],
+                    "selected_label_field": "",
+                    "selected_anchor": "",
+                    "placement_method": "eeg_event",
+                }
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
     )
     qtbot.addWidget(dialog)
     dialog.show()
-    _show_step(dialog, "Load Labels")
+    _show_step(dialog, "Match Labels")
     qtbot.wait(0)
 
-    monkeypatch.setattr(
-        dialog,
-        "_confirm_converted_label_table_format",
-        lambda: True,
-    )
-    monkeypatch.setattr(
-        "XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog.QFileDialog.getOpenFileNames",
-        lambda *_args, **_kwargs: (["/tmp/custom-labels/xbrainlab_labels.tsv"], ""),
-    )
+    visible_text = _visible_step_text(dialog, "Match Labels")
+    assert "Label file needs conversion" in visible_text
+    assert "cannot find a usable label column" in visible_text
+    assert "converted CSV/TSV with Load label file" in visible_text
 
-    dialog.load_converted_label_btn.click()
+    _click_button(dialog, "View table format")
     qtbot.wait(0)
 
-    result = dialog.get_result()
-    assert result["label_sources"] == ["/tmp/custom-labels/xbrainlab_labels.tsv"]
-    assert result["label_sources_changed"] is True
-    assert "xbrainlab_labels.tsv" in _group_text(dialog, "Load Labels")
+    assert opened["value"] is True
 
 
 def test_load_labels_step_can_remove_auto_detected_label_carrier(qtbot):
