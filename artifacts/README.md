@@ -13,6 +13,8 @@
 - artifact 不能自動擴張成 product complete、human acceptance 或 thesis claim。
 - 不手改 generated artifact 來讓結果看起來更好。
 - 如果 artifact 和 current docs 衝突，先查 source / runtime，再更新 canonical docs 或重跑 artifact。
+- artifact 不應變成第二套文件系統；過期 handoff、被較完整 walkthrough 覆蓋的截圖族群、
+  或可由 generator 重建的 duplicate snapshot，應保留在 git history，不長期留在 current tree。
 
 ## 主要 artifact family
 
@@ -40,6 +42,23 @@
 | `data_interpretation/internal-event-evidence-A01T-A03T.json` | 想看 A01T/A02T/A03T internal-event evidence payload。 |
 | `ui/data-import-wizard-steps/README.md` | 想看目前 Data Import wizard 和 Match Labels placement mode 截圖索引。 |
 | `launcher/windows-launcher-walkthrough.md` | 想看 launcher smoke。 |
+
+## 保留 / 清理規則
+
+保留 current tree 裡的 artifact 時，至少要符合一項：
+
+- canonical docs 或 artifact dashboard 直接引用；
+- 代表目前仍要判讀的 product evidence；
+- 是 `quality/latest.*`、approved UI baseline candidate、MCP / launcher / Data Import / agent eval
+  這類仍在 evidence board 的入口；
+- 不是重複截圖，或雖然相似但代表不同使用者流程的重要狀態。
+
+可以清掉的 artifact 類型：
+
+- old goal handoff / continuation notes；這類紀錄應回到 `docs/records/` 或 git history。
+- 被更完整 walkthrough supersede 的短版 chatpanel 截圖族群。
+- 未被 current docs 引用、可由 script 重跑生成的 dated docs-site visual checkpoint。
+- exact duplicate splash / ready screenshots，除非該檔本身是 current artifact family 的入口。
 
 ## 新 artifact 要寫清楚
 

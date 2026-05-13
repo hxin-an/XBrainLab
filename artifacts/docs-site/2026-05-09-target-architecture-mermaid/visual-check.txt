@@ -1,6 +1,0 @@
-home_url: http://localhost:8022/
-home_screenshot: home.png
-mermaid_screenshot: target-agent-mermaid-cdp.png
-target_agent_title: XBrainLab Agent 目標
-mermaid_svg_count: 1
-notes: Windows Chrome headless rendered the rewritten MkDocs home page; previous Mermaid check confirmed SVG rendering.
