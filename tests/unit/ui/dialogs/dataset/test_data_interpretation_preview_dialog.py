@@ -1255,9 +1255,10 @@ def test_match_labels_placement_methods_use_mode_specific_panels(qtbot):
                 for index in range(dialog.rule_time_model_combo.count())
             ]
             assert "trial_order" not in time_model_values
-            assert "Preview" in visible_text
-            assert "Time" in visible_text
-            assert "Label" in visible_text
+            assert "Preview rows" in visible_text
+            assert "Time in EEG" in visible_text
+            assert "Label value" in visible_text
+            assert "Showing first 3 rows from trial_type using onset" in visible_text
             assert dialog.time_field_preview_row_labels[0][0].text() == "0"
             assert dialog.time_field_preview_row_labels[0][1].text() == "left"
             assert dialog.time_field_preview_row_labels[1][0].text() == "5.5"

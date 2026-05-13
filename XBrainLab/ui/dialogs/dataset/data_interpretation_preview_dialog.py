@@ -334,6 +334,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.target_event_status_label: QLabel
         self.time_field_check_label: QLabel
         self.time_field_preview_empty_label: QLabel
+        self.time_field_preview_caption_label: QLabel
         self.time_field_preview_row_widgets: list[QFrame]
         self.time_field_preview_row_labels: list[tuple[QLabel, QLabel]]
         self.placement_status_label: QLabel
@@ -2405,7 +2406,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         layout.setContentsMargins(12, 10, 12, 12)
         layout.setSpacing(6)
 
-        title = QLabel("Preview")
+        title = QLabel("Preview rows")
         title.setObjectName("DataImportSourceTitle")
         layout.addWidget(title)
 
@@ -2414,13 +2415,12 @@ class DataInterpretationPreviewDialog(BaseDialog):
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.setSpacing(8)
-        time_header = QLabel("Time")
+        time_header = QLabel("Time in EEG")
         time_header.setObjectName("DataImportPairingHeaderLabel")
-        time_header.setFixedWidth(96)
-        label_header = QLabel("Label")
+        time_header.setFixedWidth(150)
+        label_header = QLabel("Label value")
         label_header.setObjectName("DataImportPairingHeaderLabel")
         header_layout.addWidget(time_header)
-        header_layout.addSpacing(20)
         header_layout.addWidget(label_header, stretch=1)
         layout.addWidget(header)
 
@@ -2431,23 +2431,25 @@ class DataInterpretationPreviewDialog(BaseDialog):
             row.setObjectName("DataImportTimePreviewRow")
             row_layout = QHBoxLayout(row)
             row_layout.setContentsMargins(9, 5, 9, 5)
-            row_layout.setSpacing(8)
+            row_layout.setSpacing(10)
             time_label = QLabel("")
             time_label.setObjectName("DataImportTimePreviewTime")
-            time_label.setFixedWidth(96)
-            arrow = QLabel("->")
-            arrow.setObjectName("DataImportTimePreviewArrow")
-            arrow.setFixedWidth(20)
-            arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            time_label.setFixedWidth(150)
             label_value = QLabel("")
             label_value.setObjectName("DataImportTimePreviewValue")
             label_value.setWordWrap(True)
             row_layout.addWidget(time_label)
-            row_layout.addWidget(arrow)
             row_layout.addWidget(label_value, stretch=1)
             layout.addWidget(row)
             self.time_field_preview_row_widgets.append(row)
             self.time_field_preview_row_labels.append((time_label, label_value))
+
+        self.time_field_preview_caption_label = QLabel(
+            self._time_field_preview_caption_text()
+        )
+        self.time_field_preview_caption_label.setObjectName("DataImportSourceDetail")
+        self.time_field_preview_caption_label.setWordWrap(True)
+        layout.addWidget(self.time_field_preview_caption_label)
 
         self.time_field_preview_empty_label = QLabel(
             "Preview rows will appear after the selected time and label fields can "
@@ -2877,6 +2879,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
     def _refresh_time_field_review(self) -> None:
         if hasattr(self, "time_field_check_label"):
             self.time_field_check_label.setText(self._time_field_check_text())
+        if hasattr(self, "time_field_preview_caption_label"):
+            self.time_field_preview_caption_label.setText(
+                self._time_field_preview_caption_text()
+            )
         self._refresh_time_field_preview_rows()
 
     def _refresh_time_field_preview_rows(self) -> None:
@@ -2900,6 +2906,15 @@ class DataInterpretationPreviewDialog(BaseDialog):
             label_value.setVisible(visible)
         if hasattr(self, "time_field_preview_empty_label"):
             self.time_field_preview_empty_label.setVisible(not rows)
+        if hasattr(self, "time_field_preview_caption_label"):
+            self.time_field_preview_caption_label.setVisible(bool(rows))
+
+    def _time_field_preview_caption_text(self) -> str:
+        label_field = self._combo_current_data(self.rule_label_field_combo)
+        time_field = self._combo_current_data(self.rule_alignment_combo)
+        if label_field and time_field:
+            return f"Showing first 3 rows from {label_field} using {time_field}."
+        return "Showing first 3 matched label rows."
 
     def _time_field_check_text(self) -> str:
         review = self._time_field_review()
@@ -4587,15 +4602,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
             }}
             QLabel#DataImportTimePreviewTime {{
                 color: #eeeeee;
-                background-color: #191919;
-                border: 1px solid #303030;
-                border-radius: 4px;
-                padding: 3px 0;
-                font-size: 12px;
-                font-weight: 700;
-            }}
-            QLabel#DataImportTimePreviewArrow {{
-                color: {Theme.TEXT_SECONDARY};
                 background-color: transparent;
                 border: none;
                 font-size: 12px;
