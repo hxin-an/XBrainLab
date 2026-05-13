@@ -126,13 +126,27 @@ def test_public_cross_source_training_smoke(
     assert filter_result.ok is True
     assert normalize_result.ok is True
     assert epoch_result.ok is True
+    assert epoch_result.state.epoch.event_names == list(fixture["event_ids"])
+    assert epoch_result.state.epoch.event_ids == {
+        event_name: index for index, event_name in enumerate(fixture["event_ids"])
+    }
+    assert epoch_result.state.epoch.epoch_count is not None
+    assert epoch_result.state.epoch.epoch_count > 0
     assert dataset_result.ok is True
     assert dataset_result.diagnostics["split_audit"]["ok"] is True
     assert dataset_result.state.dataset.available is True
-    assert dataset_result.state.dataset.count > 0
-    assert dataset_result.state.dataset.split_summary["train_count"] > 0
-    assert dataset_result.state.dataset.split_summary["val_count"] > 0
-    assert dataset_result.state.dataset.split_summary["test_count"] > 0
+    assert dataset_result.state.dataset.count == 1
+    split_summary = dataset_result.state.dataset.split_summary
+    assert split_summary["audit"] == {"ok": True, "dataset_count": 1, "issues": []}
+    assert split_summary["train_count"] > 0
+    assert split_summary["val_count"] > 0
+    assert split_summary["test_count"] > 0
+    assert (
+        split_summary["train_count"]
+        + split_summary["val_count"]
+        + split_summary["test_count"]
+        == epoch_result.state.epoch.epoch_count
+    )
 
     assert service.execute(ConfigureTrainingCommand(model_name="EEGNet")).ok is True
     assert (
@@ -162,11 +176,14 @@ def test_public_cross_source_training_smoke(
         )
 
     assert train_result.ok is True
+    assert train_result.state.training.plan_count == 1
+    assert train_result.state.training.run_count == 1
+    assert train_result.state.training.finished_run_count == 1
     history = service.execute(
         QueryStateCommand(query="training_history", include_objects=True),
     )
     assert history.ok is True
-    assert history.diagnostics["row_count"] > 0
+    assert history.diagnostics["row_count"] == 1
     record = history.diagnostics["rows"][0]["record"]
     assert RecordKey.LOSS in record.train
     assert RecordKey.ACC in record.train
