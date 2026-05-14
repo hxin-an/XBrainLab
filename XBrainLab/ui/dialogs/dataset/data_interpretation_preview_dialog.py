@@ -1629,11 +1629,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.label_match_mode_combo = self._rule_combo(
             self._match_mode_choices(),
             self._default_match_mode(),
-            "Choose how label files are matched to EEG files.",
+            "Label files are paired automatically; adjust individual rows below.",
         )
-        header.addWidget(
-            self._inline_rule_control("Pair by", self.label_match_mode_combo)
-        )
+        self.label_match_mode_combo.setVisible(False)
         layout.addLayout(header)
 
         self.label_pairing_rows_widget = QWidget()
@@ -2131,8 +2129,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
     def _placement_time_field_page(self) -> QFrame:
         page = self._placement_detail_frame()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(12, 10, 12, 11)
-        layout.setSpacing(8)
+        layout.setContentsMargins(12, 10, 12, 12)
+        layout.setSpacing(10)
         layout.addWidget(
             self._placement_section_title(
                 "Label time",
@@ -2140,10 +2138,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 "EEG timeline.",
             )
         )
-        controls = QGridLayout()
+        controls = QHBoxLayout()
         controls.setContentsMargins(0, 0, 0, 0)
-        controls.setHorizontalSpacing(10)
-        controls.setVerticalSpacing(8)
+        controls.setSpacing(10)
         time_field_combo = self._rule_combo(
             self._alignment_rule_choices("time_field"),
             self._default_alignment_value("time_field"),
@@ -2154,18 +2151,115 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 self._sync_alignment_from_visible_combo(selector)
             )
         )
+        time_control = self._rule_control("Label time field", time_field_combo)
+        time_control.setMaximumWidth(360)
+        controls.addWidget(time_control)
         controls.addWidget(
-            self._rule_control("Label time field", time_field_combo),
-            0,
-            0,
+            self._placement_time_meaning_card(),
+            stretch=1,
         )
-        controls.setColumnStretch(0, 1)
         layout.addLayout(controls)
+        layout.addWidget(self._placement_time_review_table())
         layout.addWidget(
             self._placement_note("Epoch window will be set later in epoch setup.")
         )
-        layout.addStretch(1)
         return page
+
+    def _placement_time_meaning_card(self) -> QFrame:
+        card = QFrame()
+        card.setObjectName("DataImportPlacementReviewCard")
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(10, 7, 10, 8)
+        layout.setSpacing(3)
+        title = QLabel("Time values mean")
+        title.setObjectName("DataImportRuleLabel")
+        value = QLabel(self._time_value_meaning_text())
+        value.setObjectName("DataImportSourceTitle")
+        value.setWordWrap(True)
+        layout.addWidget(title)
+        layout.addWidget(value)
+        return card
+
+    def _placement_time_review_table(self) -> QFrame:
+        table = QFrame()
+        table.setObjectName("DataImportPlacementReviewTable")
+        table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout = QVBoxLayout(table)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(5)
+        layout.addWidget(
+            self._placement_review_header_row(
+                ["Label file", "Time field", "Usable values", "Range", "Status"]
+            )
+        )
+        entries = self._active_backend_placement_review_entries("time_field")
+        if not entries:
+            layout.addWidget(
+                self._empty_state(
+                    "Time values will be checked after a label file is loaded.",
+                )
+            )
+            return table
+        for original, review in entries:
+            layout.addWidget(self._placement_time_review_row(original, review))
+        return table
+
+    def _placement_review_header_row(self, labels: list[str]) -> QFrame:
+        row = QFrame()
+        row.setObjectName("DataImportPlacementReviewHeader")
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(10, 0, 10, 0)
+        layout.setSpacing(10)
+        widths = [0, 116, 128, 120, 92]
+        stretches = [2, 0, 0, 0, 0]
+        for label, width, stretch in zip(labels, widths, stretches, strict=False):
+            widget = self._pairing_header_label(label, width)
+            layout.addWidget(widget, stretch=stretch)
+        return row
+
+    def _placement_time_review_row(
+        self,
+        original: dict[str, Any],
+        review: dict[str, Any],
+    ) -> QFrame:
+        row = QFrame()
+        row.setObjectName("DataImportPlacementReviewRow")
+        row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(10, 7, 10, 7)
+        layout.setSpacing(10)
+
+        source_name = str(
+            original.get("name") or Path(str(original.get("path", ""))).name
+        )
+        file_name = QLabel(source_name)
+        file_name.setObjectName("DataImportSourceTitle")
+        file_name.setWordWrap(True)
+        layout.addWidget(file_name, stretch=2)
+
+        time_field = QLabel(str(review.get("time_field") or "-"))
+        time_field.setObjectName("DataImportPlacementReviewValue")
+        time_field.setFixedWidth(116)
+        layout.addWidget(time_field)
+
+        usable = QLabel(self._time_review_usable_text(review))
+        usable.setObjectName("DataImportSourceDetail")
+        usable.setFixedWidth(128)
+        layout.addWidget(usable)
+
+        time_range = QLabel(self._time_review_range_text(review))
+        time_range.setObjectName("DataImportSourceDetail")
+        time_range.setFixedWidth(120)
+        layout.addWidget(time_range)
+
+        status = QLabel(self._placement_review_status_text(review))
+        status.setObjectName("DataImportPlacementReviewBadge")
+        status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        status.setProperty("reviewState", str(review.get("status") or "needs_review"))
+        status.setFixedWidth(92)
+        layout.addWidget(status)
+        return row
 
     def _placement_interval_page(self) -> QFrame:
         page = self._placement_detail_frame()
@@ -2449,7 +2543,18 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self,
         placement_method: str,
     ) -> list[dict[str, Any]]:
-        reviews: list[dict[str, Any]] = []
+        return [
+            review
+            for _original, review in self._active_backend_placement_review_entries(
+                placement_method
+            )
+        ]
+
+    def _active_backend_placement_review_entries(
+        self,
+        placement_method: str,
+    ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+        reviews: list[tuple[dict[str, Any], dict[str, Any]]] = []
         for item, original in self._label_carrier_items:
             carrier_key = self._label_carrier_key(item, original)
             if carrier_key and self._is_label_carrier_excluded(carrier_key):
@@ -2466,8 +2571,92 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 ):
                     review = raw_review
             if isinstance(review, dict):
-                reviews.append(review)
+                reviews.append((original, review))
         return reviews
+
+    def _time_value_meaning_text(self) -> str:
+        time_model = str(self._common_carrier_value("time_model") or "").strip()
+        if time_model == "sample_index":
+            return "Sample index in the EEG recording"
+        if time_model in {"seconds", "relative_time"}:
+            return "Seconds from the recording start"
+        if time_model == "timestamp":
+            return "Timestamp from the label file"
+        if time_model == "lsl_time":
+            return "LSL stream time"
+        return "Time base will be confirmed from the selected field"
+
+    @staticmethod
+    def _time_review_usable_text(review: dict[str, Any]) -> str:
+        label_rows = DataInterpretationPreviewDialog._review_int_value(
+            review,
+            "label_rows",
+        )
+        numeric_rows = DataInterpretationPreviewDialog._review_int_value(
+            review,
+            "numeric_rows",
+        )
+        if label_rows is not None and numeric_rows is not None:
+            return f"{numeric_rows}/{label_rows} numeric"
+        if numeric_rows is not None:
+            return f"{numeric_rows} numeric"
+        if label_rows is not None:
+            return f"{label_rows} rows"
+        return "Needs review"
+
+    def _time_review_range_text(self, review: dict[str, Any]) -> str:
+        time_min = self._review_number_value(review, "time_min")
+        time_max = self._review_number_value(review, "time_max")
+        if time_min is None or time_max is None:
+            return "-"
+        suffix = self._time_range_suffix()
+        start = self._compact_number(time_min)
+        end = self._compact_number(time_max)
+        return f"{start}-{end}{suffix}"
+
+    def _time_range_suffix(self) -> str:
+        time_model = str(self._common_carrier_value("time_model") or "").strip()
+        if time_model == "sample_index":
+            return " samples"
+        if time_model in {"seconds", "relative_time", ""}:
+            return " s"
+        return ""
+
+    @staticmethod
+    def _placement_review_status_text(review: dict[str, Any]) -> str:
+        status = str(review.get("status") or "needs_review")
+        if status == "ready":
+            return "Ready"
+        if status == "blocked":
+            return "Blocked"
+        return "Needs review"
+
+    @staticmethod
+    def _review_int_value(review: dict[str, Any], key: str) -> int | None:
+        value = review.get(key)
+        if isinstance(value, int):
+            return value
+        text = str(value or "").strip()
+        return int(text) if text.isdigit() else None
+
+    @staticmethod
+    def _review_number_value(review: dict[str, Any], key: str) -> float | None:
+        value = review.get(key)
+        if isinstance(value, int | float):
+            return float(value)
+        text = str(value or "").strip()
+        if not text:
+            return None
+        try:
+            return float(text)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _compact_number(value: float) -> str:
+        if value.is_integer():
+            return str(int(value))
+        return f"{value:.3f}".rstrip("0").rstrip(".")
 
     def _single_backend_placement_review_text(self, review: dict[str, Any]) -> str:
         method = str(review.get("method") or "").strip()
@@ -3839,6 +4028,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
             QFrame#DataImportRuleControl,
             QFrame#DataImportInlineRuleControl,
             QFrame#DataImportPairingRow,
+            QFrame#DataImportPlacementReviewCard,
+            QFrame#DataImportPlacementReviewRow,
             QFrame#DataImportEventRulesTable,
             QFrame#DataImportClassMapTable,
             QFrame#DataImportInternalLabelsTable,
@@ -3878,6 +4069,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
             QFrame#DataImportTargetEventRow[selected="true"] {{
                 background-color: #1e2f3d;
                 border: 1px solid #3b79a5;
+            }}
+            QFrame#DataImportPlacementReviewTable,
+            QFrame#DataImportPlacementReviewHeader {{
+                background-color: transparent;
+                border: none;
             }}
             QFrame#DataImportPairingHeader {{
                 background-color: transparent;
@@ -3949,6 +4145,15 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 font-size: 12px;
                 font-weight: 700;
             }}
+            QLabel#DataImportPlacementReviewValue {{
+                color: #eeeeee;
+                background-color: #191919;
+                border: 1px solid #303030;
+                border-radius: 4px;
+                padding: 3px 6px;
+                font-size: 12px;
+                font-weight: 600;
+            }}
             QLabel#DataImportPairingArrow {{
                 color: {Theme.TEXT_SECONDARY};
                 font-size: 16px;
@@ -3967,6 +4172,25 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 color: #ffd9a1;
                 background-color: #4a341a;
                 border: 1px solid #8a6429;
+            }}
+            QLabel#DataImportPlacementReviewBadge {{
+                color: #d8f5dd;
+                background-color: #173b24;
+                border: 1px solid #2c7a43;
+                border-radius: 4px;
+                padding: 4px 0;
+                font-size: 11px;
+                font-weight: 600;
+            }}
+            QLabel#DataImportPlacementReviewBadge[reviewState="needs_review"] {{
+                color: #ffd9a1;
+                background-color: #4a341a;
+                border: 1px solid #8a6429;
+            }}
+            QLabel#DataImportPlacementReviewBadge[reviewState="blocked"] {{
+                color: #ffd2d2;
+                background-color: #4a2020;
+                border: 1px solid #8a3a3a;
             }}
             QLabel#DataImportPairingNotice {{
                 color: #ffd9a1;

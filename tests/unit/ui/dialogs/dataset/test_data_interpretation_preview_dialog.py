@@ -466,6 +466,10 @@ def test_match_labels_pairing_board_applies_dataset_level_choices(qtbot):
     _show_step(dialog, "Match Labels")
 
     assert dialog.label_match_mode_combo.currentData() == "filename_stem"
+    assert not dialog.label_match_mode_combo.isVisibleTo(dialog)
+    visible_text = _visible_step_text(dialog, "Match Labels")
+    assert "Pair by" not in visible_text
+    assert "Same base name" not in visible_text
     assert "2/2 EEG files paired" in dialog.pairing_status_label.text()
     assert "2/2 paired" in dialog.rule_status_label.text()
 
@@ -1142,6 +1146,11 @@ def test_match_labels_placement_methods_use_mode_specific_panels(qtbot):
         assert included in visible_text
         assert excluded not in visible_text
         assert "Align to" not in visible_text
+        if method == "time_field":
+            assert "Time values mean" in visible_text
+            assert "Usable values" in visible_text
+            assert "12/12 numeric" in visible_text
+            assert "Ready" in visible_text
         if method == "event_code":
             assert "1/2 label event codes were found" in (
                 dialog.placement_status_label.text()
