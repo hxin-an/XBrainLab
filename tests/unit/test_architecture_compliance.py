@@ -2,6 +2,7 @@ from tests.architecture_compliance import (
     check_backend_facade_test_usage,
     check_docs_current_truth_overclaims,
     check_headless_verifier_direct_study_state,
+    check_llm_agent_intent_boundary_weak_result_assertions,
     check_llm_application_surface_weak_result_assertions,
     check_llm_direct_study_state_reads,
     check_llm_parser_weak_parse_assertions,
@@ -349,6 +350,51 @@ def test_scan_source_routes_to_command_surface():
     )
 
     assert check_llm_application_surface_weak_result_assertions(tmp_path) == []
+
+
+def test_llm_agent_intent_boundary_guard_flags_generic_non_none_assertion(
+    tmp_path,
+):
+    path = tmp_path / "tests" / "unit" / "llm" / "agent" / "test_controller.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_requested_intent_boundary_reads_application_policy(ctrl):
+    result = ctrl._check_requested_intent_boundary("set_model")
+    assert result is not None
+    assert result.command_name == "train"
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_llm_agent_intent_boundary_weak_result_assertions(tmp_path)
+
+    assert len(violations) == 1
+    assert "generic non-None agent intent-boundary assertion" in violations[0]
+    assert "ToolCommandResult" in violations[0]
+
+
+def test_llm_agent_intent_boundary_guard_allows_exact_result_contract(
+    tmp_path,
+):
+    path = tmp_path / "tests" / "unit" / "llm" / "agent" / "test_controller.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_requested_intent_boundary_reads_application_policy(ctrl):
+    result = ctrl._check_requested_intent_boundary("set_model")
+    assert isinstance(result, ToolCommandResult), result
+    assert result.tool_name == "set_model"
+    assert result.command_name == "train"
+    assert result.blocked_reason == "Generate datasets before training"
+    assert result.message == "Requested workflow step 'train' is not available: Generate datasets before training"
+    assert result.capability["command_name"] == "train"
+    assert result.state["pipeline_stage"] == "empty"
+""",
+        encoding="utf-8",
+    )
+
+    assert check_llm_agent_intent_boundary_weak_result_assertions(tmp_path) == []
 
 
 def test_docs_current_truth_guard_flags_product_complete_overclaim(tmp_path):

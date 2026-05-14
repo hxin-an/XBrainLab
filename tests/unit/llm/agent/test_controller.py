@@ -12,6 +12,25 @@ from XBrainLab.backend.application.capabilities import CommandCapability
 from XBrainLab.llm.tools.application_surface import ToolCommandResult
 
 
+def _assert_intent_boundary_result(
+    result: object,
+    *,
+    tool_name: str,
+    command_name: CommandName,
+    blocked_reason: str,
+    message: str,
+) -> ToolCommandResult:
+    assert isinstance(result, ToolCommandResult), result
+    assert result.ok is False
+    assert result.tool_name == tool_name
+    assert result.command_name == command_name.value
+    assert result.error_type == "precondition"
+    assert result.recoverable is True
+    assert result.blocked_reason == blocked_reason
+    assert result.message == message
+    return result
+
+
 @pytest.fixture
 def _mock_qt():
     """Patch Qt imports so controller module loads without a running QApp."""
@@ -380,6 +399,11 @@ class TestProcessToolCalls:
 
         service = MagicMock()
         service.get_capabilities.return_value = policy
+        state_snapshot = {
+            "pipeline_stage": "empty",
+            "training": {"missing_requirements": ["Data Splitting"]},
+        }
+        service.get_state.return_value.to_dict.return_value = state_snapshot
 
         with patch(
             "XBrainLab.llm.agent.controller.get_application_service",
@@ -387,10 +411,18 @@ class TestProcessToolCalls:
         ):
             result = ctrl._check_requested_intent_boundary("set_model")
 
-        assert result is not None
-        assert result.command_name == CommandName.TRAIN.value
-        assert result.error_type == "precondition"
-        assert "Generate datasets before training" in result.message
+        result = _assert_intent_boundary_result(
+            result,
+            tool_name="set_model",
+            command_name=CommandName.TRAIN,
+            blocked_reason="Generate datasets before training",
+            message=(
+                "Requested workflow step 'train' is not available: "
+                "Generate datasets before training"
+            ),
+        )
+        assert result.capability == capability.to_dict()
+        assert result.state == state_snapshot
 
     def test_requested_intent_boundary_rejects_visualization_ui_substitute(self, ctrl):
         ctrl.history = [{"role": "user", "content": "Visualize the trained result."}]
@@ -411,9 +443,22 @@ class TestProcessToolCalls:
         ):
             result = ctrl._check_requested_intent_boundary("switch_panel")
 
-        assert result is not None
-        assert result.command_name == CommandName.VISUALIZE.value
-        assert "readiness summary" in result.message
+        result = _assert_intent_boundary_result(
+            result,
+            tool_name="switch_panel",
+            command_name=CommandName.VISUALIZE,
+            blocked_reason=(
+                "Use an ApplicationService readiness summary before opening "
+                "visualization views."
+            ),
+            message=(
+                "Requested workflow step 'visualize' needs a readiness summary: "
+                "Use an ApplicationService readiness summary before opening "
+                "visualization views."
+            ),
+        )
+        assert result.capability is None
+        assert result.state is None
 
     def test_requested_intent_boundary_rejects_saliency_setup_substitute(self, ctrl):
         ctrl.history = [{"role": "user", "content": "Show saliency readiness."}]
@@ -434,9 +479,22 @@ class TestProcessToolCalls:
         ):
             result = ctrl._check_requested_intent_boundary("set_model")
 
-        assert result is not None
-        assert result.command_name == CommandName.SALIENCY.value
-        assert "readiness summary" in result.message
+        result = _assert_intent_boundary_result(
+            result,
+            tool_name="set_model",
+            command_name=CommandName.SALIENCY,
+            blocked_reason=(
+                "Use an ApplicationService readiness summary before opening "
+                "visualization views."
+            ),
+            message=(
+                "Requested workflow step 'saliency' needs a readiness summary: "
+                "Use an ApplicationService readiness summary before opening "
+                "visualization views."
+            ),
+        )
+        assert result.capability is None
+        assert result.state is None
 
     def test_verification_failure_uses_requested_path_label(self, ctrl):
         ctrl.history = [{"role": "user", "content": "Load my EEG file."}]

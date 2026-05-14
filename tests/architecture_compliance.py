@@ -199,6 +199,9 @@ LLM_PARSER_EXACT_EVIDENCE_TESTS = (
 LLM_APPLICATION_SURFACE_EXACT_EVIDENCE_TESTS = (
     Path("tests/unit/llm/tools/test_application_surface.py"),
 )
+LLM_AGENT_INTENT_BOUNDARY_EXACT_EVIDENCE_TESTS = (
+    Path("tests/unit/llm/agent/test_controller.py"),
+)
 DOC_CURRENT_TRUTH_FILES = (
     Path("docs/current.md"),
     Path("docs/index.md"),
@@ -447,6 +450,15 @@ def check_architecture(root_dir: str) -> int:
     if llm_application_surface_weak_assertion_violations:
         print("\nLLM Application Surface Weak Result Assertion Violations Found:")
         for violation in llm_application_surface_weak_assertion_violations:
+            print(f" - {violation}")
+        return 1
+
+    llm_agent_intent_boundary_weak_assertion_violations = (
+        check_llm_agent_intent_boundary_weak_result_assertions(Path(root_dir))
+    )
+    if llm_agent_intent_boundary_weak_assertion_violations:
+        print("\nLLM Agent Intent-Boundary Weak Result Assertion Violations Found:")
+        for violation in llm_agent_intent_boundary_weak_assertion_violations:
             print(f" - {violation}")
         return 1
 
@@ -1105,6 +1117,35 @@ def check_llm_application_surface_weak_result_assertions(root_dir: Path) -> list
             f"application-surface assertion on {name_node.id!r}; assert "
             "ToolCommandResult type, tool_name, command_name, raw status, "
             "capability, and state instead."
+            for name_node in visitor.violations
+        )
+    return violations
+
+
+def check_llm_agent_intent_boundary_weak_result_assertions(
+    root_dir: Path,
+) -> list[str]:
+    """Return agent intent-boundary tests that only assert tool results exist."""
+    violations: list[str] = []
+
+    for relative_file in LLM_AGENT_INTENT_BOUNDARY_EXACT_EVIDENCE_TESTS:
+        test_file = root_dir / relative_file
+        if not test_file.exists():
+            continue
+        try:
+            tree = ast.parse(
+                test_file.read_text(encoding="utf-8"), filename=str(test_file)
+            )
+        except SyntaxError:
+            continue
+
+        visitor = _GenericNonNoneAssertionVisitor()
+        visitor.visit(tree)
+        violations.extend(
+            f"{relative_file}:{name_node.lineno} uses generic non-None "
+            f"agent intent-boundary assertion on {name_node.id!r}; assert "
+            "ToolCommandResult type, tool_name, command_name, blocked_reason, "
+            "message, capability, and state instead."
             for name_node in visitor.violations
         )
     return violations
