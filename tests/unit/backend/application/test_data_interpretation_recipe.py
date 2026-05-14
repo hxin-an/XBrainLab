@@ -38,7 +38,7 @@ def test_import_recipe_from_dict_rehydrates_metadata_and_mappings():
             "event_roles": {"trial_type": "class cue"},
             "class_map": {"left": "0"},
             "run_event_mappings": {
-                "S001R04.edf": {"T1": "left_fist", "T2": "right_fist"}
+                "S001R04.edf": {"T1": "left fist", "T2": "right fist"},
             },
         }
     )
@@ -51,7 +51,7 @@ def test_import_recipe_from_dict_rehydrates_metadata_and_mappings():
     assert recipe.event_roles == {"trial_type": "class cue"}
     assert recipe.class_map == {"left": "0"}
     assert recipe.run_event_mappings == {
-        "S001R04.edf": {"T1": "left_fist", "T2": "right_fist"}
+        "S001R04.edf": {"T1": "left fist", "T2": "right fist"},
     }
 
 
@@ -73,7 +73,9 @@ def test_build_import_recipe_preserves_applied_trace_and_writes_json(tmp_path):
         confirmations=["Confirm metadata."],
         event_roles={"trial_type": "class cue"},
         class_map={"left": "0"},
-        run_event_mappings={"S001R04.edf": {"T1": "left_fist", "T2": "right_fist"}},
+        run_event_mappings={
+            "S001R04.edf": {"T1": "left fist", "T2": "right fist"},
+        },
         label_imports=[{"status": "applied"}],
         recipe_trace=["scan", "apply"],
     )
@@ -96,7 +98,7 @@ def test_build_import_recipe_preserves_applied_trace_and_writes_json(tmp_path):
     assert loaded.warnings == ["Review labels."]
     assert loaded.label_imports == [{"status": "applied"}]
     assert loaded.run_event_mappings == {
-        "S001R04.edf": {"T1": "left_fist", "T2": "right_fist"}
+        "S001R04.edf": {"T1": "left fist", "T2": "right fist"},
     }
 
 
@@ -159,7 +161,9 @@ def test_choices_from_import_recipe_recreates_review_choices():
         ],
         event_roles={"trial_type": "class cue"},
         class_map={"1": "left", "2": "right"},
-        run_event_mappings={"S001R04.edf": {"T1": "left_fist", "T2": "right_fist"}},
+        run_event_mappings={
+            "S001R04.edf": {"T1": "left fist", "T2": "right fist"},
+        },
         skip_labels=True,
         label_carrier="external_files",
         excluded_label_carriers=["/data/rejected_events.tsv"],
@@ -190,8 +194,37 @@ def test_choices_from_import_recipe_recreates_review_choices():
     assert choices["event_roles"] == {"trial_type": "class cue"}
     assert choices["class_map"] == {"1": "left", "2": "right"}
     assert choices["run_event_mappings"] == {
-        "S001R04.edf": {"T1": "left_fist", "T2": "right_fist"}
+        "S001R04.edf": {"T1": "left fist", "T2": "right fist"},
     }
+
+
+def test_choices_from_import_recipe_preserves_event_order_targets():
+    recipe = ImportRecipe(
+        recipe_id="recipe-1",
+        interpretation_id="interp-1",
+        source_path="/data",
+        source_kind="folder",
+        label_carriers=["/data/A01T.mat"],
+        label_carrier_plan=[
+            {
+                "path": "/data/A01T.mat",
+                "selected_label_field": "classlabel",
+                "selected_anchor": "769",
+                "selected_target_event_codes": ["769", "770"],
+                "time_model": "trial_order",
+                "placement_method": "eeg_event",
+                "granularity": "trial",
+                "role": "external labels",
+            }
+        ],
+    )
+
+    choices = choices_from_import_recipe(recipe)
+
+    assert choices["label_carrier_choices"]["/data/A01T.mat"]["target_event_codes"] == [
+        "769",
+        "770",
+    ]
 
 
 def test_import_recipe_to_dict_is_json_ready():

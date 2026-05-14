@@ -38,8 +38,42 @@ def test_label_carrier_plan_uses_user_choices_for_bids_events(tmp_path):
     assert row["label_value_counts"] == {"left": 1}
     assert row["selected_anchor_stats"]["numeric_count"] == 1
     assert row["selected_duration_stats"]["numeric_count"] == 1
+    assert row["bids_event_columns"] == ["onset", "duration", "trial_type"]
     assert row["placement_method"] == "interval"
     assert row["selected_target_file"] == "sub-01_raw.fif"
+
+
+def test_label_carrier_plan_flags_bids_events_missing_sidecar_and_duration(tmp_path):
+    events = tmp_path / "sub-01_task-mi_events.tsv"
+    events.write_text(
+        "onset\ttrial_type\tresponse_time\tHED\tchannel\n0\tleft\t0.5\tMotor\tC3\n",
+        encoding="utf-8",
+    )
+
+    plan = build_label_carrier_plan([str(events)], {})
+
+    row = plan[0]
+    assert row["format"] == "BIDS events"
+    assert row["bids_event_columns"] == [
+        "onset",
+        "trial_type",
+        "response_time",
+        "HED",
+        "channel",
+    ]
+    assert any("events.json sidecar is missing" in item for item in row["warnings"])
+    assert any("duration column is missing" in item for item in row["warnings"])
+
+
+def test_label_carrier_plan_blocks_bids_events_without_onset(tmp_path):
+    events = tmp_path / "sub-01_task-mi_events.tsv"
+    events.write_text("trial_type\tvalue\nleft\t1\n", encoding="utf-8")
+
+    plan = build_label_carrier_plan([str(events)], {})
+
+    row = plan[0]
+    assert any("onset column is missing" in item for item in row["warnings"])
+    assert row["placement_method"] == "event_code"
 
 
 def test_normalize_label_carrier_choices_accepts_path_or_name_keys(tmp_path):
@@ -77,6 +111,21 @@ def test_normalize_label_carrier_choices_accepts_event_code_placement(tmp_path):
     assert choices[carrier.name]["placement_method"] == "event_code"
 
 
+def test_normalize_label_carrier_choices_accepts_event_order_targets(tmp_path):
+    carrier = tmp_path / "labels.mat"
+    choices = normalize_label_carrier_choices(
+        {
+            carrier.name: {
+                "label_field": "classlabel",
+                "target_event_codes": ["769", "770", "", "770"],
+                "placement_method": "eeg_event",
+            }
+        }
+    )
+
+    assert choices[carrier.name]["target_event_codes"] == ["769", "770"]
+
+
 def test_label_carrier_plan_counts_label_rows_and_values(tmp_path):
     labels = tmp_path / "labels.csv"
     labels.write_text(
@@ -91,6 +140,25 @@ def test_label_carrier_plan_counts_label_rows_and_values(tmp_path):
 
     assert plan[0]["label_row_count"] == 3
     assert plan[0]["label_value_counts"] == {"left": 2, "right": 1}
+
+
+def test_label_carrier_plan_exposes_time_label_preview(tmp_path):
+    labels = tmp_path / "events.tsv"
+    labels.write_text(
+        "onset\ttrial_type\n0\tleft\n2.5\tright\n5\tleft\n",
+        encoding="utf-8",
+    )
+
+    plan = build_label_carrier_plan(
+        [str(labels)],
+        {labels.name: {"label_field": "trial_type", "anchor": "onset"}},
+    )
+
+    assert plan[0]["time_label_preview"] == [
+        {"time": "0", "label": "left"},
+        {"time": "2.5", "label": "right"},
+        {"time": "5", "label": "left"},
+    ]
 
 
 def test_label_carrier_plan_exposes_event_code_candidates_and_stats(tmp_path):
@@ -202,32 +270,6 @@ def test_infer_class_map_uses_bids_events_json_levels(tmp_path):
         "left": "Left hand",
         "right": "Right hand",
     }
-
-
-def test_bids_label_carrier_plan_exposes_sidecar_level_evidence(tmp_path):
-    events = tmp_path / "sub-01_task-mi_events.tsv"
-    sidecar = tmp_path / "sub-01_task-mi_events.json"
-    events.write_text(
-        "onset\tduration\ttrial_type\n0.0\t1.0\tleft\n1.0\t1.0\tright\n",
-        encoding="utf-8",
-    )
-    sidecar.write_text(
-        '{"trial_type":{"Description":"Cue class",'
-        '"Levels":{"left":"Left hand","right":"Right hand"}}}',
-        encoding="utf-8",
-    )
-
-    plan = build_label_carrier_plan(
-        [str(events)],
-        {events.name: {"label_field": "trial_type", "anchor": "onset"}},
-    )
-
-    assert plan[0]["bids_sidecars"] == [str(sidecar)]
-    assert plan[0]["bids_level_labels"] == {
-        "left": "Left hand",
-        "right": "Right hand",
-    }
-    assert plan[0]["bids_field_descriptions"]["trial_type"] == "Cue class"
 
 
 def test_infer_class_map_uses_inherited_bids_events_json_levels(tmp_path):

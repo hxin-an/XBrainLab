@@ -163,6 +163,9 @@ class DataInterpretationCommandService:
             if internal_event_apply.get("status") == "applied"
             else external_label_apply
         )
+        internal_epoch_hints = self.apply_service.record_internal_epoch_hints(
+            candidate,
+        )
         applied_payload = self.state.resolve_applied_interpretation().to_dict()
         label_message = ""
         if label_apply.get("status") == "applied":
@@ -187,6 +190,7 @@ class DataInterpretationCommandService:
                 "label_apply": label_apply,
                 "external_label_apply": external_label_apply,
                 "internal_event_apply": internal_event_apply,
+                "internal_epoch_hints": internal_epoch_hints,
             },
         )
 

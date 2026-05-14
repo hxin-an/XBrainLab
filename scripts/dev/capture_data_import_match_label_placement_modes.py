@@ -21,7 +21,7 @@ OUTPUT_DIR = (
     / "data-import-wizard-steps"
     / "match-label-placement-modes"
 )
-WINDOW_SIZE = QSize(1220, 920)
+WINDOW_SIZE = QSize(1220, 1320)
 
 
 MODE_OUTPUTS = {
@@ -102,6 +102,11 @@ def preview_payload(method: str) -> dict[str, Any]:
                 "selected_duration_field": "duration" if method == "interval" else "",
                 "label_row_count": 282,
                 "label_value_counts": {"1": 72, "2": 70, "3": 70, "4": 70},
+                "time_label_preview": [
+                    {"time": "0", "label": "1"},
+                    {"time": "2.5", "label": "2"},
+                    {"time": "5", "label": "1"},
+                ],
                 "selected_anchor_stats": {
                     "row_count": 282,
                     "value_counts": {
@@ -138,25 +143,25 @@ def preview_payload(method: str) -> dict[str, Any]:
                     "event_code": "769",
                     "use_as": "Class label",
                     "event_count": 72,
-                    "evidence": "Occurs as one of four balanced label events",
+                    "evidence": "Repeated count + timing",
                 },
                 {
                     "event_code": "770",
                     "use_as": "Class label",
                     "event_count": 70,
-                    "evidence": "Occurs as one of four balanced label events",
+                    "evidence": "Repeated count + timing",
                 },
                 {
                     "event_code": "771",
                     "use_as": "Class label",
                     "event_count": 70,
-                    "evidence": "Occurs as one of four balanced label events",
+                    "evidence": "Repeated count + timing",
                 },
                 {
                     "event_code": "772",
                     "use_as": "Class label",
                     "event_count": 70,
-                    "evidence": "Occurs as one of four balanced label events",
+                    "evidence": "Repeated count + timing",
                 },
             ],
             "not_used_events": [
@@ -164,13 +169,13 @@ def preview_payload(method: str) -> dict[str, Any]:
                     "event_code": "768",
                     "use_as": "Trial timing",
                     "event_count": 288,
-                    "evidence": "Count matches candidate trial total",
+                    "evidence": "Matches class total",
                 },
                 {
                     "event_code": "1023",
                     "use_as": "Artifact",
                     "event_count": 6,
-                    "evidence": "Rejected trial marker",
+                    "evidence": "Artifact text",
                 },
             ],
         },
@@ -190,7 +195,13 @@ def placement_reviews() -> dict[str, dict[str, Any]]:
             "unlabeled_eeg_events": 6,
             "unmatched_label_rows": 0,
             "excluded_eeg_events": 6,
-            "summary": "282 rows match; 6 EEG events unlabeled; 0 label rows unmatched.",
+            "summary": (
+                "6 selected EEG events have no label "
+                "(282 label rows, 288 selected events)."
+            ),
+            "next_action": (
+                "Uncheck extra target events or choose a label field with more rows."
+            ),
         },
         "time_field": {
             "method": "time_field",
@@ -201,6 +212,7 @@ def placement_reviews() -> dict[str, dict[str, Any]]:
             "numeric_rows": 282,
             "time_min": 0.0,
             "time_max": 719.5,
+            "time_model": "seconds",
             "summary": "onset: 282/282 numeric rows, range 0 to 719.5.",
         },
         "interval": {
@@ -224,6 +236,52 @@ def placement_reviews() -> dict[str, dict[str, Any]]:
             "matched_code_count": 4,
             "matched_codes": ["769", "770", "771", "772"],
             "missing_codes": [],
+            "code_mappings": [
+                {
+                    "event_code": "769",
+                    "label_values": ["Left hand"],
+                    "label_rows": 72,
+                    "eeg_event_count": 72,
+                    "status": "ready",
+                    "review": "Ready.",
+                },
+                {
+                    "event_code": "770",
+                    "label_values": ["Right hand"],
+                    "label_rows": 70,
+                    "eeg_event_count": 70,
+                    "status": "ready",
+                    "review": "Ready.",
+                },
+                {
+                    "event_code": "771",
+                    "label_values": ["Feet"],
+                    "label_rows": 70,
+                    "eeg_event_count": 70,
+                    "status": "ready",
+                    "review": "Ready.",
+                },
+                {
+                    "event_code": "772",
+                    "label_values": ["Tongue"],
+                    "label_rows": 70,
+                    "eeg_event_count": 70,
+                    "status": "ready",
+                    "review": "Ready.",
+                },
+            ],
+            "unlabeled_eeg_events": [
+                {
+                    "event_code": "768",
+                    "use_as": "Trial timing",
+                    "event_count": 288,
+                },
+                {
+                    "event_code": "1023",
+                    "use_as": "Artifact",
+                    "event_count": 6,
+                },
+            ],
             "summary": "All 4 label event codes match EEG events.",
         },
     }

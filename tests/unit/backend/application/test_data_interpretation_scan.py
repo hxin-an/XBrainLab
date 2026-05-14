@@ -223,6 +223,47 @@ def test_scan_source_path_for_single_eeg_file_does_not_select_siblings(
     assert candidate.selected_eeg_files == [str(selected_eeg.resolve())]
 
 
+def test_scan_source_path_for_single_eeg_file_detects_same_stem_label_carriers(
+    tmp_path: Path,
+) -> None:
+    selected_eeg = tmp_path / "A01T.gdf"
+    sibling_eeg = tmp_path / "A02T.gdf"
+    matching_label = tmp_path / "A01T.mat"
+    sibling_label = tmp_path / "A02T.mat"
+    selected_eeg.write_bytes(b"not loaded during scan")
+    sibling_eeg.write_bytes(b"not part of explicit file scan")
+    matching_label.write_bytes(b"label")
+    sibling_label.write_bytes(b"label")
+
+    scan = scan_source_path(scan_id="scan-1", source_path=str(selected_eeg))
+
+    assert scan.source_kind == "file"
+    assert scan.eeg_files == [str(selected_eeg.resolve())]
+    assert str(sibling_eeg.resolve()) not in scan.eeg_files
+    assert scan.label_carriers == [str(matching_label.resolve())]
+    assert str(sibling_label.resolve()) not in scan.label_carriers
+
+
+def test_scan_source_path_for_single_eeg_file_detects_label_subfolder(
+    tmp_path: Path,
+) -> None:
+    selected_eeg = tmp_path / "A01T.gdf"
+    labels_dir = tmp_path / "label"
+    labels_dir.mkdir()
+    matching_label = labels_dir / "A01T.mat"
+    sibling_label = labels_dir / "A02T.mat"
+    selected_eeg.write_bytes(b"not loaded during scan")
+    matching_label.write_bytes(b"label")
+    sibling_label.write_bytes(b"label")
+
+    scan = scan_source_path(scan_id="scan-1", source_path=str(selected_eeg))
+
+    assert scan.source_kind == "file"
+    assert scan.eeg_files == [str(selected_eeg.resolve())]
+    assert scan.label_carriers == [str(matching_label.resolve())]
+    assert str(sibling_label.resolve()) not in scan.label_carriers
+
+
 def test_scan_source_path_merges_external_label_sources(tmp_path: Path):
     eeg_dir = tmp_path / "eeg"
     label_dir = tmp_path / "labels"

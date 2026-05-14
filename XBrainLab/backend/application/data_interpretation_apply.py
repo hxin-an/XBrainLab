@@ -17,6 +17,7 @@ from XBrainLab.backend.utils.logger import logger
 
 from .commands import LabelImportPlan
 from .data_interpretation import InterpretationCandidate
+from .epoch_context import EPOCH_HINT_KEY
 
 
 class LabelImportRecorder(Protocol):
@@ -226,6 +227,14 @@ class DataInterpretationApplyService:
                 selected_event_names=set(selected_event_names or []),
                 success_count=count,
             )
+            self._record_epoch_hints(
+                candidate=candidate,
+                label_plans=applicable,
+                target_files=mapped_target_files,
+                file_mapping=file_mapping,
+                label_map=label_map,
+                mode=mode,
+            )
         except Exception as exc:
             logger.error(
                 "Failed to apply reviewed label carrier %s: %s",
@@ -346,6 +355,44 @@ class DataInterpretationApplyService:
             "label_carriers": ["internal_events"],
         }
 
+    def record_internal_epoch_hints(
+        self,
+        candidate: InterpretationCandidate,
+    ) -> list[dict[str, Any]]:
+        """Persist internal-event class choices for later epoch setup."""
+        if candidate.label_carrier_plan or not candidate.class_map:
+            return []
+        if (
+            str(candidate.choices.get("label_carrier") or "").strip()
+            != "embedded_events"
+            and "internal_events" not in candidate.event_roles
+        ):
+            return []
+        records: list[dict[str, Any]] = []
+        hint = {
+            "source": "Labels inside EEG files",
+            "placement_method": "internal_events",
+            "label_field": "Internal event",
+            "time_field": "Event onset",
+            "duration_field": "",
+            "time_model": "sample_index_or_annotation_time",
+            "granularity": "trial_or_event",
+            "class_map": dict(candidate.class_map),
+            "event_roles": dict(candidate.event_roles),
+            "recommended_events": [
+                str(value) for value in candidate.class_map.values()
+            ],
+        }
+        for data in list(self.dataset.get_loaded_data_list() or []):
+            setter = getattr(data, "set_runtime_detail", None)
+            if not callable(setter):
+                continue
+            setter(EPOCH_HINT_KEY, hint)
+            records.append(
+                {"file": self._safe_data_filepath(data), "source": hint["source"]}
+            )
+        return records
+
     @staticmethod
     def _load_reviewed_label_map(
         label_plans: list[dict[str, Any]],
@@ -434,6 +481,95 @@ class DataInterpretationApplyService:
         if success_count > 0 and hasattr(self.dataset, "reset_preprocess"):
             self.dataset.reset_preprocess()
         return success_count
+
+    def _record_epoch_hints(
+        self,
+        *,
+        candidate: InterpretationCandidate,
+        label_plans: list[dict[str, Any]],
+        target_files: list[Any],
+        file_mapping: dict[str, str],
+        label_map: dict[str, Any],
+        mode: str,
+    ) -> None:
+        plan_by_path = {
+            str(plan.get("path") or "").strip(): plan for plan in label_plans
+        }
+        for target in target_files:
+            setter = getattr(target, "set_runtime_detail", None)
+            if not callable(setter):
+                continue
+            carrier_path = file_mapping.get(self._data_filepath(target), "")
+            plan = plan_by_path.get(carrier_path)
+            if not plan:
+                continue
+            setter(
+                EPOCH_HINT_KEY,
+                self._epoch_hint_from_label_plan(
+                    plan,
+                    candidate=candidate,
+                    labels=label_map.get(carrier_path),
+                    mode=mode,
+                ),
+            )
+
+    def _epoch_hint_from_label_plan(
+        self,
+        plan: dict[str, Any],
+        *,
+        candidate: InterpretationCandidate,
+        labels: Any,
+        mode: str,
+    ) -> dict[str, Any]:
+        class_map = dict(candidate.class_map)
+        return {
+            "source": self._epoch_hint_source(plan),
+            "placement_method": str(plan.get("placement_method") or "").strip(),
+            "label_field": str(plan.get("selected_label_field") or "").strip(),
+            "time_field": str(plan.get("selected_anchor") or "").strip(),
+            "duration_field": str(plan.get("selected_duration_field") or "").strip(),
+            "time_model": str(plan.get("time_model") or "").strip(),
+            "granularity": str(plan.get("granularity") or "").strip(),
+            "class_map": class_map,
+            "event_roles": dict(candidate.event_roles),
+            "recommended_events": [str(value) for value in class_map.values()],
+            "duration_stats": self._duration_stats_from_loaded_labels(labels)
+            or dict(plan.get("selected_duration_stats") or {}),
+            "label_import_mode": mode,
+        }
+
+    @staticmethod
+    def _epoch_hint_source(plan: dict[str, Any]) -> str:
+        if str(plan.get("format") or "") == "BIDS events":
+            return "BIDS events.tsv"
+        return "Loaded label file"
+
+    @staticmethod
+    def _duration_stats_from_loaded_labels(labels: Any) -> dict[str, Any]:
+        if not isinstance(labels, list):
+            return {}
+        values: list[float] = []
+        for item in labels:
+            if not isinstance(item, dict) or "duration" not in item:
+                continue
+            try:
+                value = float(item["duration"])
+            except (TypeError, ValueError):
+                continue
+            values.append(value)
+        if not values:
+            return {}
+        counts: dict[str, int] = {}
+        for value in values:
+            key = f"{value:g}"
+            counts[key] = counts.get(key, 0) + 1
+        return {
+            "row_count": len(values),
+            "value_counts": dict(sorted(counts.items())),
+            "numeric_count": len(values),
+            "min": min(values),
+            "max": max(values),
+        }
 
     def _reviewed_label_file_mapping(
         self,

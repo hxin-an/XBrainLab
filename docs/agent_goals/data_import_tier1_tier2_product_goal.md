@@ -1,337 +1,292 @@
-# Data Import Tier 1 / Tier 2 Product Goal
+# Data Import Tier 1/Tier 2 Product Delivery Goal
 
-Last updated: 2026-05-13
+Goal: Deliver the XBrainLab Data Import label workflow to MVP product quality for
+the four supported mainstream EEG/BCI data categories, with polished Load Labels,
+Match Labels, Review and Import, BIDS-like handling, and epoch handoff.
 
-## Objective
+This is not a UI polish-only task. This is not an audit-only task. The goal is
+complete only when the product flow is usable, reviewable, tested, screenshot
+validated, and accepted by both required gate reviewers.
 
-Deliver the Data Import label workflow to a product-usable MVP for the agreed
-Tier 1 / Tier 2 dataset classes only. The work is not complete until the
-backend contract, wizard UI, recipe trace, epoch handoff, tests, screenshots,
-and docs all agree on what is supported and what is intentionally unsupported.
+## Required Skills / Docs
 
-This is an implementation goal, not a design note. Do not stop at inventory,
-mock screenshots, or a visually acceptable panel that cannot actually apply the
-selected label rules.
+Read and follow:
 
-## Supported Dataset Classes
+- `AGENTS.md`
+- `.agents/skills/pr-branch-governance/SKILL.md`
+- `.agents/skills/ui-product-reviewer/SKILL.md`
+- `.agents/skills/data-interpretation-reviewer/SKILL.md`
+- `.agents/skills/tdd-guard/SKILL.md`
+- `.agents/skills/validation-runner/SKILL.md`
+- `docs/current.md`
+- `docs/target/data_interpretation_system.md`
+- `docs/architecture/data_pipeline.md`
+- `docs/architecture/backend.md`
+- `docs/architecture/ui.md`
+- `docs/research/bci_eeg_import_label_design_source.md`
+- current Data Import screenshots under `artifacts/ui/data-import-wizard-steps/`
 
-Complete support means scan, preview, user confirmation, apply/import, recipe
-save/reload, UI review, and focused tests for these classes.
+## Branch / Scope Rules
 
-### Tier 1
+- Do not work directly on `main`.
+- Use a UX/product integration branch, not a backend hygiene branch.
+- Keep unrelated dirty worktree changes untouched.
+- Commit and push each validated checkpoint.
+- Do not rewrite unrelated preprocessing, training, visualization, or agent UI.
+- Do not create another large planning document. Update canonical docs only when
+  implementation truth changes.
 
-1. GDF / BNCI / BCI Competition style datasets
-   - EEG files may contain internal events.
-   - Training files may have usable internal class events.
-   - Evaluation/test files may need external label carriers such as `.mat` or
-     text sequence labels.
-   - Trial start, cue/class event, artifact, boundary, and ignored events must
-     be distinguishable in the UI and backend evidence.
+## Supported Data Categories For This Goal
 
-2. BIDS-like EEG folders
-   - Support BIDS-like folder scan and `events.tsv` / `events.json` label/event
-     interpretation.
-   - Show subject/session/task/run metadata review.
-   - Support `trial_type`, `value`, onset, duration, and sidecar levels where
-     present.
-   - Missing sidecar or incomplete BIDS metadata must be explicit warnings or
-     action items.
-   - Do not claim full BIDS validator-level support.
+Support these four categories as product paths. "Support" means scan, preview,
+semantic confirmation, label matching, recipe preservation, Review and Import,
+and epoch handoff. It does not mean silent auto-guessing.
 
-### Tier 2
+### 1. GDF / BNCI / BCI Competition
 
-3. Generic EEG files with internal events or annotations
-   - Cover common internal event/annotation surfaces used by EDF+/PhysioNet,
-     BrainVision markers, EEGLAB events, and MNE/FIF annotations where the
-     current IO stack can read them.
-   - Suggested label events must be generated from backend evidence, not fake UI
-     examples.
-   - Response, artifact, boundary, system, comment, and run markers must not be
-     silently treated as class labels.
-   - Run-dependent event semantics such as PhysioNet `T1` / `T2` must require a
-     confirmable run/task mapping before supervised training can be trusted.
+Examples: BCI Competition IV 2a, Graz motor imagery, BNCI MI family.
 
-4. External label carriers
-   - Support `.mat`, `.csv`, `.tsv`, and `.txt` carriers.
-   - Labels may live outside the selected EEG folder.
-   - Single-file import must not silently pull sibling EEG files into selected
-     scope, but may auto-detect same-stem / nearby label carriers.
-   - Supported placement modes:
-     - EEG event order
-     - label time
-     - label interval
-     - label event code
-   - Placement choices, selected columns/variables, selected EEG events,
-     class names, excluded events, confirmations, and warnings must be preserved
-     in the import recipe.
+Required behavior:
 
-## Explicit Non-Goals
+- Detect and preview GDF/internal event tables where available.
+- Separate trial start, cue, class label, response, artifact, boundary, run
+  marker, ignored event roles.
+- Support internal class events for training data.
+- Support external label sequence for evaluation/testing data.
+- Let the user choose target trial/cue anchors for external sequence matching.
+- Show anchor count, label count, artifact trial count, class distribution, and
+  mismatch impact.
+- Preserve selected trigger, ignored trigger, event role mapping, class map,
+  artifact/exclusion choices, and confirmations in the import recipe.
+- Epoch handoff must know which event/anchor and class map to propose.
 
-Do not implement or claim support for these in this goal:
+### 2. BIDS-Like Dataset
 
-- full BIDS compliance or BIDS validator parity;
-- P300 / ERP target hierarchy, row/column speller semantics, or target /
-  non-target repetition logic;
-- SSVEP / c-VEP frequency, phase, symbol, or stimulus metadata semantics;
-- clinical long-recording workflows such as seizure intervals, sleep staging,
-  clinical notes, or long-duration memory optimization;
-- XDF / LSL multi-stream synchronization;
-- OpenBCI / BrainFlow device-export semantics;
-- MOABB dataset adapters;
-- arbitrary proprietary logs, nested unknown MAT schemas, pickle files, or
-  executable custom Python converters.
+This goal supports BIDS-like EEG event/metadata workflows. Do not claim full BIDS
+validator-level support.
 
-Fallback guidance is allowed when a carrier cannot be interpreted, but it must
-be a clear blocked state with an example of the required table shape. Do not run
-user-provided Python as part of this goal.
+Required behavior:
 
-## Required Product Behavior
+- Import entry supports scanning a BIDS folder/root, not only single EEG files.
+- Show selected scope separately from scan location.
+- Show subject, session, task, run, datatype/modality when discoverable.
+- Read and preview `events.tsv` columns including `onset`, `duration`,
+  `trial_type`, `value`, `response_time`, `HED`, and `channel` when present.
+- Read `events.json` levels/descriptions for class display names when present.
+- Surface missing sidecars, missing duration, unknown onset/time unit, coverage
+  mismatch, and parser warnings as needs-review or blocked action items.
+- Preserve BIDS entities and chosen event/label interpretation in recipe.
+- Epoch handoff must use BIDS event timing and class map choices.
 
-### Load Labels
+### 3. Generic EEG Files With Internal Events / Annotations
 
-- Rename the user-facing step to `Load Labels`.
-- Auto-detected and user-added label carriers must be shown together with clear
-  source language.
-- Both auto-detected and user-added carriers must be removable.
-- Duplicate carriers must not be added twice.
-- `Load label file` and `Load label folder` must support labels outside the EEG
-  folder.
-- Do not show confusing filler rows such as `Will scan file` when the user
-  already sees the loaded carrier.
+Examples: EDF+/PhysioNet EEGMMI, EEGLAB `.set`, BrainVision
+`.vhdr/.vmrk/.eeg`, MNE FIF annotations/events.
 
-### Match Labels: Labels Inside EEG Files
+Required behavior:
 
-- The source selector must clearly distinguish `Labels inside EEG files` from
-  `Loaded label files`.
-- If this source is selected, class candidates must come from internal EEG
-  events/annotations, not from loaded label files.
-- The UI must show:
-  - suggested training labels;
-  - other EEG events not currently used as labels;
-  - event code/name when reliable;
-  - suggested use;
-  - suggestion evidence;
-  - count and file coverage.
-- Users must be able to move events both ways: use as label and not a label.
-- Class names should be editable directly in the table when class names are
-  known or required.
-- Sort displayed class names and event rows deterministically.
-- Candidate logic must be testable backend behavior, not screenshot-only
-  assumptions.
+- Preview internal annotations/markers/events with counts and suggested roles.
+- Do not treat boundary, artifact, response, sync, or new-segment markers as
+  class labels by default.
+- For PhysioNet EEGMMI/EDF+, handle run-dependent semantics such as `T1`/`T2`
+  by surfacing run/task mapping for confirmation; never silently assume one
+  global class meaning.
+- For EEGLAB, surface boundary counts and epoched-vs-continuous status when
+  available.
+- For BrainVision, separate stimulus, response, sync, new segment, comment, and
+  unknown marker roles when available.
+- Preserve event role mapping, class names, ignored markers, run-level mapping,
+  and confirmation choices in recipe.
+- Epoch handoff must use confirmed event roles and run-level mapping.
 
-### Match Labels: Loaded Label Files
+### 4. External Label Carriers
 
-- Pairing board must read left-to-right as `EEG file -> Label file -> Status`.
-- Users choose the label file for each EEG file. Status belongs next to the
-  label side, not as the primary thing being chosen.
-- Same-base-name pairing can be the default, but manual correction must be
-  possible.
-- If pairing or label interpretation fails, hide downstream placement tables and
-  show a concise blocked fallback card with a `View examples` dialog.
-- The fallback card must explain:
-  - XBrainLab loaded the file but cannot identify label rows yet;
-  - each row must describe one label, trial, event, or interval;
-  - there must be one label column;
-  - there must be one placement column such as `event_code`, `onset_seconds`,
-    `sample`, or interval columns.
+Examples: `.mat`, `.csv`, `.tsv`, `.txt`, competition labels, labels stored
+outside the selected EEG folder.
 
-### Placement Modes
+Required behavior:
 
-For loaded label files, each placement mode needs a mode-specific UI and backend
-apply path.
+- Auto-detect nearby label/event carriers.
+- Allow loading label files/folders from separate locations.
+- Allow removing auto-detected and user-added label sources.
+- Prevent duplicate label sources.
+- Handle many label files without nested scrolling or layout collapse.
+- For `.mat`, expose candidate variables; do not silently pick the first
+  label-like variable when ambiguous.
+- For `.txt`, support label sequence review.
+- For `.csv/.tsv`, support label column, event order, time/sample placement,
+  interval placement, and event-code matching.
+- Pair EEG file first, label file second, matching user habit.
+- Show mismatch impact and next action when counts, events, or fields do not
+  align.
+- Provide fallback converted label table guidance when the label file can be
+  loaded but cannot be safely matched.
+- Preserve label source, target EEG file, label field, placement method, time
+  model, duration/end field, event-code mapping, confirmations, and class map in
+  recipe.
 
-- EEG event order:
-  - user selects which EEG event rows receive labels;
-  - allow multiple target event codes when valid;
-  - show selected event count, label row count, excluded events, and unmatched
-    count;
-  - support artifact/excluded trials without silently shifting labels.
-- Label time:
-  - user selects label value field and time field;
-  - time basis must be explicit enough for apply and recipe;
-  - preview must show where sample/time labels will land.
-- Label interval:
-  - user selects label value field plus onset and duration/end/stop/offset
-    fields;
-  - apply must honor the selected duration/end field, not only a hard-coded
-    `duration` column.
-- Label event code:
-  - user selects label value field and event-code field;
-  - apply must map label rows onto matching EEG event codes, not just preview
-    the rule.
+## Explicit Non-Supported Categories For This Goal
 
-Avoid first-layer terms such as `Anchor`, `Granularity`, `Role`, or `Label unit`.
-Use task language: `Read labels from`, `Use as`, `Place labels by`,
-`Target EEG events`, `Suggestion evidence`, and `Check`.
+Do not implement full support for these in this goal:
 
-### BIDS-Like Events
+- P300 / ERP hierarchy.
+- SSVEP / c-VEP stimulus metadata.
+- Clinical long-recording EEG workflows.
+- XDF / LSL multi-stream synchronization.
+- OpenBCI / BrainFlow device export semantics.
+- MOABB dataset adapters or downloaders.
+- Arbitrary proprietary logs, nested MAT structs, pickle/object labels, custom
+  Python converters beyond clear fallback guidance.
 
-- Detect `events.tsv` as a label/event carrier.
-- Read available event columns and `events.json` levels when present.
-- Missing `events.json`, missing onset, or ambiguous duration must become
-  structured warnings/action items.
-- The UI should have a BIDS-like review state that is explicit about being
-  BIDS-like, not full BIDS support.
+For these categories, the product must be honest: detect when possible, explain
+that the workflow is not supported in this MVP, and route to converted label
+table / custom recipe guidance. Do not silently guess.
 
-### Review Metadata
+## Required UI Outcomes
 
-- Review subject/session/task/run compactly.
-- Smart Parse and manual edits must write choices into the import recipe.
-- Metadata warnings should be clear without making optional task/run fields feel
-  mandatory unless downstream split/training requires them.
+Finish these wizard pages to product quality:
 
-### Review And Import
+- Choose EEG Data.
+- Load Labels.
+- Review Metadata.
+- Match Labels.
+- Review and Import.
 
-- Show grouped actionable items, not a flat warning list.
-- Each item must include issue, impact, next action, and target step.
-- Primary import/apply action must remain visible.
-- Normal, needs-review, and blocked states must each have screenshot evidence.
-- The final review must summarize the chosen label source, pairing, placement
-  mode, selected target events/fields, class mapping, and remaining limitations.
+Hard UI requirements:
 
-### Epoch Handoff
+- Each step must be task-designed, not a table pasted into a panel.
+- Primary action remains visible.
+- Cancel/Back/Next placement follows desktop dialog convention.
+- No nested scrolling inside table/list sections.
+- Long lists must fit through page-level scroll only.
+- No duplicate status/check blocks.
+- No first-layer debug wording such as anchor/time/granularity/role when a
+  task-oriented label is clearer.
+- Load Labels must handle many labels, removal, duplicates, empty state, and
+  external folders cleanly.
+- Match Labels must have polished UIs for internal labels, event order,
+  time/sample, interval, event code, fallback conversion, and BIDS-like labels.
+- Review and Import must show grouped actionable items with issue, impact, next
+  action, and target step.
 
-- The applied interpretation must expose enough structured state for epoch setup
-  to prefill or constrain target events / labels / interval timing.
-- Do not redesign the full epoch workflow in this goal, but prevent Data Import
-  from applying label semantics that epoch cannot later understand.
-- Add at least one focused test or smoke artifact proving the selected label
-  interpretation is visible to epoch-related state or command readiness.
+## Epoch Handoff
 
-## Backend Requirements
+Import completion must produce enough recipe/state for epoch setup to prefill or
+suggest:
 
-- Keep UI, in-app agent, headless scripts, and MCP aligned with
-  `ApplicationService / Command API`.
-- Extend the Data Interpretation contract only through structured scan,
-  candidate, preview, validation, apply, and recipe fields.
-- Merge auto-discovered and user-added label carriers in preview.
-- Preserve:
-  - label source;
-  - metadata parser choices and manual overrides;
-  - file pairing;
-  - selected label field / variable;
-  - placement mode;
-  - selected time/event/interval fields;
-  - selected target EEG events;
-  - class map and class names;
-  - run-dependent mappings;
-  - confirmations and structured action items.
-- Recipe reload must reconstruct preview and validation; it must not bypass
-  review by blindly applying stale choices.
-- Unsupported classes must produce explicit blocked/limited states, not silent
-  guesses.
+- selected EEG event/anchor,
+- class label source,
+- class map,
+- ignored/artifact events,
+- time model and time origin,
+- interval onset/duration/end fields,
+- BIDS subject/session/task/run context,
+- run-dependent class mapping where applicable.
 
-## UI Quality Bar
+Do not leave import and epoch with separate hidden assumptions.
 
-- The wizard must be task-oriented panels, one step at a time.
-- No nested scrolling inside table sections at normal desktop size.
-- Footer actions must stay visible. `Cancel` stays on the left; `Back` and the
-  primary next/import action stay on the right.
-- Dense data is allowed, but every panel must have clear hierarchy, aligned
-  labels, and readable spacing.
-- Do not show fake backend-rendered data in screenshots. If evidence is shown,
-  it must come from code that can run.
-- Generate full screenshots at normal desktop size for:
-  - Choose EEG Data;
-  - Load Labels empty;
-  - Load Labels auto-detected;
-  - Load Labels user-added;
-  - Load Labels duplicate/removal state;
-  - Load Labels many carriers;
-  - Review Metadata with Smart Parse;
-  - Match Labels internal EEG labels;
-  - Match Labels loaded labels: event order;
-  - Match Labels loaded labels: label time;
-  - Match Labels loaded labels: label interval;
-  - Match Labels loaded labels: label event code;
-  - Match Labels BIDS-like events;
-  - conversion fallback card and example dialog;
-  - Review and Import normal;
-  - Review and Import needs-review;
-  - Review and Import blocked;
-  - one epoch handoff / prefill evidence artifact.
+## Required Gate Subagents
 
-## Required Tests And Validation
+You must use two reviewer subagents as hard gates. These reviewers are not
+implementation workers.
+
+### Gate 1: Data Interpretation Gate
+
+Ask this reviewer to inspect code, tests, recipes, screenshots, and artifacts
+against the four supported data categories. It must answer:
+
+- Does the implementation support the four required categories without silent
+  guessing?
+- Are unsupported categories honestly blocked or routed to fallback?
+- Are recipes sufficient for replay and epoch handoff?
+- Are mainstream semantic risks covered by tests?
+
+If this reviewer returns `not trustworthy` or lists product-blocking findings,
+the goal is incomplete until the main agent fixes or explicitly removes the
+claim.
+
+### Gate 2: UI Product Gate
+
+Ask this reviewer to inspect screenshots and UI code. It must answer:
+
+- Does each page look like a polished task-oriented desktop wizard?
+- Are layout, spacing, alignment, information hierarchy, and action placement
+  product-ready?
+- Are many-label, BIDS-like, blocked, fallback, and Review and Import states
+  readable?
+- Does any page still look like debug tables pasted into cards?
+
+If this reviewer returns `not product-ready` or lists product-blocking findings,
+the goal is incomplete until the main agent fixes them and regenerates evidence.
+
+## Validation Requirements
 
 Add or update focused tests for:
 
-- labels stored outside the selected EEG folder;
-- selected EEG scope versus scan location;
-- single-file import not importing sibling EEG files;
-- auto-detected label carrier removal and duplicate prevention;
-- internal EEG label source not reading loaded-label class values;
-- suggested-label evidence classification;
-- moving events between label and non-label groups;
-- run-dependent `T1` / `T2` mapping confirmation and recipe persistence;
-- BIDS-like `events.tsv` / `events.json` columns, warnings, and action items;
-- external label placement by event order;
-- external label placement by label time;
-- external label placement by interval, including selected end/stop/offset fields;
-- external label placement by event code apply path;
-- structured Review and Import action items;
-- UI/dialog footer visibility and no nested table scrolling;
-- product smoke:
-  `Import file/folder -> Load label folder -> Review metadata -> Match labels -> Review and Import`.
+- labels stored outside the selected EEG folder,
+- selected scope vs scan location,
+- auto-detected and user-added label source merge/removal/deduplication,
+- GDF/BNCI-style internal events and external labels,
+- BIDS-like events.tsv/events.json metadata and levels,
+- EDF+/PhysioNet run-dependent mapping behavior,
+- EEGLAB boundary / BrainVision marker role exclusion where fixtures allow,
+- event order, time/sample, interval, event-code placement,
+- structured Review and Import action items,
+- recipe preservation and epoch handoff,
+- UI/dialog layout states including many labels and no nested-scroll sections.
 
-Recommended validation commands should include the focused backend tests, focused
-UI tests with `QT_QPA_PLATFORM=offscreen`, screenshot scripts, lint for touched
-Python files, `git diff --check`, and `poetry run mkdocs build --strict`.
+Run and report:
 
-## Gate Review
+- focused backend tests,
+- focused UI/dialog tests with `QT_QPA_PLATFORM=offscreen`,
+- screenshot capture scripts for all required states,
+- product smoke: Import file/folder/BIDS-like folder -> Load label folder ->
+  Review Metadata -> Match Labels -> Review and Import -> Epoch handoff,
+- `git diff --check`,
+- `ruff`/pre-commit or equivalent checks for changed Python files.
 
-Before final completion, use two independent reviewers if subagents are
-available:
+## Required Screenshot Evidence
 
-1. Data Interpretation reviewer
-   - Judge whether the four supported dataset classes are truly covered by
-     backend behavior, recipe persistence, tests, and explicit unsupported
-     boundaries.
-2. UI Product reviewer
-   - Judge whether the wizard is visually clean, task-oriented, readable at
-     normal desktop size, and supported by real screenshots.
+Regenerate and inspect screenshots for:
 
-If either reviewer returns a blocking finding, fix it and ask for review again.
-Do not summarize a blocked review as success.
+- Choose EEG Data normal and many-file states.
+- Load Labels empty, auto-detected, user-added, many labels, duplicate, removal.
+- Review Metadata normal and Smart Parse states.
+- Match Labels internal events.
+- Match Labels external event order.
+- Match Labels time/sample.
+- Match Labels interval.
+- Match Labels event code.
+- Match Labels fallback converted table.
+- BIDS-like folder review.
+- Review and Import normal, needs-review, blocked.
+- Epoch handoff/prefill state.
 
-## Branch / PR Rules
+## Completion Rules
 
-- Work on a Data Import branch, not directly on `main`.
-- Preserve unrelated dirty worktree changes.
-- Keep commits reviewable by slice.
-- Push validated checkpoints.
-- Do not mix this goal with backend-wide cleanup, docs-site redesign, local LLM,
-  MCP hardening, or training UI redesign.
+The goal is complete only if:
 
-## Completion Criteria
+- all four supported data categories are implemented to the support definition,
+- unsupported categories are not claimed and have clear fallback/blocked behavior,
+- both gate subagents return pass/acceptable without product-blocking findings,
+- focused tests and product smoke pass,
+- screenshot evidence is regenerated and manually inspected,
+- recipe and epoch handoff are verified,
+- branch is committed and pushed,
+- remaining risks are explicit with file references.
 
-This goal is complete only when:
+Do not say "done" if any gate fails. Say `incomplete` and continue fixing.
 
-- the four supported dataset classes have implemented backend/UI behavior;
-- unsupported classes are explicit non-goals with blocked/limited user feedback;
-- recipe trace preserves the choices needed to reproduce the import;
-- epoch handoff has at least minimal structured evidence;
-- required tests pass;
-- screenshot artifacts exist and are readable;
-- canonical docs are updated without overclaiming;
-- both gate reviewers pass without blocking findings;
-- branch is committed and pushed;
-- final report includes exact validation commands, changed files, pushed commit,
-  remaining risks, and unsupported classes.
+## Final Report Must Include
 
-## Goal Prompt
-
-Use this prompt for a new goal or a new agent conversation:
-
-```text
-Goal: Deliver the XBrainLab Data Import Tier 1 / Tier 2 label workflow to product-usable MVP quality by following docs/agent_goals/data_import_tier1_tier2_product_goal.md.
-
-Work in /mnt/d/workspace_v2/projects/lab/XBrainLab. First read AGENTS.md, docs/current.md, docs/target/data_interpretation_system.md, docs/research/bci_eeg_import_label_design_source.md, docs/architecture/data_pipeline.md, docs/validation/README.md, and the goal file.
-
-Implement only the four supported dataset classes in the goal: GDF/BNCI-style internal+external labels, BIDS-like events.tsv/events.json, generic EEG internal events/annotations, and MAT/CSV/TSV/TXT external label carriers. Treat P300/ERP hierarchy, SSVEP/c-VEP semantics, clinical long recordings, XDF/LSL sync, OpenBCI/BrainFlow semantics, MOABB adapters, proprietary logs, nested unknown MAT schemas, pickle, and executable custom Python converters as explicit non-goals with clear blocked/limited UI states.
-
-Do not stop at a plan, inventory, screenshots, or mock UI. Implement backend scan/preview/validate/apply/recipe behavior, Load Labels, Match Labels, Review Metadata, Review and Import, minimal epoch handoff, focused tests, screenshots, and canonical docs until the goal completion criteria are met.
-
-Use ApplicationService / Command API as product truth. Preserve unrelated dirty worktree changes. Do not work directly on main. Commit and push validated checkpoints.
-
-Before final completion, use two reviewers if subagents are available: one Data Interpretation reviewer for mainstream format coverage and one UI Product reviewer for layout/product quality. Blocking findings must be fixed and reviewed again. Final report must include exact validation commands/results, screenshots/artifacts, docs updated, commit hash, pushed branch, unsupported boundaries, and remaining risks.
-```
+- Complete or incomplete.
+- Branch and commit hashes.
+- Supported data categories and evidence.
+- Unsupported categories and fallback behavior.
+- UI gate verdict and fixes made from its findings.
+- Data gate verdict and fixes made from its findings.
+- Tests added/changed.
+- Validation commands and results.
+- Screenshot artifact paths.
+- Remaining risks or limitations.
+- Files intentionally not touched.

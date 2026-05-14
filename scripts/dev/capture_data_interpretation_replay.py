@@ -610,7 +610,14 @@ def apply_replay_review_choices(
             else:
                 target_selector.setCurrentText(SECOND_SOURCE_PATH.name)
         else:
-            label_item.setText(1, SECOND_SOURCE_PATH.name)
+            visible_selector = getattr(dialog, "_eeg_label_widgets", {}).get(
+                SECOND_SOURCE_PATH.name
+            )
+            if isinstance(visible_selector, QComboBox):
+                next_index = 1 if visible_selector.count() > 1 else 0
+                visible_selector.setCurrentIndex(next_index)
+            else:
+                label_item.setText(1, SECOND_SOURCE_PATH.name)
         set_tree_cell(dialog.label_carrier_tree, label_item, 2, "trial_type")
         set_tree_cell(dialog.label_carrier_tree, label_item, 3, "onset")
         set_tree_cell(dialog.label_carrier_tree, label_item, 4, "Trial")

@@ -1,958 +1,138 @@
 #!/usr/bin/env python3
-"""Capture canonical Data Import wizard screenshots for product review."""
+"""Capture canonical Data Import wizard screenshots."""
 
 from __future__ import annotations
 
-import json
 import sys
-import tempfile
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
 
 from PIL import Image
 from PyQt6.QtCore import QSize
 from PyQt6.QtWidgets import QApplication, QWidget
 
-from XBrainLab.backend.application import (
-    ApplicationService,
-    ApplyInterpretationCommand,
-    PreviewInterpretationCommand,
-    SaveInterpretationRecipeCommand,
-    ScanSourceCommand,
-    ValidateInterpretationCommand,
+from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
+    DataInterpretationPreviewDialog,
+    _ConvertedLabelTableDialog,
 )
-from XBrainLab.backend.study import Study
-from XBrainLab.ui.dialogs.dataset import DataInterpretationPreviewDialog
-from XBrainLab.ui.dialogs.preprocess import EpochingDialog
 
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = ROOT / "artifacts" / "ui" / "data-import-wizard-steps"
-WINDOW_SIZE = QSize(1220, 920)
-
-
-EEG_ROOT = "/mnt/d/workspace_v2/projects/lab/XBrainLab/tests/data"
-LABEL_ROOT = f"{EEG_ROOT}/label"
+REVIEW_STATES_DIR = OUTPUT_DIR / "review-import-states"
+BIDS_PRESET_DIR = OUTPUT_DIR / "bids-preset"
+WINDOW_SIZE = QSize(1220, 1320)
 
 
 def main() -> int:
-    existing_app = QApplication.instance()
-    app = (
-        existing_app
-        if isinstance(existing_app, QApplication)
-        else QApplication(sys.argv)
-    )
+    app = QApplication.instance() or QApplication(sys.argv)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    captures: list[tuple[str, str, DataInterpretationPreviewDialog, QSize]] = [
+    REVIEW_STATES_DIR.mkdir(parents=True, exist_ok=True)
+    BIDS_PRESET_DIR.mkdir(parents=True, exist_ok=True)
+    captures = [
+        ("01-choose-eeg-data.png", _main_dialog(), "Choose EEG Data"),
+        ("02-load-labels-many.png", _many_labels_dialog(), "Load Labels"),
+        ("03-review-metadata.png", _main_dialog(), "Review Metadata"),
         (
-            "01-choose-eeg-data.png",
-            "Choose EEG Data",
-            build_dialog(base_scan(), base_preview(), needs_confirmation()),
-            WINDOW_SIZE,
-        ),
-        (
-            "02-load-labels-empty.png",
-            "Load Labels",
-            build_dialog(empty_label_scan(), empty_label_preview(), safe()),
-            WINDOW_SIZE,
-        ),
-        (
-            "02-load-labels-auto-detected.png",
-            "Load Labels",
-            build_dialog(base_scan(), base_preview(), needs_confirmation()),
-            WINDOW_SIZE,
-        ),
-        (
-            "02-load-labels-user-added.png",
-            "Load Labels",
-            build_dialog(user_added_scan(), user_added_preview(), needs_confirmation()),
-            WINDOW_SIZE,
-        ),
-        (
-            "02-load-labels-duplicate-removal.png",
-            "Load Labels",
-            duplicate_removal_dialog(),
-            WINDOW_SIZE,
-        ),
-        (
-            "02-load-labels-many.png",
-            "Load Labels",
-            build_dialog(many_label_scan(), many_label_preview(), needs_confirmation()),
-            WINDOW_SIZE,
-        ),
-        (
-            "03-review-metadata-smart-parse.png",
-            "Review Metadata",
-            build_dialog(base_scan(), metadata_preview(), needs_confirmation()),
-            WINDOW_SIZE,
-        ),
-        (
-            "04-match-labels-internal-eeg-labels.png",
+            "04-match-labels-internal-suggested-events-full.png",
+            _internal_events_dialog(),
             "Match Labels",
-            build_dialog(internal_scan(), internal_preview(), needs_confirmation()),
-            WINDOW_SIZE,
         ),
         (
-            "04-match-labels-bids-eeg-events.png",
+            "04-match-labels-final-loaded-label-files.png",
+            _loaded_label_files_dialog(),
             "Match Labels",
-            build_dialog(bids_scan(), bids_preview(), needs_confirmation()),
-            WINDOW_SIZE,
         ),
+        ("04-match-labels-bids-events.png", _bids_events_dialog(), "Match Labels"),
         (
             "04-match-labels-conversion-fallback.png",
+            _conversion_fallback_dialog(),
             "Match Labels",
-            build_dialog(conversion_scan(), conversion_preview(), blocked_conversion()),
-            WINDOW_SIZE,
+        ),
+        ("05-review-and-import.png", _review_import_dialog(), "Review and Import"),
+    ]
+    for filename, dialog, step_title in captures:
+        path = OUTPUT_DIR / filename
+        _show_step(dialog, step_title, app)
+        _capture(dialog, path)
+        dialog.close()
+
+    bids_preset_captures = [
+        ("01-choose-eeg-data.png", _bids_events_dialog(), "Choose EEG Data"),
+        ("02-load-labels.png", _bids_events_dialog(), "Load Labels"),
+        ("03-review-metadata.png", _bids_events_dialog(), "Review Metadata"),
+        ("04-match-labels.png", _bids_events_dialog(), "Match Labels"),
+        ("05-review-and-import.png", _bids_events_dialog(), "Review and Import"),
+    ]
+    for filename, dialog, step_title in bids_preset_captures:
+        path = BIDS_PRESET_DIR / filename
+        _show_step(dialog, step_title, app)
+        _capture(dialog, path)
+        dialog.close()
+
+    review_state_captures = [
+        ("no-confirm.png", _review_import_state_dialog("safe"), "Review and Import"),
+        (
+            "needs-confirm.png",
+            _review_import_state_dialog("confirm"),
+            "Review and Import",
         ),
         (
-            "05-review-and-import-bids-ready.png",
+            "needs-review.png",
+            _review_import_state_dialog("review"),
             "Review and Import",
-            build_dialog(bids_scan(), bids_preview(), safe()),
-            WINDOW_SIZE,
         ),
         (
-            "05-review-and-import-normal.png",
+            "confirm-and-review.png",
+            _review_import_state_dialog("both"),
             "Review and Import",
-            build_dialog(base_scan(), review_preview("normal"), safe()),
-            WINDOW_SIZE,
-        ),
-        (
-            "05-review-and-import-needs-review.png",
-            "Review and Import",
-            build_dialog(
-                base_scan(), review_preview("needs_review"), needs_confirmation()
-            ),
-            WINDOW_SIZE,
-        ),
-        (
-            "05-review-and-import-blocked.png",
-            "Review and Import",
-            build_dialog(
-                conversion_scan(), review_preview("blocked"), blocked_conversion()
-            ),
-            WINDOW_SIZE,
         ),
     ]
+    for filename, dialog, step_title in review_state_captures:
+        path = REVIEW_STATES_DIR / filename
+        _show_step(dialog, step_title, app)
+        _capture(dialog, path)
+        dialog.close()
 
-    for filename, step_title, dialog, size in captures:
-        capture_dialog(dialog, step_title, OUTPUT_DIR / filename, app, size=size)
-
-    capture_conversion_examples(app)
-    capture_epoch_after_bids(app)
-    write_epoch_handoff_artifact()
+    style_source = _main_dialog()
+    format_dialog = _ConvertedLabelTableDialog()
+    format_dialog.setStyleSheet(style_source.styleSheet())
+    format_dialog.resize(QSize(900, 720))
+    format_dialog.show()
+    app.processEvents()
+    _capture(
+        format_dialog,
+        OUTPUT_DIR / "04-match-labels-conversion-table-format-dialog.png",
+    )
+    format_dialog.close()
+    style_source.close()
     return 0
 
 
-def build_dialog(
-    scan_result: dict[str, Any],
-    preview: dict[str, Any],
-    validation_decision: dict[str, Any],
-) -> DataInterpretationPreviewDialog:
-    return DataInterpretationPreviewDialog(
-        parent=None,
-        scan_result=scan_result,
-        preview=preview,
-        validation_decision=validation_decision,
-    )
-
-
-def capture_dialog(
+def _show_step(
     dialog: DataInterpretationPreviewDialog,
     step_title: str,
-    output_path: Path,
     app: QApplication,
-    *,
-    size: QSize,
 ) -> None:
-    dialog.resize(size)
-    dialog.show()
-    app.processEvents()
-    dialog._go_to_step(dialog._step_titles.index(step_title))
-    for _ in range(3):
-        app.processEvents()
-        dialog.repaint()
-    capture_widget(dialog, output_path)
-    dialog.close()
-
-
-def capture_conversion_examples(app: QApplication) -> None:
-    dialog = build_dialog(conversion_scan(), conversion_preview(), blocked_conversion())
     dialog.resize(WINDOW_SIZE)
     dialog.show()
     app.processEvents()
-    examples = dialog._label_format_examples_dialog()
-    examples.show()
-    for _ in range(3):
-        app.processEvents()
-        examples.repaint()
-    capture_widget(examples, OUTPUT_DIR / "04-match-labels-conversion-examples.png")
-    examples.close()
-    dialog.close()
+    dialog._go_to_step(dialog._step_titles.index(step_title))
+    app.processEvents()
+    dialog.repaint()
+    app.processEvents()
 
 
-def duplicate_removal_dialog() -> DataInterpretationPreviewDialog:
-    dialog = build_dialog(user_added_scan(), user_added_preview(), needs_confirmation())
-    dialog._remove_label_carrier(f"{LABEL_ROOT}/A02T.mat")
-    return dialog
-
-
-def base_scan() -> dict[str, Any]:
-    eeg_files = [f"{EEG_ROOT}/A01T.gdf", f"{EEG_ROOT}/A02T.gdf", f"{EEG_ROOT}/A03T.gdf"]
-    label_files = [
-        f"{LABEL_ROOT}/A01T.mat",
-        f"{LABEL_ROOT}/A02T.mat",
-        f"{LABEL_ROOT}/A03T.mat",
-    ]
-    return {
-        "source_path": EEG_ROOT,
-        "source_kind": "folder",
-        "eeg_files": eeg_files,
-        "label_carriers": label_files,
-        "label_carrier_sources": dict.fromkeys(label_files, "auto"),
-        "bids": {"is_bids": False, "events_files": []},
-    }
-
-
-def empty_label_scan() -> dict[str, Any]:
-    scan = base_scan()
-    scan["eeg_files"] = [f"{EEG_ROOT}/A01T.gdf"]
-    scan["label_carriers"] = []
-    scan["label_carrier_sources"] = {}
-    scan["source_kind"] = "file"
-    return scan
-
-
-def user_added_scan() -> dict[str, Any]:
-    scan = base_scan()
-    scan["label_sources"] = [LABEL_ROOT]
-    scan["label_carrier_sources"] = {
-        f"{LABEL_ROOT}/A01T.mat": "auto",
-        f"{LABEL_ROOT}/A02T.mat": LABEL_ROOT,
-        f"{LABEL_ROOT}/A03T.mat": LABEL_ROOT,
-    }
-    return scan
-
-
-def many_label_scan() -> dict[str, Any]:
-    scan = base_scan()
-    carriers = [f"{LABEL_ROOT}/S{index:02d}_events.tsv" for index in range(1, 13)]
-    scan["label_carriers"] = carriers
-    scan["label_carrier_sources"] = dict.fromkeys(carriers, LABEL_ROOT)
-    scan["label_sources"] = [LABEL_ROOT]
-    return scan
-
-
-def internal_scan() -> dict[str, Any]:
-    scan = base_scan()
-    scan["label_carriers"] = []
-    scan["label_carrier_sources"] = {}
-    return scan
-
-
-def bids_scan() -> dict[str, Any]:
-    events = f"{EEG_ROOT}/sub-01/eeg/sub-01_task-mi_run-01_events.tsv"
-    eeg_file = f"{EEG_ROOT}/sub-01/eeg/sub-01_task-mi_run-01_eeg.fif"
-    return {
-        "source_path": f"{EEG_ROOT}/bids_mi",
-        "source_kind": "bids",
-        "eeg_files": [eeg_file],
-        "label_carriers": [events],
-        "label_carrier_sources": {events: "auto"},
-        "bids": bids_payload(eeg_file=eeg_file, events=events),
-    }
-
-
-def bids_payload(*, eeg_file: str, events: str) -> dict[str, Any]:
-    channels = events.replace("_events.tsv", "_channels.tsv")
-    selected_scope = {
-        "eeg_file_count": 1,
-        "subjects": ["01"],
-        "sessions": [],
-        "tasks": ["mi"],
-        "runs": ["01"],
-        "datatypes": ["eeg"],
-        "eeg_files": [eeg_file],
-        "events_files": [events],
-        "channels_files": [channels],
-    }
-    return {
-        "is_bids": True,
-        "root": f"{EEG_ROOT}/bids_mi",
-        "scan_location": f"{EEG_ROOT}/bids_mi",
-        "subjects": ["01"],
-        "sessions": [],
-        "tasks": ["mi"],
-        "runs": ["01"],
-        "datatypes": ["eeg"],
-        "eeg_file_count": 1,
-        "events_files": [events],
-        "channels_files": [channels],
-        "participant_count": 1,
-        "participants": [{"participant_id": "sub-01", "sex": "F", "age": "21"}],
-        "channel_status_summary": {"total": 3, "good": 2, "bad": 1, "other": 0},
-        "layout": [
-            {
-                "file": eeg_file,
-                "name": Path(eeg_file).name,
-                "relative_path": "sub-01/eeg/sub-01_task-mi_run-01_eeg.fif",
-                "subject": "01",
-                "session": "",
-                "task": "mi",
-                "run": "01",
-                "datatype": "eeg",
-                "events_file": events,
-                "channels_file": channels,
-            }
-        ],
-        "selected_scope": selected_scope,
-    }
-
-
-def conversion_scan() -> dict[str, Any]:
-    label = f"{LABEL_ROOT}/custom_labels.mat"
-    return {
-        "source_path": EEG_ROOT,
-        "source_kind": "file",
-        "eeg_files": [f"{EEG_ROOT}/A01T.gdf"],
-        "label_carriers": [label],
-        "label_carrier_sources": {label: LABEL_ROOT},
-        "bids": {"is_bids": False, "events_files": []},
-    }
-
-
-def base_preview() -> dict[str, Any]:
-    return {
-        "summary": "Found 3 EEG file(s) and 3 label/event carrier(s).",
-        "source_selection": "3 selected file(s)",
-        "selected_eeg_files": [
-            f"{EEG_ROOT}/A01T.gdf",
-            f"{EEG_ROOT}/A02T.gdf",
-            f"{EEG_ROOT}/A03T.gdf",
-        ],
-        "file_count": 3,
-        "label_carrier_count": 3,
-        "metadata_preview": metadata_rows(),
-        "label_carrier_preview": label_carriers("auto_discovered"),
-        "internal_event_preview": internal_event_payload(),
-        "recipe_trace": ["scan:scan-1", "candidate:candidate-1"],
-    }
-
-
-def empty_label_preview() -> dict[str, Any]:
-    preview = base_preview()
-    preview.update(
-        {
-            "summary": "Found 1 EEG file(s).",
-            "source_selection": "Single file",
-            "selected_eeg_files": [f"{EEG_ROOT}/A01T.gdf"],
-            "file_count": 1,
-            "label_carrier_count": 0,
-            "label_carrier_preview": [],
-        }
-    )
-    return preview
-
-
-def user_added_preview() -> dict[str, Any]:
-    preview = base_preview()
-    preview["label_carrier_preview"] = [
-        *label_carriers("auto_discovered", names=["A01T.mat"]),
-        *label_carriers("user_added", names=["A02T.mat", "A03T.mat"]),
-    ]
-    return preview
-
-
-def many_label_preview() -> dict[str, Any]:
-    preview = base_preview()
-    rows = []
-    for index in range(1, 13):
-        name = f"S{index:02d}_events.tsv"
-        rows.append(
-            label_carrier(
-                name,
-                f"{LABEL_ROOT}/{name}",
-                target_file=f"A{((index - 1) % 3) + 1:02d}T.gdf",
-                source_kind="user_added",
-                source_location=LABEL_ROOT,
-                fmt="TSV",
-            )
-        )
-    preview["label_carrier_preview"] = rows
-    preview["label_carrier_count"] = len(rows)
-    preview["summary"] = "Found 3 EEG file(s) and 12 label/event carrier(s)."
-    return preview
-
-
-def metadata_preview() -> dict[str, Any]:
-    preview = base_preview()
-    preview["metadata_preview"] = [
-        {
-            "file": "A01T.gdf",
-            "subject": field("01", "safe", "filename"),
-            "session": field("T", "safe", "filename"),
-            "task": field("motor-imagery", "safe", "manual"),
-            "run": field("", "needs_confirmation", "missing"),
-        },
-        {
-            "file": "A02T.gdf",
-            "subject": field("02", "safe", "filename"),
-            "session": field("T", "safe", "filename"),
-            "task": field("motor-imagery", "safe", "manual"),
-            "run": field("", "needs_confirmation", "missing"),
-        },
-        {
-            "file": "A03T.gdf",
-            "subject": field("03", "safe", "filename"),
-            "session": field("T", "safe", "filename"),
-            "task": field("motor-imagery", "safe", "manual"),
-            "run": field("", "needs_confirmation", "missing"),
-        },
-    ]
-    return preview
-
-
-def internal_preview() -> dict[str, Any]:
-    preview = empty_label_preview()
-    preview.update(
-        {
-            "summary": "Found 3 EEG file(s).",
-            "source_selection": "3 selected file(s)",
-            "selected_eeg_files": [
-                f"{EEG_ROOT}/A01T.gdf",
-                f"{EEG_ROOT}/A02T.gdf",
-                f"{EEG_ROOT}/A03T.gdf",
-            ],
-            "file_count": 3,
-            "internal_event_preview": internal_event_payload(),
-            "class_map_source": "",
-            "class_map": {},
-        }
-    )
-    return preview
-
-
-def bids_preview() -> dict[str, Any]:
-    events_path = f"{EEG_ROOT}/sub-01/eeg/sub-01_task-mi_run-01_events.tsv"
-    eeg_file = f"{EEG_ROOT}/sub-01/eeg/sub-01_task-mi_run-01_eeg.fif"
-    carrier = label_carrier(
-        "sub-01_task-mi_run-01_events.tsv",
-        events_path,
-        target_file="sub-01_task-mi_run-01_eeg.fif",
-        fmt="BIDS events",
-        label_field="trial_type",
-        anchor="onset",
-        duration="duration",
-        method="interval",
-        time_model="seconds",
-        granularity="event",
-    )
-    carrier.update(
-        {
-            "bids_sidecars": [
-                f"{EEG_ROOT}/sub-01/eeg/sub-01_task-mi_run-01_events.json"
-            ],
-            "bids_level_labels": {"left": "Left hand", "right": "Right hand"},
-            "bids_field_descriptions": {"trial_type": "Cue class"},
-        }
-    )
-    return {
-        "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
-        "source_selection": "1 selected file(s)",
-        "selected_eeg_files": [eeg_file],
-        "file_count": 1,
-        "label_carrier_count": 1,
-        "bids": bids_payload(eeg_file=eeg_file, events=events_path),
-        "metadata_preview": [
-            {
-                "file": "sub-01_task-mi_run-01_eeg.fif",
-                "subject": field("01", "safe", "bids"),
-                "session": field("", "needs_confirmation", "bids"),
-                "task": field("mi", "safe", "bids"),
-                "run": field("01", "safe", "bids"),
-            }
-        ],
-        "label_carrier_preview": [carrier],
-        "event_roles": {
-            "onset": "time anchor",
-            "duration": "event duration",
-            "trial_type": "class label candidate",
-        },
-        "class_map": {"left": "Left hand", "right": "Right hand"},
-        "class_map_source": "label_carriers",
-        "warnings": [
-            "BIDS channels.tsv marks 1 channel(s) as bad; review channel selection before preprocessing."
-        ],
-        "action_items": [
-            action(
-                "BIDS channels.tsv marks 1 channel as bad.",
-                "Preprocessing should account for bad-channel status.",
-                "Review channel selection before preprocessing.",
-                "Review and Import",
-                "warning",
-            )
-        ],
-    }
-
-
-def conversion_preview() -> dict[str, Any]:
-    return {
-        "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
-        "source_selection": "Single file",
-        "selected_eeg_files": [f"{EEG_ROOT}/A01T.gdf"],
-        "file_count": 1,
-        "label_carrier_count": 1,
-        "metadata_preview": [metadata_rows()[0]],
-        "label_carrier_preview": [
-            {
-                "path": f"{LABEL_ROOT}/custom_labels.mat",
-                "name": "custom_labels.mat",
-                "format": "MAT",
-                "target_file": "A01T.gdf",
-                "source_kind": "user_added",
-                "source_location": LABEL_ROOT,
-                "label_candidates": [],
-                "anchor_candidates": [],
-                "selected_label_field": "",
-                "selected_anchor": "",
-                "label_row_count": 0,
-                "label_value_counts": {},
-                "time_model": "unknown",
-                "granularity": "unknown",
-                "placement_method": "eeg_event",
-                "role": "external labels",
-                "reason": "No supported label rows were found.",
-            }
-        ],
-        "internal_event_preview": internal_event_payload(),
-        "blocked_reasons": [
-            "Label file needs conversion before matching: custom_labels.mat."
-        ],
-        "action_items": [
-            action(
-                "Label file needs conversion before matching: custom_labels.mat.",
-                "Import cannot use this label file until rows and label values are explicit.",
-                "View the required table shape and load a converted MAT/CSV/TSV/TXT file.",
-                "Match Labels",
-                "blocked",
-            )
-        ],
-    }
-
-
-def review_preview(kind: str) -> dict[str, Any]:
-    if kind == "normal":
-        preview = base_preview()
-        preview["action_items"] = []
-        preview["warnings"] = []
-        preview["confirmation_items"] = []
-        preview["downstream_impacts"] = [
-            "Epoch setup can prefill target events from the confirmed label recipe."
-        ]
-        return preview
-    if kind == "blocked":
-        return conversion_preview()
-    preview = base_preview()
-    preview["action_items"] = [
-        action(
-            "Confirm label placement for A01T.mat.",
-            "Label rows and selected EEG events differ by 6 excluded artifact trials.",
-            "Review the target EEG event and artifact handling.",
-            "Match Labels",
-            "needs_confirmation",
-        ),
-        action(
-            "Run metadata is missing for A03T.gdf.",
-            "Dataset splits may be ambiguous if run is needed later.",
-            "Edit run metadata or confirm it is not required.",
-            "Review Metadata",
-            "warning",
-        ),
-    ]
-    return preview
-
-
-def label_carriers(
-    source_kind: str, *, names: list[str] | None = None
-) -> list[dict[str, Any]]:
-    names = names or ["A01T.mat", "A02T.mat", "A03T.mat"]
-    result = []
-    for name in names:
-        result.append(
-            label_carrier(
-                name,
-                f"{LABEL_ROOT}/{name}",
-                target_file=name.replace(".mat", ".gdf"),
-                source_kind=source_kind,
-                source_location=LABEL_ROOT if source_kind == "user_added" else "",
-            )
-        )
-    return result
-
-
-def label_carrier(
-    name: str,
-    path: str,
-    *,
-    target_file: str,
-    source_kind: str = "auto_discovered",
-    source_location: str = "",
-    fmt: str = "MAT",
-    label_field: str = "classlabel",
-    anchor: str = "768",
-    duration: str = "",
-    method: str = "eeg_event",
-    time_model: str = "trial_order",
-    granularity: str = "trial",
-) -> dict[str, Any]:
-    return {
-        "path": path,
-        "name": name,
-        "format": fmt,
-        "target_file": target_file,
-        "selected_target_file": target_file,
-        "source_kind": source_kind,
-        "source_location": source_location,
-        "label_candidates": ["classlabel", "trial_type", "condition"],
-        "anchor_candidates": ["trial order", "768", "onset", "event_code"],
-        "time_field_candidates": ["onset", "sample"],
-        "interval_start_candidates": ["onset", "sample"],
-        "event_code_candidates": ["event_code", "value"],
-        "duration_candidates": ["duration", "end"],
-        "selected_label_field": label_field,
-        "selected_anchor": anchor,
-        "selected_duration_field": duration,
-        "label_row_count": 282,
-        "label_value_counts": {"1": 72, "2": 70, "3": 70, "4": 70},
-        "selected_anchor_stats": {
-            "row_count": 282,
-            "value_counts": {"769": 72, "770": 70, "771": 70, "772": 70}
-            if method == "event_code"
-            else {},
-            "numeric_count": 282,
-            "min": 0.0,
-            "max": 719.5,
-        },
-        "selected_duration_stats": {
-            "row_count": 282,
-            "value_counts": {},
-            "numeric_count": 282,
-            "min": 0.5,
-            "max": 0.5,
-        },
-        "time_model": time_model,
-        "granularity": granularity,
-        "placement_method": method,
-        "role": "external labels",
-        "placement_reviews": placement_reviews(),
-        "placement_review": placement_reviews()[method],
-    }
-
-
-def internal_event_payload() -> dict[str, Any]:
-    return {
-        "source": "mne_internal_events",
-        "file_count": 3,
-        "pattern_status": "Shared event pattern detected",
-        "names_reliable": False,
-        "candidate_label_events": [
-            event_row(
-                "769",
-                "Class label",
-                216,
-                "3/3 files",
-                "Stable repeated label event group",
-            ),
-            event_row(
-                "770",
-                "Class label",
-                216,
-                "3/3 files",
-                "Stable repeated label event group",
-            ),
-            event_row(
-                "771",
-                "Class label",
-                216,
-                "3/3 files",
-                "Stable repeated label event group",
-            ),
-            event_row("772", "Class label", 144, "2/3 files", "Missing in A03T.gdf"),
-        ],
-        "not_used_events": [
-            event_row("768", "Trial timing", 864, "3/3 files", "Trial start marker"),
-            event_row(
-                "1023",
-                "Exclude bad trials",
-                18,
-                "3/3 files",
-                "Rejected / artifact trial",
-            ),
-            event_row("32766", "Ignore", 3, "3/3 files", "System / boundary marker"),
-        ],
-    }
-
-
-def event_row(
-    code: str, use_as: str, count: int, coverage: str, evidence: str
-) -> dict[str, Any]:
-    return {
-        "event_code": code,
-        "use_as": use_as,
-        "event_count": count,
-        "coverage": coverage,
-        "evidence": evidence,
-        "reason": evidence,
-    }
-
-
-def metadata_rows() -> list[dict[str, Any]]:
-    return [
-        {
-            "file": "A01T.gdf",
-            "subject": field("01", "safe", "filename"),
-            "session": field("T", "safe", "filename"),
-            "task": field("motor-imagery", "safe", "manual"),
-            "run": field("01", "safe", "manual"),
-        },
-        {
-            "file": "A02T.gdf",
-            "subject": field("02", "safe", "filename"),
-            "session": field("T", "safe", "filename"),
-            "task": field("motor-imagery", "safe", "manual"),
-            "run": field("02", "safe", "manual"),
-        },
-        {
-            "file": "A03T.gdf",
-            "subject": field("03", "safe", "filename"),
-            "session": field("T", "safe", "filename"),
-            "task": field("motor-imagery", "safe", "manual"),
-            "run": field("", "needs_confirmation", "missing"),
-        },
-    ]
-
-
-def field(value: str, decision: str, source: str) -> dict[str, str]:
-    return {
-        "value": value,
-        "decision": decision,
-        "source": source,
-        "reason": f"{source} metadata",
-    }
-
-
-def placement_reviews() -> dict[str, dict[str, Any]]:
-    return {
-        "eeg_event": {
-            "method": "eeg_event",
-            "status": "needs_review",
-            "label_field": "classlabel",
-            "target_event": "768",
-            "label_rows": 282,
-            "selected_eeg_events": 288,
-            "matched": 282,
-            "unlabeled_eeg_events": 6,
-            "unmatched_label_rows": 0,
-            "excluded_eeg_events": 6,
-            "summary": "282 rows match; 6 EEG events unlabeled; 0 label rows unmatched.",
-        },
-        "time_field": {
-            "method": "time_field",
-            "status": "ready",
-            "label_field": "classlabel",
-            "time_field": "onset",
-            "label_rows": 282,
-            "numeric_rows": 282,
-            "time_min": 0.0,
-            "time_max": 719.5,
-            "summary": "onset: 282/282 numeric rows, range 0 to 719.5.",
-        },
-        "interval": {
-            "method": "interval",
-            "status": "ready",
-            "label_field": "classlabel",
-            "time_field": "onset",
-            "duration_field": "duration",
-            "label_rows": 282,
-            "numeric_rows": 282,
-            "duration_numeric_rows": 282,
-            "summary": "282 interval rows using onset and duration.",
-        },
-        "event_code": {
-            "method": "event_code",
-            "status": "ready",
-            "label_field": "classlabel",
-            "event_code_field": "event_code",
-            "label_rows": 282,
-            "label_code_count": 4,
-            "matched_code_count": 4,
-            "matched_codes": ["769", "770", "771", "772"],
-            "missing_codes": [],
-            "summary": "All 4 label event codes match EEG events.",
-        },
-    }
-
-
-def action(
-    issue: str,
-    impact: str,
-    next_action: str,
-    target_step: str,
-    severity: str,
-) -> dict[str, str]:
-    return {
-        "issue": issue,
-        "impact": impact,
-        "next_action": next_action,
-        "target_step": target_step,
-        "severity": severity,
-    }
-
-
-def safe() -> dict[str, Any]:
-    return {"decision": "safe", "action_items": []}
-
-
-def needs_confirmation() -> dict[str, Any]:
-    return {
-        "decision": "needs_confirmation",
-        "required_confirmations": ["Confirm label placement before applying."],
-    }
-
-
-def blocked_conversion() -> dict[str, Any]:
-    return {
-        "decision": "blocked",
-        "blocked_reasons": [
-            "Label file needs conversion before matching: custom_labels.mat."
-        ],
-        "action_items": [
-            action(
-                "Label file needs conversion before matching: custom_labels.mat.",
-                "Import cannot use this label file until rows and label values are explicit.",
-                "View the required table shape and load a converted label file.",
-                "Match Labels",
-                "blocked",
-            )
-        ],
-    }
-
-
-def write_epoch_handoff_artifact() -> None:
-    payload = backend_epoch_handoff_evidence()
-    (OUTPUT_DIR / "epoch-handoff-evidence.json").write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-
-
-def capture_epoch_after_bids(app: QApplication) -> None:
-    data = MagicMock()
-    data.get_event_list.return_value = (
-        None,
-        {"Left hand": 1, "Right hand": 2, "Artifact": 99},
-    )
-    dialog = EpochingDialog(
-        None,
-        [data],
-        epoch_handoff={
-            "ready": True,
-            "supervised_ready": True,
-            "label_source": "bids_events",
-            "placement_modes": ["interval"],
-            "default_epoch_events": ["Left hand", "Right hand"],
-            "class_map": {"left": "Left hand", "right": "Right hand"},
-        },
-    )
-    dialog.resize(QSize(540, 620))
-    dialog.show()
-    for _ in range(3):
-        app.processEvents()
-        dialog.repaint()
-    capture_widget(dialog, OUTPUT_DIR / "epoch-after-bids-import.png")
-    dialog.close()
-
-
-def backend_epoch_handoff_evidence() -> dict[str, Any]:
-    with tempfile.TemporaryDirectory(prefix="xbrainlab_data_import_") as tmp:
-        source_dir = Path(tmp) / "bids_mi"
-        eeg_dir = source_dir / "sub-01" / "eeg"
-        eeg_dir.mkdir(parents=True)
-        (source_dir / "dataset_description.json").write_text("{}", encoding="utf-8")
-        eeg_path = eeg_dir / "sub-01_task-mi_run-1_eeg.fif"
-        events_path = eeg_dir / "sub-01_task-mi_run-1_events.tsv"
-        events_json = eeg_dir / "sub-01_task-mi_run-1_events.json"
-        channels_path = eeg_dir / "sub-01_task-mi_run-1_channels.tsv"
-        (source_dir / "participants.tsv").write_text(
-            "participant_id\tsex\tage\nsub-01\tF\t21\n",
-            encoding="utf-8",
-        )
-        eeg_path.write_bytes(b"not loaded during scan")
-        events_path.write_text(
-            "onset\tduration\ttrial_type\n0.5\t1.0\tleft\n2.0\t1.0\tright\n",
-            encoding="utf-8",
-        )
-        channels_path.write_text(
-            "name\ttype\tunits\tstatus\nC3\tEEG\tuV\tgood\nC4\tEEG\tuV\tbad\n",
-            encoding="utf-8",
-        )
-        events_json.write_text(
-            '{"trial_type":{"Levels":{"left":"Left hand","right":"Right hand"}}}',
-            encoding="utf-8",
-        )
-
-        service = ApplicationService(Study())
-        raw = MagicMock()
-        raw.get_filepath.return_value = str(eeg_path)
-        raw.get_filename.return_value = eeg_path.name
-        service.dataset.import_files = MagicMock(return_value=(1, []))
-        service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
-        service.dataset.apply_labels_batch = MagicMock(return_value=1)
-
-        service.execute(
-            ScanSourceCommand(source_path=str(source_dir), source_hint="bids")
-        )
-        service.execute(
-            PreviewInterpretationCommand(
-                choices={
-                    "label_carrier_choices": {
-                        str(events_path): {
-                            "target_file": eeg_path.name,
-                            "label_field": "trial_type",
-                            "anchor": "onset",
-                            "duration_field": "duration",
-                            "placement_method": "interval",
-                            "time_model": "seconds",
-                        }
-                    }
-                }
-            )
-        )
-        service.execute(ValidateInterpretationCommand())
-        result = service.execute(ApplyInterpretationCommand(confirmed=True))
-        recipe_path = Path(tmp) / "bids-recipe.json"
-        recipe = service.execute(
-            SaveInterpretationRecipeCommand(recipe_path=str(recipe_path))
-        )
-        return {
-            "source": "ApplicationService.apply_interpretation",
-            "label_apply": result.diagnostics.get("label_apply", {}),
-            "epoch_handoff": result.state.interpretation.epoch_handoff,
-            "recipe": recipe.diagnostics.get("recipe", {}),
-        }
-
-
-def capture_widget(widget: QWidget, output_path: Path) -> None:
+def _capture(widget: QWidget, output_path: Path) -> None:
     pixmap = widget.grab()
     if pixmap.isNull():
         raise RuntimeError(f"Could not grab {output_path}.")
     if not pixmap.save(str(output_path)):
         raise RuntimeError(f"Could not save {output_path}.")
-    if is_nearly_black(output_path):
+    if _is_nearly_black(output_path):
         raise RuntimeError(f"Screenshot is nearly black: {output_path}.")
 
 
-def is_nearly_black(path: Path) -> bool:
+def _is_nearly_black(path: Path) -> bool:
     with Image.open(path) as image:
         rgb = image.convert("RGB")
         histogram = rgb.histogram()
@@ -963,6 +143,462 @@ def is_nearly_black(path: Path) -> bool:
         bright_pixels += histogram[256 + value]
         bright_pixels += histogram[512 + value]
     return total_pixels == 0 or bright_pixels < total_pixels * 0.01
+
+
+def _base_scan() -> dict[str, Any]:
+    return {
+        "source_path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/tests/data",
+        "source_kind": "file",
+        "eeg_files": [
+            "/mnt/d/workspace_v2/projects/lab/XBrainLab/tests/data/A01T.gdf",
+            "/mnt/d/workspace_v2/projects/lab/XBrainLab/tests/data/A02T.gdf",
+            "/mnt/d/workspace_v2/projects/lab/XBrainLab/tests/data/A03T.gdf",
+        ],
+        "label_carriers": [
+            "/mnt/d/workspace_v2/projects/lab/XBrainLab/tests/data/label/A01T.mat",
+            "/mnt/d/workspace_v2/projects/lab/XBrainLab/tests/data/label/A02T.mat",
+            "/mnt/d/workspace_v2/projects/lab/XBrainLab/tests/data/label/A03T.mat",
+        ],
+        "label_carrier_sources": {
+            "/mnt/d/workspace_v2/projects/lab/XBrainLab/tests/data/label/A01T.mat": (
+                "auto"
+            ),
+            "/mnt/d/workspace_v2/projects/lab/XBrainLab/tests/data/label/A02T.mat": (
+                "auto"
+            ),
+            "/mnt/d/workspace_v2/projects/lab/XBrainLab/tests/data/label/A03T.mat": (
+                "auto"
+            ),
+        },
+        "bids": {"is_bids": False, "events_files": []},
+    }
+
+
+def _main_dialog() -> DataInterpretationPreviewDialog:
+    return DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result=_base_scan(),
+        preview={
+            "summary": "Found 3 EEG file(s) and 3 label/event carrier(s).",
+            "source_selection": "3 selected file(s)",
+            "metadata_preview": _metadata_rows(),
+            "label_carrier_preview": _label_carriers(),
+            "confirmation_items": [
+                "Confirm session metadata for A01T.gdf.",
+                "Confirm label placement for A01T.mat: 6 selected EEG events have no label.",
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+
+
+def _many_labels_dialog() -> DataInterpretationPreviewDialog:
+    scan = _base_scan()
+    carriers = []
+    paths = []
+    for index in range(1, 13):
+        path = f"/mnt/d/workspace_v2/projects/lab/XBrainLab/tests/data/label/A{index:02d}T.mat"
+        paths.append(path)
+        carriers.append(
+            {
+                "path": path,
+                "name": Path(path).name,
+                "format": "MAT",
+                "source_kind": "auto_discovered" if index <= 6 else "user_added",
+                "source_location": (
+                    ""
+                    if index <= 6
+                    else "/mnt/d/workspace_v2/projects/lab/XBrainLab/external-labels"
+                ),
+                "selected_label_field": "classlabel",
+                "selected_anchor": "trial order",
+                "time_model": "trial_order",
+                "granularity": "trial",
+                "placement_method": "eeg_event",
+            }
+        )
+    scan["label_carriers"] = paths
+    scan["label_carrier_sources"] = {
+        path: "auto" if index <= 6 else "/external-labels"
+        for index, path in enumerate(paths, start=1)
+    }
+    return DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result=scan,
+        preview={
+            "summary": "Found 3 EEG file(s) and 12 label/event carrier(s).",
+            "source_selection": "3 selected file(s)",
+            "metadata_preview": _metadata_rows(),
+            "label_carrier_preview": carriers,
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+
+
+def _internal_events_dialog() -> DataInterpretationPreviewDialog:
+    return DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={**_base_scan(), "label_carriers": []},
+        preview={
+            "summary": "Found 3 EEG file(s).",
+            "source_selection": "3 selected file(s)",
+            "metadata_preview": _metadata_rows(),
+            "internal_event_preview": {
+                "pattern_status": "Shared event pattern detected",
+                "candidate_label_events": [
+                    _event("769", "Class label", 216, "Repeats once per trial"),
+                    _event("770", "Class label", 216, "Repeats once per trial"),
+                    _event("771", "Class label", 216, "Repeats once per trial"),
+                    _event("772", "Class label", 144, "Missing in A03T.gdf"),
+                ],
+                "not_used_events": [
+                    _event("768", "Trial timing", 864, "Trial start marker"),
+                    _event("1023", "Exclude bad trials", 18, "Rejected trial marker"),
+                    _event("32766", "Ignore", 3, "System / boundary marker"),
+                ],
+            },
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+
+
+def _loaded_label_files_dialog() -> DataInterpretationPreviewDialog:
+    return DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            **_base_scan(),
+            "eeg_files": [
+                "/mnt/d/workspace_v2/projects/lab/XBrainLab/tests/data/A01T.gdf",
+            ],
+            "label_carriers": [
+                "/mnt/d/workspace_v2/projects/lab/XBrainLab/tests/data/label/A01T.mat",
+            ],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+            "source_selection": "1 selected file",
+            "metadata_preview": [_metadata_rows()[0]],
+            "label_carrier_preview": [_label_carriers()[0]],
+            "internal_event_preview": _external_target_event_preview(),
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+
+
+def _bids_events_dialog() -> DataInterpretationPreviewDialog:
+    events_path = (
+        "/mnt/d/workspace_v2/projects/lab/XBrainLab/tests/data/bids/"
+        "sub-01_task-mi_run-01_events.tsv"
+    )
+    return DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/tests/data/bids",
+            "source_kind": "bids",
+            "eeg_files": [
+                "/mnt/d/workspace_v2/projects/lab/XBrainLab/tests/data/bids/"
+                "sub-01_task-mi_run-01_raw.fif",
+            ],
+            "label_carriers": [events_path],
+            "bids": {
+                "is_bids": True,
+                "subjects": ["01"],
+                "sessions": [],
+                "tasks": ["mi"],
+                "runs": ["01"],
+                "events_files": [events_path],
+                "has_participants_tsv": False,
+            },
+        },
+        preview={
+            "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+            "source_selection": "BIDS-like folder",
+            "metadata_preview": [_metadata_rows()[0]],
+            "label_carrier_preview": [
+                {
+                    "path": events_path,
+                    "name": "sub-01_task-mi_run-01_events.tsv",
+                    "format": "BIDS events",
+                    "bids_event_columns": ["onset", "duration", "trial_type"],
+                    "label_candidates": ["trial_type"],
+                    "anchor_candidates": ["onset"],
+                    "time_field_candidates": ["onset"],
+                    "duration_candidates": ["duration"],
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                    "selected_duration_field": "duration",
+                    "time_model": "seconds",
+                    "placement_method": "interval",
+                    "granularity": "trial",
+                    "label_value_counts": {
+                        "left_hand": 72,
+                        "right_hand": 72,
+                        "feet": 72,
+                        "tongue": 72,
+                    },
+                    "placement_review": {
+                        "method": "interval",
+                        "status": "ready",
+                        "label_field": "trial_type",
+                        "time_field": "onset",
+                        "duration_field": "duration",
+                        "label_rows": 288,
+                        "numeric_rows": 288,
+                        "duration_numeric_rows": 288,
+                        "summary": (
+                            "288 labels have onset and duration fields from events.tsv."
+                        ),
+                    },
+                    "warnings": [
+                        "events.json sidecar is missing; class names need review."
+                    ],
+                },
+            ],
+            "action_items": [
+                {
+                    "target_step": "Match Labels",
+                    "issue": "Confirm BIDS class names.",
+                    "impact": (
+                        "events.json was not found, so class descriptions come "
+                        "from raw trial_type values."
+                    ),
+                    "next_action": "Confirm class names in Match Labels.",
+                }
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+
+
+def _conversion_fallback_dialog() -> DataInterpretationPreviewDialog:
+    label_path = (
+        "/mnt/d/workspace_v2/projects/lab/XBrainLab/tests/data/custom_labels.mat"
+    )
+    return DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            **_base_scan(),
+            "eeg_files": [
+                "/mnt/d/workspace_v2/projects/lab/XBrainLab/tests/data/A01T.gdf",
+            ],
+            "label_carriers": [label_path],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+            "source_selection": "1 selected file",
+            "metadata_preview": [_metadata_rows()[0]],
+            "label_carrier_preview": [
+                {
+                    "path": label_path,
+                    "name": "custom_labels.mat",
+                    "format": "MAT",
+                    "label_candidates": [],
+                    "anchor_candidates": [],
+                    "selected_label_field": "",
+                    "selected_anchor": "",
+                    "time_model": "",
+                    "granularity": "",
+                    "placement_method": "eeg_event",
+                    "role": "external labels",
+                }
+            ],
+        },
+        validation_decision={"decision": "blocked"},
+    )
+
+
+def _review_import_dialog() -> DataInterpretationPreviewDialog:
+    return DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result=_base_scan(),
+        preview={
+            "summary": "Found 3 EEG file(s) and 3 label/event carrier(s).",
+            "source_selection": "3 selected file(s)",
+            "metadata_preview": _metadata_rows(),
+            "label_carrier_preview": _label_carriers(),
+            "review_action_items": [
+                {
+                    "target_step": "Choose EEG Data",
+                    "issue": (
+                        "Multiple EEG files were discovered; subject/session/run "
+                        "mapping should be reviewed."
+                    ),
+                    "impact": (
+                        "Import may still be usable, but downstream labels or "
+                        "metadata may need review."
+                    ),
+                    "next_action": "Open the target step and confirm the selected files.",
+                },
+                {
+                    "target_step": "Review Metadata",
+                    "issue": "Confirm session metadata for A01T.gdf.",
+                    "impact": (
+                        "This choice affects imported metadata, labels, and "
+                        "downstream training readiness."
+                    ),
+                    "next_action": "Review the target step and confirm the choice.",
+                },
+                {
+                    "target_step": "Match Labels",
+                    "issue": "Confirm label placement for A01T.mat.",
+                    "impact": "Labels will be applied before supervised training.",
+                    "next_action": "Check the target EEG events and class names.",
+                },
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+
+
+def _review_import_state_dialog(state: str) -> DataInterpretationPreviewDialog:
+    preview: dict[str, Any] = {
+        "summary": "Found 3 EEG file(s) and 3 label/event carrier(s).",
+        "source_selection": "3 selected file(s)",
+        "metadata_preview": _metadata_rows(),
+        "label_carrier_preview": _label_carriers(),
+    }
+    validation_decision: dict[str, Any] = {"decision": "safe"}
+    if state == "confirm":
+        preview["action_items"] = [
+            {
+                "target_step": "Review Metadata",
+                "issue": "Confirm session metadata.",
+                "impact": "Session was inferred from filenames for 3 files.",
+                "next_action": "Go to Review Metadata if the session is wrong.",
+            }
+        ]
+        validation_decision = {"decision": "needs_confirmation"}
+    elif state == "review":
+        preview["action_items"] = [
+            {
+                "target_step": "Match Labels",
+                "issue": "Label count needs review.",
+                "impact": "A03T.mat has 282 labels and 288 selected EEG events.",
+                "next_action": "Open Match Labels and check target EEG events.",
+            }
+        ]
+    elif state == "both":
+        preview["action_items"] = [
+            {
+                "target_step": "Review Metadata",
+                "issue": "Confirm session metadata.",
+                "impact": "Session was inferred from filenames for 3 files.",
+                "next_action": "Go to Review Metadata if the session is wrong.",
+            },
+            {
+                "target_step": "Match Labels",
+                "issue": "Label count needs review.",
+                "impact": "A03T.mat has 282 labels and 288 selected EEG events.",
+                "next_action": "Open Match Labels and check target EEG events.",
+            },
+        ]
+        validation_decision = {"decision": "needs_confirmation"}
+
+    return DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result=_base_scan(),
+        preview=preview,
+        validation_decision=validation_decision,
+    )
+
+
+def _metadata_rows() -> list[dict[str, Any]]:
+    return [
+        {
+            "file": "A01T.gdf",
+            "subject": {"value": "A01", "decision": "safe"},
+            "session": {"value": "T", "decision": "needs_confirmation"},
+            "task": {"value": "motor-imagery", "decision": "safe"},
+            "run": {"value": "01", "decision": "safe"},
+        },
+        {
+            "file": "A02T.gdf",
+            "subject": {"value": "A02", "decision": "safe"},
+            "session": {"value": "T", "decision": "needs_confirmation"},
+            "task": {"value": "motor-imagery", "decision": "safe"},
+            "run": {"value": "01", "decision": "safe"},
+        },
+        {
+            "file": "A03T.gdf",
+            "subject": {"value": "A03", "decision": "safe"},
+            "session": {"value": "T", "decision": "needs_confirmation"},
+            "task": {"value": "motor-imagery", "decision": "safe"},
+            "run": {"value": "01", "decision": "safe"},
+        },
+    ]
+
+
+def _label_carriers() -> list[dict[str, Any]]:
+    carriers = []
+    for name, target in (
+        ("A01T.mat", "A01T.gdf"),
+        ("A02T.mat", "A02T.gdf"),
+        ("A03T.mat", "A03T.gdf"),
+    ):
+        carriers.append(
+            {
+                "path": (
+                    "/mnt/d/workspace_v2/projects/lab/XBrainLab/tests/data/label/"
+                    f"{name}"
+                ),
+                "name": name,
+                "format": "MAT",
+                "target_file": target,
+                "label_candidates": ["classlabel"],
+                "anchor_candidates": ["trial order"],
+                "event_code_candidates": ["event_code"],
+                "selected_label_field": "classlabel",
+                "selected_anchor": "trial order",
+                "selected_target_event_codes": ["769", "770", "771", "772"],
+                "label_row_count": 282,
+                "label_value_counts": {"1": 72, "2": 70, "3": 70, "4": 70},
+                "time_model": "trial_order",
+                "granularity": "trial",
+                "placement_method": "eeg_event",
+                "role": "external labels",
+                "placement_review": {
+                    "method": "eeg_event",
+                    "status": "ready",
+                    "label_field": "classlabel",
+                    "label_rows": 282,
+                    "selected_eeg_events": 282,
+                    "matched": 282,
+                    "summary": "282 label rows match 282 selected EEG events.",
+                },
+            }
+        )
+    return carriers
+
+
+def _external_target_event_preview() -> dict[str, Any]:
+    return {
+        "pattern_status": "Event pattern ready for review",
+        "candidate_label_events": [
+            _event("769", "Class label", 72, "Repeated count + timing"),
+            _event("770", "Class label", 70, "Repeated count + timing"),
+            _event("771", "Class label", 70, "Repeated count + timing"),
+            _event("772", "Class label", 70, "Repeated count + timing"),
+        ],
+        "not_used_events": [
+            _event("768", "Trial timing", 288, "Matches class total"),
+            _event("1023", "Artifact", 6, "Artifact text"),
+        ],
+    }
+
+
+def _event(
+    event_code: str,
+    use_as: str,
+    event_count: int,
+    evidence: str,
+) -> dict[str, Any]:
+    return {
+        "event_code": event_code,
+        "use_as": use_as,
+        "event_count": event_count,
+        "coverage": "3/3 files",
+        "evidence": evidence,
+    }
 
 
 if __name__ == "__main__":
