@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -38,7 +39,7 @@ def placement_confirmation_items(
         if not isinstance(review, dict):
             continue
         status = str(review.get("status") or "").strip()
-        if status != "needs_review":
+        if status not in {"needs_review", "blocked"}:
             continue
         name = str(carrier.get("name") or Path(str(carrier.get("path") or "")).name)
         summary = str(review.get("summary") or "Review label placement.").strip()
@@ -46,69 +47,45 @@ def placement_confirmation_items(
     return sorted(set(items))
 
 
-def placement_blocked_reasons(
-    label_carrier_plan: list[dict[str, Any]],
-) -> list[str]:
-    """Return blocked placement choices that must prevent apply side effects."""
-    reasons: list[str] = []
-    for carrier in label_carrier_plan:
-        review = carrier.get("placement_review")
-        if not isinstance(review, dict):
-            continue
-        if str(review.get("status") or "").strip() != "blocked":
-            continue
-        path_text = str(carrier.get("path") or "").strip()
-        if path_text and not Path(path_text).exists():
-            continue
-        name = str(carrier.get("name") or Path(str(carrier.get("path") or "")).name)
-        summary = str(review.get("summary") or "Label placement is blocked.").strip()
-        next_action = str(review.get("next_action") or "").strip()
-        reason = f"{summary} Label file: {name}."
-        if next_action:
-            reason = f"{reason} {next_action}"
-        reasons.append(reason)
-    return sorted(set(reasons))
-
-
 def _eeg_event_order_review(
     carrier: dict[str, Any],
     event_rows: list[dict[str, Any]],
 ) -> dict[str, Any]:
     label_rows = _positive_int(carrier.get("label_row_count"))
-    target = str(carrier.get("selected_anchor") or "").strip()
+    target_codes = _target_event_codes(carrier)
     review = _base_review("eeg_event", carrier)
-    review["target_event"] = target
+    review["target_event"] = target_codes[0] if target_codes else ""
+    review["target_events"] = target_codes
     review["label_rows"] = label_rows
     review["excluded_eeg_events"] = _excluded_event_count(event_rows)
-    event = _event_row_by_code(event_rows, target)
-    if target in {"", "trial order"}:
+    if not target_codes:
         review.update(
             {
                 "status": "needs_review",
-                "summary": "Choose the EEG event that label rows follow in order.",
-                "next_action": "Select a target EEG event.",
+                "summary": "Choose the EEG events that label rows follow in order.",
+                "next_action": "Select one or more target EEG events.",
             }
         )
         return review
-    if not event_rows:
-        review.update(
-            {
-                "status": "needs_review",
-                "summary": "No EEG event preview is available for this target event.",
-                "next_action": "Confirm the target event after the EEG file is loaded.",
-            }
-        )
-        return review
-    if not event:
+    events = [(code, _event_row_by_code(event_rows, code)) for code in target_codes]
+    missing = [code for code, event in events if event is None]
+    if missing:
         review.update(
             {
                 "status": "blocked",
-                "summary": f"Target EEG event {target} was not found.",
-                "next_action": "Choose an EEG event present in the selected files.",
+                "summary": (
+                    "Target EEG event(s) were not found: " + ", ".join(missing) + "."
+                ),
+                "next_action": "Choose EEG events present in the selected files.",
             }
         )
         return review
-    event_count = _event_count(event)
+    event_counts = [_event_count(event) for _code, event in events if event is not None]
+    event_count = (
+        sum(value for value in event_counts if value is not None)
+        if all(value is not None for value in event_counts)
+        else None
+    )
     review["selected_eeg_events"] = event_count
     if label_rows is None or event_count is None:
         review.update(
@@ -125,22 +102,61 @@ def _eeg_event_order_review(
     review["unlabeled_eeg_events"] = max(event_count - label_rows, 0)
     if label_rows == event_count:
         status = "ready"
-        summary = f"{matched} label rows match {event_count} target EEG events."
-    else:
+        summary = f"{matched} label rows match {event_count} selected EEG events."
+        next_action = "Confirm the target event selection."
+    elif event_count > label_rows:
+        difference = event_count - label_rows
+        noun = "event" if difference == 1 else "events"
+        verb = "has" if difference == 1 else "have"
         status = "needs_review"
         summary = (
-            f"{matched} rows match; "
-            f"{review['unlabeled_eeg_events']} EEG events unlabeled; "
-            f"{review['unmatched_label_rows']} label rows unmatched."
+            f"{difference} selected EEG {noun} {verb} no label "
+            f"({label_rows} label rows, {event_count} selected events)."
+        )
+        next_action = (
+            "Uncheck extra target events or choose a label field with more rows."
+        )
+    else:
+        difference = label_rows - event_count
+        noun = "row" if difference == 1 else "rows"
+        verb = "has" if difference == 1 else "have"
+        status = "needs_review"
+        summary = (
+            f"{difference} label {noun} {verb} no selected EEG event "
+            f"({label_rows} label rows, {event_count} selected events)."
+        )
+        next_action = (
+            "Select more target events or check whether the label file has extra rows."
         )
     review.update(
         {
             "status": status,
             "summary": summary,
-            "next_action": "Confirm the target event or adjust the label file.",
+            "next_action": next_action,
         }
     )
     return review
+
+
+def _target_event_codes(carrier: dict[str, Any]) -> list[str]:
+    result: list[str] = []
+    raw_codes = carrier.get("selected_target_event_codes")
+    if isinstance(raw_codes, str):
+        values: Iterable[Any] = raw_codes.split(",")
+    elif isinstance(raw_codes, (list, tuple, set)):
+        values = raw_codes
+    else:
+        values = []
+    for value in values:
+        text = str(value).strip()
+        if text and text not in result:
+            result.append(text)
+    if result:
+        return result
+    target = str(carrier.get("selected_anchor") or "").strip()
+    if target and target != "trial order":
+        return [target]
+    return []
 
 
 def _time_field_review(carrier: dict[str, Any]) -> dict[str, Any]:
@@ -263,6 +279,17 @@ def _event_code_review(
         [code for code in value_counts if code not in event_counts],
         key=_code_sort_key,
     )
+    code_mappings = _event_code_mapping_rows(
+        value_counts=value_counts,
+        label_counts_by_code=_dict(carrier.get("event_code_label_counts")),
+        event_counts=event_counts,
+    )
+    conflict_codes = [
+        str(row.get("event_code") or "")
+        for row in code_mappings
+        if row.get("status") == "needs_review" and row.get("conflict")
+    ]
+    unlabeled_eeg_events = _unlabeled_eeg_event_rows(event_rows, value_counts)
     review.update(
         {
             "event_code_field": field,
@@ -271,6 +298,9 @@ def _event_code_review(
             "matched_code_count": len(matched_codes),
             "matched_codes": matched_codes,
             "missing_codes": missing_codes,
+            "conflict_codes": conflict_codes,
+            "code_mappings": code_mappings,
+            "unlabeled_eeg_events": unlabeled_eeg_events,
         }
     )
     if not field:
@@ -300,15 +330,20 @@ def _event_code_review(
             }
         )
         return review
-    if missing_codes:
+    if missing_codes or conflict_codes:
+        parts = [
+            f"{len(matched_codes)}/{len(value_counts)} label event codes "
+            "were found in EEG events"
+        ]
+        if conflict_codes:
+            parts.append(f"{len(conflict_codes)} code(s) map to multiple label values")
         review.update(
             {
                 "status": "needs_review",
-                "summary": (
-                    f"{len(matched_codes)}/{len(value_counts)} label event codes "
-                    "were found in EEG events."
+                "summary": "; ".join(parts) + ".",
+                "next_action": (
+                    "Map missing codes or fix code rows with conflicting labels."
                 ),
-                "next_action": "Map or remove missing label event codes.",
             }
         )
         return review
@@ -320,6 +355,65 @@ def _event_code_review(
         }
     )
     return review
+
+
+def _event_code_mapping_rows(
+    *,
+    value_counts: dict[str, int],
+    label_counts_by_code: dict[str, Any],
+    event_counts: dict[str, int | None],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for code in sorted(value_counts, key=_code_sort_key):
+        label_counts = {
+            str(label): int(count)
+            for label, count in _dict(label_counts_by_code.get(code)).items()
+            if str(label).strip() and isinstance(count, int)
+        }
+        label_values = sorted(label_counts, key=lambda item: (item.casefold(), item))
+        conflict = len(label_values) > 1
+        eeg_count = event_counts.get(code)
+        missing = code not in event_counts
+        if conflict:
+            status = "needs_review"
+            review = "Same code maps to multiple label values."
+        elif missing:
+            status = "needs_review"
+            review = "Not found in EEG events."
+        else:
+            status = "ready"
+            review = "Ready."
+        rows.append(
+            {
+                "event_code": code,
+                "label_values": label_values,
+                "label_rows": sum(label_counts.values()) or value_counts.get(code),
+                "eeg_event_count": eeg_count,
+                "status": status,
+                "conflict": conflict,
+                "review": review,
+            }
+        )
+    return rows
+
+
+def _unlabeled_eeg_event_rows(
+    event_rows: list[dict[str, Any]],
+    value_counts: dict[str, int],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for row in event_rows:
+        code = _event_code(row)
+        if not code or code in value_counts:
+            continue
+        rows.append(
+            {
+                "event_code": code,
+                "use_as": str(row.get("use_as") or row.get("reason") or "").strip(),
+                "event_count": _event_count(row),
+            }
+        )
+    return sorted(rows, key=lambda item: _code_sort_key(str(item["event_code"])))
 
 
 def _base_review(method: str, carrier: dict[str, Any]) -> dict[str, Any]:

@@ -105,22 +105,20 @@ def build_internal_event_preview(selected_files: list[str]) -> dict[str, Any]:
         "names_reliable": _names_reliable(candidate_rows),
         "pattern_status": _pattern_status(candidate_rows, not_used_rows),
     }
-    run_dependent_codes = _run_dependent_event_codes(aggregates)
-    if run_dependent_codes:
-        result.update(
-            {
-                "run_dependent_semantics": True,
-                "run_dependent_event_codes": run_dependent_codes,
-                "run_event_mapping_options": _run_event_mapping_options(
-                    event_files,
-                    file_names,
-                    run_dependent_codes,
-                ),
-            }
+    if _has_run_dependent_t_markers(aggregates):
+        result["run_dependent_semantics"] = True
+        result["run_dependent_event_codes"] = sorted(
+            [code for code in aggregates if str(code).upper() in {"T0", "T1", "T2"}],
+            key=str.casefold,
+        )
+        result["run_dependent_mapping"] = _run_dependent_mapping(
+            event_files,
+            file_names,
+            result["run_dependent_event_codes"],
         )
         scan_warnings.append(
-            "Internal events T1/T2 have run-dependent semantics; confirm "
-            "run/task mapping before supervised training.",
+            "PhysioNet-style T1/T2 event labels can change meaning by run; "
+            "confirm run/task mapping before supervised training."
         )
     if scan_warnings:
         result["scan_warnings"] = scan_warnings
@@ -308,10 +306,8 @@ def _event_code_from_description(description: str, *, fallback: str = "") -> str
     text = " ".join(str(description or "").strip().split())
     if text.isdigit():
         return str(int(text))
-    if _looks_like_coded_marker(text):
-        match = _NUMBER_RE.search(text)
-        if match:
-            return str(int(match.group(0)))
+    if _looks_like_prefixed_marker(text):
+        return text
     fallback_text = " ".join(str(fallback or "").strip().split())
     if text:
         return text
@@ -319,6 +315,10 @@ def _event_code_from_description(description: str, *, fallback: str = "") -> str
 
 
 def _looks_like_coded_marker(text: str) -> bool:
+    return bool(_NUMBER_RE.fullmatch(str(text or "").strip()))
+
+
+def _looks_like_prefixed_marker(text: str) -> bool:
     normalized = text.casefold()
     prefixes = (
         "stimulus/s",
@@ -327,7 +327,7 @@ def _looks_like_coded_marker(text: str) -> bool:
         "annotation/",
         "trigger/",
     )
-    return normalized.startswith(prefixes) or bool(_NUMBER_RE.fullmatch(text))
+    return normalized.startswith(prefixes)
 
 
 def _semantic_for_event(stats: dict[str, Any]) -> dict[str, str]:
@@ -337,7 +337,7 @@ def _semantic_for_event(stats: dict[str, Any]) -> dict[str, str]:
             "bucket": "not_used",
             "use_as": "Exclude bad trials",
             "reason": "Rejected / artifact trial",
-            "evidence": "Artifact-like event description",
+            "evidence": "Artifact text",
         }
     if _description_has_any(
         descriptions,
@@ -347,28 +347,42 @@ def _semantic_for_event(stats: dict[str, Any]) -> dict[str, str]:
             "bucket": "not_used",
             "use_as": "Ignore",
             "reason": "System / boundary marker",
-            "evidence": "Boundary-like event description",
+            "evidence": "Boundary/system text",
+        }
+    if _description_has_any(descriptions, ("response", "button", "keypress")):
+        return {
+            "bucket": "not_used",
+            "use_as": "Response",
+            "reason": "Response marker",
+            "evidence": "Response text",
+        }
+    if _description_has_any(descriptions, ("comment", "note")):
+        return {
+            "bucket": "not_used",
+            "use_as": "Ignore",
+            "reason": "Comment marker",
+            "evidence": "Comment text",
         }
     if _description_has_any(descriptions, ("trial start", "starttrial", "start trial")):
         return {
             "bucket": "not_used",
             "use_as": "Trial timing",
             "reason": "Trial start marker",
-            "evidence": "Trial-start event description",
+            "evidence": "Trial-start text",
         }
     class_name = _class_like_description(descriptions)
     if class_name:
         return {
             "bucket": "candidate",
             "use_as": "Class label",
-            "evidence": "Class-like event description",
+            "evidence": "Class-like text",
             "class_name": class_name,
         }
     return {
         "bucket": "not_used",
         "use_as": "Review",
         "reason": "Event role needs review",
-        "evidence": "Event role needs review",
+        "evidence": "Needs review",
     }
 
 
@@ -385,9 +399,9 @@ def _apply_count_pattern_evidence(
     if not pattern:
         return
 
-    evidence = "Repeated group"
+    evidence = "Repeated count"
     if pattern.get("timing_code"):
-        evidence += "; timing match"
+        evidence += " + timing"
     for code in pattern["candidate_codes"]:
         semantic = semantics_by_code.get(code)
         if not semantic or semantic.get("bucket") == "candidate":
@@ -409,7 +423,7 @@ def _apply_count_pattern_evidence(
                 "bucket": "not_used",
                 "use_as": "Trial timing",
                 "reason": "Count matches candidate label group",
-                "evidence": "Matches candidate total",
+                "evidence": "Matches class total",
             }
         )
 
@@ -559,11 +573,11 @@ def _evidence_text(
     details: list[str] = []
     counts = list(file_counts.values())
     if len(counts) > 1 and len(set(counts)) == 1:
-        details.append("stable count")
+        details.append("same count/file")
     elif len(counts) > 1:
-        details.append("count differs")
+        details.append("count varies/file")
     if missing_files:
-        details.append("missing in " + ", ".join(missing_files))
+        details.append("missing " + ", ".join(missing_files))
     return "; ".join([base, *details])
 
 
@@ -582,6 +596,41 @@ def _pattern_status(
     if not_used_rows:
         return "Internal events found; choose labels"
     return "No internal events detected"
+
+
+def _has_run_dependent_t_markers(aggregates: dict[str, dict[str, Any]]) -> bool:
+    codes = {str(code).upper() for code in aggregates}
+    return {"T1", "T2"}.issubset(codes)
+
+
+def _run_dependent_mapping(
+    event_files: list[str],
+    file_names: list[str],
+    event_codes: list[str],
+) -> dict[str, Any]:
+    t_codes = [code for code in event_codes if str(code).upper() in {"T1", "T2"}]
+    return {
+        "status": "needs_confirmation",
+        "files": [
+            {
+                "file": file_name,
+                "run": _run_token_for_file(file_path),
+                "events": dict.fromkeys(t_codes, ""),
+            }
+            for file_path, file_name in zip(event_files, file_names, strict=True)
+        ],
+    }
+
+
+def _run_token_for_file(path: str) -> str:
+    stem = Path(path).stem
+    match = re.search(r"R(\d+)(?:[_-]|$)", stem, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    match = re.search(r"(?:^|[_-])run-?(\d+)(?:[_-]|$)", stem, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    return ""
 
 
 def _class_like_description(descriptions: Iterable[str]) -> str:
@@ -633,47 +682,6 @@ def _event_sort_key(item: dict[str, Any]) -> tuple[int, int | str]:
 def _event_code_sort_value(code: str) -> tuple[int, int | str]:
     code = str(code).strip()
     return (0, int(code)) if code.isdigit() else (1, code.casefold())
-
-
-def _run_dependent_event_codes(aggregates: dict[str, dict[str, Any]]) -> list[str]:
-    codes = {
-        str(stats.get("code") or "").strip().upper()
-        for stats in aggregates.values()
-        if str(stats.get("code") or "").strip().upper() in {"T1", "T2"}
-    }
-    if {"T1", "T2"}.issubset(codes):
-        return ["T1", "T2"]
-    return []
-
-
-def _run_event_mapping_options(
-    event_files: list[str],
-    file_names: list[str],
-    event_codes: list[str],
-) -> list[dict[str, Any]]:
-    return [
-        {
-            "file": file_name,
-            "run": _run_token(file_path),
-            "event_codes": list(event_codes),
-            "class_map": dict.fromkeys(event_codes, ""),
-        }
-        for file_path, file_name in zip(event_files, file_names, strict=True)
-    ]
-
-
-def _run_token(path: str) -> str:
-    name = Path(path).stem
-    match = re.search(r"(?:^|[_-])R(\d+)(?:[_-]|$)", name, flags=re.IGNORECASE)
-    if match:
-        return match.group(1)
-    match = re.search(r"(?<![A-Z])R(\d+)$", name, flags=re.IGNORECASE)
-    if match:
-        return match.group(1)
-    match = re.search(r"(?:^|[_-])run[-_]?(\d+)(?:[_-]|$)", name, flags=re.IGNORECASE)
-    if match:
-        return match.group(1)
-    return ""
 
 
 def _scan_warning(file_path: str, exc: Exception) -> str:

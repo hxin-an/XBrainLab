@@ -40,8 +40,6 @@ def load_label_file(
         label_field: Optional reviewed label column or MAT variable.
         anchor: Optional reviewed time/sample/anchor column for CSV/TSV or MAT
             variable for sample-index event construction.
-        duration_field: Optional reviewed duration/end column for CSV/TSV
-            interval label tables.
 
     Returns:
         1D array of integer labels (Sequence Mode), or a list of dicts
@@ -278,7 +276,7 @@ def _load_csv_tsv(
         # Check for timestamp columns
         time_cols = ["time", "latency", "onset"]
         label_cols = ["label", "trial_type", "type"]
-        duration_cols = ["duration", "end", "stop", "offset"]
+        duration_cols = ["duration"]
 
         found_time = _resolve_column(df.columns, anchor) or next(
             (c for c in time_cols if c in df.columns),
@@ -333,23 +331,13 @@ def _resolve_column(columns: Any, requested: str | None) -> str | None:
     raise ValueError(f"Column not found: {requested}")
 
 
-def _duration_value(
-    row: Any,
-    *,
-    onset_field: str,
-    duration_field: str | None,
-) -> float:
-    """Return duration seconds from a selected duration/end-like column."""
+def _duration_value(row: Any, *, onset_field: str, duration_field: str | None) -> Any:
     if not duration_field:
         return 0.0
-    raw_value = row[duration_field]
-    value = float(raw_value)
-    normalized = duration_field.strip().lower()
-    if normalized in {"end", "stop", "offset"}:
-        duration = round(value - float(row[onset_field]), 12)
-        if duration < 0:
-            raise ValueError(
-                f"{duration_field} must be greater than or equal to {onset_field}.",
-            )
-        return duration
+    value = row[duration_field]
+    if duration_field.lower() in {"end", "end_time", "stop", "stop_time", "offset"}:
+        try:
+            return round(float(value) - float(row[onset_field]), 10)
+        except (TypeError, ValueError):
+            return value
     return value

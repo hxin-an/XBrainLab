@@ -26,7 +26,6 @@ class ImportRecipe:
     selected_eeg_files: list[str] = dc_field(default_factory=list)
     label_sources: list[str] = dc_field(default_factory=list)
     label_carriers: list[str] = dc_field(default_factory=list)
-    bids: dict[str, Any] = dc_field(default_factory=dict)
     label_carrier_plan: list[dict[str, Any]] = dc_field(default_factory=list)
     metadata: list[FileMetadataResolution] = dc_field(default_factory=list)
     format_capabilities: list[dict[str, Any]] = dc_field(default_factory=list)
@@ -77,9 +76,6 @@ def import_recipe_from_dict(payload: dict[str, Any]) -> ImportRecipe:
         ],
         label_sources=[str(item) for item in payload.get("label_sources", [])],
         label_carriers=[str(item) for item in payload.get("label_carriers", [])],
-        bids=dict(payload.get("bids") or {})
-        if isinstance(payload.get("bids"), dict)
-        else {},
         label_carrier_plan=[
             dict(item)
             for item in payload.get("label_carrier_plan", [])
@@ -129,7 +125,6 @@ def build_import_recipe(
         selected_eeg_files=list(applied.loaded_files),
         label_sources=list(getattr(applied, "label_sources", [])),
         label_carriers=list(applied.label_carriers),
-        bids=dict(getattr(applied, "bids", {}) or {}),
         label_carrier_plan=[dict(item) for item in applied.label_carrier_plan],
         metadata=list(applied.metadata),
         format_capabilities=[dict(item) for item in applied.format_capabilities],
@@ -275,10 +270,10 @@ def _nested_string_mapping(payload: Any) -> dict[str, dict[str, str]]:
     if not isinstance(payload, dict):
         return {}
     result: dict[str, dict[str, str]] = {}
-    for key, value in payload.items():
-        nested = _string_mapping(value)
-        if nested:
-            result[str(key)] = nested
+    for outer_key, inner_payload in payload.items():
+        inner = _string_mapping(inner_payload)
+        if inner:
+            result[str(outer_key)] = inner
     return result
 
 

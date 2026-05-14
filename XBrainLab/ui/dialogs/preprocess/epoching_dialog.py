@@ -28,6 +28,28 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
+def _label_source_display(value: object) -> str:
+    text = str(value or "").strip()
+    return {
+        "bids_events": "BIDS events",
+        "loaded_label_files": "loaded label files",
+        "external_files": "loaded label files",
+        "embedded_events": "labels inside EEG files",
+    }.get(text, text.replace("_", " ") if text else "import")
+
+
+def _placement_mode_display(values: list[str]) -> str:
+    labels = {
+        "internal_events": "Events inside EEG files",
+        "eeg_event": "EEG event order",
+        "time_field": "Label time",
+        "interval": "Label interval",
+        "event_code": "Label event code",
+    }
+    displayed = [labels.get(value, value.replace("_", " ")) for value in values]
+    return ", ".join(displayed) if displayed else "Manual event selection"
+
+
 class EpochingDialog(BaseDialog):
     """Dialog for configuring epoching parameters (time-lock).
 
@@ -53,13 +75,20 @@ class EpochingDialog(BaseDialog):
         parent,
         data_list: list,
         epoch_context: dict | None = None,
+        *,
+        epoch_handoff: dict | None = None,
     ):
         self.data_list = data_list
-        self.epoch_context = dict(epoch_context or build_epoching_context(data_list))
+        self.epoch_context = self._normalized_epoch_context(
+            data_list,
+            epoch_context,
+            epoch_handoff,
+        )
         self.params: tuple | None = None
 
         # UI Elements
         self.event_list: QListWidget | None = None
+        self.handoff_label: QLabel | None = None
         self.tmin_spin: QDoubleSpinBox | None = None
         self.tmax_spin: QDoubleSpinBox | None = None
         self.duration_label: QLabel | None = None
@@ -125,6 +154,7 @@ class EpochingDialog(BaseDialog):
                 item.setToolTip(f"{event_name}: {count} event(s)")
             if event_name in recommended_events:
                 item.setCheckState(Qt.CheckState.Checked)
+                item.setSelected(True)
             else:
                 item.setCheckState(Qt.CheckState.Unchecked)
 
@@ -313,6 +343,14 @@ class EpochingDialog(BaseDialog):
         title_row.addStretch()
         layout.addLayout(title_row)
 
+        handoff_summary = self._handoff_summary_text()
+        if handoff_summary:
+            summary = QLabel(handoff_summary)
+            summary.setObjectName("EpochImportHintSummary")
+            summary.setWordWrap(True)
+            self.handoff_label = summary
+            layout.addWidget(summary)
+
         grid = QGridLayout()
         grid.setHorizontalSpacing(18)
         grid.setVerticalSpacing(6)
@@ -354,6 +392,57 @@ class EpochingDialog(BaseDialog):
         if time_field:
             return time_field
         return "Event onset"
+
+    @staticmethod
+    def _normalized_epoch_context(
+        data_list: list,
+        epoch_context: dict | None,
+        epoch_handoff: dict | None,
+    ) -> dict:
+        if epoch_context is not None:
+            return dict(epoch_context)
+        context = build_epoching_context(data_list)
+        if not epoch_handoff:
+            return dict(context)
+        handoff = dict(epoch_handoff)
+        blockers = [str(item) for item in handoff.get("supervised_blockers", [])]
+        ready = bool(handoff.get("ready")) and not blockers
+        placement_modes = [
+            str(item).strip()
+            for item in handoff.get("placement_modes", []) or []
+            if str(item).strip()
+        ]
+        default_events = [
+            str(item).strip()
+            for item in handoff.get("default_epoch_events", []) or []
+            if str(item).strip()
+        ]
+        context.update(
+            {
+                "source": _label_source_display(handoff.get("label_source")),
+                "placement_method": placement_modes[0] if placement_modes else "manual",
+                "placement_label": _placement_mode_display(placement_modes),
+                "recommended_events": default_events if ready else [],
+                "has_import_hint": True,
+                "epoch_handoff": handoff,
+                "handoff_ready": ready,
+                "handoff_blockers": blockers,
+            }
+        )
+        return context
+
+    def _handoff_summary_text(self) -> str:
+        handoff = self.epoch_context.get("epoch_handoff")
+        if isinstance(handoff, dict):
+            blockers = self.epoch_context.get("handoff_blockers") or []
+            source = str(self.epoch_context.get("source") or "import").strip()
+            if blockers:
+                blocker_text = "; ".join(str(item) for item in blockers)
+                return f"{source} needs review: {blocker_text}"
+            return f"Suggested from {source}."
+        if self.epoch_context.get("has_import_hint"):
+            return "Import choices are available for this epoch setup."
+        return ""
 
     @staticmethod
     def _event_item_sort_key(item: dict) -> tuple[int, int | str]:

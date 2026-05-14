@@ -70,7 +70,7 @@ def scan_source_path(
         for item in files
         if _has_supported_suffix(item, SUPPORTED_EEG_EXTENSIONS)
     )
-    auto_label_carriers = _auto_label_carriers(files, source_kind)
+    auto_label_carriers = _auto_label_carriers_for_source(resolved, files)
     normalized_label_sources, source_label_carriers, source_warnings = (
         _label_carriers_from_sources(label_sources or [])
     )
@@ -137,6 +137,47 @@ def _candidate_files(path: Path) -> list[Path]:
     return [item.resolve() for item in path.rglob("*") if item.is_file()]
 
 
+def _auto_label_carriers_for_source(source_path: Path, files: list[Path]) -> list[Path]:
+    if not source_path.is_file():
+        return [
+            item
+            for item in files
+            if _is_label_carrier(item) or _is_bids_events_file(item)
+        ]
+    source_key = _label_mapping_key(source_path)
+    candidates: list[Path] = []
+    for item in _nearby_label_candidates_for_file(source_path):
+        if not item.is_file():
+            continue
+        resolved = item.resolve()
+        if not (_is_label_carrier(resolved) or _is_bids_events_file(resolved)):
+            continue
+        if _nearby_label_matches_source(source_key, resolved):
+            candidates.append(resolved)
+    return candidates
+
+
+def _nearby_label_candidates_for_file(source_path: Path) -> list[Path]:
+    candidates: list[Path] = []
+    for item in source_path.parent.iterdir():
+        if item.is_file():
+            candidates.append(item)
+            continue
+        if not item.is_dir():
+            continue
+        if item.name.lower() not in {"label", "labels", "event", "events"}:
+            continue
+        candidates.extend(child for child in item.iterdir() if child.is_file())
+    return candidates
+
+
+def _nearby_label_matches_source(source_key: str, label_path: Path) -> bool:
+    label_name = label_path.name.lower()
+    if label_name == "events.tsv":
+        return True
+    return _label_mapping_key(label_path) == source_key
+
+
 def _label_carriers_from_sources(
     label_sources: list[str],
 ) -> tuple[list[Path], list[tuple[Path, list[Path]]], list[str]]:
@@ -167,15 +208,6 @@ def _label_carriers_from_sources(
     return normalized, source_carriers, warnings
 
 
-def _auto_label_carriers(files: list[Path], source_kind: str) -> list[Path]:
-    """Return auto-discovered label carriers for the selected source kind."""
-    if source_kind == "bids":
-        return [item for item in files if _is_bids_events_file(item)]
-    return [
-        item for item in files if _is_label_carrier(item) or _is_bids_events_file(item)
-    ]
-
-
 def _dedupe_paths(paths: list[Path]) -> list[Path]:
     result: list[Path] = []
     seen: set[str] = set()
@@ -201,14 +233,35 @@ def _is_bids_events_file(path: Path) -> bool:
     return path.name.endswith("_events.tsv") or path.name == "events.tsv"
 
 
+def _label_mapping_key(path: Path) -> str:
+    name = path.name
+    lowered = name.lower()
+    stem = name[: -len(".fif.gz")] if lowered.endswith(".fif.gz") else path.stem
+    normalized = stem.lower()
+    for suffix in (
+        "_events",
+        "-events",
+        "_labels",
+        "-labels",
+        "_label",
+        "-label",
+        "_raw",
+        "-raw",
+        "_eeg",
+        "-eeg",
+    ):
+        if normalized.endswith(suffix):
+            normalized = normalized[: -len(suffix)]
+            break
+    return normalized.strip()
+
+
 def _looks_like_bids(path: Path) -> bool:
     if not path.is_dir():
         return False
     if (path / "dataset_description.json").exists():
         return True
-    return any(
-        item.is_dir() and item.name.startswith("sub-") for item in path.iterdir()
-    )
+    return any(item.name.startswith("sub-") for item in path.iterdir())
 
 
 def _scan_warnings(
@@ -228,27 +281,18 @@ def _scan_warnings(
         warnings.append("External label/event carriers require preview before apply.")
     if source_kind == "bids" and not bids.get("events_files"):
         warnings.append(
-            "BIDS EEG source has no events.tsv carrier; supervised labels "
+            "BIDS-like source has no events.tsv carrier; supervised labels "
             "may be limited.",
         )
-    if source_kind == "bids":
-        bad_channels = int(
-            (bids.get("channel_status_summary") or {}).get("bad", 0) or 0
-        )
-        if bad_channels:
-            warnings.append(
-                f"BIDS channels.tsv marks {bad_channels} channel(s) as bad; "
-                "review channel selection before preprocessing.",
-            )
-    unsupported_formats = [
-        f"{item.get('format')} ({item.get('name')})"
+    blocked_formats = [
+        str(item.get("format"))
         for item in format_capabilities
-        if item.get("status") in {"blocked", "limited"}
+        if item.get("status") == "blocked"
     ]
-    if unsupported_formats and eeg_files:
+    if blocked_formats and eeg_files:
         warnings.append(
-            "Some discovered sources are not interpreted by this wizard yet: "
-            + ", ".join(str(item) for item in unsupported_formats)
+            "Some discovered sources are not applied by this wizard yet: "
+            + ", ".join(blocked_formats)
             + ".",
         )
     return warnings

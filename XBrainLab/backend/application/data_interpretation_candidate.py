@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from dataclasses import asdict, dataclass, is_dataclass
 from dataclasses import field as dc_field
 from pathlib import Path
@@ -22,14 +21,8 @@ from .data_interpretation_metadata import (
     FileMetadataResolution,
     MetadataFieldResolution,
 )
-from .data_interpretation_metadata import (
-    bids_scope_summary as _bids_scope_summary,
-)
 from .data_interpretation_placement import (
     annotate_label_carrier_placements as _annotate_label_carrier_placements,
-)
-from .data_interpretation_placement import (
-    placement_blocked_reasons as _placement_blocked_reasons,
 )
 from .data_interpretation_placement import (
     placement_confirmation_items as _placement_confirmation_items,
@@ -114,16 +107,10 @@ def build_interpretation_candidate(
         label_carrier_source != "embedded_events" and not skip_labels
     )
     excluded_label_carriers = _string_list(choices.get("excluded_label_carriers"))
-    scanned_label_carriers = (
+    active_label_carriers = (
         _exclude_paths(scan.label_carriers, excluded_label_carriers)
         if use_external_label_carriers
         else []
-    )
-    active_label_carriers = _scope_bids_label_carriers(
-        scanned_label_carriers,
-        scan.bids,
-        selected_files,
-        scan.label_carrier_sources,
     )
     label_carrier_choices = _remapped_label_carrier_choices(
         choices.get("label_carrier_choices"),
@@ -134,6 +121,7 @@ def build_interpretation_candidate(
         label_carrier_choices,
         carrier_sources=scan.label_carrier_sources,
     )
+    warnings.extend(_label_carrier_plan_warnings(label_carrier_plan))
     if not class_map and use_external_label_carriers:
         class_map = _infer_class_map_from_label_carrier_plan(label_carrier_plan)
         if class_map:
@@ -155,7 +143,7 @@ def build_interpretation_candidate(
             },
         )
         if not scan.bids.get("events_files"):
-            warnings.append("BIDS EEG source has no events.tsv file.")
+            warnings.append("BIDS-like source has no events.tsv file.")
     else:
         extensions = {Path(item).suffix.lower() for item in selected_files}
         internal_event_preview = _internal_events.build_internal_event_preview(
@@ -209,24 +197,7 @@ def build_interpretation_candidate(
         label_carrier_plan,
         internal_event_preview,
     )
-    if scan.bids.get("is_bids"):
-        bids_warnings, bids_blocked_reasons = _bids_label_carrier_review_items(
-            label_carrier_plan
-        )
-        warnings.extend(bids_warnings)
-        blocked_reasons.extend(bids_blocked_reasons)
-    blocked_reasons.extend(
-        (
-            "Label file needs conversion before matching: "
-            f"{carrier_name}. Provide a table with one label value column and "
-            "one placement column."
-        )
-        for carrier_name in _label_carriers_needing_conversion(label_carrier_plan)
-    )
-    blocked_reasons.extend(_placement_blocked_reasons(label_carrier_plan))
-    blocked_reasons.extend(
-        _unsupported_mat_placement_blocked_reasons(label_carrier_plan)
-    )
+    blocked_reasons.extend(_blocked_placement_reasons(label_carrier_plan))
     confirmation_items.extend(_placement_confirmation_items(label_carrier_plan))
 
     for item in metadata:
@@ -269,7 +240,7 @@ def build_interpretation_candidate(
         selected_eeg_files=selected_files,
         label_sources=list(scan.label_sources),
         label_carriers=active_label_carriers,
-        bids=_bids_for_selected_files(scan.bids, selected_files),
+        bids=dict(scan.bids),
         label_carrier_plan=label_carrier_plan,
         event_roles=event_roles,
         class_map=class_map,
@@ -339,6 +310,38 @@ def _apply_metadata_overrides(
     return result
 
 
+def _label_carrier_plan_warnings(
+    label_carrier_plan: list[dict[str, Any]],
+) -> list[str]:
+    warnings: list[str] = []
+    for carrier in label_carrier_plan:
+        for item in carrier.get("warnings", []) or []:
+            text = str(item).strip()
+            if text and text not in warnings:
+                warnings.append(text)
+    return warnings
+
+
+def _blocked_placement_reasons(
+    label_carrier_plan: list[dict[str, Any]],
+) -> list[str]:
+    reasons: list[str] = []
+    for carrier in label_carrier_plan:
+        review = carrier.get("placement_review")
+        if not isinstance(review, dict):
+            continue
+        if str(review.get("status") or "").strip() != "blocked":
+            continue
+        carrier_name = str(
+            carrier.get("name") or Path(str(carrier.get("path") or "")).name
+        ).strip()
+        summary = str(review.get("summary") or "Label placement is blocked.").strip()
+        reason = f"{carrier_name}: {summary}" if carrier_name else summary
+        if reason not in reasons:
+            reasons.append(reason)
+    return reasons
+
+
 def _override_field(
     field: MetadataFieldResolution,
     overrides: dict[str, str],
@@ -395,199 +398,11 @@ def _nested_string_mapping(payload: Any) -> dict[str, dict[str, str]]:
     if not isinstance(payload, dict):
         return {}
     result: dict[str, dict[str, str]] = {}
-    for key, value in payload.items():
-        nested = _string_mapping(value)
-        if nested:
-            result[str(key)] = nested
+    for outer_key, inner_payload in payload.items():
+        inner = _string_mapping(inner_payload)
+        if inner:
+            result[str(outer_key)] = inner
     return result
-
-
-def _path_key(path: str) -> str:
-    return str(Path(path).expanduser())
-
-
-def _selected_files_missing_from_scan(
-    selected_files: list[str],
-    scanned_files: list[str],
-) -> list[str]:
-    return _paths_missing_from_scan(selected_files, scanned_files)
-
-
-def _resolve_selected_files_to_scan(
-    selected_files: list[str],
-    scanned_files: list[str],
-) -> list[str]:
-    """Map selected relative filenames to their scanned absolute file paths."""
-    scanned_exact = {str(item): str(item) for item in scanned_files}
-    scanned_by_name: dict[str, list[str]] = {}
-    for item in scanned_files:
-        text = str(item)
-        name = Path(text).name or text
-        scanned_by_name.setdefault(name, []).append(text)
-
-    result: list[str] = []
-    for selected in selected_files:
-        text = str(selected)
-        mapped = scanned_exact.get(text)
-        if mapped is None:
-            matches = scanned_by_name.get(Path(text).name or text, [])
-            mapped = matches[0] if len(matches) == 1 else text
-        if mapped not in result:
-            result.append(mapped)
-    return result
-
-
-def _remapped_selected_files(
-    selected_files: list[str],
-    remap: dict[str, str],
-) -> list[str]:
-    result: list[str] = []
-    for file_path in selected_files:
-        mapped = _mapped_path(file_path, remap)
-        if mapped and mapped not in result:
-            result.append(mapped)
-    return result
-
-
-def _remapped_metadata_overrides(
-    payload: Any,
-    remap: dict[str, str],
-) -> Any:
-    if not isinstance(payload, dict) or not remap:
-        return payload
-    result: dict[str, Any] = {}
-    for file_key, fields in payload.items():
-        mapped = _mapped_path(str(file_key), remap)
-        if mapped:
-            result[mapped] = fields
-    return result
-
-
-def _required_label_carriers_missing_from_scan(
-    choices: dict[str, Any],
-    scanned_carriers: list[str],
-) -> list[str]:
-    if _label_carrier_source_choice(choices) == "embedded_events" or bool(
-        choices.get("skip_labels")
-    ):
-        return []
-    remap = _string_mapping(choices.get("label_carrier_remap"))
-    required = _remapped_required_label_carriers(
-        _string_list(choices.get("required_label_carriers")),
-        remap,
-    )
-    label_carrier_choices = choices.get("label_carrier_choices")
-    if isinstance(label_carrier_choices, dict):
-        required.extend(
-            remap.get(str(key).strip(), str(key).strip())
-            for key in label_carrier_choices
-            if str(key).strip()
-        )
-    return _paths_missing_from_scan(required, scanned_carriers)
-
-
-def _scope_bids_label_carriers(
-    label_carriers: list[str],
-    bids: dict[str, Any],
-    selected_files: list[str],
-    carrier_sources: dict[str, str] | None = None,
-) -> list[str]:
-    """Restrict BIDS events sidecars to the selected EEG scope."""
-    if not bids.get("is_bids") or not selected_files:
-        return list(label_carriers)
-    if not bids.get("layout"):
-        return list(label_carriers)
-    carrier_sources = dict(carrier_sources or {})
-    selected_scope = _bids_for_selected_files(bids, selected_files).get(
-        "selected_scope",
-        {},
-    )
-    scoped_events = {
-        str(item)
-        for item in selected_scope.get("events_files", [])
-        if str(item).strip()
-    }
-    result: list[str] = []
-    for carrier in label_carriers:
-        text = str(carrier)
-        is_auto_bids_event = (
-            _is_bids_events_carrier(text)
-            and carrier_sources.get(text, "auto") == "auto"
-        )
-        if is_auto_bids_event and text not in scoped_events:
-            continue
-        result.append(text)
-    return result
-
-
-def _bids_for_selected_files(
-    bids: dict[str, Any],
-    selected_files: list[str],
-) -> dict[str, Any]:
-    if not isinstance(bids, dict) or not bids.get("is_bids"):
-        return {}
-    scoped = dict(bids)
-    layout = [dict(item) for item in bids.get("layout", []) if isinstance(item, dict)]
-    scoped["selected_scope"] = _bids_scope_summary(selected_files, layout)
-    return scoped
-
-
-def _is_bids_events_carrier(path: str) -> bool:
-    name = Path(path).name
-    return name.endswith("_events.tsv") or name == "events.tsv"
-
-
-def _label_carriers_needing_conversion(
-    label_carrier_plan: list[dict[str, Any]],
-) -> list[str]:
-    """Return carriers that cannot expose any label rows to the wizard."""
-    names: list[str] = []
-    for carrier in label_carrier_plan:
-        path = Path(str(carrier.get("path") or ""))
-        if not path.exists():
-            continue
-        selected_label = str(carrier.get("selected_label_field") or "").strip()
-        raw_candidates = carrier.get("label_candidates") or []
-        candidates = raw_candidates if isinstance(raw_candidates, list) else []
-        row_count = carrier.get("label_row_count")
-        value_counts = carrier.get("label_value_counts")
-        has_rows = isinstance(row_count, int) and row_count > 0
-        has_values = isinstance(value_counts, dict) and bool(value_counts)
-        if selected_label and (has_rows or has_values):
-            continue
-        if candidates and not selected_label:
-            continue
-        name = str(carrier.get("name") or path.name)
-        if name:
-            names.append(name)
-    return sorted(set(names))
-
-
-def _unsupported_mat_placement_blocked_reasons(
-    label_carrier_plan: list[dict[str, Any]],
-) -> list[str]:
-    """Return reviewed MAT placement modes that this apply path cannot honor."""
-    reasons: list[str] = []
-    for carrier in label_carrier_plan:
-        fmt = str(carrier.get("format") or "").strip()
-        if fmt not in {"MAT", "MAT labels"}:
-            continue
-        method = str(carrier.get("placement_method") or "").strip()
-        time_model = str(carrier.get("time_model") or "").strip().lower()
-        name = str(carrier.get("name") or Path(str(carrier.get("path") or "")).name)
-        if method == "interval":
-            reasons.append(
-                "MAT label file uses interval placement, which is not supported "
-                f"directly yet: {name!s}. Convert interval labels to CSV/TSV "
-                "or choose event order, sample index, or event-code placement."
-            )
-        elif method == "time_field" and time_model not in {"sample_index", ""}:
-            reasons.append(
-                "MAT label file uses time-field placement that is not supported "
-                f"directly yet: {name!s}. Convert time labels to CSV/TSV "
-                "or choose sample-index/event-order placement."
-            )
-    return sorted(set(reasons))
 
 
 def _internal_event_selection(
@@ -677,8 +492,7 @@ def _not_label_event_sort_key(row: dict[str, Any]) -> tuple[int, tuple[int, int 
         rank = 2
     else:
         rank = 3
-    code = _internal_event_code_from_row(row)
-    return (rank, _event_code_sort_key(code))
+    return (rank, _event_code_sort_key(_internal_event_code_from_row(row)))
 
 
 def _class_map_from_internal_event_rows(rows: Any) -> dict[str, str]:
@@ -713,7 +527,7 @@ def _internal_event_code_from_row(row: dict[str, Any]) -> str:
     return ""
 
 
-def _sorted_event_codes(values: Iterable[Any] | dict[Any, Any]) -> list[str]:
+def _sorted_event_codes(values: Any) -> list[str]:
     raw_values = values.keys() if isinstance(values, dict) else values
     return sorted(
         {str(item).strip() for item in raw_values if str(item).strip()},
@@ -725,74 +539,88 @@ def _event_code_sort_key(value: str) -> tuple[int, int | str]:
     return (0, int(value)) if str(value).isdigit() else (1, str(value).casefold())
 
 
-def _bids_label_carrier_review_items(
-    label_carrier_plan: list[dict[str, Any]],
-) -> tuple[list[str], list[str]]:
-    warnings: list[str] = []
-    blocked_reasons: list[str] = []
-    for carrier in label_carrier_plan:
-        if str(carrier.get("format") or "") != "BIDS events":
-            continue
-        path = Path(str(carrier.get("path") or ""))
-        if not path.exists():
-            continue
-        name = str(carrier.get("name") or path.name)
-        time_fields = {
-            str(item).strip().lower()
-            for item in _string_list(carrier.get("time_field_candidates"))
-        }
-        duration_fields = _string_list(carrier.get("duration_candidates"))
-        if "onset" not in time_fields:
-            blocked_reasons.append(
-                f"BIDS EEG events file {name} is missing required onset column."
-            )
-        if path.exists() and not _bids_events_json_sidecar_exists(path):
-            warnings.append(
-                f"BIDS EEG events file {name} has no events.json sidecar; "
-                "class names and level meanings need review."
-            )
-        if not duration_fields:
-            warnings.append(
-                f"BIDS EEG events file {name} has no duration/end field; "
-                "interval epochs will need review in epoch setup."
-            )
-        elif len(duration_fields) > 1:
-            selected_duration = str(
-                carrier.get("selected_duration_field") or ""
-            ).strip()
-            warnings.append(
-                f"BIDS EEG events file {name} has multiple duration/end fields; "
-                f"confirm {selected_duration or 'the selected duration field'}."
-            )
-    return sorted(set(warnings)), sorted(set(blocked_reasons))
+def _path_key(path: str) -> str:
+    return str(Path(path).expanduser())
 
 
-def _bids_events_json_sidecar_exists(path: Path) -> bool:
-    for sidecar_name in _bids_event_sidecar_names(path):
-        for directory in [path.parent, *path.parents[1:8]]:
-            if (directory / sidecar_name).exists():
-                return True
-    return False
+def _selected_files_missing_from_scan(
+    selected_files: list[str],
+    scanned_files: list[str],
+) -> list[str]:
+    return _paths_missing_from_scan(selected_files, scanned_files)
 
 
-def _bids_event_sidecar_names(path: Path) -> list[str]:
-    names: list[str] = []
-    if path.name.endswith(".tsv"):
-        stem = path.name[: -len(".tsv")]
-        names.append(f"{stem}.json")
-    prefix = path.name.removesuffix(".tsv").removesuffix("_events")
-    parts = [part for part in prefix.split("_") if part]
-    semantic_parts = [
-        part for part in parts if not part.startswith(("sub-", "ses-", "run-"))
-    ]
-    if semantic_parts:
-        names.append("_".join([*semantic_parts, "events"]) + ".json")
-    names.append("events.json")
+def _resolve_selected_files_to_scan(
+    selected_files: list[str],
+    scanned_files: list[str],
+) -> list[str]:
+    """Map selected relative filenames to their scanned absolute file paths."""
+    scanned_exact = {str(item): str(item) for item in scanned_files}
+    scanned_by_name: dict[str, list[str]] = {}
+    for item in scanned_files:
+        text = str(item)
+        name = Path(text).name or text
+        scanned_by_name.setdefault(name, []).append(text)
+
     result: list[str] = []
-    for name in names:
-        if name not in result:
-            result.append(name)
+    for selected in selected_files:
+        text = str(selected)
+        mapped = scanned_exact.get(text)
+        if mapped is None:
+            matches = scanned_by_name.get(Path(text).name or text, [])
+            mapped = matches[0] if len(matches) == 1 else text
+        if mapped not in result:
+            result.append(mapped)
     return result
+
+
+def _remapped_selected_files(
+    selected_files: list[str],
+    remap: dict[str, str],
+) -> list[str]:
+    result: list[str] = []
+    for file_path in selected_files:
+        mapped = _mapped_path(file_path, remap)
+        if mapped and mapped not in result:
+            result.append(mapped)
+    return result
+
+
+def _remapped_metadata_overrides(
+    payload: Any,
+    remap: dict[str, str],
+) -> Any:
+    if not isinstance(payload, dict) or not remap:
+        return payload
+    result: dict[str, Any] = {}
+    for file_key, fields in payload.items():
+        mapped = _mapped_path(str(file_key), remap)
+        if mapped:
+            result[mapped] = fields
+    return result
+
+
+def _required_label_carriers_missing_from_scan(
+    choices: dict[str, Any],
+    scanned_carriers: list[str],
+) -> list[str]:
+    if _label_carrier_source_choice(choices) == "embedded_events" or bool(
+        choices.get("skip_labels")
+    ):
+        return []
+    remap = _string_mapping(choices.get("label_carrier_remap"))
+    required = _remapped_required_label_carriers(
+        _string_list(choices.get("required_label_carriers")),
+        remap,
+    )
+    label_carrier_choices = choices.get("label_carrier_choices")
+    if isinstance(label_carrier_choices, dict):
+        required.extend(
+            remap.get(str(key).strip(), str(key).strip())
+            for key in label_carrier_choices
+            if str(key).strip()
+        )
+    return _paths_missing_from_scan(required, scanned_carriers)
 
 
 def _label_carrier_source_choice(choices: dict[str, Any]) -> str:

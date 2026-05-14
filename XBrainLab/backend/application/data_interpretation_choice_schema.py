@@ -196,14 +196,6 @@ _CHOICES_SCHEMA: dict[str, Any] = {
             **_STRING_MAP_SCHEMA,
             "description": "Map raw event or label values to class names.",
         },
-        "run_event_mappings": {
-            "type": "object",
-            "additionalProperties": _STRING_MAP_SCHEMA,
-            "description": (
-                "Per-run event-code semantics for formats where the same marker "
-                "can mean different classes by task or run."
-            ),
-        },
         "anchor": {
             "type": "string",
             "enum": ["sample", "timestamp", "onset_seconds", "lsl_time", "unknown"],

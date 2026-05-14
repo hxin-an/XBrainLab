@@ -154,15 +154,7 @@ class DataInterpretationCommandService:
         metadata_apply = self.apply_service.apply_candidate_metadata_to_loaded_data(
             candidate,
         )
-        external_label_apply = self.apply_service.apply_label_carriers(candidate)
-        internal_event_apply = self.apply_service.apply_internal_event_mappings(
-            candidate,
-        )
-        label_apply = (
-            internal_event_apply
-            if internal_event_apply.get("status") == "applied"
-            else external_label_apply
-        )
+        label_apply = self.apply_service.apply_label_carriers(candidate)
         internal_epoch_hints = self.apply_service.record_internal_epoch_hints(
             candidate,
         )
@@ -188,8 +180,6 @@ class DataInterpretationCommandService:
                 "metadata_apply": metadata_apply,
                 "label_carriers_pending": list(candidate.label_carriers),
                 "label_apply": label_apply,
-                "external_label_apply": external_label_apply,
-                "internal_event_apply": internal_event_apply,
                 "internal_epoch_hints": internal_epoch_hints,
             },
         )
