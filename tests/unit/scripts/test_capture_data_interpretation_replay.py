@@ -59,9 +59,11 @@ def test_apply_replay_review_choices_updates_event_role_selector(qtbot) -> None:
 
     label_item = dialog.label_carrier_tree.topLevelItem(0)
     assert label_item is not None
-    target_selector = dialog.label_carrier_tree.itemWidget(label_item, 1)
-    assert isinstance(target_selector, QComboBox)
-    assert target_selector.currentData() == "sub-01_task-mi_run-2_raw.fif"
+    pairing_selector = getattr(dialog, "_eeg_label_widgets", {}).get(
+        "sub-01_task-mi_run-2_raw.fif"
+    )
+    assert isinstance(pairing_selector, QComboBox)
+    assert pairing_selector.currentText() == "events.tsv"
     assert (
         dialog.get_result()["choices"]["label_carrier_choices"][
             "/tmp/source/events.tsv"
@@ -69,7 +71,7 @@ def test_apply_replay_review_choices_updates_event_role_selector(qtbot) -> None:
         == "sub-01_task-mi_run-2_raw.fif"
     )
     assert role_selector.currentData() == "class cue"
-    assert ["Trial type", "event role", "Class cue"] in tree_rows(dialog.event_tree)
+    assert ["Trial type", "event use", "Class cue"] in tree_rows(dialog.event_tree)
     assert dialog.get_result()["choices"]["event_roles"] == {"trial_type": "class cue"}
 
 
@@ -219,8 +221,7 @@ def test_tree_state_records_rows_and_fit_geometry(qtbot) -> None:
     assert state["text_elide_mode"] == "ElideRight"
     assert state["alternating_row_colors"] is True
     flat_rows = " ".join(" ".join(row) for row in state["rows"])
-    assert "Source scan" in flat_rows
-    assert "Interpretation candidate" in flat_rows
+    assert "No warnings or confirmations" in flat_rows
     assert "scan:scan-1" not in flat_rows
     assert "candidate:candidate-1" not in flat_rows
 

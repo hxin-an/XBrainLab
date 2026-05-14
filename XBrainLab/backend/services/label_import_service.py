@@ -1,5 +1,6 @@
 """Label import service for applying external labels to loaded EEG data files."""
 
+import re
 from typing import Any
 
 import numpy as np
@@ -189,11 +190,10 @@ class LabelImportService:
             if selected_event_names is not None and data.is_raw():
                 _, event_id_map = data.get_event_list()
                 if event_id_map:
-                    selected_ids = [
-                        eid
-                        for name, eid in event_id_map.items()
-                        if name in selected_event_names
-                    ]
+                    selected_ids = _selected_event_ids(
+                        event_id_map,
+                        selected_event_names,
+                    )
                     logger.info(
                         f"Filtered IDs for {data.get_filename()}: {selected_ids} "
                         f"(from names: {selected_event_names})",
@@ -229,11 +229,10 @@ class LabelImportService:
         if selected_event_names is not None and data.is_raw():
             _, event_id_map = data.get_event_list()
             if event_id_map:
-                selected_ids = [
-                    eid
-                    for name, eid in event_id_map.items()
-                    if name in selected_event_names
-                ]
+                selected_ids = _selected_event_ids(
+                    event_id_map,
+                    selected_event_names,
+                )
                 logger.info(
                     f"Force Import: Filtered IDs for {data.get_filename()}: "
                     f"{selected_ids}",
@@ -263,14 +262,59 @@ class LabelImportService:
         if data.is_raw():
             events, event_id_map = data.get_event_list()
             if selected_event_names is not None and event_id_map:
-                relevant_ids = [
-                    eid
-                    for name, eid in event_id_map.items()
-                    if name in selected_event_names
-                ]
+                relevant_ids = _selected_event_ids(
+                    event_id_map,
+                    selected_event_names,
+                )
                 if relevant_ids:
                     mask = np.isin(events[:, -1], relevant_ids)
                     return int(np.sum(mask))
                 return 0
             return len(events)
         return data.get_epochs_length()
+
+
+def _selected_event_ids(
+    event_id_map: dict[str, int],
+    selected_event_names: set[str],
+) -> list[int]:
+    selected = {
+        " ".join(str(item).strip().split()).casefold()
+        for item in selected_event_names
+        if str(item).strip()
+    }
+    if not selected:
+        return []
+
+    ids: list[int] = []
+    seen: set[int] = set()
+    for name, event_id in event_id_map.items():
+        aliases = _event_selection_aliases(name, event_id)
+        if selected.isdisjoint(aliases):
+            continue
+        if event_id in seen:
+            continue
+        ids.append(event_id)
+        seen.add(event_id)
+    return ids
+
+
+def _event_selection_aliases(name: str, event_id: int) -> set[str]:
+    text = " ".join(str(name or "").strip().split())
+    aliases = {text.casefold(), str(event_id).casefold()}
+    if not text:
+        return aliases
+    normalized = text.casefold()
+    if normalized.startswith(
+        (
+            "stimulus/s",
+            "response/r",
+            "event/e",
+            "annotation/",
+            "trigger/",
+        )
+    ):
+        match = re.search(r"\b\d+\b", text)
+        if match:
+            aliases.add(str(int(match.group(0))).casefold())
+    return aliases

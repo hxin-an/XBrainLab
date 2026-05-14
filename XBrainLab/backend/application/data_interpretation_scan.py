@@ -222,15 +222,15 @@ def _scan_warnings(
             "BIDS-like source has no events.tsv carrier; supervised labels "
             "may be limited.",
         )
-    blocked_formats = [
-        str(item.get("format"))
+    unsupported_formats = [
+        f"{item.get('format')} ({item.get('name')})"
         for item in format_capabilities
-        if item.get("status") == "blocked"
+        if item.get("status") in {"blocked", "limited"}
     ]
-    if blocked_formats and eeg_files:
+    if unsupported_formats and eeg_files:
         warnings.append(
-            "Some discovered sources are not applied by this wizard yet: "
-            + ", ".join(blocked_formats)
+            "Some discovered sources are not interpreted by this wizard yet: "
+            + ", ".join(str(item) for item in unsupported_formats)
             + ".",
         )
     return warnings

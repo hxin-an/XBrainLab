@@ -173,6 +173,20 @@ def build_interpretation_candidate(
         label_carrier_plan,
         internal_event_preview,
     )
+    if scan.bids.get("is_bids"):
+        bids_warnings, bids_blocked_reasons = _bids_like_label_carrier_review_items(
+            label_carrier_plan
+        )
+        warnings.extend(bids_warnings)
+        blocked_reasons.extend(bids_blocked_reasons)
+    blocked_reasons.extend(
+        (
+            "Label file needs conversion before matching: "
+            f"{carrier_name}. Provide a table with one label value column and "
+            "one placement column."
+        )
+        for carrier_name in _label_carriers_needing_conversion(label_carrier_plan)
+    )
     confirmation_items.extend(_placement_confirmation_items(label_carrier_plan))
 
     event_roles.update(_string_mapping(choices.get("event_roles")))
@@ -430,6 +444,102 @@ def _required_label_carriers_missing_from_scan(
             if str(key).strip()
         )
     return _paths_missing_from_scan(required, scanned_carriers)
+
+
+def _label_carriers_needing_conversion(
+    label_carrier_plan: list[dict[str, Any]],
+) -> list[str]:
+    """Return carriers that cannot expose any label rows to the wizard."""
+    names: list[str] = []
+    for carrier in label_carrier_plan:
+        path = Path(str(carrier.get("path") or ""))
+        if not path.exists():
+            continue
+        selected_label = str(carrier.get("selected_label_field") or "").strip()
+        raw_candidates = carrier.get("label_candidates") or []
+        candidates = raw_candidates if isinstance(raw_candidates, list) else []
+        row_count = carrier.get("label_row_count")
+        value_counts = carrier.get("label_value_counts")
+        has_rows = isinstance(row_count, int) and row_count > 0
+        has_values = isinstance(value_counts, dict) and bool(value_counts)
+        if selected_label and (has_rows or has_values):
+            continue
+        if candidates and not selected_label:
+            continue
+        name = str(carrier.get("name") or path.name)
+        if name:
+            names.append(name)
+    return sorted(set(names))
+
+
+def _bids_like_label_carrier_review_items(
+    label_carrier_plan: list[dict[str, Any]],
+) -> tuple[list[str], list[str]]:
+    warnings: list[str] = []
+    blocked_reasons: list[str] = []
+    for carrier in label_carrier_plan:
+        if str(carrier.get("format") or "") != "BIDS events":
+            continue
+        path = Path(str(carrier.get("path") or ""))
+        if not path.exists():
+            continue
+        name = str(carrier.get("name") or path.name)
+        time_fields = {
+            str(item).strip().lower()
+            for item in _string_list(carrier.get("time_field_candidates"))
+        }
+        duration_fields = _string_list(carrier.get("duration_candidates"))
+        if "onset" not in time_fields:
+            blocked_reasons.append(
+                f"BIDS-like events file {name} is missing required onset column."
+            )
+        if path.exists() and not _bids_events_json_sidecar_exists(path):
+            warnings.append(
+                f"BIDS-like events file {name} has no events.json sidecar; "
+                "class names and level meanings need review."
+            )
+        if not duration_fields:
+            warnings.append(
+                f"BIDS-like events file {name} has no duration/end field; "
+                "interval epochs will need review in epoch setup."
+            )
+        elif len(duration_fields) > 1:
+            selected_duration = str(
+                carrier.get("selected_duration_field") or ""
+            ).strip()
+            warnings.append(
+                f"BIDS-like events file {name} has multiple duration/end fields; "
+                f"confirm {selected_duration or 'the selected duration field'}."
+            )
+    return sorted(set(warnings)), sorted(set(blocked_reasons))
+
+
+def _bids_events_json_sidecar_exists(path: Path) -> bool:
+    for sidecar_name in _bids_event_sidecar_names(path):
+        for directory in [path.parent, *path.parents[1:8]]:
+            if (directory / sidecar_name).exists():
+                return True
+    return False
+
+
+def _bids_event_sidecar_names(path: Path) -> list[str]:
+    names: list[str] = []
+    if path.name.endswith(".tsv"):
+        stem = path.name[: -len(".tsv")]
+        names.append(f"{stem}.json")
+    prefix = path.name.removesuffix(".tsv").removesuffix("_events")
+    parts = [part for part in prefix.split("_") if part]
+    semantic_parts = [
+        part for part in parts if not part.startswith(("sub-", "ses-", "run-"))
+    ]
+    if semantic_parts:
+        names.append("_".join([*semantic_parts, "events"]) + ".json")
+    names.append("events.json")
+    result: list[str] = []
+    for name in names:
+        if name not in result:
+            result.append(name)
+    return result
 
 
 def _label_carrier_source_choice(choices: dict[str, Any]) -> str:

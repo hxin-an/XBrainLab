@@ -173,6 +173,19 @@ class DataInterpretationApplyService:
         try:
             label_map = self._load_reviewed_label_map(applicable, mode)
             mapping = self._label_import_mapping_from_class_map(candidate.class_map)
+            selected_event_names_by_carrier = self._selected_event_names_by_carrier(
+                applicable, mode
+            )
+            selected_event_names = (
+                sorted(
+                    {
+                        event_name
+                        for names in selected_event_names_by_carrier.values()
+                        for event_name in names
+                    }
+                )
+                or None
+            )
             if mode in {"timestamp", "anchored"}:
                 count = self.dataset.apply_labels_batch(
                     mapped_target_files,
@@ -194,6 +207,7 @@ class DataInterpretationApplyService:
                     label_map,
                     file_mapping,
                     mapping,
+                    selected_event_names_by_carrier,
                 )
             plan = LabelImportPlan(
                 target_indices=list(range(len(mapped_target_files))),
@@ -201,13 +215,14 @@ class DataInterpretationApplyService:
                 mapping=mapping,
                 file_mapping=file_mapping,
                 mode=mode,
+                selected_event_names=selected_event_names,
             )
             record = self._record_label_import(
                 plan=plan,
                 mode=mode,
                 target_files=mapped_target_files,
                 file_mapping=file_mapping,
-                selected_event_names=None,
+                selected_event_names=set(selected_event_names or []),
                 success_count=count,
             )
         except Exception as exc:
@@ -233,6 +248,101 @@ class DataInterpretationApplyService:
             "label_import": record or {},
             "label_carrier": label_carriers[0],
             "label_carriers": label_carriers,
+        }
+
+    def apply_internal_event_mappings(
+        self,
+        candidate: InterpretationCandidate,
+    ) -> dict[str, Any]:
+        """Apply confirmed run-dependent internal event mappings."""
+        label_source = str(candidate.choices.get("label_carrier") or "").strip()
+        if label_source != "embedded_events":
+            return {
+                "status": "not_applicable",
+                "reason": "Internal EEG events were not selected as label source.",
+            }
+        if not candidate.run_event_mappings:
+            return {
+                "status": "not_applicable",
+                "reason": "No run-dependent event mappings were confirmed.",
+            }
+
+        target_files = list(self.dataset.get_loaded_data_list() or [])
+        applied_targets: list[Any] = []
+        file_mapping: dict[str, str] = {}
+        selected_event_names: set[str] = set()
+        mapping_for_recipe: dict[str, str] = {}
+        try:
+            for target in target_files:
+                data_path = self._data_filepath(target)
+                file_mapping_for_target = self._run_event_mapping_for_target(
+                    candidate.run_event_mappings,
+                    target,
+                )
+                if not file_mapping_for_target:
+                    continue
+                rows = [
+                    {"event_code": code, "label": label}
+                    for code, label in file_mapping_for_target.items()
+                    if str(code).strip() and str(label).strip()
+                ]
+                if not rows:
+                    continue
+                events, event_id = target.get_event_list()
+                new_events, new_event_id = _events_from_event_code_label_rows(
+                    events,
+                    event_id or {},
+                    rows,
+                    {},
+                )
+                target.set_event(new_events, new_event_id)
+                if hasattr(target, "set_labels_imported"):
+                    target.set_labels_imported(True)
+                applied_targets.append(target)
+                file_mapping[data_path] = "internal_events"
+                filename = self._data_filename(target)
+                for code, label in file_mapping_for_target.items():
+                    selected_event_names.add(str(code))
+                    mapping_for_recipe[f"{filename}:{code}"] = str(label)
+        except Exception as exc:
+            logger.error(
+                "Failed to apply internal event mapping: %s",
+                exc,
+                exc_info=True,
+            )
+            return {"status": "failed", "reason": str(exc), "success_count": 0}
+
+        if not applied_targets:
+            return {
+                "status": "skipped",
+                "reason": "No loaded EEG file matched the confirmed event mappings.",
+                "success_count": 0,
+            }
+        if hasattr(self.dataset, "reset_preprocess"):
+            self.dataset.reset_preprocess()
+        plan = LabelImportPlan(
+            target_indices=list(range(len(applied_targets))),
+            label_map={},
+            mapping=mapping_for_recipe,
+            file_mapping=file_mapping,
+            mode="internal_events",
+            selected_event_names=selected_event_names,
+        )
+        record = self._record_label_import(
+            plan=plan,
+            mode="internal_events",
+            target_files=applied_targets,
+            file_mapping=file_mapping,
+            selected_event_names=selected_event_names,
+            success_count=len(applied_targets),
+        )
+        return {
+            "status": "applied",
+            "success_count": len(applied_targets),
+            "mode": "internal_events",
+            "label_import": record or {},
+            "label_carrier": "internal_events",
+            "label_carriers": ["internal_events"],
         }
 
     @staticmethod
@@ -273,6 +383,7 @@ class DataInterpretationApplyService:
         label_map: dict[str, Any],
         file_mapping: dict[str, str],
         mapping: dict[Any, str],
+        selected_event_names_by_carrier: dict[str, set[str]],
     ) -> int:
         success_count = 0
         for target in target_files:
@@ -280,12 +391,13 @@ class DataInterpretationApplyService:
             carrier_path = file_mapping.get(data_path)
             if not carrier_path or carrier_path not in label_map:
                 continue
+            selected_event_names = selected_event_names_by_carrier.get(carrier_path)
             success_count += int(
                 self.dataset.apply_labels_legacy(
                     [target],
                     label_map[carrier_path],
                     mapping,
-                    None,
+                    selected_event_names,
                     force_import=False,
                 ),
             )
@@ -416,6 +528,24 @@ class DataInterpretationApplyService:
                 return target
         return None
 
+    def _run_event_mapping_for_target(
+        self,
+        run_event_mappings: dict[str, dict[str, str]],
+        target: Any,
+    ) -> dict[str, str]:
+        data_path = self._data_filepath(target)
+        filename = self._data_filename(target)
+        stem = Path(filename).stem
+        candidates = [data_path, filename, Path(data_path).name, stem]
+        run = _run_token(filename) or _run_token(data_path)
+        if run:
+            candidates.extend([run, f"R{run}", f"run-{run}", f"run_{run}"])
+        for key in candidates:
+            mapping = run_event_mappings.get(str(key))
+            if mapping:
+                return {str(code): str(label) for code, label in mapping.items()}
+        return {}
+
     def _safe_data_filepath(self, data: Any) -> str:
         with contextlib.suppress(Exception):
             return str(self._data_filepath(data))
@@ -516,6 +646,28 @@ class DataInterpretationApplyService:
             and granularity == "trial"
             and bool(class_map)
         )
+
+    @staticmethod
+    def _selected_event_names_by_carrier(
+        label_plans: list[dict[str, Any]],
+        mode: str,
+    ) -> dict[str, set[str]]:
+        if mode != "legacy":
+            return {}
+        selected_by_carrier: dict[str, set[str]] = {}
+        for plan in label_plans:
+            placement_method = str(plan.get("placement_method") or "").strip()
+            selected_anchor = str(plan.get("selected_anchor") or "").strip()
+            carrier_path = str(plan.get("path") or "").strip()
+            if (
+                placement_method != "eeg_event"
+                or not carrier_path
+                or not selected_anchor
+                or selected_anchor == "trial order"
+            ):
+                continue
+            selected_by_carrier[carrier_path] = {selected_anchor}
+        return selected_by_carrier
 
     @staticmethod
     def _label_import_mapping_from_class_map(
@@ -698,6 +850,20 @@ def _coerce_int_label(value: Any) -> int | None:
     if number.is_integer():
         return int(number)
     return None
+
+
+def _run_token(path: str) -> str:
+    name = Path(path).stem
+    match = re.search(r"(?:^|[_-])R(\d+)(?:[_-]|$)", name, flags=re.IGNORECASE)
+    if match:
+        return match.group(1)
+    match = re.search(r"(?<![A-Z])R(\d+)$", name, flags=re.IGNORECASE)
+    if match:
+        return match.group(1)
+    match = re.search(r"(?:^|[_-])run[-_]?(\d+)(?:[_-]|$)", name, flags=re.IGNORECASE)
+    if match:
+        return match.group(1)
+    return ""
 
 
 def _resolve_column(columns: list[str], requested: str) -> str:

@@ -6,6 +6,7 @@ from typing import Any, cast
 from unittest.mock import MagicMock
 
 import numpy as np
+from scipy.io import savemat
 
 from XBrainLab.backend.application import (
     ApplicationService,
@@ -97,7 +98,7 @@ def test_data_interpretation_scan_preview_validate_requires_confirmation(tmp_pat
     eeg_path = source_dir / "A01T.gdf"
     label_path = source_dir / "A01T.mat"
     eeg_path.write_bytes(b"not loaded during scan")
-    label_path.write_bytes(b"not loaded during scan")
+    savemat(label_path, {"classlabel": np.array([1, 2, 1, 2])})
     service = ApplicationService(Study())
     service.dataset.import_files = MagicMock(return_value=(1, []))
 
@@ -706,6 +707,58 @@ def test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier(tmp_pa
         "label_import:legacy:1"
         in apply_result.diagnostics["applied_interpretation"]["recipe_trace"]
     )
+
+
+def test_apply_interpretation_preserves_reviewed_sequence_target_event(
+    tmp_path,
+):
+    from scipy.io import savemat
+
+    source_dir = tmp_path / "reviewed_mat_sequence_target_event"
+    source_dir.mkdir()
+    eeg_path = source_dir / "A01T.gdf"
+    label_path = source_dir / "A01T.mat"
+    eeg_path.write_bytes(b"not loaded during scan")
+    savemat(label_path, {"classlabel": np.array([1, 2])})
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    raw.get_filepath.return_value = str(eeg_path)
+    raw.get_filename.return_value = eeg_path.name
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    service.dataset.apply_labels_legacy = MagicMock(return_value=1)
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "label_carrier_choices": {
+                    str(label_path): {
+                        "target_file": eeg_path.name,
+                        "label_field": "classlabel",
+                        "anchor": "768",
+                        "placement_method": "eeg_event",
+                        "time_model": "trial_order",
+                        "granularity": "trial",
+                    }
+                },
+                "class_map": {"1": "left hand", "2": "right hand"},
+            },
+        ),
+    )
+    service.execute(ValidateInterpretationCommand())
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert apply_result.ok is True
+    assert apply_result.diagnostics["label_apply"]["status"] == "applied"
+    call = service.dataset.apply_labels_legacy.call_args
+    assert call.args[0] == [raw]
+    assert call.args[3] == {"768"}
+    label_import = apply_result.state.interpretation.label_imports[0]
+    assert label_import["selected_event_names"] == ["768"]
+    assert apply_result.state.interpretation.epoch_handoff["selected_event_names"] == [
+        "768"
+    ]
 
 
 def test_apply_interpretation_applies_reviewed_mat_sample_anchor_label_carrier(
@@ -1692,6 +1745,73 @@ def test_apply_interpretation_applies_reviewed_event_code_label_file(
         "left": "Left hand",
         "right": "Right hand",
     }
+
+
+def test_apply_interpretation_applies_run_dependent_internal_event_mapping(
+    tmp_path,
+    monkeypatch,
+):
+    from XBrainLab.backend.application import data_interpretation_internal_events
+
+    source_dir = tmp_path / "physionet_like"
+    source_dir.mkdir()
+    eeg_path = source_dir / "S001R04.edf"
+    eeg_path.write_bytes(b"not loaded during scan")
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "T1": {"count": 2, "description": "T1"},
+                "T2": {"count": 1, "description": "T2"},
+            }
+        },
+    )
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    raw.get_filename.return_value = "S001R04.edf"
+    raw.get_filepath.return_value = str(eeg_path)
+    raw.get_event_list.return_value = (
+        np.array([[100, 0, 1], [200, 0, 2], [300, 0, 1]], dtype=np.int32),
+        {"T1": 1, "T2": 2},
+    )
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    service.dataset.reset_preprocess = MagicMock()
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(eeg_path)],
+                "label_carrier": "embedded_events",
+                "run_event_mappings": {
+                    "S001R04.edf": {"T1": "left_fist", "T2": "right_fist"}
+                },
+            }
+        )
+    )
+    service.execute(ValidateInterpretationCommand())
+    result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert result.ok is True
+    assert result.diagnostics["label_apply"]["status"] == "applied"
+    assert result.diagnostics["label_apply"]["mode"] == "internal_events"
+    raw.set_event.assert_called_once()
+    events, event_id = raw.set_event.call_args.args
+    assert events[:, 0].tolist() == [100, 200, 300]
+    assert events[:, 2].tolist() == [1, 2, 1]
+    assert event_id == {"left_fist": 1, "right_fist": 2}
+    label_import = result.diagnostics["label_apply"]["label_import"]
+    assert label_import["mode"] == "internal_events"
+    assert label_import["selected_event_names"] == ["T1", "T2"]
+    assert result.state.interpretation.epoch_handoff["run_event_mappings"] == {
+        "S001R04.edf": {"T1": "left_fist", "T2": "right_fist"}
+    }
+    assert (
+        result.state.interpretation.epoch_handoff["label_imports"][0]["mode"]
+        == "internal_events"
+    )
 
 
 def test_apply_interpretation_uses_reviewed_interval_end_field(tmp_path):

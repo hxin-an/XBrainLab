@@ -294,6 +294,66 @@ def test_build_interpretation_candidate_reviews_bids_interval_placement(tmp_path
     assert review["summary"] == "2 interval rows using onset and duration."
 
 
+def test_build_interpretation_candidate_blocks_bids_events_without_onset(tmp_path):
+    events = tmp_path / "sub-01_task-mi_events.tsv"
+    sidecar = tmp_path / "sub-01_task-mi_events.json"
+    events.write_text("duration\ttrial_type\n1.0\tleft\n", encoding="utf-8")
+    sidecar.write_text(
+        '{"trial_type":{"Levels":{"left":"Left hand"}}}', encoding="utf-8"
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            label_carriers=[str(events)],
+            bids={"is_bids": True, "events_files": [str(events)]},
+        ),
+    )
+
+    assert any(
+        "missing required onset column" in reason
+        for reason in candidate.blocked_reasons
+    )
+
+
+def test_build_interpretation_candidate_warns_for_bids_events_without_sidecar(
+    tmp_path,
+):
+    events = tmp_path / "sub-01_task-mi_events.tsv"
+    events.write_text("onset\tduration\ttrial_type\n0.0\t1.0\tleft\n", encoding="utf-8")
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            label_carriers=[str(events)],
+            bids={"is_bids": True, "events_files": [str(events)]},
+        ),
+    )
+
+    assert any("no events.json sidecar" in warning for warning in candidate.warnings)
+
+
+def test_build_interpretation_candidate_warns_for_bids_events_without_duration(
+    tmp_path,
+):
+    events = tmp_path / "sub-01_task-mi_events.tsv"
+    sidecar = tmp_path / "sub-01_task-mi_events.json"
+    events.write_text("onset\ttrial_type\n0.0\tleft\n", encoding="utf-8")
+    sidecar.write_text(
+        '{"trial_type":{"Levels":{"left":"Left hand"}}}', encoding="utf-8"
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            label_carriers=[str(events)],
+            bids={"is_bids": True, "events_files": [str(events)]},
+        ),
+    )
+
+    assert any("has no duration/end field" in warning for warning in candidate.warnings)
+
+
 def test_build_interpretation_candidate_blocks_empty_selection():
     candidate = build_interpretation_candidate(
         candidate_id="candidate-1",
@@ -665,6 +725,27 @@ def test_build_interpretation_candidate_reviews_external_event_order_placement(
     assert review["selected_eeg_events"] == 4
     assert review["matched"] == 4
     assert review["excluded_eeg_events"] == 1
+
+
+def test_build_interpretation_candidate_blocks_unreadable_label_file(tmp_path):
+    label_path = tmp_path / "custom_labels.mat"
+    label_path.write_text("not a readable mat file", encoding="utf-8")
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            eeg_files=["/data/A01T.gdf"],
+            label_carriers=[str(label_path)],
+            label_carrier_sources={str(label_path): "user_added"},
+            bids={"is_bids": False, "events_files": []},
+        ),
+    )
+
+    assert candidate.label_carrier_plan[0]["label_candidates"] == []
+    assert any(
+        "custom_labels.mat" in reason and "conversion before matching" in reason
+        for reason in candidate.blocked_reasons
+    )
 
 
 def test_build_interpretation_candidate_reviews_event_code_placement(

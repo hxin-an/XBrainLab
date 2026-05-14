@@ -453,6 +453,10 @@ Match Labels 第一層應先問 `Label source`：
   和 `Check`。使用者應先看到哪個 EEG 對哪個 label file，再設定 `Read labels from`、
   `Use as`、`Place labels by`，以及 mode-specific placement 欄位。`granularity` / label unit
   由 preview 和 placement method 推定並保存到 recipe，不作為第一層使用者欄位。
+  若 label file 已被載入但系統無法辨識 label rows 或 label value column，UI 不應繼續顯示
+  downstream placement 表格；應顯示 blocked conversion card，說明需要一列一筆 label / trial /
+  event / interval、至少一個 label value column，以及一個 placement column，並提供 example
+  dialog 讓使用者轉成支援的 MAT / CSV / TSV / TXT table shape 後重新載入。
   `Place labels by` 不應只是通用下拉選單；四種 placement method 應切換成各自的
   task panel：`EEG event order` 顯示 target EEG event 列表，`Label time` 顯示
   label time field，`Label interval` 顯示 start field 與 duration / end field，
