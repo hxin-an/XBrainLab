@@ -5,6 +5,7 @@ from tests.architecture_compliance import (
     check_llm_agent_confirmation_weak_pending_assertions,
     check_llm_agent_intent_boundary_weak_result_assertions,
     check_llm_application_surface_weak_result_assertions,
+    check_llm_controller_integration_weak_initialization_assertions,
     check_llm_direct_study_state_reads,
     check_llm_parser_weak_parse_assertions,
     check_llm_tool_definition_weak_string_assertions,
@@ -476,6 +477,66 @@ def test_confirmation_required_pauses_execution(ctrl):
     )
 
     assert check_llm_agent_confirmation_weak_pending_assertions(tmp_path) == []
+
+
+def test_llm_controller_integration_guard_flags_generic_initialization(
+    tmp_path,
+):
+    path = (
+        tmp_path
+        / "tests"
+        / "unit"
+        / "llm"
+        / "agent"
+        / ("test_controller_integration.py")
+    )
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_controller_initialization(qapp):
+    controller = LLMController(study)
+    assert controller.registry is not None
+    assert controller.assembler is not None
+    assert controller.verifier is not None
+    assert len(controller.registry.get_all_tools()) > 0
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_llm_controller_integration_weak_initialization_assertions(
+        tmp_path
+    )
+
+    assert len(violations) == 4
+    assert "generic controller initialization evidence" in violations[0]
+    assert "exact tool names" in violations[0]
+
+
+def test_llm_controller_integration_guard_allows_exact_contract(tmp_path):
+    path = (
+        tmp_path
+        / "tests"
+        / "unit"
+        / "llm"
+        / "agent"
+        / ("test_controller_integration.py")
+    )
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_controller_initialization(qapp):
+    controller = LLMController(study)
+    assert isinstance(controller.registry, ToolRegistry)
+    assert isinstance(controller.assembler, ContextAssembler)
+    assert isinstance(controller.verifier, VerificationLayer)
+    assert tuple(tool.name for tool in controller.registry.get_all_tools()) == EXPECTED_CONTROLLER_TOOL_NAMES
+""",
+        encoding="utf-8",
+    )
+
+    assert (
+        check_llm_controller_integration_weak_initialization_assertions(tmp_path) == []
+    )
 
 
 def test_docs_current_truth_guard_flags_product_complete_overclaim(tmp_path):
