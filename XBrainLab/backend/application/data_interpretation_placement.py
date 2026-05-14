@@ -38,12 +38,36 @@ def placement_confirmation_items(
         if not isinstance(review, dict):
             continue
         status = str(review.get("status") or "").strip()
-        if status not in {"needs_review", "blocked"}:
+        if status != "needs_review":
             continue
         name = str(carrier.get("name") or Path(str(carrier.get("path") or "")).name)
         summary = str(review.get("summary") or "Review label placement.").strip()
         items.append(f"Confirm label placement for {name}: {summary}")
     return sorted(set(items))
+
+
+def placement_blocked_reasons(
+    label_carrier_plan: list[dict[str, Any]],
+) -> list[str]:
+    """Return blocked placement choices that must prevent apply side effects."""
+    reasons: list[str] = []
+    for carrier in label_carrier_plan:
+        review = carrier.get("placement_review")
+        if not isinstance(review, dict):
+            continue
+        if str(review.get("status") or "").strip() != "blocked":
+            continue
+        path_text = str(carrier.get("path") or "").strip()
+        if path_text and not Path(path_text).exists():
+            continue
+        name = str(carrier.get("name") or Path(str(carrier.get("path") or "")).name)
+        summary = str(review.get("summary") or "Label placement is blocked.").strip()
+        next_action = str(review.get("next_action") or "").strip()
+        reason = f"{summary} Label file: {name}."
+        if next_action:
+            reason = f"{reason} {next_action}"
+        reasons.append(reason)
+    return sorted(set(reasons))
 
 
 def _eeg_event_order_review(
@@ -63,6 +87,15 @@ def _eeg_event_order_review(
                 "status": "needs_review",
                 "summary": "Choose the EEG event that label rows follow in order.",
                 "next_action": "Select a target EEG event.",
+            }
+        )
+        return review
+    if not event_rows:
+        review.update(
+            {
+                "status": "needs_review",
+                "summary": "No EEG event preview is available for this target event.",
+                "next_action": "Confirm the target event after the EEG file is loaded.",
             }
         )
         return review

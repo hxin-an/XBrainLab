@@ -497,11 +497,13 @@ class DataInterpretationPreviewDialog(BaseDialog):
         review_status_layout.setSpacing(12)
         decision_card, decision_layout = self._card("Import readiness")
         decision_layout.addWidget(self.decision_label)
+        for line in self._readiness_detail_lines():
+            decision_layout.addWidget(self._wrapped_label(line))
         review_status_layout.addWidget(decision_card, stretch=2)
-        recipe_card, recipe_layout = self._card("Recipe")
+        recipe_card, recipe_layout = self._card("Import summary")
         recipe_layout.addWidget(
             self._wrapped_label(
-                "Source, metadata edits, label choices, and confirmations"
+                "Confirm what will be imported and what Epoch will use next."
             )
         )
         for line in self._recipe_card_lines():
@@ -703,6 +705,14 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.label_source_status_label.setVisible(False)
         row.addStretch(1)
         layout.addLayout(row)
+        self.bids_events_notice_label = self._wrapped_label(
+            "BIDS EEG events.tsv detected. XBrainLab reviews event columns, "
+            "events.json Levels, participants, and channel sidecars available "
+            "for this import."
+        )
+        self.bids_events_notice_label.setObjectName("DataImportRuleStatus")
+        self.bids_events_notice_label.setVisible(self._has_bids_event_source())
+        layout.addWidget(self.bids_events_notice_label)
         self.label_source_mode_combo.currentIndexChanged.connect(
             self._refresh_label_source_mode
         )
@@ -774,6 +784,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
         if hasattr(self, "label_source_status_label"):
             self.label_source_status_label.setText(self._label_source_status_text())
+        if hasattr(self, "bids_events_notice_label"):
+            self.bids_events_notice_label.setVisible(self._has_bids_event_source())
         for widget in (getattr(self, "pairing_card", None),):
             if widget is not None:
                 widget.setVisible(use_loaded)
@@ -1617,11 +1629,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.label_match_mode_combo = self._rule_combo(
             self._match_mode_choices(),
             self._default_match_mode(),
-            "Choose how label files are matched to EEG files.",
+            "Label files are paired automatically; adjust individual rows below.",
         )
-        header.addWidget(
-            self._inline_rule_control("Pair by", self.label_match_mode_combo)
-        )
+        self.label_match_mode_combo.setVisible(False)
         layout.addLayout(header)
 
         self.label_pairing_rows_widget = QWidget()
@@ -1971,6 +1981,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._updating_label_rule = False
 
         layout.addWidget(self._placement_method_selector())
+        self.placement_status_label = QLabel(self._placement_status_text())
+        self.placement_status_label.setObjectName("DataImportRuleStatus")
+        self.placement_status_label.setWordWrap(True)
+        layout.addWidget(self.placement_status_label)
+
         self.placement_detail_stack = QStackedWidget()
         self.placement_detail_stack.setObjectName("DataImportPlacementDetailStack")
         self.placement_detail_stack.setSizePolicy(
@@ -1979,11 +1994,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         self._build_placement_detail_pages()
         layout.addWidget(self.placement_detail_stack)
-
-        self.placement_status_label = QLabel(self._placement_status_text())
-        self.placement_status_label.setObjectName("DataImportRuleStatus")
-        self.placement_status_label.setWordWrap(True)
-        layout.addWidget(self.placement_status_label)
 
         self.rule_placement_method_combo.currentIndexChanged.connect(
             self._handle_placement_method_change
@@ -2096,6 +2106,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 "Label rows are assigned in file order only to the selected EEG event.",
             )
         )
+        self.target_event_status_label = QLabel(self._target_event_status_text())
+        self.target_event_status_label.setObjectName("DataImportRuleStatus")
+        self.target_event_status_label.setWordWrap(True)
+        layout.addWidget(self.target_event_status_label)
         self.target_event_buttons = {}
         self.target_event_option_frames = {}
         choices = self._target_eeg_event_choices()
@@ -2110,17 +2124,13 @@ class DataInterpretationPreviewDialog(BaseDialog):
                     "the recording exposes event markers.",
                 )
             )
-        self.target_event_status_label = QLabel(self._target_event_status_text())
-        self.target_event_status_label.setObjectName("DataImportRuleStatus")
-        self.target_event_status_label.setWordWrap(True)
-        layout.addWidget(self.target_event_status_label)
         return page
 
     def _placement_time_field_page(self) -> QFrame:
         page = self._placement_detail_frame()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(12, 10, 12, 11)
-        layout.setSpacing(8)
+        layout.setContentsMargins(12, 10, 12, 12)
+        layout.setSpacing(10)
         layout.addWidget(
             self._placement_section_title(
                 "Label time",
@@ -2128,10 +2138,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 "EEG timeline.",
             )
         )
-        controls = QGridLayout()
+        controls = QHBoxLayout()
         controls.setContentsMargins(0, 0, 0, 0)
-        controls.setHorizontalSpacing(10)
-        controls.setVerticalSpacing(8)
+        controls.setSpacing(10)
         time_field_combo = self._rule_combo(
             self._alignment_rule_choices("time_field"),
             self._default_alignment_value("time_field"),
@@ -2142,18 +2151,115 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 self._sync_alignment_from_visible_combo(selector)
             )
         )
+        time_control = self._rule_control("Label time field", time_field_combo)
+        time_control.setMaximumWidth(360)
+        controls.addWidget(time_control)
         controls.addWidget(
-            self._rule_control("Label time field", time_field_combo),
-            0,
-            0,
+            self._placement_time_meaning_card(),
+            stretch=1,
         )
-        controls.setColumnStretch(0, 1)
         layout.addLayout(controls)
+        layout.addWidget(self._placement_time_review_table())
         layout.addWidget(
             self._placement_note("Epoch window will be set later in epoch setup.")
         )
-        layout.addStretch(1)
         return page
+
+    def _placement_time_meaning_card(self) -> QFrame:
+        card = QFrame()
+        card.setObjectName("DataImportPlacementReviewCard")
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(10, 7, 10, 8)
+        layout.setSpacing(3)
+        title = QLabel("Time values mean")
+        title.setObjectName("DataImportRuleLabel")
+        value = QLabel(self._time_value_meaning_text())
+        value.setObjectName("DataImportSourceTitle")
+        value.setWordWrap(True)
+        layout.addWidget(title)
+        layout.addWidget(value)
+        return card
+
+    def _placement_time_review_table(self) -> QFrame:
+        table = QFrame()
+        table.setObjectName("DataImportPlacementReviewTable")
+        table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout = QVBoxLayout(table)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(5)
+        layout.addWidget(
+            self._placement_review_header_row(
+                ["Label file", "Time field", "Usable values", "Range", "Status"]
+            )
+        )
+        entries = self._active_backend_placement_review_entries("time_field")
+        if not entries:
+            layout.addWidget(
+                self._empty_state(
+                    "Time values will be checked after a label file is loaded.",
+                )
+            )
+            return table
+        for original, review in entries:
+            layout.addWidget(self._placement_time_review_row(original, review))
+        return table
+
+    def _placement_review_header_row(self, labels: list[str]) -> QFrame:
+        row = QFrame()
+        row.setObjectName("DataImportPlacementReviewHeader")
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(10, 0, 10, 0)
+        layout.setSpacing(10)
+        widths = [0, 116, 128, 120, 92]
+        stretches = [2, 0, 0, 0, 0]
+        for label, width, stretch in zip(labels, widths, stretches, strict=False):
+            widget = self._pairing_header_label(label, width)
+            layout.addWidget(widget, stretch=stretch)
+        return row
+
+    def _placement_time_review_row(
+        self,
+        original: dict[str, Any],
+        review: dict[str, Any],
+    ) -> QFrame:
+        row = QFrame()
+        row.setObjectName("DataImportPlacementReviewRow")
+        row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(10, 7, 10, 7)
+        layout.setSpacing(10)
+
+        source_name = str(
+            original.get("name") or Path(str(original.get("path", ""))).name
+        )
+        file_name = QLabel(source_name)
+        file_name.setObjectName("DataImportSourceTitle")
+        file_name.setWordWrap(True)
+        layout.addWidget(file_name, stretch=2)
+
+        time_field = QLabel(str(review.get("time_field") or "-"))
+        time_field.setObjectName("DataImportPlacementReviewValue")
+        time_field.setFixedWidth(116)
+        layout.addWidget(time_field)
+
+        usable = QLabel(self._time_review_usable_text(review))
+        usable.setObjectName("DataImportSourceDetail")
+        usable.setFixedWidth(128)
+        layout.addWidget(usable)
+
+        time_range = QLabel(self._time_review_range_text(review))
+        time_range.setObjectName("DataImportSourceDetail")
+        time_range.setFixedWidth(120)
+        layout.addWidget(time_range)
+
+        status = QLabel(self._placement_review_status_text(review))
+        status.setObjectName("DataImportPlacementReviewBadge")
+        status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        status.setProperty("reviewState", str(review.get("status") or "needs_review"))
+        status.setFixedWidth(92)
+        layout.addWidget(status)
+        return row
 
     def _placement_interval_page(self) -> QFrame:
         page = self._placement_detail_frame()
@@ -2437,7 +2543,18 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self,
         placement_method: str,
     ) -> list[dict[str, Any]]:
-        reviews: list[dict[str, Any]] = []
+        return [
+            review
+            for _original, review in self._active_backend_placement_review_entries(
+                placement_method
+            )
+        ]
+
+    def _active_backend_placement_review_entries(
+        self,
+        placement_method: str,
+    ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+        reviews: list[tuple[dict[str, Any], dict[str, Any]]] = []
         for item, original in self._label_carrier_items:
             carrier_key = self._label_carrier_key(item, original)
             if carrier_key and self._is_label_carrier_excluded(carrier_key):
@@ -2454,8 +2571,92 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 ):
                     review = raw_review
             if isinstance(review, dict):
-                reviews.append(review)
+                reviews.append((original, review))
         return reviews
+
+    def _time_value_meaning_text(self) -> str:
+        time_model = str(self._common_carrier_value("time_model") or "").strip()
+        if time_model == "sample_index":
+            return "Sample index in the EEG recording"
+        if time_model in {"seconds", "relative_time"}:
+            return "Seconds from the recording start"
+        if time_model == "timestamp":
+            return "Timestamp from the label file"
+        if time_model == "lsl_time":
+            return "LSL stream time"
+        return "Time base will be confirmed from the selected field"
+
+    @staticmethod
+    def _time_review_usable_text(review: dict[str, Any]) -> str:
+        label_rows = DataInterpretationPreviewDialog._review_int_value(
+            review,
+            "label_rows",
+        )
+        numeric_rows = DataInterpretationPreviewDialog._review_int_value(
+            review,
+            "numeric_rows",
+        )
+        if label_rows is not None and numeric_rows is not None:
+            return f"{numeric_rows}/{label_rows} numeric"
+        if numeric_rows is not None:
+            return f"{numeric_rows} numeric"
+        if label_rows is not None:
+            return f"{label_rows} rows"
+        return "Needs review"
+
+    def _time_review_range_text(self, review: dict[str, Any]) -> str:
+        time_min = self._review_number_value(review, "time_min")
+        time_max = self._review_number_value(review, "time_max")
+        if time_min is None or time_max is None:
+            return "-"
+        suffix = self._time_range_suffix()
+        start = self._compact_number(time_min)
+        end = self._compact_number(time_max)
+        return f"{start}-{end}{suffix}"
+
+    def _time_range_suffix(self) -> str:
+        time_model = str(self._common_carrier_value("time_model") or "").strip()
+        if time_model == "sample_index":
+            return " samples"
+        if time_model in {"seconds", "relative_time", ""}:
+            return " s"
+        return ""
+
+    @staticmethod
+    def _placement_review_status_text(review: dict[str, Any]) -> str:
+        status = str(review.get("status") or "needs_review")
+        if status == "ready":
+            return "Ready"
+        if status == "blocked":
+            return "Blocked"
+        return "Needs review"
+
+    @staticmethod
+    def _review_int_value(review: dict[str, Any], key: str) -> int | None:
+        value = review.get(key)
+        if isinstance(value, int):
+            return value
+        text = str(value or "").strip()
+        return int(text) if text.isdigit() else None
+
+    @staticmethod
+    def _review_number_value(review: dict[str, Any], key: str) -> float | None:
+        value = review.get(key)
+        if isinstance(value, int | float):
+            return float(value)
+        text = str(value or "").strip()
+        if not text:
+            return None
+        try:
+            return float(text)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _compact_number(value: float) -> str:
+        if value.is_integer():
+            return str(int(value))
+        return f"{value:.3f}".rstrip("0").rstrip(".")
 
     def _single_backend_placement_review_text(self, review: dict[str, Any]) -> str:
         method = str(review.get("method") or "").strip()
@@ -3827,6 +4028,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
             QFrame#DataImportRuleControl,
             QFrame#DataImportInlineRuleControl,
             QFrame#DataImportPairingRow,
+            QFrame#DataImportPlacementReviewCard,
+            QFrame#DataImportPlacementReviewRow,
             QFrame#DataImportEventRulesTable,
             QFrame#DataImportClassMapTable,
             QFrame#DataImportInternalLabelsTable,
@@ -3866,6 +4069,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
             QFrame#DataImportTargetEventRow[selected="true"] {{
                 background-color: #1e2f3d;
                 border: 1px solid #3b79a5;
+            }}
+            QFrame#DataImportPlacementReviewTable,
+            QFrame#DataImportPlacementReviewHeader {{
+                background-color: transparent;
+                border: none;
             }}
             QFrame#DataImportPairingHeader {{
                 background-color: transparent;
@@ -3937,6 +4145,15 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 font-size: 12px;
                 font-weight: 700;
             }}
+            QLabel#DataImportPlacementReviewValue {{
+                color: #eeeeee;
+                background-color: #191919;
+                border: 1px solid #303030;
+                border-radius: 4px;
+                padding: 3px 6px;
+                font-size: 12px;
+                font-weight: 600;
+            }}
             QLabel#DataImportPairingArrow {{
                 color: {Theme.TEXT_SECONDARY};
                 font-size: 16px;
@@ -3955,6 +4172,25 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 color: #ffd9a1;
                 background-color: #4a341a;
                 border: 1px solid #8a6429;
+            }}
+            QLabel#DataImportPlacementReviewBadge {{
+                color: #d8f5dd;
+                background-color: #173b24;
+                border: 1px solid #2c7a43;
+                border-radius: 4px;
+                padding: 4px 0;
+                font-size: 11px;
+                font-weight: 600;
+            }}
+            QLabel#DataImportPlacementReviewBadge[reviewState="needs_review"] {{
+                color: #ffd9a1;
+                background-color: #4a341a;
+                border: 1px solid #8a6429;
+            }}
+            QLabel#DataImportPlacementReviewBadge[reviewState="blocked"] {{
+                color: #ffd2d2;
+                background-color: #4a2020;
+                border: 1px solid #8a3a3a;
             }}
             QLabel#DataImportPairingNotice {{
                 color: #ffd9a1;
@@ -4562,6 +4798,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
         return f"{field_text} {verb} missing. Double-click a cell to edit it."
 
     def _label_source_summary_text(self) -> str:
+        if self._bids_payload().get("is_bids") and any(
+            str(carrier.get("format") or "").strip() == "BIDS events"
+            for carrier in self._label_carrier_preview_rows()
+        ):
+            return "BIDS events.tsv"
         carriers = self.label_carrier_tree.topLevelItemCount()
         if carriers <= 0:
             return "Internal events or no labels"
@@ -4583,14 +4824,34 @@ class DataInterpretationPreviewDialog(BaseDialog):
         return source_kind or "Unknown source"
 
     def _bids_status(self) -> str:
-        bids = self.scan_result.get("bids") or {}
+        bids = self._bids_payload()
         if not isinstance(bids, dict) or not bids.get("is_bids"):
             return "Not detected"
-        subjects = ", ".join(str(item) for item in bids.get("subjects", []) or [])
+        subjects = self._limited_join(bids.get("subjects", []) or [], limit=3)
+        datatypes = self._limited_join(bids.get("datatypes", []) or [], limit=2)
         events = bids.get("events_files", []) or []
         event_count = len(events) if isinstance(events, list) else 0
         subject_text = subjects or "subjects pending"
-        return f"BIDS-like source, {subject_text}, {event_count} events.tsv file(s)"
+        parts = [f"BIDS EEG folder, {subject_text}"]
+        if datatypes:
+            parts.append(f"datatype {datatypes}")
+        parts.append(f"{event_count} events.tsv file(s)")
+        channel_count = len(bids.get("channels_files", []) or [])
+        if channel_count:
+            parts.append(f"{channel_count} channels.tsv")
+        participant_count = bids.get("participant_count")
+        if isinstance(participant_count, int) and participant_count:
+            parts.append(f"{participant_count} participant row(s)")
+        return ", ".join(parts)
+
+    def _has_bids_event_source(self) -> bool:
+        bids = self.scan_result.get("bids") or {}
+        if isinstance(bids, dict) and bool(bids.get("is_bids")):
+            return True
+        return any(
+            str(carrier.get("format") or "").strip() == "BIDS events"
+            for carrier in self._label_carrier_preview_rows()
+        )
 
     def _decision_text(self) -> str:
         if self.decision == "blocked":
@@ -4609,11 +4870,37 @@ class DataInterpretationPreviewDialog(BaseDialog):
             return "Ready to apply."
         return "Review status is unavailable."
 
+    def _readiness_detail_lines(self) -> list[str]:
+        rows = self._review_rows()
+        blocked = sum(1 for row in rows if "fix" in row[3].lower())
+        review = max(len(rows) - blocked, 0)
+        if self.decision == "safe":
+            lines = ["No blocking items. Apply action is available below."]
+        elif self.decision == "needs_confirmation":
+            lines = [f"{review or len(rows)} item(s) need confirmation before apply."]
+        elif self.decision == "blocked":
+            lines = [f"{blocked or len(rows)} blocker(s) must be fixed first."]
+        else:
+            lines = ["Review import status before applying."]
+        if self._bids_payload().get("is_bids"):
+            lines.append("BIDS EEG source and sidecars are included in the recipe.")
+        save_recipe_check = getattr(self, "save_recipe_check", None)
+        if save_recipe_check is not None and save_recipe_check.isChecked():
+            lines.append("Reusable import recipe will be saved after applying.")
+        return lines
+
     def _recipe_card_lines(self) -> list[str]:
         lines = [
-            f"Source: {self._source_selection_text()}",
-            f"Labels: {self._label_source_summary_text()}",
+            f"EEG files: {self._source_selection_text()}",
+            f"Label source: {self._label_source_summary_text()}",
         ]
+        bids_scope = self._bids_scope_summary_text()
+        if bids_scope:
+            lines.append(f"BIDS scope: {bids_scope}")
+        lines.extend(self._recipe_label_choice_lines())
+        epoch_next = self._epoch_next_summary_text()
+        if epoch_next:
+            lines.append(f"Epoch next: {epoch_next}")
         trace = self.preview.get("recipe_trace") or self.scan_result.get("recipe_trace")
         trace_rows = self._recipe_trace_rows(trace)
         trace_labels: list[str] = []
@@ -4626,6 +4913,170 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 visible = f"{visible}, +{len(trace_labels) - 7} more"
             lines.append(f"Recipe records: {visible}")
         return lines
+
+    def _recipe_label_choice_lines(self) -> list[str]:
+        if self._label_source_mode() == "internal_events":
+            return self._recipe_internal_label_choice_lines()
+        return self._recipe_loaded_label_choice_lines()
+
+    def _recipe_internal_label_choice_lines(self) -> list[str]:
+        candidate_rows = self._internal_candidate_label_event_rows()
+        not_used_rows = self._internal_not_used_event_rows()
+        lines: list[str] = []
+        training = self._event_code_list_text(row["code"] for row in candidate_rows)
+        if training:
+            lines.append(f"Training events: {training}")
+        excluded = self._event_code_list_text(row["code"] for row in not_used_rows)
+        if excluded:
+            lines.append(f"Not used as labels: {excluded}")
+        class_names = self._recipe_class_name_summary(candidate_rows)
+        if class_names:
+            lines.append(f"Class names: {class_names}")
+        return lines
+
+    def _recipe_loaded_label_choice_lines(self) -> list[str]:
+        lines: list[str] = []
+        pairing = self._recipe_pairing_summary()
+        if pairing:
+            lines.append(f"Pairing: {pairing}")
+        label_field = self.rule_label_field_combo.currentText().strip()
+        use_as = self.rule_use_as_combo.currentText().strip()
+        if label_field:
+            value_text = label_field if not use_as else f"{label_field} as {use_as}"
+            lines.append(f"Read labels from: {value_text}")
+        placement = self._recipe_placement_summary()
+        if placement:
+            lines.append(f"Place labels by: {placement}")
+        class_names = self._recipe_class_name_summary([])
+        if class_names:
+            lines.append(f"Class names: {class_names}")
+        return lines
+
+    def _epoch_next_summary_text(self) -> str:
+        class_map = self._class_map_for_current_label_source()
+        class_names = [
+            str(label).strip()
+            for _code, label in sorted(class_map.items(), key=self._class_map_sort_key)
+            if str(label).strip()
+        ]
+        if class_names:
+            visible = ", ".join(class_names[:4])
+            if len(class_names) > 4:
+                visible = f"{visible}, +{len(class_names) - 4} more"
+            placement = self._recipe_placement_summary()
+            return f"{visible}" + (f" · {placement}" if placement else "")
+        if self._label_source_mode() == "internal_events":
+            events = self._event_code_list_text(
+                row["code"] for row in self._internal_candidate_label_event_rows()
+            )
+            return events or "No class events selected yet"
+        if self._label_carrier_items:
+            return "Review label values before creating supervised epochs"
+        return "No supervised labels available yet"
+
+    def _bids_payload(self) -> dict[str, Any]:
+        bids = self.preview.get("bids") or self.scan_result.get("bids")
+        return dict(bids) if isinstance(bids, dict) else {}
+
+    def _bids_scope_summary_text(self) -> str:
+        bids = self._bids_payload()
+        if not bids.get("is_bids"):
+            return ""
+        scope = bids.get("selected_scope")
+        if not isinstance(scope, dict):
+            scope = bids
+        parts: list[str] = []
+        for key, label in (
+            ("subjects", "sub"),
+            ("sessions", "ses"),
+            ("tasks", "task"),
+            ("runs", "run"),
+        ):
+            values = scope.get(key) or []
+            if isinstance(values, list) and values:
+                parts.append(
+                    f"{label}-{self._limited_join(values, limit=3)}"
+                    if len(values) == 1
+                    else f"{label}: {self._limited_join(values, limit=3)}"
+                )
+        datatypes = scope.get("datatypes") or bids.get("datatypes") or []
+        if isinstance(datatypes, list) and datatypes:
+            parts.append("datatype " + self._limited_join(datatypes, limit=2))
+        file_count = scope.get("eeg_file_count") or bids.get("eeg_file_count")
+        if isinstance(file_count, int) and file_count:
+            parts.append(f"{file_count} EEG file(s)")
+        events = scope.get("events_files") or bids.get("events_files") or []
+        if isinstance(events, list):
+            parts.append(f"{len(events)} events.tsv")
+        channels = scope.get("channels_files") or bids.get("channels_files") or []
+        if isinstance(channels, list) and channels:
+            parts.append(f"{len(channels)} channels.tsv")
+        participants = bids.get("participant_count")
+        if isinstance(participants, int) and participants:
+            parts.append(f"{participants} participant row(s)")
+        return " · ".join(parts)
+
+    @staticmethod
+    def _limited_join(values: list[Any], *, limit: int) -> str:
+        cleaned = [str(item) for item in values if str(item).strip()]
+        visible = ", ".join(cleaned[:limit])
+        if len(cleaned) > limit:
+            visible = f"{visible}, +{len(cleaned) - limit} more"
+        return visible
+
+    def _recipe_pairing_summary(self, *, limit: int = 3) -> str:
+        pairs: list[str] = []
+        for item, original in self._label_carrier_items:
+            carrier_key = self._label_carrier_key(item, original)
+            if carrier_key and self._is_label_carrier_excluded(carrier_key):
+                continue
+            label_file = self._label_file_display(item, original)
+            eeg_file = self._label_carrier_choice_text(
+                "target_file",
+                self._label_carrier_item_text(item, 1),
+            )
+            eeg_name = Path(eeg_file).name if eeg_file else "needs review"
+            if label_file:
+                pairs.append(f"{eeg_name} <- {label_file}")
+        if not pairs:
+            return ""
+        visible = "; ".join(pairs[:limit])
+        if len(pairs) > limit:
+            visible = f"{visible}; +{len(pairs) - limit} more"
+        return visible
+
+    def _recipe_placement_summary(self) -> str:
+        method = self.rule_placement_method_combo.currentText().strip()
+        placement_method = self._combo_current_data(self.rule_placement_method_combo)
+        target = self.rule_alignment_combo.currentText().strip()
+        if placement_method == "interval":
+            duration = self.rule_duration_field_combo.currentText().strip()
+            if duration and duration != "No duration field":
+                return f"{method} · {target} + {duration}"
+        if target:
+            return f"{method} · {target}"
+        return method
+
+    def _recipe_class_name_summary(
+        self,
+        candidate_rows: list[dict[str, str]],
+        *,
+        limit: int = 4,
+    ) -> str:
+        codes = {str(row.get("code") or "").strip() for row in candidate_rows}
+        pairs: list[str] = []
+        for tree_item, code, _original in self._class_map_items:
+            if codes and code not in codes:
+                continue
+            value = self._class_map_item_text(tree_item).strip()
+            if value:
+                pairs.append(f"{code}={value}")
+        if not pairs:
+            return ""
+        visible = ", ".join(pairs[:limit])
+        if len(pairs) > limit:
+            visible = f"{visible}, +{len(pairs) - limit} more"
+        return visible
 
     def _populate_files(self) -> None:
         metadata_preview = self.preview.get("metadata_preview") or []
@@ -4876,6 +5327,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         event_roles = self._event_role_overrides()
         if self._label_source_mode() == "internal_events":
             event_roles.update(self._internal_event_role_overrides())
+            internal_event_selection = self._internal_event_selection_choices()
+            if internal_event_selection:
+                choices["internal_event_selection"] = internal_event_selection
         if event_roles:
             choices["event_roles"] = event_roles
         eeg_file_remap = self._eeg_file_remap_choices()
@@ -4899,7 +5353,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if not hasattr(self, "label_source_mode_combo"):
             return ""
         mode = self._label_source_mode()
-        if mode == "internal_events" and self._label_carrier_items:
+        if mode == "internal_events" and (
+            self._label_carrier_items or self._has_internal_event_preview_rows()
+        ):
             return "embedded_events"
         return ""
 
@@ -5011,6 +5467,47 @@ class DataInterpretationPreviewDialog(BaseDialog):
             )
             if role in {"class label", "not a label"}
         }
+
+    def _internal_event_selection_choices(self) -> dict[str, Any]:
+        if not self._has_internal_event_preview_rows():
+            return {}
+        self._remember_internal_class_name_edits()
+        label_event_codes = [
+            str(row.get("code") or "").strip()
+            for row in self._internal_candidate_label_event_rows()
+            if str(row.get("code") or "").strip()
+        ]
+        not_label_event_codes = [
+            str(row.get("code") or "").strip()
+            for row in self._internal_not_used_event_rows()
+            if str(row.get("code") or "").strip()
+        ]
+        if not label_event_codes and not not_label_event_codes:
+            return {}
+        class_map = {
+            code: self._class_map_item_text(tree_item).strip()
+            for tree_item, code, _original in self._class_map_items
+            if code in set(label_event_codes)
+            and self._class_map_item_text(tree_item).strip()
+        }
+        result: dict[str, Any] = {
+            "label_event_codes": label_event_codes,
+            "not_label_event_codes": not_label_event_codes,
+        }
+        if class_map:
+            result["class_map"] = {
+                key: class_map[key]
+                for key in sorted(class_map, key=lambda value: value.casefold())
+            }
+        return result
+
+    def _has_internal_event_preview_rows(self) -> bool:
+        payload = self._internal_event_preview_payload()
+        for key in ("candidate_label_events", "candidate_events", "not_used_events"):
+            value = payload.get(key)
+            if isinstance(value, list) and value:
+                return True
+        return False
 
     def _install_event_role_selector(
         self,

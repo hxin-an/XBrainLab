@@ -236,6 +236,19 @@ class DataInterpretationSessionState:
                 if applied is not None
                 else []
             ),
+            bids=dict(
+                applied_review.bids
+                if applied_review is not None
+                else candidate.bids
+                if candidate is not None
+                else preview.bids
+                if preview is not None
+                else scan.bids
+                if scan is not None
+                else applied.bids
+                if applied is not None
+                else {}
+            ),
             label_carrier_plan=[dict(item) for item in label_carrier_plan],
             format_capabilities=[dict(item) for item in format_capabilities],
             event_roles=dict(event_roles),
@@ -478,11 +491,19 @@ class DataInterpretationSessionState:
                 if str(item.get("placement_method") or "").strip()
             }
         )
-        selected_event_names = sorted(
+        internal_event_selection = dict(
+            getattr(source, "internal_event_selection", {}) or {}
+        )
+        selected_event_names = DataInterpretationSessionState._sorted_event_names(
             {
                 str(name)
                 for item in label_imports
                 for name in item.get("selected_event_names", [])
+                if str(name).strip()
+            }
+            | {
+                str(name)
+                for name in internal_event_selection.get("label_event_codes", [])
                 if str(name).strip()
             }
         )
@@ -490,18 +511,52 @@ class DataInterpretationSessionState:
             str(key): str(value)
             for key, value in getattr(source, "class_map", {}).items()
         }
+        has_label_imports = bool(label_imports)
+        has_internal_selection = (
+            DataInterpretationSessionState._has_internal_label_selection(
+                internal_event_selection,
+            )
+        )
         run_event_mappings = {
             str(key): dict(value)
             for key, value in getattr(source, "run_event_mappings", {}).items()
         }
+        label_source = DataInterpretationSessionState._epoch_label_source(source)
+        default_epoch_events = (
+            DataInterpretationSessionState._class_names_from_map(class_map)
+            if applied is not None
+            and class_map
+            and (has_label_imports or has_internal_selection)
+            else selected_event_names
+        )
+        supervised_blockers = DataInterpretationSessionState._epoch_supervised_blockers(
+            applied=applied,
+            carrier_plan=carrier_plan,
+            label_imports=label_imports,
+            internal_event_selection=internal_event_selection,
+        )
+        supervised_ready = bool(default_epoch_events) and not supervised_blockers
         handoff: dict[str, Any] = {
-            "ready": bool(applied is not None),
+            "ready": bool(applied is not None and not supervised_blockers),
+            "supervised_ready": supervised_ready,
+            "supervised_blockers": supervised_blockers,
+            "label_source": label_source,
             "source": "applied_interpretation" if applied is not None else "candidate",
             "placement_modes": placement_modes,
             "class_map": class_map,
+            "default_epoch_events": default_epoch_events,
+            "epoch_targets": [
+                {"event": event_name, "source": label_source}
+                for event_name in default_epoch_events
+            ],
             "selected_event_names": selected_event_names,
             "run_event_mappings": run_event_mappings,
         }
+        bids = getattr(source, "bids", {}) or {}
+        if isinstance(bids, dict) and bids:
+            handoff["bids"] = dict(bids)
+        if internal_event_selection:
+            handoff["internal_event_selection"] = internal_event_selection
         if label_imports:
             handoff["label_imports"] = label_imports
         if carrier_plan:
@@ -524,7 +579,72 @@ class DataInterpretationSessionState:
         return handoff
 
     @staticmethod
+    def _epoch_label_source(source: Any) -> str:
+        if str(getattr(source, "source_kind", "") or "") == "bids":
+            for item in getattr(source, "label_carrier_plan", []) or []:
+                if str(item.get("format") or "") == "BIDS events":
+                    return "bids_events"
+        if (
+            getattr(source, "internal_event_selection", {})
+            or str(getattr(source, "label_carrier", "") or "") == "embedded_events"
+        ):
+            return "internal_events"
+        if getattr(source, "label_carrier_plan", []) or getattr(
+            source,
+            "label_imports",
+            [],
+        ):
+            return "loaded_label_files"
+        return "none"
+
+    @staticmethod
+    def _epoch_supervised_blockers(
+        *,
+        applied: AppliedInterpretation | None,
+        carrier_plan: list[dict[str, Any]],
+        label_imports: list[dict[str, Any]],
+        internal_event_selection: dict[str, Any],
+    ) -> list[str]:
+        if applied is None:
+            return ["Apply the reviewed import before creating supervised epochs."]
+        has_internal_selection = (
+            DataInterpretationSessionState._has_internal_label_selection(
+                internal_event_selection,
+            )
+        )
+        if label_imports or has_internal_selection:
+            return []
+        if carrier_plan:
+            return ["Reviewed labels were not applied to the loaded EEG data."]
+        return ["No class labels are available for supervised epoch defaults."]
+
+    @staticmethod
+    def _has_internal_label_selection(
+        internal_event_selection: dict[str, Any],
+    ) -> bool:
+        return bool(internal_event_selection.get("label_event_codes"))
+
+    @staticmethod
+    def _class_names_from_map(class_map: dict[str, str]) -> list[str]:
+        result: list[str] = []
+        for key in DataInterpretationSessionState._sorted_event_names(set(class_map)):
+            value = str(class_map.get(key) or "").strip()
+            if value and value not in result:
+                result.append(value)
+        return result
+
+    @staticmethod
     def _label_mapping_for_recipe(mapping: Any) -> dict[str, str]:
         if not isinstance(mapping, dict):
             return {}
         return {str(key): str(value) for key, value in mapping.items()}
+
+    @staticmethod
+    def _sorted_event_names(values: set[str]) -> list[str]:
+        def sort_key(value: str) -> tuple[int, int | str]:
+            text = str(value).strip()
+            return (0, int(text)) if text.isdigit() else (1, text.casefold())
+
+        return sorted(
+            {str(item).strip() for item in values if str(item).strip()}, key=sort_key
+        )

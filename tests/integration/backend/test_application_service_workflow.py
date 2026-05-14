@@ -79,6 +79,59 @@ def _write_synthetic_raw_fif(tmp_path):
     return path
 
 
+def _write_bids_eeg_motor_imagery_fixture(tmp_path):
+    bids_root = tmp_path / "bids_mi"
+    eeg_dir = bids_root / "sub-01" / "ses-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    (bids_root / "dataset_description.json").write_text(
+        '{"Name":"Synthetic BIDS EEG motor imagery","BIDSVersion":"1.10.0"}',
+        encoding="utf-8",
+    )
+    (bids_root / "participants.tsv").write_text(
+        "participant_id\tsex\tage\nsub-01\tF\t21\n",
+        encoding="utf-8",
+    )
+
+    sfreq = 128
+    info = mne.create_info(
+        ch_names=["C3", "C4", "Cz", "Pz"],
+        sfreq=sfreq,
+        ch_types="eeg",
+    )
+    data = np.random.default_rng(314).normal(size=(4, sfreq * 6))
+    raw = mne.io.RawArray(data, info)
+    eeg_path = eeg_dir / "sub-01_ses-01_task-mi_run-1_eeg.fif"
+    raw.save(eeg_path, overwrite=True)
+
+    events_path = eeg_dir / "sub-01_ses-01_task-mi_run-1_events.tsv"
+    events_path.write_text(
+        "onset\tduration\ttrial_type\tvalue\n"
+        "0.50\t0.40\tleft\t769\n"
+        "1.20\t0.40\tright\t770\n"
+        "1.90\t0.40\tleft\t769\n"
+        "2.60\t0.40\tright\t770\n"
+        "3.30\t0.40\tleft\t769\n"
+        "4.00\t0.40\tright\t770\n",
+        encoding="utf-8",
+    )
+    events_path.with_suffix(".json").write_text(
+        '{"trial_type":{"LongName":"Motor imagery class",'
+        '"Levels":{"left":"Left hand","right":"Right hand"}},'
+        '"value":{"Description":"Original event code"}}',
+        encoding="utf-8",
+    )
+    channels_path = eeg_dir / "sub-01_ses-01_task-mi_run-1_channels.tsv"
+    channels_path.write_text(
+        "name\ttype\tunits\tstatus\n"
+        "C3\tEEG\tuV\tgood\n"
+        "C4\tEEG\tuV\tgood\n"
+        "Cz\tEEG\tuV\tgood\n"
+        "Pz\tEEG\tuV\tbad\n",
+        encoding="utf-8",
+    )
+    return bids_root, eeg_path, events_path, channels_path
+
+
 def test_application_service_load_epoch_dataset_workflow(tmp_path):
     service = ApplicationService()
     fif_path = _write_synthetic_raw_fif(tmp_path)
@@ -308,6 +361,10 @@ def test_data_interpretation_to_dataset_workflow_is_non_mocked(tmp_path):
                 "task": "motor-imagery",
             }
         },
+        "internal_event_selection": {
+            "label_event_codes": ["left", "right"],
+            "class_map": {"left": "left", "right": "right"},
+        },
         "event_roles": {"internal_events": "class cue"},
         "class_map": {"1": "left", "2": "right"},
     }
@@ -432,6 +489,102 @@ def test_data_interpretation_to_dataset_workflow_is_non_mocked(tmp_path):
     assert dataset_result.state.dataset.split_summary == (
         EXPECTED_SYNTHETIC_SPLIT_SUMMARY
     )
+
+
+def test_product_smoke_bids_import_apply_create_epoch(tmp_path):
+    service = ApplicationService()
+    bids_root, eeg_path, events_path, channels_path = (
+        _write_bids_eeg_motor_imagery_fixture(tmp_path)
+    )
+    recipe_path = tmp_path / "bids-import-recipe.json"
+
+    scan_result = service.execute(
+        ScanSourceCommand(source_path=str(bids_root), source_hint="bids"),
+    )
+    preview_result = service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(eeg_path)],
+                "label_carrier_choices": {
+                    str(events_path): {
+                        "label_field": "trial_type",
+                        "anchor": "onset",
+                        "duration_field": "duration",
+                        "time_model": "seconds",
+                        "placement_method": "interval",
+                    }
+                },
+            },
+        ),
+    )
+    validation_result = service.execute(ValidateInterpretationCommand())
+
+    assert scan_result.ok is True
+    assert scan_result.state.interpretation.bids["is_bids"] is True
+    assert scan_result.state.interpretation.bids["scan_location"] == str(
+        bids_root.resolve()
+    )
+    assert scan_result.state.interpretation.label_carriers == [
+        str(events_path.resolve())
+    ]
+    assert scan_result.state.interpretation.bids["channels_files"] == [
+        str(channels_path.resolve())
+    ]
+    assert preview_result.ok is True
+    preview = preview_result.diagnostics["preview"]
+    assert preview["bids"]["selected_scope"]["eeg_files"] == [str(eeg_path.resolve())]
+    assert preview["metadata_preview"][0]["subject"]["value"] == "01"
+    assert preview["metadata_preview"][0]["session"]["value"] == "01"
+    assert preview["metadata_preview"][0]["task"]["value"] == "mi"
+    assert preview["metadata_preview"][0]["run"]["value"] == "1"
+    assert preview["class_map"] == {"left": "Left hand", "right": "Right hand"}
+    assert validation_result.ok is True
+
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+    recipe_result = service.execute(
+        SaveInterpretationRecipeCommand(recipe_path=str(recipe_path)),
+    )
+
+    assert apply_result.ok is True
+    handoff = apply_result.state.interpretation.epoch_handoff
+    assert handoff["label_source"] == "bids_events"
+    assert handoff["default_epoch_events"] == ["Left hand", "Right hand"]
+    assert handoff["bids"]["selected_scope"]["events_files"] == [
+        str(events_path.resolve())
+    ]
+    assert recipe_result.ok is True
+    assert recipe_result.diagnostics["recipe"]["bids"]["root"] == str(
+        bids_root.resolve()
+    )
+    reload_service = ApplicationService()
+    reload_result = reload_service.execute(
+        ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path)),
+    )
+    assert reload_result.ok is True
+    assert reload_result.diagnostics["candidate"]["bids"]["selected_scope"][
+        "events_files"
+    ] == [str(events_path.resolve())]
+    assert reload_result.diagnostics["candidate"]["class_map"] == {
+        "left": "Left hand",
+        "right": "Right hand",
+    }
+    assert reload_result.diagnostics["recipe"]["bids"]["root"] == str(
+        bids_root.resolve()
+    )
+
+    preprocess_result = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.NORMALIZE,
+            method="z-score",
+        ),
+    )
+    epoch_result = service.execute(CreateEpochCommand(t_min=-0.1, t_max=0.3))
+
+    assert preprocess_result.ok is True
+    assert epoch_result.ok is True
+    assert epoch_result.state.epoch.available is True
+    assert epoch_result.state.epoch.epoch_count == 6
+    assert set(epoch_result.state.epoch.event_ids) == {"Left hand", "Right hand"}
 
 
 def test_reload_recipe_blocks_missing_saved_eeg_file(tmp_path):

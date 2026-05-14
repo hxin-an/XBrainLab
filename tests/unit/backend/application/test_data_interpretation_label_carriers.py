@@ -204,6 +204,32 @@ def test_infer_class_map_uses_bids_events_json_levels(tmp_path):
     }
 
 
+def test_bids_label_carrier_plan_exposes_sidecar_level_evidence(tmp_path):
+    events = tmp_path / "sub-01_task-mi_events.tsv"
+    sidecar = tmp_path / "sub-01_task-mi_events.json"
+    events.write_text(
+        "onset\tduration\ttrial_type\n0.0\t1.0\tleft\n1.0\t1.0\tright\n",
+        encoding="utf-8",
+    )
+    sidecar.write_text(
+        '{"trial_type":{"Description":"Cue class",'
+        '"Levels":{"left":"Left hand","right":"Right hand"}}}',
+        encoding="utf-8",
+    )
+
+    plan = build_label_carrier_plan(
+        [str(events)],
+        {events.name: {"label_field": "trial_type", "anchor": "onset"}},
+    )
+
+    assert plan[0]["bids_sidecars"] == [str(sidecar)]
+    assert plan[0]["bids_level_labels"] == {
+        "left": "Left hand",
+        "right": "Right hand",
+    }
+    assert plan[0]["bids_field_descriptions"]["trial_type"] == "Cue class"
+
+
 def test_infer_class_map_uses_inherited_bids_events_json_levels(tmp_path):
     bids_root = tmp_path / "bids"
     eeg_dir = bids_root / "sub-01" / "eeg"

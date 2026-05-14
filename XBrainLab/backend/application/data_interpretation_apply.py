@@ -10,6 +10,7 @@ from typing import Any, Protocol
 
 import numpy as np
 import pandas as pd
+from scipy.io import loadmat
 
 from XBrainLab.backend.load_data.label_loader import load_label_file
 from XBrainLab.backend.utils.logger import logger
@@ -606,12 +607,21 @@ class DataInterpretationApplyService:
         review_status = (
             str(review.get("status") or "").strip() if isinstance(review, dict) else ""
         )
+        review_summary = (
+            str(review.get("summary") or "").strip().lower()
+            if isinstance(review, dict)
+            else ""
+        )
+        review_allows_apply = review_status == "ready" or (
+            review_status == "needs_review"
+            and "no eeg event-code preview is available" in review_summary
+        )
         return (
-            carrier_format in {"BIDS events", "CSV", "TSV"}
+            carrier_format in {"BIDS events", "CSV", "TSV", "MAT", "MAT labels"}
             and placement_method == "event_code"
             and bool(str(plan.get("selected_label_field") or "").strip())
             and bool(str(plan.get("selected_anchor") or "").strip())
-            and review_status == "ready"
+            and review_allows_apply
         )
 
     @staticmethod
@@ -620,10 +630,12 @@ class DataInterpretationApplyService:
         class_map: dict[str, str],
     ) -> bool:
         carrier_format = str(plan.get("format") or "").strip()
+        placement_method = str(plan.get("placement_method") or "").strip()
         time_model = str(plan.get("time_model") or "").strip().lower()
         granularity = str(plan.get("granularity") or "").strip().lower()
         return (
             carrier_format in {"MAT", "MAT labels"}
+            and placement_method in {"", "time_field"}
             and bool(str(plan.get("selected_label_field") or "").strip())
             and bool(str(plan.get("selected_anchor") or "").strip())
             and time_model == "sample_index"
@@ -637,10 +649,12 @@ class DataInterpretationApplyService:
         class_map: dict[str, str],
     ) -> bool:
         carrier_format = str(plan.get("format") or "").strip()
+        placement_method = str(plan.get("placement_method") or "").strip()
         time_model = str(plan.get("time_model") or "").strip().lower()
         granularity = str(plan.get("granularity") or "").strip().lower()
         return (
             carrier_format in {"MAT", "MAT labels", "TXT"}
+            and placement_method in {"", "eeg_event"}
             and bool(str(plan.get("selected_label_field") or "").strip())
             and time_model == "trial_order"
             and granularity == "trial"
@@ -689,6 +703,12 @@ def _load_event_code_label_rows(
     event_code_field: str,
 ) -> list[dict[str, Any]]:
     """Load reviewed CSV/TSV/BIDS event-code label rows."""
+    if path.lower().endswith(".mat"):
+        return _load_mat_event_code_label_rows(
+            path,
+            label_field=label_field,
+            event_code_field=event_code_field,
+        )
     sep = "\t" if path.lower().endswith(".tsv") else ","
     df = pd.read_csv(path, sep=sep)
     normalized_columns = [str(column).strip().lower() for column in df.columns]
@@ -705,6 +725,64 @@ def _load_event_code_label_rows(
     if not rows:
         raise ValueError("Label file contains no usable event-code label rows.")
     return rows
+
+
+def _load_mat_event_code_label_rows(
+    path: str,
+    *,
+    label_field: str,
+    event_code_field: str,
+) -> list[dict[str, Any]]:
+    """Load reviewed MAT rows that map labels to EEG event codes."""
+    payload = {
+        str(key): value
+        for key, value in loadmat(path).items()
+        if not str(key).startswith("__")
+    }
+    label_key = _resolve_mat_variable(payload, label_field)
+    event_code_key = _resolve_mat_variable(payload, event_code_field)
+    labels = _flatten_mat_values(payload[label_key])
+    event_codes = _flatten_mat_values(payload[event_code_key])
+    if len(labels) != len(event_codes):
+        raise ValueError(
+            "MAT label/event-code variables must have the same number of rows."
+        )
+    rows: list[dict[str, Any]] = []
+    for event_code, label in zip(event_codes, labels, strict=True):
+        code_text = _label_key(event_code)
+        if not code_text or _label_key(label) == "":
+            continue
+        rows.append({"event_code": code_text, "label": label})
+    if not rows:
+        raise ValueError("MAT label file contains no usable event-code label rows.")
+    return rows
+
+
+def _resolve_mat_variable(payload: dict[str, Any], requested: str) -> str:
+    normalized = str(requested or "").strip().casefold()
+    for key in payload:
+        if key.casefold() == normalized:
+            return key
+    raise ValueError(f"MAT variable not found: {requested}")
+
+
+def _flatten_mat_values(value: Any) -> list[Any]:
+    array = np.asarray(value)
+    if array.dtype == object:
+        return [_scalar_mat_value(item) for item in array.ravel().tolist()]
+    return [_scalar_mat_value(item) for item in array.ravel().tolist()]
+
+
+def _scalar_mat_value(value: Any) -> Any:
+    if isinstance(value, np.ndarray):
+        if value.size == 1:
+            return _scalar_mat_value(value.item())
+        return " ".join(str(_scalar_mat_value(item)) for item in value.ravel().tolist())
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
 
 
 def _events_from_event_code_label_rows(

@@ -416,7 +416,7 @@ service-first migration 的中間狀態，尚未完整完成。
 這批 command 由 `ApplicationService` dispatch / gate，實作與 in-memory lifecycle state
 目前位在 `DataInterpretationCommandService`，並回傳 typed diagnostics：
 
-- `ScanResult`：掃描 file / folder / BIDS-like source / recipe，列出 EEG files、label
+- `ScanResult`：掃描 file / folder / BIDS-EEG source / recipe，列出 EEG files、label
   carriers、BIDS summary 和 subject / session / task / run metadata provenance。
 - `InterpretationCandidate`：根據 scan result 和 optional choices 建立候選解讀。
 - `InterpretationPreview`：提供 file count、label carrier count、metadata preview、

@@ -26,6 +26,7 @@ class ImportRecipe:
     selected_eeg_files: list[str] = dc_field(default_factory=list)
     label_sources: list[str] = dc_field(default_factory=list)
     label_carriers: list[str] = dc_field(default_factory=list)
+    bids: dict[str, Any] = dc_field(default_factory=dict)
     label_carrier_plan: list[dict[str, Any]] = dc_field(default_factory=list)
     metadata: list[FileMetadataResolution] = dc_field(default_factory=list)
     format_capabilities: list[dict[str, Any]] = dc_field(default_factory=list)
@@ -36,6 +37,7 @@ class ImportRecipe:
     confirmations: list[str] = dc_field(default_factory=list)
     event_roles: dict[str, str] = dc_field(default_factory=dict)
     class_map: dict[str, str] = dc_field(default_factory=dict)
+    internal_event_selection: dict[str, Any] = dc_field(default_factory=dict)
     run_event_mappings: dict[str, dict[str, str]] = dc_field(default_factory=dict)
     label_imports: list[dict[str, Any]] = dc_field(default_factory=list)
     warnings: list[str] = dc_field(default_factory=list)
@@ -75,6 +77,9 @@ def import_recipe_from_dict(payload: dict[str, Any]) -> ImportRecipe:
         ],
         label_sources=[str(item) for item in payload.get("label_sources", [])],
         label_carriers=[str(item) for item in payload.get("label_carriers", [])],
+        bids=dict(payload.get("bids") or {})
+        if isinstance(payload.get("bids"), dict)
+        else {},
         label_carrier_plan=[
             dict(item)
             for item in payload.get("label_carrier_plan", [])
@@ -95,6 +100,9 @@ def import_recipe_from_dict(payload: dict[str, Any]) -> ImportRecipe:
         confirmations=[str(item) for item in payload.get("confirmations", [])],
         event_roles=_string_mapping(payload.get("event_roles")),
         class_map=_string_mapping(payload.get("class_map")),
+        internal_event_selection=dict(payload.get("internal_event_selection") or {})
+        if isinstance(payload.get("internal_event_selection"), dict)
+        else {},
         run_event_mappings=_nested_string_mapping(payload.get("run_event_mappings")),
         label_imports=[
             dict(item)
@@ -121,6 +129,7 @@ def build_import_recipe(
         selected_eeg_files=list(applied.loaded_files),
         label_sources=list(getattr(applied, "label_sources", [])),
         label_carriers=list(applied.label_carriers),
+        bids=dict(getattr(applied, "bids", {}) or {}),
         label_carrier_plan=[dict(item) for item in applied.label_carrier_plan],
         metadata=list(applied.metadata),
         format_capabilities=[dict(item) for item in applied.format_capabilities],
@@ -133,6 +142,9 @@ def build_import_recipe(
         confirmations=list(applied.confirmations),
         event_roles=dict(applied.event_roles),
         class_map=dict(applied.class_map),
+        internal_event_selection=dict(
+            getattr(applied, "internal_event_selection", {}) or {}
+        ),
         run_event_mappings={
             str(key): dict(value)
             for key, value in getattr(applied, "run_event_mappings", {}).items()
@@ -171,6 +183,8 @@ def choices_from_import_recipe(recipe: ImportRecipe) -> dict[str, Any]:
         choices["event_roles"] = dict(recipe.event_roles)
     if recipe.class_map:
         choices["class_map"] = dict(recipe.class_map)
+    if recipe.internal_event_selection:
+        choices["internal_event_selection"] = dict(recipe.internal_event_selection)
     if recipe.run_event_mappings:
         choices["run_event_mappings"] = {
             str(key): dict(value) for key, value in recipe.run_event_mappings.items()

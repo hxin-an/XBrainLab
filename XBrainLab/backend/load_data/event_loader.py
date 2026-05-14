@@ -249,7 +249,12 @@ class EventLoader:
             for item in self.label_list:
                 onsets.append(item["onset"])
                 durations.append(item["duration"])
-                descriptions.append(str(item["label"]))
+                raw_label = item["label"]
+                mapped_label = event_name_map.get(
+                    raw_label,
+                    event_name_map.get(str(raw_label), raw_label),
+                )
+                descriptions.append(str(mapped_label))
 
             # Create Annotations
             self.annotations = mne.Annotations(

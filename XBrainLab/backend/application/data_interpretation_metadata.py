@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import csv
+import json
 import re
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from dataclasses import field as dc_field
 from pathlib import Path
@@ -116,20 +119,118 @@ def bids_summary(
     label_carriers: list[str],
 ) -> dict[str, Any]:
     """Summarize BIDS entities discovered during source scan."""
+    bids_root = resolve_bids_root(scan_root)
     events_files = [
         item for item in label_carriers if item.endswith(("_events.tsv", "events.tsv"))
     ]
-    dataset_description = scan_root / "dataset_description.json"
+    dataset_description = bids_root / "dataset_description.json"
+    layout = bids_eeg_layout(
+        bids_root=bids_root,
+        eeg_files=eeg_files,
+        events_files=events_files,
+    )
+    participants_file = bids_root / "participants.tsv"
+    participants = _read_tsv_rows(participants_file)
+    channels_files = _unique_paths(
+        row.get("channels_file") for row in layout if row.get("channels_file")
+    )
     return {
         "is_bids": source_kind == "bids",
-        "subjects": bids_entity_values(eeg_files, scan_root, "sub"),
-        "sessions": bids_entity_values(eeg_files, scan_root, "ses"),
-        "tasks": bids_entity_values(eeg_files, scan_root, "task"),
-        "runs": bids_entity_values(eeg_files, scan_root, "run"),
+        "root": str(bids_root),
+        "scan_location": str(scan_root),
+        "subjects": bids_entity_values(eeg_files, bids_root, "sub"),
+        "sessions": bids_entity_values(eeg_files, bids_root, "ses"),
+        "tasks": bids_entity_values(eeg_files, bids_root, "task"),
+        "runs": bids_entity_values(eeg_files, bids_root, "run"),
+        "datatypes": _unique_strings(row.get("datatype") for row in layout),
+        "eeg_file_count": len(eeg_files),
         "events_files": events_files,
+        "channels_files": channels_files,
+        "participants_file": (
+            str(participants_file) if participants_file.exists() else None
+        ),
+        "participant_count": len(participants),
+        "participants": participants,
+        "channel_status_summary": _channel_status_summary(channels_files),
+        "layout": layout,
+        "selected_scope": bids_scope_summary(eeg_files, layout),
         "dataset_description": str(dataset_description)
         if dataset_description.exists()
         else None,
+        "dataset": _read_json_object(dataset_description),
+    }
+
+
+def resolve_bids_root(scan_root: Path) -> Path:
+    """Return the nearest ancestor that owns ``dataset_description.json``."""
+    root = scan_root.resolve()
+    if root.is_file():
+        root = root.parent
+    for candidate in [root, *root.parents]:
+        if (candidate / "dataset_description.json").exists():
+            return candidate
+    return root
+
+
+def bids_eeg_layout(
+    *,
+    bids_root: Path,
+    eeg_files: list[str],
+    events_files: list[str],
+) -> list[dict[str, Any]]:
+    """Return per-raw-file BIDS EEG layout rows with effective local sidecars."""
+    events_by_name = {
+        Path(item).name: str(Path(item).resolve()) for item in events_files
+    }
+    rows: list[dict[str, Any]] = []
+    for file_path in sorted(eeg_files):
+        path = Path(file_path).resolve()
+        rel = relative_text(path, bids_root)
+        datatype = _bids_datatype(rel)
+        stem = _bids_raw_stem(path)
+        events_file = events_by_name.get(f"{stem}_events.tsv")
+        if events_file is None:
+            candidate = path.with_name(f"{stem}_events.tsv")
+            events_file = str(candidate) if candidate.exists() else ""
+        channels_file = path.with_name(f"{stem}_channels.tsv")
+        rows.append(
+            {
+                "file": str(path),
+                "name": path.name,
+                "relative_path": rel,
+                "subject": extract_bids_entity(rel, "sub") or "",
+                "session": extract_bids_entity(rel, "ses") or "",
+                "task": extract_bids_entity(rel, "task") or "",
+                "run": extract_bids_entity(rel, "run") or "",
+                "datatype": datatype,
+                "events_file": events_file,
+                "channels_file": str(channels_file) if channels_file.exists() else "",
+            }
+        )
+    return rows
+
+
+def bids_scope_summary(
+    selected_eeg_files: list[str],
+    layout: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Summarize BIDS entities and sidecars for the selected EEG scope."""
+    selected = {str(Path(item).resolve()) for item in selected_eeg_files}
+    rows = [row for row in layout if str(row.get("file")) in selected]
+    return {
+        "eeg_file_count": len(rows),
+        "subjects": _unique_strings(row.get("subject") for row in rows),
+        "sessions": _unique_strings(row.get("session") for row in rows),
+        "tasks": _unique_strings(row.get("task") for row in rows),
+        "runs": _unique_strings(row.get("run") for row in rows),
+        "datatypes": _unique_strings(row.get("datatype") for row in rows),
+        "eeg_files": [str(row.get("file")) for row in rows if row.get("file")],
+        "events_files": _unique_paths(
+            row.get("events_file") for row in rows if row.get("events_file")
+        ),
+        "channels_files": _unique_paths(
+            row.get("channels_file") for row in rows if row.get("channels_file")
+        ),
     }
 
 
@@ -150,6 +251,81 @@ def bids_entity_values(
         )
     }
     return sorted(values)
+
+
+def _bids_datatype(rel_text: str) -> str:
+    parts = [part for part in rel_text.split("/") if part]
+    for part in parts:
+        if part in {"eeg", "ieeg", "meg"}:
+            return part
+    return ""
+
+
+def _bids_raw_stem(path: Path) -> str:
+    name = path.name
+    stem = name[: -len(".fif.gz")] if name.lower().endswith(".fif.gz") else path.stem
+    for suffix in ("_eeg", "_raw"):
+        if stem.endswith(suffix):
+            return stem[: -len(suffix)]
+    return stem
+
+
+def _read_tsv_rows(path: Path) -> list[dict[str, str]]:
+    if not path.exists():
+        return []
+    try:
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle, delimiter="\t")
+            return [
+                {str(key): str(value or "") for key, value in row.items() if key}
+                for row in reader
+            ]
+    except (OSError, UnicodeDecodeError, csv.Error):
+        return []
+
+
+def _read_json_object(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _channel_status_summary(channels_files: list[str]) -> dict[str, int]:
+    summary = {"total": 0, "good": 0, "bad": 0, "other": 0}
+    for file_path in channels_files:
+        for row in _read_tsv_rows(Path(file_path)):
+            summary["total"] += 1
+            status = str(row.get("status") or "").strip().lower()
+            if status == "good":
+                summary["good"] += 1
+            elif status == "bad":
+                summary["bad"] += 1
+            else:
+                summary["other"] += 1
+    return summary
+
+
+def _unique_paths(values: Iterable[Any]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value or "").strip()
+        if not text:
+            continue
+        normalized = str(Path(text).resolve())
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        result.append(normalized)
+    return result
+
+
+def _unique_strings(values: Iterable[Any]) -> list[str]:
+    return sorted({str(value).strip() for value in values if str(value).strip()})
 
 
 def extract_bids_entity(text: str, entity: str) -> str | None:

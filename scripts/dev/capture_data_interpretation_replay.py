@@ -14,7 +14,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import mne
 import numpy as np
@@ -592,6 +592,7 @@ def apply_replay_review_choices(
             SECOND_SOURCE_PATH.name
         )
         if isinstance(pairing_selector, QComboBox):
+            pairing_combo = cast(QComboBox, pairing_selector)
             carrier_key = ""
             for item, original in getattr(dialog, "_label_carrier_items", []):
                 if item is label_item and isinstance(original, dict):
@@ -599,9 +600,9 @@ def apply_replay_review_choices(
                         original.get("path") or original.get("name") or item.text(0)
                     )
                     break
-            pairing_index = pairing_selector.findData(carrier_key)
+            pairing_index = pairing_combo.findData(carrier_key)
             if pairing_index >= 0:
-                pairing_selector.setCurrentIndex(pairing_index)
+                pairing_combo.setCurrentIndex(pairing_index)
         if isinstance(target_selector, QComboBox):
             target_index = target_selector.findData(SECOND_SOURCE_PATH.name)
             if target_index >= 0:

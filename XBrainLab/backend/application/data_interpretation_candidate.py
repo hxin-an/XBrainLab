@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, is_dataclass
 from dataclasses import field as dc_field
 from pathlib import Path
@@ -21,8 +22,14 @@ from .data_interpretation_metadata import (
     FileMetadataResolution,
     MetadataFieldResolution,
 )
+from .data_interpretation_metadata import (
+    bids_scope_summary as _bids_scope_summary,
+)
 from .data_interpretation_placement import (
     annotate_label_carrier_placements as _annotate_label_carrier_placements,
+)
+from .data_interpretation_placement import (
+    placement_blocked_reasons as _placement_blocked_reasons,
 )
 from .data_interpretation_placement import (
     placement_confirmation_items as _placement_confirmation_items,
@@ -41,11 +48,13 @@ class InterpretationCandidate:
     selected_eeg_files: list[str] = dc_field(default_factory=list)
     label_sources: list[str] = dc_field(default_factory=list)
     label_carriers: list[str] = dc_field(default_factory=list)
+    bids: dict[str, Any] = dc_field(default_factory=dict)
     label_carrier_plan: list[dict[str, Any]] = dc_field(default_factory=list)
     event_roles: dict[str, str] = dc_field(default_factory=dict)
     class_map: dict[str, str] = dc_field(default_factory=dict)
     class_map_source: str = ""
     internal_event_preview: dict[str, Any] = dc_field(default_factory=dict)
+    internal_event_selection: dict[str, Any] = dc_field(default_factory=dict)
     run_event_mappings: dict[str, dict[str, str]] = dc_field(default_factory=dict)
     time_model: str = "unknown"
     granularity: str = "unknown"
@@ -105,10 +114,16 @@ def build_interpretation_candidate(
         label_carrier_source != "embedded_events" and not skip_labels
     )
     excluded_label_carriers = _string_list(choices.get("excluded_label_carriers"))
-    active_label_carriers = (
+    scanned_label_carriers = (
         _exclude_paths(scan.label_carriers, excluded_label_carriers)
         if use_external_label_carriers
         else []
+    )
+    active_label_carriers = _scope_bids_label_carriers(
+        scanned_label_carriers,
+        scan.bids,
+        selected_files,
+        scan.label_carrier_sources,
     )
     label_carrier_choices = _remapped_label_carrier_choices(
         choices.get("label_carrier_choices"),
@@ -140,7 +155,7 @@ def build_interpretation_candidate(
             },
         )
         if not scan.bids.get("events_files"):
-            warnings.append("BIDS-like source has no events.tsv file.")
+            warnings.append("BIDS EEG source has no events.tsv file.")
     else:
         extensions = {Path(item).suffix.lower() for item in selected_files}
         internal_event_preview = _internal_events.build_internal_event_preview(
@@ -169,12 +184,33 @@ def build_interpretation_candidate(
                 "artifacts, or boundaries.",
             )
 
+    event_roles.update(_string_mapping(choices.get("event_roles")))
+    explicit_internal_event_selection = isinstance(
+        choices.get("internal_event_selection"),
+        dict,
+    ) and bool(choices.get("internal_event_selection"))
+    internal_event_selection = (
+        _internal_event_selection(
+            internal_event_preview,
+            choices.get("internal_event_selection"),
+            event_roles,
+        )
+        if label_carrier_source == "embedded_events"
+        or explicit_internal_event_selection
+        else {}
+    )
+    if label_carrier_source == "embedded_events" and not class_map:
+        selection_class_map = _string_mapping(internal_event_selection.get("class_map"))
+        if selection_class_map:
+            class_map = selection_class_map
+            class_map_source = "internal_events"
+
     label_carrier_plan = _annotate_label_carrier_placements(
         label_carrier_plan,
         internal_event_preview,
     )
     if scan.bids.get("is_bids"):
-        bids_warnings, bids_blocked_reasons = _bids_like_label_carrier_review_items(
+        bids_warnings, bids_blocked_reasons = _bids_label_carrier_review_items(
             label_carrier_plan
         )
         warnings.extend(bids_warnings)
@@ -187,9 +223,11 @@ def build_interpretation_candidate(
         )
         for carrier_name in _label_carriers_needing_conversion(label_carrier_plan)
     )
+    blocked_reasons.extend(_placement_blocked_reasons(label_carrier_plan))
+    blocked_reasons.extend(
+        _unsupported_mat_placement_blocked_reasons(label_carrier_plan)
+    )
     confirmation_items.extend(_placement_confirmation_items(label_carrier_plan))
-
-    event_roles.update(_string_mapping(choices.get("event_roles")))
 
     for item in metadata:
         fields = (item.subject, item.session, item.task, item.run)
@@ -231,11 +269,13 @@ def build_interpretation_candidate(
         selected_eeg_files=selected_files,
         label_sources=list(scan.label_sources),
         label_carriers=active_label_carriers,
+        bids=_bids_for_selected_files(scan.bids, selected_files),
         label_carrier_plan=label_carrier_plan,
         event_roles=event_roles,
         class_map=class_map,
         class_map_source=class_map_source,
         internal_event_preview=internal_event_preview,
+        internal_event_selection=internal_event_selection,
         run_event_mappings=run_event_mappings,
         time_model="sample_index_or_annotation_time"
         if event_roles
@@ -446,6 +486,57 @@ def _required_label_carriers_missing_from_scan(
     return _paths_missing_from_scan(required, scanned_carriers)
 
 
+def _scope_bids_label_carriers(
+    label_carriers: list[str],
+    bids: dict[str, Any],
+    selected_files: list[str],
+    carrier_sources: dict[str, str] | None = None,
+) -> list[str]:
+    """Restrict BIDS events sidecars to the selected EEG scope."""
+    if not bids.get("is_bids") or not selected_files:
+        return list(label_carriers)
+    if not bids.get("layout"):
+        return list(label_carriers)
+    carrier_sources = dict(carrier_sources or {})
+    selected_scope = _bids_for_selected_files(bids, selected_files).get(
+        "selected_scope",
+        {},
+    )
+    scoped_events = {
+        str(item)
+        for item in selected_scope.get("events_files", [])
+        if str(item).strip()
+    }
+    result: list[str] = []
+    for carrier in label_carriers:
+        text = str(carrier)
+        is_auto_bids_event = (
+            _is_bids_events_carrier(text)
+            and carrier_sources.get(text, "auto") == "auto"
+        )
+        if is_auto_bids_event and text not in scoped_events:
+            continue
+        result.append(text)
+    return result
+
+
+def _bids_for_selected_files(
+    bids: dict[str, Any],
+    selected_files: list[str],
+) -> dict[str, Any]:
+    if not isinstance(bids, dict) or not bids.get("is_bids"):
+        return {}
+    scoped = dict(bids)
+    layout = [dict(item) for item in bids.get("layout", []) if isinstance(item, dict)]
+    scoped["selected_scope"] = _bids_scope_summary(selected_files, layout)
+    return scoped
+
+
+def _is_bids_events_carrier(path: str) -> bool:
+    name = Path(path).name
+    return name.endswith("_events.tsv") or name == "events.tsv"
+
+
 def _label_carriers_needing_conversion(
     label_carrier_plan: list[dict[str, Any]],
 ) -> list[str]:
@@ -472,7 +563,169 @@ def _label_carriers_needing_conversion(
     return sorted(set(names))
 
 
-def _bids_like_label_carrier_review_items(
+def _unsupported_mat_placement_blocked_reasons(
+    label_carrier_plan: list[dict[str, Any]],
+) -> list[str]:
+    """Return reviewed MAT placement modes that this apply path cannot honor."""
+    reasons: list[str] = []
+    for carrier in label_carrier_plan:
+        fmt = str(carrier.get("format") or "").strip()
+        if fmt not in {"MAT", "MAT labels"}:
+            continue
+        method = str(carrier.get("placement_method") or "").strip()
+        time_model = str(carrier.get("time_model") or "").strip().lower()
+        name = str(carrier.get("name") or Path(str(carrier.get("path") or "")).name)
+        if method == "interval":
+            reasons.append(
+                "MAT label file uses interval placement, which is not supported "
+                f"directly yet: {name!s}. Convert interval labels to CSV/TSV "
+                "or choose event order, sample index, or event-code placement."
+            )
+        elif method == "time_field" and time_model not in {"sample_index", ""}:
+            reasons.append(
+                "MAT label file uses time-field placement that is not supported "
+                f"directly yet: {name!s}. Convert time labels to CSV/TSV "
+                "or choose sample-index/event-order placement."
+            )
+    return sorted(set(reasons))
+
+
+def _internal_event_selection(
+    internal_event_preview: dict[str, Any],
+    payload: Any,
+    event_roles: dict[str, str],
+) -> dict[str, Any]:
+    """Build a replayable internal-event selection from preview evidence."""
+    if not internal_event_preview:
+        return {}
+    explicit = payload if isinstance(payload, dict) else {}
+    selected = _string_list(explicit.get("label_event_codes"))
+    not_label = _string_list(explicit.get("not_label_event_codes"))
+    class_map = _string_mapping(explicit.get("class_map"))
+    if not selected:
+        selected = _internal_event_codes(
+            internal_event_preview.get("candidate_label_events")
+            or internal_event_preview.get("candidate_events")
+        )
+    if not not_label:
+        not_label = _internal_not_label_event_codes(
+            internal_event_preview.get("not_used_events")
+            or internal_event_preview.get("non_label_events")
+            or internal_event_preview.get("excluded_events")
+        )
+    for code, role in event_roles.items():
+        normalized_role = str(role).strip().lower()
+        code_text = str(code).strip()
+        if not code_text:
+            continue
+        if normalized_role == "class label":
+            if code_text not in selected:
+                selected.append(code_text)
+            not_label = [item for item in not_label if item != code_text]
+        elif normalized_role == "not a label":
+            if code_text not in not_label:
+                not_label.append(code_text)
+            selected = [item for item in selected if item != code_text]
+    if not class_map:
+        class_map = _class_map_from_internal_event_rows(
+            internal_event_preview.get("candidate_label_events")
+            or internal_event_preview.get("candidate_events")
+        )
+    selected = _sorted_event_codes(selected)
+    not_label = [item for item in not_label if item not in selected]
+    result: dict[str, Any] = {
+        "label_event_codes": selected,
+        "not_label_event_codes": not_label,
+    }
+    if class_map:
+        result["class_map"] = {
+            key: class_map[key] for key in _sorted_event_codes(class_map)
+        }
+    return result
+
+
+def _internal_event_codes(rows: Any) -> list[str]:
+    if not isinstance(rows, list):
+        return []
+    codes: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        code = _internal_event_code_from_row(row)
+        if code and code not in codes:
+            codes.append(code)
+    return codes
+
+
+def _internal_not_label_event_codes(rows: Any) -> list[str]:
+    if not isinstance(rows, list):
+        return []
+    typed_rows = [row for row in rows if isinstance(row, dict)]
+    typed_rows.sort(key=_not_label_event_sort_key)
+    return _internal_event_codes(typed_rows)
+
+
+def _not_label_event_sort_key(row: dict[str, Any]) -> tuple[int, tuple[int, int | str]]:
+    text = " ".join(
+        str(row.get(key) or "").lower() for key in ("use_as", "reason", "evidence")
+    )
+    if any(token in text for token in ("artifact", "artefact", "exclude", "bad")):
+        rank = 0
+    elif any(token in text for token in ("boundary", "system", "ignore")):
+        rank = 1
+    elif any(token in text for token in ("trial", "start", "anchor", "timing")):
+        rank = 2
+    else:
+        rank = 3
+    code = _internal_event_code_from_row(row)
+    return (rank, _event_code_sort_key(code))
+
+
+def _class_map_from_internal_event_rows(rows: Any) -> dict[str, str]:
+    if not isinstance(rows, list):
+        return {}
+    result: dict[str, str] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        code = _internal_event_code_from_row(row)
+        label = str(row.get("class_name") or row.get("name") or "").strip()
+        if code and label:
+            result[code] = label
+    return result
+
+
+def _internal_event_code_from_row(row: dict[str, Any]) -> str:
+    for key in (
+        "event_code",
+        "original_event_code",
+        "original_code",
+        "original_label",
+        "value",
+        "raw_value",
+        "code",
+        "label",
+        "event_label",
+    ):
+        value = str(row.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _sorted_event_codes(values: Iterable[Any] | dict[Any, Any]) -> list[str]:
+    raw_values = values.keys() if isinstance(values, dict) else values
+    return sorted(
+        {str(item).strip() for item in raw_values if str(item).strip()},
+        key=_event_code_sort_key,
+    )
+
+
+def _event_code_sort_key(value: str) -> tuple[int, int | str]:
+    return (0, int(value)) if str(value).isdigit() else (1, str(value).casefold())
+
+
+def _bids_label_carrier_review_items(
     label_carrier_plan: list[dict[str, Any]],
 ) -> tuple[list[str], list[str]]:
     warnings: list[str] = []
@@ -491,16 +744,16 @@ def _bids_like_label_carrier_review_items(
         duration_fields = _string_list(carrier.get("duration_candidates"))
         if "onset" not in time_fields:
             blocked_reasons.append(
-                f"BIDS-like events file {name} is missing required onset column."
+                f"BIDS EEG events file {name} is missing required onset column."
             )
         if path.exists() and not _bids_events_json_sidecar_exists(path):
             warnings.append(
-                f"BIDS-like events file {name} has no events.json sidecar; "
+                f"BIDS EEG events file {name} has no events.json sidecar; "
                 "class names and level meanings need review."
             )
         if not duration_fields:
             warnings.append(
-                f"BIDS-like events file {name} has no duration/end field; "
+                f"BIDS EEG events file {name} has no duration/end field; "
                 "interval epochs will need review in epoch setup."
             )
         elif len(duration_fields) > 1:
@@ -508,7 +761,7 @@ def _bids_like_label_carrier_review_items(
                 carrier.get("selected_duration_field") or ""
             ).strip()
             warnings.append(
-                f"BIDS-like events file {name} has multiple duration/end fields; "
+                f"BIDS EEG events file {name} has multiple duration/end fields; "
                 f"confirm {selected_duration or 'the selected duration field'}."
             )
     return sorted(set(warnings)), sorted(set(blocked_reasons))
@@ -658,6 +911,8 @@ def _choice_recipe_trace(choices: dict[str, Any]) -> list[str]:
         traces.append("choices:label_carrier_remap")
     if _nested_string_mapping(choices.get("run_event_mappings")):
         traces.append("choices:run_event_mappings")
+    if isinstance(choices.get("internal_event_selection"), dict):
+        traces.append("choices:internal_event_selection")
     return traces
 
 

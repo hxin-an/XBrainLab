@@ -220,6 +220,7 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
     dataset_reasons = []
     if not active_dataset.has_epoch_data:
         dataset_reasons.append("Create epochs before generating datasets.")
+    dataset_reasons.extend(_supervised_label_blockers(state))
     if active_training.is_running:
         dataset_reasons.append("Stop training before changing data splitting.")
     if active_dataset.has_datasets or active_training.has_trainer:
@@ -266,6 +267,7 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         train_reasons.append("Load raw data before training.")
     if not active_dataset.has_datasets:
         train_reasons.append("Generate datasets before training.")
+    train_reasons.extend(_supervised_label_blockers(state))
     if not active_training.has_model:
         train_reasons.append("Select a model before training.")
     if not active_training.has_training_option:
@@ -444,3 +446,15 @@ def _raw_edit_blockers(state: ApplicationStateSnapshot) -> list[str]:
             "raw files, labels, or metadata."
         )
     return reasons
+
+
+def _supervised_label_blockers(state: ApplicationStateSnapshot) -> list[str]:
+    handoff = state.interpretation.epoch_handoff
+    if not state.interpretation.has_applied_interpretation or not handoff:
+        return []
+    if bool(handoff.get("supervised_ready")):
+        return []
+    blockers = handoff.get("supervised_blockers")
+    if isinstance(blockers, list) and blockers:
+        return [str(item) for item in blockers if str(item).strip()]
+    return ["No class labels are available for supervised workflows."]
