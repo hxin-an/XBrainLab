@@ -202,6 +202,9 @@ LLM_APPLICATION_SURFACE_EXACT_EVIDENCE_TESTS = (
 LLM_AGENT_INTENT_BOUNDARY_EXACT_EVIDENCE_TESTS = (
     Path("tests/unit/llm/agent/test_controller.py"),
 )
+LLM_AGENT_CONFIRMATION_EXACT_EVIDENCE_TESTS = (
+    Path("tests/unit/llm/agent/test_controller.py"),
+)
 LLM_TOOL_DEFINITION_EXACT_EVIDENCE_TESTS = (
     Path("tests/unit/llm/tools/test_definitions.py"),
 )
@@ -462,6 +465,15 @@ def check_architecture(root_dir: str) -> int:
     if llm_agent_intent_boundary_weak_assertion_violations:
         print("\nLLM Agent Intent-Boundary Weak Result Assertion Violations Found:")
         for violation in llm_agent_intent_boundary_weak_assertion_violations:
+            print(f" - {violation}")
+        return 1
+
+    llm_agent_confirmation_weak_assertion_violations = (
+        check_llm_agent_confirmation_weak_pending_assertions(Path(root_dir))
+    )
+    if llm_agent_confirmation_weak_assertion_violations:
+        print("\nLLM Agent Confirmation Weak Pending Assertion Violations Found:")
+        for violation in llm_agent_confirmation_weak_assertion_violations:
             print(f" - {violation}")
         return 1
 
@@ -1163,6 +1175,32 @@ def check_llm_agent_intent_boundary_weak_result_assertions(
     return violations
 
 
+def check_llm_agent_confirmation_weak_pending_assertions(root_dir: Path) -> list[str]:
+    """Return confirmation tests that only assert a pending tuple exists."""
+    violations: list[str] = []
+
+    for relative_file in LLM_AGENT_CONFIRMATION_EXACT_EVIDENCE_TESTS:
+        test_file = root_dir / relative_file
+        if not test_file.exists():
+            continue
+        try:
+            tree = ast.parse(
+                test_file.read_text(encoding="utf-8"), filename=str(test_file)
+            )
+        except SyntaxError:
+            continue
+
+        visitor = _AgentPendingConfirmationWeakAssertionVisitor()
+        visitor.visit(tree)
+        violations.extend(
+            f"{relative_file}:{node.lineno} uses generic pending-confirmation "
+            "existence assertion; assert exact pending tuple, status update, "
+            "and confirm_action payload instead."
+            for node in visitor.violations
+        )
+    return violations
+
+
 def check_llm_tool_definition_weak_string_assertions(root_dir: Path) -> list[str]:
     """Return tool-definition tests that only assert non-empty strings."""
     violations: list[str] = []
@@ -1253,6 +1291,16 @@ class _GenericLenGtZeroAssertionVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
+class _AgentPendingConfirmationWeakAssertionVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.violations: list[ast.Assert] = []
+
+    def visit_Assert(self, node: ast.Assert) -> None:
+        if _is_pending_confirmation_non_none_assertion(node.test):
+            self.violations.append(node)
+        self.generic_visit(node)
+
+
 class _PipelineStateWeakStringAssertionVisitor(ast.NodeVisitor):
     def __init__(self) -> None:
         self.violations: list[ast.Assert] = []
@@ -1294,6 +1342,20 @@ def _is_len_gt_zero_assertion(node: ast.AST) -> bool:
     if not isinstance(node.left, ast.Call):
         return False
     return _call_name(node.left.func) == "len" and len(node.left.args) == 1
+
+
+def _is_pending_confirmation_non_none_assertion(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Compare):
+        return False
+    if len(node.ops) != 1 or not isinstance(node.ops[0], ast.IsNot):
+        return False
+    if len(node.comparators) != 1:
+        return False
+    right = node.comparators[0]
+    if not isinstance(right, ast.Constant) or right.value is not None:
+        return False
+    left = node.left
+    return isinstance(left, ast.Attribute) and left.attr == "_pending_confirmation"
 
 
 def _is_pipeline_state_string_target(node: ast.AST) -> bool:

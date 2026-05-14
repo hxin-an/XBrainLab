@@ -2,6 +2,7 @@ from tests.architecture_compliance import (
     check_backend_facade_test_usage,
     check_docs_current_truth_overclaims,
     check_headless_verifier_direct_study_state,
+    check_llm_agent_confirmation_weak_pending_assertions,
     check_llm_agent_intent_boundary_weak_result_assertions,
     check_llm_application_surface_weak_result_assertions,
     check_llm_direct_study_state_reads,
@@ -435,6 +436,46 @@ def test_tool_contract(tool_cls):
     )
 
     assert check_llm_tool_definition_weak_string_assertions(tmp_path) == []
+
+
+def test_llm_agent_confirmation_guard_flags_generic_pending_assertion(tmp_path):
+    path = tmp_path / "tests" / "unit" / "llm" / "agent" / "test_controller.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_confirmation_required_pauses_execution(ctrl):
+    ctrl._process_tool_calls([("clear_dataset", {})], "{}")
+    assert ctrl._pending_confirmation is not None
+    assert ctrl._pending_confirmation[0] == "clear_dataset"
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_llm_agent_confirmation_weak_pending_assertions(tmp_path)
+
+    assert len(violations) == 1
+    assert "generic pending-confirmation existence assertion" in violations[0]
+    assert "confirm_action payload" in violations[0]
+
+
+def test_llm_agent_confirmation_guard_allows_exact_prompt_contract(tmp_path):
+    path = tmp_path / "tests" / "unit" / "llm" / "agent" / "test_controller.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_confirmation_required_pauses_execution(ctrl):
+    ctrl._process_tool_calls([("clear_dataset", {})], "{}")
+    assert ctrl._pending_confirmation == ("clear_dataset", {}, [])
+    ctrl.status_update.emit.assert_any_call("Waiting for confirmation: clear_dataset")
+    ctrl.request_user_interaction.emit.assert_called_once_with(
+        "confirm_action",
+        {"tool_name": "clear_dataset", "params": {}, "description": "Clear data"},
+    )
+""",
+        encoding="utf-8",
+    )
+
+    assert check_llm_agent_confirmation_weak_pending_assertions(tmp_path) == []
 
 
 def test_docs_current_truth_guard_flags_product_complete_overclaim(tmp_path):

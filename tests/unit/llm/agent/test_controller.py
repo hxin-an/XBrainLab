@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -29,6 +30,26 @@ def _assert_intent_boundary_result(
     assert result.blocked_reason == blocked_reason
     assert result.message == message
     return result
+
+
+def _assert_confirmation_prompt(
+    ctrl: Any,
+    *,
+    tool_name: str,
+    params: dict[str, Any],
+    remaining: list[tuple[str, dict[str, Any]]],
+    description: str,
+) -> None:
+    assert ctrl._pending_confirmation == (tool_name, params, remaining)
+    ctrl.status_update.emit.assert_any_call(f"Waiting for confirmation: {tool_name}")
+    ctrl.request_user_interaction.emit.assert_called_once_with(
+        "confirm_action",
+        {
+            "tool_name": tool_name,
+            "params": params,
+            "description": description,
+        },
+    )
 
 
 @pytest.fixture
@@ -670,12 +691,13 @@ class TestProcessToolCallsConfirmation:
                 '{"tool_name": "clear_dataset"}',
             )
 
-        # Should have stored pending and emitted signal
-        assert ctrl._pending_confirmation is not None
-        assert ctrl._pending_confirmation[0] == "clear_dataset"
-        ctrl.request_user_interaction.emit.assert_called_once()
-        call_args = ctrl.request_user_interaction.emit.call_args[0]
-        assert call_args[0] == "confirm_action"
+        _assert_confirmation_prompt(
+            ctrl,
+            tool_name="clear_dataset",
+            params={},
+            remaining=[],
+            description="Clear data",
+        )
 
     def test_backend_confirmation_boundary_pauses_execution(self, ctrl):
         """ApplicationService autonomy policy can require HITL dynamically."""
@@ -710,9 +732,13 @@ class TestProcessToolCallsConfirmation:
                 '{"tool_name": "apply_interpretation"}',
             )
 
-        assert ctrl._pending_confirmation is not None
-        assert ctrl._pending_confirmation[0] == "apply_interpretation"
-        ctrl.request_user_interaction.emit.assert_called_once()
+        _assert_confirmation_prompt(
+            ctrl,
+            tool_name="apply_interpretation",
+            params={},
+            remaining=[],
+            description="Apply data interpretation",
+        )
 
     def test_no_confirmation_executes_directly(self, ctrl):
         """Tool without requires_confirmation should execute normally."""
