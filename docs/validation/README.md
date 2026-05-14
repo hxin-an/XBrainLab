@@ -138,6 +138,17 @@ generic "non-empty name/description" assertions.
 | `poetry run python tests/architecture_compliance.py` | `Architecture compliant!`. | Architecture guard now rejects generic `len(...) > 0` assertions in the tool-definition tests. | Semantic proof for all tool behavior. | Add stronger runtime tests separately when tool execution behavior changes. |
 | Focused `ruff check` / `ruff format --check` / `basedpyright`, plus `poetry run mkdocs build --strict`, `poetry run python scripts/dev/update_quality_dashboard.py`, and `git diff --check` | PASS / PASS / `0 errors`; docs, dashboard, and diff PASS. | Changed tests/docs remain lint/type/docs/dashboard/diff clean after validation. | Product completion or human Windows acceptance. | Keep generated dashboard artifacts as evidence output, not canonical docs truth. |
 
+## 2026-05-14 Query-State Tool Definition Contract Checkpoint
+
+This test-quality slice extends the tool-definition contract table to cover `query_state`, which
+already exists in the real/mock agent tool surface and is the typed ApplicationService state
+snapshot entry point. It does not change runtime behavior.
+
+| Command / audit | Result | Claim supported | Claim not supported | Follow-up |
+| --- | --- | --- | --- | --- |
+| `poetry run pytest --capture=sys tests/unit/llm/tools/test_definitions.py tests/unit/test_architecture_compliance.py -q` | `269 passed`. | The agent-visible `query_state` definition is covered by exact name, schema property, required-field, and description-marker assertions. | QueryState runtime semantics, assistant UX, or local-model behavior. | Keep query-state runtime behavior covered by ApplicationService / tool-surface tests. |
+| `poetry run python tests/architecture_compliance.py`, focused `ruff check` / `ruff format --check` / `basedpyright`, plus `poetry run mkdocs build --strict`, `poetry run python scripts/dev/update_quality_dashboard.py`, and `git diff --check` | `Architecture compliant!`; PASS / PASS / `0 errors`; docs, dashboard, and diff PASS. | The definition coverage update remains architecture/lint/type/docs/dashboard/diff clean. | Product completion or human Windows acceptance. | Keep generated dashboard artifacts as evidence output, not canonical docs truth. |
+
 ## 2026-05-14 LLM Agent Confirmation Exact Prompt Evidence Checkpoint
 
 This test-quality slice tightened assistant confirmation-gate tests. It does not certify the visual

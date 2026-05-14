@@ -18,6 +18,7 @@ from XBrainLab.llm.tools.definitions.dataset_def import (
     BaseListFilesTool,
     BaseLoadDataTool,
     BasePreviewInterpretationTool,
+    BaseQueryStateTool,
     BaseReloadInterpretationRecipeTool,
     BaseSaveInterpretationRecipeTool,
     BaseScanSourceTool,
@@ -61,6 +62,7 @@ def _get_all_def_classes():
         BaseLoadDataTool,
         BaseAttachLabelsTool,
         BaseClearDatasetTool,
+        BaseQueryStateTool,
         BaseGetDatasetInfoTool,
         BaseGenerateDatasetTool,
         BaseEvaluateTool,
@@ -141,6 +143,12 @@ EXPECTED_TOOL_CONTRACTS = {
         "name": "clear_dataset",
         "description_markers": ("Clear all loaded data", "Study state"),
         "properties": (),
+        "required": (),
+    },
+    BaseQueryStateTool: {
+        "name": "query_state",
+        "description_markers": ("typed workflow state", "ApplicationService"),
+        "properties": ("query",),
         "required": (),
     },
     BaseGetDatasetInfoTool: {
