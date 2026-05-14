@@ -6,6 +6,7 @@ from tests.architecture_compliance import (
     check_llm_application_surface_weak_result_assertions,
     check_llm_direct_study_state_reads,
     check_llm_parser_weak_parse_assertions,
+    check_llm_tool_definition_weak_string_assertions,
     check_mcp_direct_study_state_reads,
     check_mcp_weak_response_assertions,
     check_pipeline_state_weak_string_assertions,
@@ -395,6 +396,45 @@ def test_requested_intent_boundary_reads_application_policy(ctrl):
     )
 
     assert check_llm_agent_intent_boundary_weak_result_assertions(tmp_path) == []
+
+
+def test_llm_tool_definition_guard_flags_generic_non_empty_assertions(tmp_path):
+    path = tmp_path / "tests" / "unit" / "llm" / "tools" / "test_definitions.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_has_name(tool_cls):
+    assert len(tool_cls.name.fget(None)) > 0
+
+
+def test_has_description(tool_cls):
+    desc = tool_cls.description.fget(None)
+    assert len(desc) > 0
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_llm_tool_definition_weak_string_assertions(tmp_path)
+
+    assert len(violations) == 2
+    assert "generic non-empty tool definition assertion" in violations[0]
+    assert "exact tool name" in violations[0]
+
+
+def test_llm_tool_definition_guard_allows_exact_contract_assertions(tmp_path):
+    path = tmp_path / "tests" / "unit" / "llm" / "tools" / "test_definitions.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def test_tool_contract(tool_cls):
+    assert _property_value(tool_cls.name) == EXPECTED_TOOL_CONTRACTS[tool_cls]["name"]
+    assert tuple(params["properties"].keys()) == EXPECTED_TOOL_CONTRACTS[tool_cls]["properties"]
+    assert tuple(params["required"]) == EXPECTED_TOOL_CONTRACTS[tool_cls]["required"]
+""",
+        encoding="utf-8",
+    )
+
+    assert check_llm_tool_definition_weak_string_assertions(tmp_path) == []
 
 
 def test_docs_current_truth_guard_flags_product_complete_overclaim(tmp_path):

@@ -202,6 +202,9 @@ LLM_APPLICATION_SURFACE_EXACT_EVIDENCE_TESTS = (
 LLM_AGENT_INTENT_BOUNDARY_EXACT_EVIDENCE_TESTS = (
     Path("tests/unit/llm/agent/test_controller.py"),
 )
+LLM_TOOL_DEFINITION_EXACT_EVIDENCE_TESTS = (
+    Path("tests/unit/llm/tools/test_definitions.py"),
+)
 DOC_CURRENT_TRUTH_FILES = (
     Path("docs/current.md"),
     Path("docs/index.md"),
@@ -459,6 +462,15 @@ def check_architecture(root_dir: str) -> int:
     if llm_agent_intent_boundary_weak_assertion_violations:
         print("\nLLM Agent Intent-Boundary Weak Result Assertion Violations Found:")
         for violation in llm_agent_intent_boundary_weak_assertion_violations:
+            print(f" - {violation}")
+        return 1
+
+    llm_tool_definition_weak_assertion_violations = (
+        check_llm_tool_definition_weak_string_assertions(Path(root_dir))
+    )
+    if llm_tool_definition_weak_assertion_violations:
+        print("\nLLM Tool Definition Weak String Assertion Violations Found:")
+        for violation in llm_tool_definition_weak_assertion_violations:
             print(f" - {violation}")
         return 1
 
@@ -1151,6 +1163,32 @@ def check_llm_agent_intent_boundary_weak_result_assertions(
     return violations
 
 
+def check_llm_tool_definition_weak_string_assertions(root_dir: Path) -> list[str]:
+    """Return tool-definition tests that only assert non-empty strings."""
+    violations: list[str] = []
+
+    for relative_file in LLM_TOOL_DEFINITION_EXACT_EVIDENCE_TESTS:
+        test_file = root_dir / relative_file
+        if not test_file.exists():
+            continue
+        try:
+            tree = ast.parse(
+                test_file.read_text(encoding="utf-8"), filename=str(test_file)
+            )
+        except SyntaxError:
+            continue
+
+        visitor = _GenericLenGtZeroAssertionVisitor()
+        visitor.visit(tree)
+        violations.extend(
+            f"{relative_file}:{node.lineno} uses generic non-empty tool "
+            "definition assertion; assert exact tool name, schema properties, "
+            "required fields, and description markers instead."
+            for node in visitor.violations
+        )
+    return violations
+
+
 def check_docs_current_truth_overclaims(root_dir: Path) -> list[str]:
     """Return current-truth docs that present target/acceptance as complete."""
     violations: list[str] = []
@@ -1205,6 +1243,16 @@ class _GenericNonNoneAssertionVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
+class _GenericLenGtZeroAssertionVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.violations: list[ast.Assert] = []
+
+    def visit_Assert(self, node: ast.Assert) -> None:
+        if _is_len_gt_zero_assertion(node.test):
+            self.violations.append(node)
+        self.generic_visit(node)
+
+
 class _PipelineStateWeakStringAssertionVisitor(ast.NodeVisitor):
     def __init__(self) -> None:
         self.violations: list[ast.Assert] = []
@@ -1231,6 +1279,21 @@ def _is_generic_non_empty_string_assertion(node: ast.AST) -> bool:
         return False
     target = node.left.args[0]
     return _is_pipeline_state_string_target(target)
+
+
+def _is_len_gt_zero_assertion(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Compare):
+        return False
+    if len(node.ops) != 1 or not isinstance(node.ops[0], ast.Gt):
+        return False
+    if len(node.comparators) != 1:
+        return False
+    comparator = node.comparators[0]
+    if not isinstance(comparator, ast.Constant) or comparator.value != 0:
+        return False
+    if not isinstance(node.left, ast.Call):
+        return False
+    return _call_name(node.left.func) == "len" and len(node.left.args) == 1
 
 
 def _is_pipeline_state_string_target(node: ast.AST) -> bool:

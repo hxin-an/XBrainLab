@@ -82,29 +82,229 @@ def _get_all_def_classes():
     ]
 
 
+EXPECTED_TOOL_CONTRACTS = {
+    BaseListFilesTool: {
+        "name": "list_files",
+        "description_markers": ("List all files", "directory"),
+        "properties": ("directory", "pattern"),
+        "required": ("directory",),
+    },
+    BaseScanSourceTool: {
+        "name": "scan_source",
+        "description_markers": ("Scan an EEG file", "import recipe"),
+        "properties": ("source_path", "source_hint", "label_sources"),
+        "required": ("source_path",),
+    },
+    BasePreviewInterpretationTool: {
+        "name": "preview_interpretation",
+        "description_markers": ("Preview file", "metadata choices"),
+        "properties": ("scan_id", "choices"),
+        "required": (),
+    },
+    BaseValidateInterpretationTool: {
+        "name": "validate_interpretation",
+        "description_markers": ("Validate", "safe"),
+        "properties": ("candidate_id",),
+        "required": (),
+    },
+    BaseApplyInterpretationTool: {
+        "name": "apply_interpretation",
+        "description_markers": ("Apply", "validated data interpretation"),
+        "properties": ("candidate_id", "confirmed"),
+        "required": (),
+    },
+    BaseSaveInterpretationRecipeTool: {
+        "name": "save_interpretation_recipe",
+        "description_markers": ("Save", "import recipe"),
+        "properties": ("recipe_path",),
+        "required": (),
+    },
+    BaseReloadInterpretationRecipeTool: {
+        "name": "reload_interpretation_recipe",
+        "description_markers": ("Reload", "preview"),
+        "properties": ("recipe_path",),
+        "required": ("recipe_path",),
+    },
+    BaseLoadDataTool: {
+        "name": "load_data",
+        "description_markers": ("Legacy compatibility", "Data Interpretation"),
+        "properties": ("paths",),
+        "required": ("paths",),
+    },
+    BaseAttachLabelsTool: {
+        "name": "attach_labels",
+        "description_markers": ("Legacy compatibility", "labels/events"),
+        "properties": ("mapping", "label_format"),
+        "required": ("mapping",),
+    },
+    BaseClearDatasetTool: {
+        "name": "clear_dataset",
+        "description_markers": ("Clear all loaded data", "Study state"),
+        "properties": (),
+        "required": (),
+    },
+    BaseGetDatasetInfoTool: {
+        "name": "get_dataset_info",
+        "description_markers": ("summary info", "loaded dataset"),
+        "properties": (),
+        "required": (),
+    },
+    BaseGenerateDatasetTool: {
+        "name": "generate_dataset",
+        "description_markers": ("Generate training dataset", "epochs"),
+        "properties": (
+            "test_ratio",
+            "val_ratio",
+            "split_strategy",
+            "training_mode",
+        ),
+        "required": ("split_strategy", "training_mode"),
+    },
+    BaseEvaluateTool: {
+        "name": "evaluate",
+        "description_markers": ("evaluation metrics", "training summaries"),
+        "properties": ("target",),
+        "required": (),
+    },
+    BaseVisualizeTool: {
+        "name": "visualize",
+        "description_markers": ("visualization views", "workflow state"),
+        "properties": ("view",),
+        "required": (),
+    },
+    BaseSaliencyTool: {
+        "name": "saliency",
+        "description_markers": ("saliency readiness", "trained EEG models"),
+        "properties": ("method", "params"),
+        "required": (),
+    },
+    BaseStandardPreprocessTool: {
+        "name": "apply_standard_preprocess",
+        "description_markers": ("standard EEG preprocessing", "Bandpass"),
+        "properties": (
+            "l_freq",
+            "h_freq",
+            "notch_freq",
+            "rereference",
+            "resample_rate",
+            "normalize_method",
+        ),
+        "required": (),
+    },
+    BaseBandPassFilterTool: {
+        "name": "apply_bandpass_filter",
+        "description_markers": ("single bandpass filter",),
+        "properties": ("low_freq", "high_freq"),
+        "required": ("low_freq", "high_freq"),
+    },
+    BaseNotchFilterTool: {
+        "name": "apply_notch_filter",
+        "description_markers": ("notch filter", "power line noise"),
+        "properties": ("freq",),
+        "required": ("freq",),
+    },
+    BaseResampleTool: {
+        "name": "resample_data",
+        "description_markers": ("Resample data", "sampling rate"),
+        "properties": ("rate",),
+        "required": ("rate",),
+    },
+    BaseNormalizeTool: {
+        "name": "normalize_data",
+        "description_markers": ("Normalize data", "Z-Score"),
+        "properties": ("method",),
+        "required": ("method",),
+    },
+    BaseRereferenceTool: {
+        "name": "set_reference",
+        "description_markers": ("Set EEG reference",),
+        "properties": ("method",),
+        "required": ("method",),
+    },
+    BaseChannelSelectionTool: {
+        "name": "select_channels",
+        "description_markers": ("Select specific channels",),
+        "properties": ("channels",),
+        "required": ("channels",),
+    },
+    BaseSetMontageTool: {
+        "name": "set_montage",
+        "description_markers": ("standard EEG montage", "visualization"),
+        "properties": ("montage_name",),
+        "required": ("montage_name",),
+    },
+    BaseEpochDataTool: {
+        "name": "epoch_data",
+        "description_markers": ("Epoch continuous data", "events"),
+        "properties": ("t_min", "t_max", "event_id", "baseline"),
+        "required": ("t_min", "t_max"),
+    },
+    BaseSetModelTool: {
+        "name": "set_model",
+        "description_markers": ("deep learning model architecture",),
+        "properties": ("model_name",),
+        "required": ("model_name",),
+    },
+    BaseConfigureTrainingTool: {
+        "name": "configure_training",
+        "description_markers": ("training hyperparameters",),
+        "properties": (
+            "epoch",
+            "batch_size",
+            "learning_rate",
+            "repeat",
+            "device",
+            "optimizer",
+            "save_checkpoints_every",
+            "output_dir",
+        ),
+        "required": ("epoch", "batch_size", "learning_rate"),
+    },
+    BaseStartTrainingTool: {
+        "name": "start_training",
+        "description_markers": ("Start the training process",),
+        "properties": (),
+        "required": (),
+    },
+    BaseSwitchPanelTool: {
+        "name": "switch_panel",
+        "description_markers": ("Switch the main window view", "panel"),
+        "properties": ("panel_name", "view_mode"),
+        "required": ("panel_name",),
+    },
+}
+
+
 class TestToolDefinitionContracts:
     """Verify that all tool definitions expose name, description, parameters,
     and that execute() raises NotImplementedError (abstract guard)."""
 
     @pytest.mark.parametrize("tool_cls", _get_all_def_classes())
     def test_has_name(self, tool_cls):
-        assert isinstance(tool_cls.name.fget(None), str)  # property
-        assert len(tool_cls.name.fget(None)) > 0
+        assert (
+            _property_value(tool_cls.name) == EXPECTED_TOOL_CONTRACTS[tool_cls]["name"]
+        )
 
     @pytest.mark.parametrize("tool_cls", _get_all_def_classes())
     def test_has_description(self, tool_cls):
-        # Access through a temporary instance that bypasses BaseTool ABC enforcement
-        # We can use __dict__ to get the property directly
-        desc = tool_cls.description.fget(None)
+        desc = _property_value(tool_cls.description)
         assert isinstance(desc, str)
-        assert len(desc) > 0
+        for marker in EXPECTED_TOOL_CONTRACTS[tool_cls]["description_markers"]:
+            assert marker in desc
 
     @pytest.mark.parametrize("tool_cls", _get_all_def_classes())
     def test_has_parameters(self, tool_cls):
-        params = tool_cls.parameters.fget(None)
+        params = _property_value(tool_cls.parameters)
         assert isinstance(params, dict)
-        assert "type" in params
         assert params["type"] == "object"
+        assert (
+            tuple(params.get("properties", {}).keys())
+            == EXPECTED_TOOL_CONTRACTS[tool_cls]["properties"]
+        )
+        assert (
+            tuple(params.get("required", ()))
+            == EXPECTED_TOOL_CONTRACTS[tool_cls]["required"]
+        )
 
     @pytest.mark.parametrize("tool_cls", _get_all_def_classes())
     def test_execute_raises_not_implemented(self, tool_cls):
