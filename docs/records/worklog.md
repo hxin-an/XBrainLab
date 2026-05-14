@@ -15453,3 +15453,79 @@
   - This does not remove `XBrainLab/backend/facade.py`; it remains non-product compatibility.
   - This does not claim Windows human desktop acceptance or complete removal of all historical
     facade-specific compatibility tests.
+
+### 2026-05-13 Data Import Tier 1/Tier 2 label workflow checkpoint
+
+- scope：
+  - Continue the Data Import wizard product goal for the four supported mainstream categories:
+    GDF/BNCI-style internal/external labels, BIDS-like events, generic internal events /
+    annotations, and external MAT/CSV/TSV/TXT label carriers.
+  - Keep unsupported categories explicit: no full BIDS claim, no P300/SSVEP/clinical/XDF/LSL/
+    MOABB/proprietary converter support in this slice.
+- 做了什麼：
+  - Single-file scan now keeps selected EEG scope narrow while still detecting same-stem label
+    carriers in the same folder or nearby `label/`, `labels/`, `event/`, `events/` subfolders.
+  - BIDS-like label carrier planning now preserves detected `events.tsv` columns and surfaces
+    missing `events.json`, missing onset, and missing duration as warning or blocked review
+    evidence.
+  - Internal-event preview now preserves prefixed markers, filters response/comment markers out
+    of class-label candidates, and warns on PhysioNet-style run-dependent `T1` / `T2` semantics.
+  - Blocked label placement review now blocks validation instead of becoming a soft confirmation.
+  - Reviewed external sequence-label apply now passes selected target EEG event names into
+    `apply_labels_legacy()` and records them in label-import recipe state.
+  - Match Labels gained a visible BIDS-like events review card; Load Labels many-row layout no
+    longer truncates source paths into a narrow column; Review and Import action items are more
+    compact while still showing target step, issue, impact, and next action.
+  - Added `scripts/dev/capture_data_import_wizard_steps.py` and refreshed canonical screenshots,
+    including BIDS-like events and conversion fallback format guidance.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_scan.py tests/unit/backend/application/test_data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_recipe.py tests/unit/backend/application/test_data_interpretation_review.py tests/unit/backend/application/test_application_service.py -q`
+    -> `109 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
+    -> `69 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_import_wizard_steps.py`
+    -> PASS and refreshed `artifacts/ui/data-import-wizard-steps/`.
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_import_match_label_placement_modes.py`
+    -> PASS and refreshed placement-mode screenshots.
+  - Focused `ruff check <changed Python files>` -> `All checks passed!`.
+- 不能宣稱：
+  - This is not full BIDS support and does not validate BIDS inheritance / all sidecar semantics.
+  - Epoch UI is not redesigned in this slice; import now preserves placement evidence needed for
+    epoch follow-up.
+  - Human Windows desktop acceptance is still separate from offscreen screenshot evidence.
+
+### 2026-05-14 Data Import to Epoch handoff
+
+- scope：
+  - Connect reviewed Data Import label choices to the next Create Epochs step so users do not have
+    to rediscover the same target events, timing fields and interval duration choices.
+- 做了什麼：
+  - Added an epoch-context builder that reads loaded data events plus runtime import hints and
+    produces suggested events, time-window defaults and baseline defaults.
+  - Data Interpretation apply now records runtime epoch hints for reviewed internal EEG labels and
+    reviewed external label files, including placement method, label field, target events, time
+    field, duration/end field, class map, duration stats and source.
+  - CSV/TSV label loading now respects a selected duration/end field; end-time columns are
+    converted into durations before labels are applied.
+  - Reviewed event-code label carriers now remap matching EEG events directly instead of silently
+    falling back to sequence apply.
+  - The Create Epochs dialog now shows a compact `Suggested from import` card, checked event
+    suggestions, interval-aware time-window defaults and a clearer primary action while retaining
+    the old dialog API used by existing call sites.
+  - Reworked Create Epochs section layout from Qt `QGroupBox` legends into card headers so section
+    titles no longer overlap borders; compact numeric fields also hide the dark-theme spin arrows.
+  - Added screenshot evidence:
+    `artifacts/ui/epoching-dialog/epoching-interval-import.png` and
+    `artifacts/ui/epoching-dialog/epoching-internal-events.png`.
+- validation：
+  - `poetry run ruff check XBrainLab/backend/application/epoch_context.py XBrainLab/backend/application/data_interpretation_apply.py XBrainLab/backend/application/data_interpretation_service.py XBrainLab/backend/load_data/label_loader.py XBrainLab/ui/dialogs/preprocess/epoching_dialog.py tests/unit/backend/application/test_epoch_context.py tests/unit/backend/application/test_application_service.py tests/integration/ui/test_dialog_acceptance.py`
+    -> `All checks passed!`.
+  - `poetry run basedpyright XBrainLab/backend/application/epoch_context.py XBrainLab/backend/application/data_interpretation_apply.py XBrainLab/backend/application/data_interpretation_service.py XBrainLab/backend/load_data/label_loader.py XBrainLab/ui/dialogs/preprocess/epoching_dialog.py tests/unit/backend/application/test_epoch_context.py tests/unit/backend/application/test_application_service.py tests/integration/ui/test_dialog_acceptance.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application/test_epoch_context.py tests/unit/backend/application/test_application_service.py tests/unit/backend/application/test_preprocess_service.py tests/integration/ui/test_dialog_acceptance.py tests/unit/ui/components/test_dialogs.py::test_epoching_dialog_init tests/unit/ui/test_dialogs_extra.py::TestEpochingDialog tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_accepted tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_legacy_result_refreshes_shared_status tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_uses_epoch_capability_not_preprocess_block tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_uses_query_data_list_before_stale_controller tests/unit/ui/preprocess/test_preprocess_panel.py::test_preprocess_panel_epoching tests/unit/backend/load_data/test_label_loader.py tests/unit/backend/load_data/test_label_loader_coverage.py -q`
+    -> `101 passed`.
+- 不能宣稱：
+  - This does not make Epoch / Preprocess a full redesigned workflow. It only adds the import
+    handoff and the Create Epochs entry point needed after Data Import.
+  - This is not a full BIDS support claim; BIDS-like `events.tsv` handoff is covered only for the
+    reviewed label/timing fields in this slice.

@@ -29,6 +29,7 @@ def load_label_file(
     *,
     label_field: str | None = None,
     anchor: str | None = None,
+    duration_field: str | None = None,
 ) -> Any:
     """Load label data from a file.
 
@@ -55,7 +56,12 @@ def load_label_file(
     if filepath.endswith(".txt"):
         return _load_txt(filepath)
     if filepath.endswith((".csv", ".tsv")):
-        return _load_csv_tsv(filepath, label_field=label_field, anchor=anchor)
+        return _load_csv_tsv(
+            filepath,
+            label_field=label_field,
+            anchor=anchor,
+            duration_field=duration_field,
+        )
     if filepath.endswith(".mat"):
         return _load_mat(filepath, label_field=label_field, anchor=anchor)
     raise ValueError(f"Unsupported file format: {filepath}")
@@ -241,6 +247,7 @@ def _load_csv_tsv(
     *,
     label_field: str | None = None,
     anchor: str | None = None,
+    duration_field: str | None = None,
 ):
     """Load labels from a CSV or TSV file.
 
@@ -279,7 +286,10 @@ def _load_csv_tsv(
             (c for c in label_cols if c in df.columns),
             None,
         )
-        found_duration = next((c for c in duration_cols if c in df.columns), None)
+        found_duration = _resolve_column(df.columns, duration_field) or next(
+            (c for c in duration_cols if c in df.columns),
+            None,
+        )
 
         if found_time and found_label:
             # Timestamp Mode
@@ -288,7 +298,11 @@ def _load_csv_tsv(
                 item = {
                     "onset": row[found_time],
                     "label": row[found_label],
-                    "duration": row[found_duration] if found_duration else 0.0,
+                    "duration": _duration_value(
+                        row,
+                        onset_field=found_time,
+                        duration_field=found_duration,
+                    ),
                 }
                 result.append(item)
             return result
@@ -315,3 +329,15 @@ def _resolve_column(columns: Any, requested: str | None) -> str | None:
     if normalized in columns:
         return normalized
     raise ValueError(f"Column not found: {requested}")
+
+
+def _duration_value(row: Any, *, onset_field: str, duration_field: str | None) -> Any:
+    if not duration_field:
+        return 0.0
+    value = row[duration_field]
+    if duration_field.lower() in {"end", "end_time", "stop", "stop_time", "offset"}:
+        try:
+            return round(float(value) - float(row[onset_field]), 10)
+        except (TypeError, ValueError):
+            return value
+    return value

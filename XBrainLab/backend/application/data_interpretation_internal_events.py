@@ -105,6 +105,16 @@ def build_internal_event_preview(selected_files: list[str]) -> dict[str, Any]:
         "names_reliable": _names_reliable(candidate_rows),
         "pattern_status": _pattern_status(candidate_rows, not_used_rows),
     }
+    if _has_run_dependent_t_markers(aggregates):
+        result["run_dependent_semantics"] = True
+        result["run_dependent_event_codes"] = sorted(
+            [code for code in aggregates if str(code).upper() in {"T0", "T1", "T2"}],
+            key=str.casefold,
+        )
+        scan_warnings.append(
+            "PhysioNet-style T1/T2 event labels can change meaning by run; "
+            "confirm run/task mapping before supervised training."
+        )
     if scan_warnings:
         result["scan_warnings"] = scan_warnings
     return result
@@ -291,10 +301,8 @@ def _event_code_from_description(description: str, *, fallback: str = "") -> str
     text = " ".join(str(description or "").strip().split())
     if text.isdigit():
         return str(int(text))
-    if _looks_like_coded_marker(text):
-        match = _NUMBER_RE.search(text)
-        if match:
-            return str(int(match.group(0)))
+    if _looks_like_prefixed_marker(text):
+        return text
     fallback_text = " ".join(str(fallback or "").strip().split())
     if text:
         return text
@@ -302,6 +310,10 @@ def _event_code_from_description(description: str, *, fallback: str = "") -> str
 
 
 def _looks_like_coded_marker(text: str) -> bool:
+    return bool(_NUMBER_RE.fullmatch(str(text or "").strip()))
+
+
+def _looks_like_prefixed_marker(text: str) -> bool:
     normalized = text.casefold()
     prefixes = (
         "stimulus/s",
@@ -310,7 +322,7 @@ def _looks_like_coded_marker(text: str) -> bool:
         "annotation/",
         "trigger/",
     )
-    return normalized.startswith(prefixes) or bool(_NUMBER_RE.fullmatch(text))
+    return normalized.startswith(prefixes)
 
 
 def _semantic_for_event(stats: dict[str, Any]) -> dict[str, str]:
@@ -331,6 +343,20 @@ def _semantic_for_event(stats: dict[str, Any]) -> dict[str, str]:
             "use_as": "Ignore",
             "reason": "System / boundary marker",
             "evidence": "Boundary/system text",
+        }
+    if _description_has_any(descriptions, ("response", "button", "keypress")):
+        return {
+            "bucket": "not_used",
+            "use_as": "Response",
+            "reason": "Response marker",
+            "evidence": "Response text",
+        }
+    if _description_has_any(descriptions, ("comment", "note")):
+        return {
+            "bucket": "not_used",
+            "use_as": "Ignore",
+            "reason": "Comment marker",
+            "evidence": "Comment text",
         }
     if _description_has_any(descriptions, ("trial start", "starttrial", "start trial")):
         return {
@@ -565,6 +591,11 @@ def _pattern_status(
     if not_used_rows:
         return "Internal events found; choose labels"
     return "No internal events detected"
+
+
+def _has_run_dependent_t_markers(aggregates: dict[str, dict[str, Any]]) -> bool:
+    codes = {str(code).upper() for code in aggregates}
+    return {"T1", "T2"}.issubset(codes)
 
 
 def _class_like_description(descriptions: Iterable[str]) -> str:

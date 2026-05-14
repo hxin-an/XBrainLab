@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-05-10`
+最後更新：`2026-05-13`
 
 這頁只放下一輪施工焦點。
 
@@ -19,6 +19,11 @@ structured action items、recipe preservation 和 UI / agent / MCP command surfa
 `Add Labels to Loaded Data` / `Smart Parse Metadata` 舊入口。這仍需要 human Windows desktop
 acceptance。
 
+2026-05-13 Data Import Tier 1/Tier 2 checkpoint 已補強 GDF/BNCI-style external labels、
+BIDS-like events、generic internal events / annotations、external MAT/CSV/TSV/TXT label carriers
+四類主流路徑的 scan / preview / placement / recipe / review tests 和 screenshots。仍不支援
+P300/SSVEP/clinical/XDF/LSL/MOABB/proprietary converter 等非本輪範圍。
+
 ## 本輪要達到
 
 | 工作 | 完成判準 |
@@ -27,7 +32,7 @@ acceptance。
 | UI refresh cleanup | command 成功後的頁面更新由 shared refresh route / changed state 驅動，不由各頁自己猜。 |
 | Test cleanup | 測試不再把 legacy fallback 當作預期成功路徑；mock 只隔離外部依賴。 |
 | Validation reality-gap audit | 盤點現有 tests / artifacts / smoke 的 claim boundary，補上 human-observable product smoke，避免 dashboard PASS 但實機 workflow 仍不可用。 |
-| Data Import UX alignment | task-oriented step-panel wizard baseline 和第一輪 task-panel visual polish 已交付；後續不再以 debug-style preview 為目標。 |
+| Data Import UX alignment | task-oriented step-panel wizard baseline、Tier 1/Tier 2 label-placement support、BIDS-like review card、fallback format guidance 和 canonical screenshots 已有 focused coverage；後續不再以 debug-style preview 為目標。 |
 | BackendFacade boundary | Product runtime packages use `get_application_service(study)` / `ApplicationService`; `BackendFacade` is legacy compatibility only. |
 | Architecture guard | 新增或維持 guard，防止 product path 繞過 command spine。 |
 | Docs alignment | `current`、`roadmap`、`architecture` 不互相矛盾。 |

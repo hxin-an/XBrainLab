@@ -120,7 +120,9 @@
           "action_items": [],
           "summary": null,
           "metadata_preview": [],
-          "label_carriers": [],
+          "label_carriers": [
+            "<replay_source>/events.tsv"
+          ],
           "label_carrier_plan": [],
           "format_capabilities": [
             {
@@ -596,14 +598,153 @@
               "anchor_candidates": [
                 "onset"
               ],
+              "time_field_candidates": [
+                "onset"
+              ],
+              "interval_start_candidates": [
+                "onset"
+              ],
+              "event_code_candidates": [],
+              "duration_candidates": [
+                "duration"
+              ],
               "selected_label_field": "trial_type",
               "selected_anchor": "onset",
+              "selected_target_event_codes": [],
+              "selected_duration_field": "duration",
+              "label_row_count": 4,
+              "label_value_counts": {
+                "left": 2,
+                "right": 2
+              },
+              "selected_anchor_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "1.0": 1,
+                  "2.0": 1,
+                  "3.0": 1,
+                  "4.0": 1
+                },
+                "numeric_count": 4,
+                "min": 1.0,
+                "max": 4.0
+              },
+              "selected_duration_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "0.5": 4
+                },
+                "numeric_count": 4,
+                "min": 0.5,
+                "max": 0.5
+              },
+              "time_label_preview": [
+                {
+                  "time": "1.0",
+                  "label": "left"
+                },
+                {
+                  "time": "2.0",
+                  "label": "right"
+                },
+                {
+                  "time": "3.0",
+                  "label": "left"
+                }
+              ],
+              "bids_event_columns": [
+                "onset",
+                "duration",
+                "trial_type"
+              ],
+              "warnings": [],
               "time_model": "seconds",
               "granularity": "event",
+              "placement_method": "interval",
               "role": "external labels",
               "selected_target_file": "",
               "decision": "needs_confirmation",
-              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying.",
+              "placement_reviews": {
+                "eeg_event": {
+                  "method": "eeg_event",
+                  "status": "blocked",
+                  "label_field": "trial_type",
+                  "summary": "Target EEG event(s) were not found: onset.",
+                  "next_action": "Choose EEG events present in the selected files.",
+                  "target_event": "onset",
+                  "target_events": [
+                    "onset"
+                  ],
+                  "label_rows": 4,
+                  "excluded_eeg_events": 0
+                },
+                "time_field": {
+                  "method": "time_field",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "onset: 4/4 numeric rows, range 1 to 4.",
+                  "next_action": "Confirm the time base before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds"
+                },
+                "interval": {
+                  "method": "interval",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "4 interval rows using onset and duration.",
+                  "next_action": "Confirm interval semantics before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds",
+                  "duration_field": "duration",
+                  "duration_numeric_rows": 4,
+                  "duration_min": 0.5,
+                  "duration_max": 0.5
+                },
+                "event_code": {
+                  "method": "event_code",
+                  "status": "needs_review",
+                  "label_field": "trial_type",
+                  "summary": "No EEG event-code preview is available for matching.",
+                  "next_action": "Review internal EEG events before applying.",
+                  "event_code_field": "onset",
+                  "label_rows": 4,
+                  "label_code_count": 4,
+                  "matched_code_count": 0,
+                  "matched_codes": [],
+                  "missing_codes": [
+                    "1.0",
+                    "2.0",
+                    "3.0",
+                    "4.0"
+                  ]
+                }
+              },
+              "placement_review": {
+                "method": "interval",
+                "status": "ready",
+                "label_field": "trial_type",
+                "summary": "4 interval rows using onset and duration.",
+                "next_action": "Confirm interval semantics before epoch setup.",
+                "time_field": "onset",
+                "label_rows": 4,
+                "numeric_rows": 4,
+                "time_min": 1.0,
+                "time_max": 4.0,
+                "time_model": "seconds",
+                "duration_field": "duration",
+                "duration_numeric_rows": 4,
+                "duration_min": 0.5,
+                "duration_max": 0.5
+              }
             }
           ],
           "format_capabilities": [
@@ -703,14 +844,153 @@
               "anchor_candidates": [
                 "onset"
               ],
+              "time_field_candidates": [
+                "onset"
+              ],
+              "interval_start_candidates": [
+                "onset"
+              ],
+              "event_code_candidates": [],
+              "duration_candidates": [
+                "duration"
+              ],
               "selected_label_field": "trial_type",
               "selected_anchor": "onset",
+              "selected_target_event_codes": [],
+              "selected_duration_field": "duration",
+              "label_row_count": 4,
+              "label_value_counts": {
+                "left": 2,
+                "right": 2
+              },
+              "selected_anchor_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "1.0": 1,
+                  "2.0": 1,
+                  "3.0": 1,
+                  "4.0": 1
+                },
+                "numeric_count": 4,
+                "min": 1.0,
+                "max": 4.0
+              },
+              "selected_duration_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "0.5": 4
+                },
+                "numeric_count": 4,
+                "min": 0.5,
+                "max": 0.5
+              },
+              "time_label_preview": [
+                {
+                  "time": "1.0",
+                  "label": "left"
+                },
+                {
+                  "time": "2.0",
+                  "label": "right"
+                },
+                {
+                  "time": "3.0",
+                  "label": "left"
+                }
+              ],
+              "bids_event_columns": [
+                "onset",
+                "duration",
+                "trial_type"
+              ],
+              "warnings": [],
               "time_model": "seconds",
               "granularity": "event",
+              "placement_method": "interval",
               "role": "external labels",
               "selected_target_file": "",
               "decision": "needs_confirmation",
-              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying.",
+              "placement_reviews": {
+                "eeg_event": {
+                  "method": "eeg_event",
+                  "status": "blocked",
+                  "label_field": "trial_type",
+                  "summary": "Target EEG event(s) were not found: onset.",
+                  "next_action": "Choose EEG events present in the selected files.",
+                  "target_event": "onset",
+                  "target_events": [
+                    "onset"
+                  ],
+                  "label_rows": 4,
+                  "excluded_eeg_events": 0
+                },
+                "time_field": {
+                  "method": "time_field",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "onset: 4/4 numeric rows, range 1 to 4.",
+                  "next_action": "Confirm the time base before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds"
+                },
+                "interval": {
+                  "method": "interval",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "4 interval rows using onset and duration.",
+                  "next_action": "Confirm interval semantics before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds",
+                  "duration_field": "duration",
+                  "duration_numeric_rows": 4,
+                  "duration_min": 0.5,
+                  "duration_max": 0.5
+                },
+                "event_code": {
+                  "method": "event_code",
+                  "status": "needs_review",
+                  "label_field": "trial_type",
+                  "summary": "No EEG event-code preview is available for matching.",
+                  "next_action": "Review internal EEG events before applying.",
+                  "event_code_field": "onset",
+                  "label_rows": 4,
+                  "label_code_count": 4,
+                  "matched_code_count": 0,
+                  "matched_codes": [],
+                  "missing_codes": [
+                    "1.0",
+                    "2.0",
+                    "3.0",
+                    "4.0"
+                  ]
+                }
+              },
+              "placement_review": {
+                "method": "interval",
+                "status": "ready",
+                "label_field": "trial_type",
+                "summary": "4 interval rows using onset and duration.",
+                "next_action": "Confirm interval semantics before epoch setup.",
+                "time_field": "onset",
+                "label_rows": 4,
+                "numeric_rows": 4,
+                "time_min": 1.0,
+                "time_max": 4.0,
+                "time_model": "seconds",
+                "duration_field": "duration",
+                "duration_numeric_rows": 4,
+                "duration_min": 0.5,
+                "duration_max": 0.5
+              }
             }
           ],
           "event_roles": {
@@ -723,6 +1003,8 @@
             "left": "Left hand",
             "right": "Right hand"
           },
+          "class_map_source": "label_carriers",
+          "internal_event_preview": {},
           "time_model": "sample_index_or_annotation_time",
           "granularity": "trial_or_event",
           "metadata": [
@@ -866,6 +1148,10 @@
           "file_count": 2,
           "label_carrier_count": 1,
           "source_selection": "BIDS folder",
+          "selected_eeg_files": [
+            "<replay_source>/sub-01_task-mi_run-1_raw.fif",
+            "<replay_source>/sub-01_task-mi_run-2_raw.fif"
+          ],
           "action_items": [
             {
               "issue": "Confirm label carrier alignment, anchor event, and class map before applying.",
@@ -916,14 +1202,153 @@
               "anchor_candidates": [
                 "onset"
               ],
+              "time_field_candidates": [
+                "onset"
+              ],
+              "interval_start_candidates": [
+                "onset"
+              ],
+              "event_code_candidates": [],
+              "duration_candidates": [
+                "duration"
+              ],
               "selected_label_field": "trial_type",
               "selected_anchor": "onset",
+              "selected_target_event_codes": [],
+              "selected_duration_field": "duration",
+              "label_row_count": 4,
+              "label_value_counts": {
+                "left": 2,
+                "right": 2
+              },
+              "selected_anchor_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "1.0": 1,
+                  "2.0": 1,
+                  "3.0": 1,
+                  "4.0": 1
+                },
+                "numeric_count": 4,
+                "min": 1.0,
+                "max": 4.0
+              },
+              "selected_duration_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "0.5": 4
+                },
+                "numeric_count": 4,
+                "min": 0.5,
+                "max": 0.5
+              },
+              "time_label_preview": [
+                {
+                  "time": "1.0",
+                  "label": "left"
+                },
+                {
+                  "time": "2.0",
+                  "label": "right"
+                },
+                {
+                  "time": "3.0",
+                  "label": "left"
+                }
+              ],
+              "bids_event_columns": [
+                "onset",
+                "duration",
+                "trial_type"
+              ],
+              "warnings": [],
               "time_model": "seconds",
               "granularity": "event",
+              "placement_method": "interval",
               "role": "external labels",
               "selected_target_file": "",
               "decision": "needs_confirmation",
-              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying.",
+              "placement_reviews": {
+                "eeg_event": {
+                  "method": "eeg_event",
+                  "status": "blocked",
+                  "label_field": "trial_type",
+                  "summary": "Target EEG event(s) were not found: onset.",
+                  "next_action": "Choose EEG events present in the selected files.",
+                  "target_event": "onset",
+                  "target_events": [
+                    "onset"
+                  ],
+                  "label_rows": 4,
+                  "excluded_eeg_events": 0
+                },
+                "time_field": {
+                  "method": "time_field",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "onset: 4/4 numeric rows, range 1 to 4.",
+                  "next_action": "Confirm the time base before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds"
+                },
+                "interval": {
+                  "method": "interval",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "4 interval rows using onset and duration.",
+                  "next_action": "Confirm interval semantics before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds",
+                  "duration_field": "duration",
+                  "duration_numeric_rows": 4,
+                  "duration_min": 0.5,
+                  "duration_max": 0.5
+                },
+                "event_code": {
+                  "method": "event_code",
+                  "status": "needs_review",
+                  "label_field": "trial_type",
+                  "summary": "No EEG event-code preview is available for matching.",
+                  "next_action": "Review internal EEG events before applying.",
+                  "event_code_field": "onset",
+                  "label_rows": 4,
+                  "label_code_count": 4,
+                  "matched_code_count": 0,
+                  "matched_codes": [],
+                  "missing_codes": [
+                    "1.0",
+                    "2.0",
+                    "3.0",
+                    "4.0"
+                  ]
+                }
+              },
+              "placement_review": {
+                "method": "interval",
+                "status": "ready",
+                "label_field": "trial_type",
+                "summary": "4 interval rows using onset and duration.",
+                "next_action": "Confirm interval semantics before epoch setup.",
+                "time_field": "onset",
+                "label_rows": 4,
+                "numeric_rows": 4,
+                "time_min": 1.0,
+                "time_max": 4.0,
+                "time_model": "seconds",
+                "duration_field": "duration",
+                "duration_numeric_rows": 4,
+                "duration_min": 0.5,
+                "duration_max": 0.5
+              }
             }
           ],
           "metadata_preview": [
@@ -1067,6 +1492,8 @@
             "left": "Left hand",
             "right": "Right hand"
           },
+          "class_map_source": "label_carriers",
+          "internal_event_preview": {},
           "recipe_reload_summary": {}
         }
       }
@@ -1322,14 +1749,153 @@
               "anchor_candidates": [
                 "onset"
               ],
+              "time_field_candidates": [
+                "onset"
+              ],
+              "interval_start_candidates": [
+                "onset"
+              ],
+              "event_code_candidates": [],
+              "duration_candidates": [
+                "duration"
+              ],
               "selected_label_field": "trial_type",
               "selected_anchor": "onset",
+              "selected_target_event_codes": [],
+              "selected_duration_field": "duration",
+              "label_row_count": 4,
+              "label_value_counts": {
+                "left": 2,
+                "right": 2
+              },
+              "selected_anchor_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "1.0": 1,
+                  "2.0": 1,
+                  "3.0": 1,
+                  "4.0": 1
+                },
+                "numeric_count": 4,
+                "min": 1.0,
+                "max": 4.0
+              },
+              "selected_duration_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "0.5": 4
+                },
+                "numeric_count": 4,
+                "min": 0.5,
+                "max": 0.5
+              },
+              "time_label_preview": [
+                {
+                  "time": "1.0",
+                  "label": "left"
+                },
+                {
+                  "time": "2.0",
+                  "label": "right"
+                },
+                {
+                  "time": "3.0",
+                  "label": "left"
+                }
+              ],
+              "bids_event_columns": [
+                "onset",
+                "duration",
+                "trial_type"
+              ],
+              "warnings": [],
               "time_model": "seconds",
               "granularity": "event",
+              "placement_method": "interval",
               "role": "external labels",
               "selected_target_file": "",
               "decision": "needs_confirmation",
-              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying.",
+              "placement_reviews": {
+                "eeg_event": {
+                  "method": "eeg_event",
+                  "status": "blocked",
+                  "label_field": "trial_type",
+                  "summary": "Target EEG event(s) were not found: onset.",
+                  "next_action": "Choose EEG events present in the selected files.",
+                  "target_event": "onset",
+                  "target_events": [
+                    "onset"
+                  ],
+                  "label_rows": 4,
+                  "excluded_eeg_events": 0
+                },
+                "time_field": {
+                  "method": "time_field",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "onset: 4/4 numeric rows, range 1 to 4.",
+                  "next_action": "Confirm the time base before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds"
+                },
+                "interval": {
+                  "method": "interval",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "4 interval rows using onset and duration.",
+                  "next_action": "Confirm interval semantics before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds",
+                  "duration_field": "duration",
+                  "duration_numeric_rows": 4,
+                  "duration_min": 0.5,
+                  "duration_max": 0.5
+                },
+                "event_code": {
+                  "method": "event_code",
+                  "status": "needs_review",
+                  "label_field": "trial_type",
+                  "summary": "No EEG event-code preview is available for matching.",
+                  "next_action": "Review internal EEG events before applying.",
+                  "event_code_field": "onset",
+                  "label_rows": 4,
+                  "label_code_count": 4,
+                  "matched_code_count": 0,
+                  "matched_codes": [],
+                  "missing_codes": [
+                    "1.0",
+                    "2.0",
+                    "3.0",
+                    "4.0"
+                  ]
+                }
+              },
+              "placement_review": {
+                "method": "interval",
+                "status": "ready",
+                "label_field": "trial_type",
+                "summary": "4 interval rows using onset and duration.",
+                "next_action": "Confirm interval semantics before epoch setup.",
+                "time_field": "onset",
+                "label_rows": 4,
+                "numeric_rows": 4,
+                "time_min": 1.0,
+                "time_max": 4.0,
+                "time_model": "seconds",
+                "duration_field": "duration",
+                "duration_numeric_rows": 4,
+                "duration_min": 0.5,
+                "duration_max": 0.5
+              }
             }
           ],
           "format_capabilities": [
@@ -1710,14 +2276,153 @@
               "anchor_candidates": [
                 "onset"
               ],
+              "time_field_candidates": [
+                "onset"
+              ],
+              "interval_start_candidates": [
+                "onset"
+              ],
+              "event_code_candidates": [],
+              "duration_candidates": [
+                "duration"
+              ],
               "selected_label_field": "trial_type",
               "selected_anchor": "onset",
+              "selected_target_event_codes": [],
+              "selected_duration_field": "duration",
+              "label_row_count": 4,
+              "label_value_counts": {
+                "left": 2,
+                "right": 2
+              },
+              "selected_anchor_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "1.0": 1,
+                  "2.0": 1,
+                  "3.0": 1,
+                  "4.0": 1
+                },
+                "numeric_count": 4,
+                "min": 1.0,
+                "max": 4.0
+              },
+              "selected_duration_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "0.5": 4
+                },
+                "numeric_count": 4,
+                "min": 0.5,
+                "max": 0.5
+              },
+              "time_label_preview": [
+                {
+                  "time": "1.0",
+                  "label": "left"
+                },
+                {
+                  "time": "2.0",
+                  "label": "right"
+                },
+                {
+                  "time": "3.0",
+                  "label": "left"
+                }
+              ],
+              "bids_event_columns": [
+                "onset",
+                "duration",
+                "trial_type"
+              ],
+              "warnings": [],
               "time_model": "seconds",
               "granularity": "trial",
-              "role": "class cue labels",
-              "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
+              "placement_method": "interval",
+              "role": "external labels",
+              "selected_target_file": "",
               "decision": "needs_confirmation",
-              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying.",
+              "placement_reviews": {
+                "eeg_event": {
+                  "method": "eeg_event",
+                  "status": "blocked",
+                  "label_field": "trial_type",
+                  "summary": "Target EEG event(s) were not found: onset.",
+                  "next_action": "Choose EEG events present in the selected files.",
+                  "target_event": "onset",
+                  "target_events": [
+                    "onset"
+                  ],
+                  "label_rows": 4,
+                  "excluded_eeg_events": 0
+                },
+                "time_field": {
+                  "method": "time_field",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "onset: 4/4 numeric rows, range 1 to 4.",
+                  "next_action": "Confirm the time base before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds"
+                },
+                "interval": {
+                  "method": "interval",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "4 interval rows using onset and duration.",
+                  "next_action": "Confirm interval semantics before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds",
+                  "duration_field": "duration",
+                  "duration_numeric_rows": 4,
+                  "duration_min": 0.5,
+                  "duration_max": 0.5
+                },
+                "event_code": {
+                  "method": "event_code",
+                  "status": "needs_review",
+                  "label_field": "trial_type",
+                  "summary": "No EEG event-code preview is available for matching.",
+                  "next_action": "Review internal EEG events before applying.",
+                  "event_code_field": "onset",
+                  "label_rows": 4,
+                  "label_code_count": 4,
+                  "matched_code_count": 0,
+                  "matched_codes": [],
+                  "missing_codes": [
+                    "1.0",
+                    "2.0",
+                    "3.0",
+                    "4.0"
+                  ]
+                }
+              },
+              "placement_review": {
+                "method": "interval",
+                "status": "ready",
+                "label_field": "trial_type",
+                "summary": "4 interval rows using onset and duration.",
+                "next_action": "Confirm interval semantics before epoch setup.",
+                "time_field": "onset",
+                "label_rows": 4,
+                "numeric_rows": 4,
+                "time_min": 1.0,
+                "time_max": 4.0,
+                "time_model": "seconds",
+                "duration_field": "duration",
+                "duration_numeric_rows": 4,
+                "duration_min": 0.5,
+                "duration_max": 0.5
+              }
             }
           ],
           "format_capabilities": [
@@ -1750,7 +2455,7 @@
             "label_carrier": "external label or event source",
             "onset": "time anchor",
             "duration": "event duration",
-            "trial_type": "class cue"
+            "trial_type": "class label candidate"
           },
           "class_map": {
             "left": "Left hand",
@@ -1817,26 +2522,167 @@
               "anchor_candidates": [
                 "onset"
               ],
+              "time_field_candidates": [
+                "onset"
+              ],
+              "interval_start_candidates": [
+                "onset"
+              ],
+              "event_code_candidates": [],
+              "duration_candidates": [
+                "duration"
+              ],
               "selected_label_field": "trial_type",
               "selected_anchor": "onset",
+              "selected_target_event_codes": [],
+              "selected_duration_field": "duration",
+              "label_row_count": 4,
+              "label_value_counts": {
+                "left": 2,
+                "right": 2
+              },
+              "selected_anchor_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "1.0": 1,
+                  "2.0": 1,
+                  "3.0": 1,
+                  "4.0": 1
+                },
+                "numeric_count": 4,
+                "min": 1.0,
+                "max": 4.0
+              },
+              "selected_duration_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "0.5": 4
+                },
+                "numeric_count": 4,
+                "min": 0.5,
+                "max": 0.5
+              },
+              "time_label_preview": [
+                {
+                  "time": "1.0",
+                  "label": "left"
+                },
+                {
+                  "time": "2.0",
+                  "label": "right"
+                },
+                {
+                  "time": "3.0",
+                  "label": "left"
+                }
+              ],
+              "bids_event_columns": [
+                "onset",
+                "duration",
+                "trial_type"
+              ],
+              "warnings": [],
               "time_model": "seconds",
               "granularity": "trial",
-              "role": "class cue labels",
-              "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
+              "placement_method": "interval",
+              "role": "external labels",
+              "selected_target_file": "",
               "decision": "needs_confirmation",
-              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying.",
+              "placement_reviews": {
+                "eeg_event": {
+                  "method": "eeg_event",
+                  "status": "blocked",
+                  "label_field": "trial_type",
+                  "summary": "Target EEG event(s) were not found: onset.",
+                  "next_action": "Choose EEG events present in the selected files.",
+                  "target_event": "onset",
+                  "target_events": [
+                    "onset"
+                  ],
+                  "label_rows": 4,
+                  "excluded_eeg_events": 0
+                },
+                "time_field": {
+                  "method": "time_field",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "onset: 4/4 numeric rows, range 1 to 4.",
+                  "next_action": "Confirm the time base before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds"
+                },
+                "interval": {
+                  "method": "interval",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "4 interval rows using onset and duration.",
+                  "next_action": "Confirm interval semantics before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds",
+                  "duration_field": "duration",
+                  "duration_numeric_rows": 4,
+                  "duration_min": 0.5,
+                  "duration_max": 0.5
+                },
+                "event_code": {
+                  "method": "event_code",
+                  "status": "needs_review",
+                  "label_field": "trial_type",
+                  "summary": "No EEG event-code preview is available for matching.",
+                  "next_action": "Review internal EEG events before applying.",
+                  "event_code_field": "onset",
+                  "label_rows": 4,
+                  "label_code_count": 4,
+                  "matched_code_count": 0,
+                  "matched_codes": [],
+                  "missing_codes": [
+                    "1.0",
+                    "2.0",
+                    "3.0",
+                    "4.0"
+                  ]
+                }
+              },
+              "placement_review": {
+                "method": "interval",
+                "status": "ready",
+                "label_field": "trial_type",
+                "summary": "4 interval rows using onset and duration.",
+                "next_action": "Confirm interval semantics before epoch setup.",
+                "time_field": "onset",
+                "label_rows": 4,
+                "numeric_rows": 4,
+                "time_min": 1.0,
+                "time_max": 4.0,
+                "time_model": "seconds",
+                "duration_field": "duration",
+                "duration_numeric_rows": 4,
+                "duration_min": 0.5,
+                "duration_max": 0.5
+              }
             }
           ],
           "event_roles": {
             "label_carrier": "external label or event source",
             "onset": "time anchor",
             "duration": "event duration",
-            "trial_type": "class cue"
+            "trial_type": "class label candidate"
           },
           "class_map": {
             "left": "Left hand",
             "right": "Right hand"
           },
+          "class_map_source": "label_carriers",
+          "internal_event_preview": {},
           "time_model": "sample_index_or_annotation_time",
           "granularity": "trial_or_event",
           "metadata": [
@@ -1978,20 +2824,15 @@
                 "task": "motor-imagery"
               }
             },
-            "event_roles": {
-              "label_carrier": "external label or event source",
-              "onset": "time anchor",
-              "duration": "event duration",
-              "trial_type": "class cue"
-            },
             "label_carrier_choices": {
               "<replay_source>/events.tsv": {
-                "target_file": "sub-01_task-mi_run-2_raw.fif",
                 "granularity": "trial",
-                "role": "class cue labels",
                 "time_model": "seconds",
                 "label_field": "trial_type",
-                "anchor": "onset"
+                "anchor": "onset",
+                "role": "external labels",
+                "placement_method": "interval",
+                "duration_field": "duration"
               }
             }
           },
@@ -1999,7 +2840,6 @@
             "scan:scan-1",
             "candidate:candidate-4",
             "choices:metadata_overrides",
-            "choices:event_roles",
             "choices:label_carriers"
           ]
         },
@@ -2010,6 +2850,10 @@
           "file_count": 2,
           "label_carrier_count": 1,
           "source_selection": "BIDS folder",
+          "selected_eeg_files": [
+            "<replay_source>/sub-01_task-mi_run-1_raw.fif",
+            "<replay_source>/sub-01_task-mi_run-2_raw.fif"
+          ],
           "action_items": [
             {
               "issue": "Confirm label carrier alignment, anchor event, and class map before applying.",
@@ -2053,14 +2897,153 @@
               "anchor_candidates": [
                 "onset"
               ],
+              "time_field_candidates": [
+                "onset"
+              ],
+              "interval_start_candidates": [
+                "onset"
+              ],
+              "event_code_candidates": [],
+              "duration_candidates": [
+                "duration"
+              ],
               "selected_label_field": "trial_type",
               "selected_anchor": "onset",
+              "selected_target_event_codes": [],
+              "selected_duration_field": "duration",
+              "label_row_count": 4,
+              "label_value_counts": {
+                "left": 2,
+                "right": 2
+              },
+              "selected_anchor_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "1.0": 1,
+                  "2.0": 1,
+                  "3.0": 1,
+                  "4.0": 1
+                },
+                "numeric_count": 4,
+                "min": 1.0,
+                "max": 4.0
+              },
+              "selected_duration_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "0.5": 4
+                },
+                "numeric_count": 4,
+                "min": 0.5,
+                "max": 0.5
+              },
+              "time_label_preview": [
+                {
+                  "time": "1.0",
+                  "label": "left"
+                },
+                {
+                  "time": "2.0",
+                  "label": "right"
+                },
+                {
+                  "time": "3.0",
+                  "label": "left"
+                }
+              ],
+              "bids_event_columns": [
+                "onset",
+                "duration",
+                "trial_type"
+              ],
+              "warnings": [],
               "time_model": "seconds",
               "granularity": "trial",
-              "role": "class cue labels",
-              "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
+              "placement_method": "interval",
+              "role": "external labels",
+              "selected_target_file": "",
               "decision": "needs_confirmation",
-              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying.",
+              "placement_reviews": {
+                "eeg_event": {
+                  "method": "eeg_event",
+                  "status": "blocked",
+                  "label_field": "trial_type",
+                  "summary": "Target EEG event(s) were not found: onset.",
+                  "next_action": "Choose EEG events present in the selected files.",
+                  "target_event": "onset",
+                  "target_events": [
+                    "onset"
+                  ],
+                  "label_rows": 4,
+                  "excluded_eeg_events": 0
+                },
+                "time_field": {
+                  "method": "time_field",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "onset: 4/4 numeric rows, range 1 to 4.",
+                  "next_action": "Confirm the time base before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds"
+                },
+                "interval": {
+                  "method": "interval",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "4 interval rows using onset and duration.",
+                  "next_action": "Confirm interval semantics before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds",
+                  "duration_field": "duration",
+                  "duration_numeric_rows": 4,
+                  "duration_min": 0.5,
+                  "duration_max": 0.5
+                },
+                "event_code": {
+                  "method": "event_code",
+                  "status": "needs_review",
+                  "label_field": "trial_type",
+                  "summary": "No EEG event-code preview is available for matching.",
+                  "next_action": "Review internal EEG events before applying.",
+                  "event_code_field": "onset",
+                  "label_rows": 4,
+                  "label_code_count": 4,
+                  "matched_code_count": 0,
+                  "matched_codes": [],
+                  "missing_codes": [
+                    "1.0",
+                    "2.0",
+                    "3.0",
+                    "4.0"
+                  ]
+                }
+              },
+              "placement_review": {
+                "method": "interval",
+                "status": "ready",
+                "label_field": "trial_type",
+                "summary": "4 interval rows using onset and duration.",
+                "next_action": "Confirm interval semantics before epoch setup.",
+                "time_field": "onset",
+                "label_rows": 4,
+                "numeric_rows": 4,
+                "time_min": 1.0,
+                "time_max": 4.0,
+                "time_model": "seconds",
+                "duration_field": "duration",
+                "duration_numeric_rows": 4,
+                "duration_min": 0.5,
+                "duration_max": 0.5
+              }
             }
           ],
           "metadata_preview": [
@@ -2201,12 +3184,14 @@
             "label_carrier": "external label or event source",
             "onset": "time anchor",
             "duration": "event duration",
-            "trial_type": "class cue"
+            "trial_type": "class label candidate"
           },
           "class_map": {
             "left": "Left hand",
             "right": "Right hand"
           },
+          "class_map_source": "label_carriers",
+          "internal_event_preview": {},
           "recipe_reload_summary": {}
         }
       }
@@ -2459,14 +3444,153 @@
               "anchor_candidates": [
                 "onset"
               ],
+              "time_field_candidates": [
+                "onset"
+              ],
+              "interval_start_candidates": [
+                "onset"
+              ],
+              "event_code_candidates": [],
+              "duration_candidates": [
+                "duration"
+              ],
               "selected_label_field": "trial_type",
               "selected_anchor": "onset",
+              "selected_target_event_codes": [],
+              "selected_duration_field": "duration",
+              "label_row_count": 4,
+              "label_value_counts": {
+                "left": 2,
+                "right": 2
+              },
+              "selected_anchor_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "1.0": 1,
+                  "2.0": 1,
+                  "3.0": 1,
+                  "4.0": 1
+                },
+                "numeric_count": 4,
+                "min": 1.0,
+                "max": 4.0
+              },
+              "selected_duration_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "0.5": 4
+                },
+                "numeric_count": 4,
+                "min": 0.5,
+                "max": 0.5
+              },
+              "time_label_preview": [
+                {
+                  "time": "1.0",
+                  "label": "left"
+                },
+                {
+                  "time": "2.0",
+                  "label": "right"
+                },
+                {
+                  "time": "3.0",
+                  "label": "left"
+                }
+              ],
+              "bids_event_columns": [
+                "onset",
+                "duration",
+                "trial_type"
+              ],
+              "warnings": [],
               "time_model": "seconds",
               "granularity": "trial",
-              "role": "class cue labels",
-              "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
+              "placement_method": "interval",
+              "role": "external labels",
+              "selected_target_file": "",
               "decision": "needs_confirmation",
-              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying.",
+              "placement_reviews": {
+                "eeg_event": {
+                  "method": "eeg_event",
+                  "status": "blocked",
+                  "label_field": "trial_type",
+                  "summary": "Target EEG event(s) were not found: onset.",
+                  "next_action": "Choose EEG events present in the selected files.",
+                  "target_event": "onset",
+                  "target_events": [
+                    "onset"
+                  ],
+                  "label_rows": 4,
+                  "excluded_eeg_events": 0
+                },
+                "time_field": {
+                  "method": "time_field",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "onset: 4/4 numeric rows, range 1 to 4.",
+                  "next_action": "Confirm the time base before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds"
+                },
+                "interval": {
+                  "method": "interval",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "4 interval rows using onset and duration.",
+                  "next_action": "Confirm interval semantics before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds",
+                  "duration_field": "duration",
+                  "duration_numeric_rows": 4,
+                  "duration_min": 0.5,
+                  "duration_max": 0.5
+                },
+                "event_code": {
+                  "method": "event_code",
+                  "status": "needs_review",
+                  "label_field": "trial_type",
+                  "summary": "No EEG event-code preview is available for matching.",
+                  "next_action": "Review internal EEG events before applying.",
+                  "event_code_field": "onset",
+                  "label_rows": 4,
+                  "label_code_count": 4,
+                  "matched_code_count": 0,
+                  "matched_codes": [],
+                  "missing_codes": [
+                    "1.0",
+                    "2.0",
+                    "3.0",
+                    "4.0"
+                  ]
+                }
+              },
+              "placement_review": {
+                "method": "interval",
+                "status": "ready",
+                "label_field": "trial_type",
+                "summary": "4 interval rows using onset and duration.",
+                "next_action": "Confirm interval semantics before epoch setup.",
+                "time_field": "onset",
+                "label_rows": 4,
+                "numeric_rows": 4,
+                "time_min": 1.0,
+                "time_max": 4.0,
+                "time_model": "seconds",
+                "duration_field": "duration",
+                "duration_numeric_rows": 4,
+                "duration_min": 0.5,
+                "duration_max": 0.5
+              }
             }
           ],
           "format_capabilities": [
@@ -2499,7 +3623,7 @@
             "label_carrier": "external label or event source",
             "onset": "time anchor",
             "duration": "event duration",
-            "trial_type": "class cue"
+            "trial_type": "class label candidate"
           },
           "class_map": {
             "left": "Left hand",
@@ -2839,14 +3963,153 @@
               "anchor_candidates": [
                 "onset"
               ],
+              "time_field_candidates": [
+                "onset"
+              ],
+              "interval_start_candidates": [
+                "onset"
+              ],
+              "event_code_candidates": [],
+              "duration_candidates": [
+                "duration"
+              ],
               "selected_label_field": "trial_type",
               "selected_anchor": "onset",
+              "selected_target_event_codes": [],
+              "selected_duration_field": "duration",
+              "label_row_count": 4,
+              "label_value_counts": {
+                "left": 2,
+                "right": 2
+              },
+              "selected_anchor_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "1.0": 1,
+                  "2.0": 1,
+                  "3.0": 1,
+                  "4.0": 1
+                },
+                "numeric_count": 4,
+                "min": 1.0,
+                "max": 4.0
+              },
+              "selected_duration_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "0.5": 4
+                },
+                "numeric_count": 4,
+                "min": 0.5,
+                "max": 0.5
+              },
+              "time_label_preview": [
+                {
+                  "time": "1.0",
+                  "label": "left"
+                },
+                {
+                  "time": "2.0",
+                  "label": "right"
+                },
+                {
+                  "time": "3.0",
+                  "label": "left"
+                }
+              ],
+              "bids_event_columns": [
+                "onset",
+                "duration",
+                "trial_type"
+              ],
+              "warnings": [],
               "time_model": "seconds",
               "granularity": "trial",
-              "role": "class cue labels",
-              "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
+              "placement_method": "interval",
+              "role": "external labels",
+              "selected_target_file": "",
               "decision": "needs_confirmation",
-              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying.",
+              "placement_reviews": {
+                "eeg_event": {
+                  "method": "eeg_event",
+                  "status": "blocked",
+                  "label_field": "trial_type",
+                  "summary": "Target EEG event(s) were not found: onset.",
+                  "next_action": "Choose EEG events present in the selected files.",
+                  "target_event": "onset",
+                  "target_events": [
+                    "onset"
+                  ],
+                  "label_rows": 4,
+                  "excluded_eeg_events": 0
+                },
+                "time_field": {
+                  "method": "time_field",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "onset: 4/4 numeric rows, range 1 to 4.",
+                  "next_action": "Confirm the time base before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds"
+                },
+                "interval": {
+                  "method": "interval",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "4 interval rows using onset and duration.",
+                  "next_action": "Confirm interval semantics before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds",
+                  "duration_field": "duration",
+                  "duration_numeric_rows": 4,
+                  "duration_min": 0.5,
+                  "duration_max": 0.5
+                },
+                "event_code": {
+                  "method": "event_code",
+                  "status": "needs_review",
+                  "label_field": "trial_type",
+                  "summary": "No EEG event-code preview is available for matching.",
+                  "next_action": "Review internal EEG events before applying.",
+                  "event_code_field": "onset",
+                  "label_rows": 4,
+                  "label_code_count": 4,
+                  "matched_code_count": 0,
+                  "matched_codes": [],
+                  "missing_codes": [
+                    "1.0",
+                    "2.0",
+                    "3.0",
+                    "4.0"
+                  ]
+                }
+              },
+              "placement_review": {
+                "method": "interval",
+                "status": "ready",
+                "label_field": "trial_type",
+                "summary": "4 interval rows using onset and duration.",
+                "next_action": "Confirm interval semantics before epoch setup.",
+                "time_field": "onset",
+                "label_rows": 4,
+                "numeric_rows": 4,
+                "time_min": 1.0,
+                "time_max": 4.0,
+                "time_model": "seconds",
+                "duration_field": "duration",
+                "duration_numeric_rows": 4,
+                "duration_min": 0.5,
+                "duration_max": 0.5
+              }
             }
           ],
           "format_capabilities": [
@@ -2879,7 +4142,7 @@
             "label_carrier": "external label or event source",
             "onset": "time anchor",
             "duration": "event duration",
-            "trial_type": "class cue"
+            "trial_type": "class label candidate"
           },
           "class_map": {
             "left": "Left hand",
@@ -2929,7 +4192,7 @@
     "apply_confirmed": {
       "status": "ok",
       "command_name": "apply_interpretation",
-      "message": "Applied interpretation and loaded 2 file(s). Imported reviewed labels for 1 file(s).",
+      "message": "Applied interpretation and loaded 2 file(s).",
       "state": {
         "pipeline_stage": "data_loaded",
         "raw": {
@@ -2962,7 +4225,7 @@
               "session": "0"
             }
           ],
-          "event_total": 10,
+          "event_total": 12,
           "unique_events": [
             "left",
             "right"
@@ -3208,14 +4471,153 @@
               "anchor_candidates": [
                 "onset"
               ],
+              "time_field_candidates": [
+                "onset"
+              ],
+              "interval_start_candidates": [
+                "onset"
+              ],
+              "event_code_candidates": [],
+              "duration_candidates": [
+                "duration"
+              ],
               "selected_label_field": "trial_type",
               "selected_anchor": "onset",
+              "selected_target_event_codes": [],
+              "selected_duration_field": "duration",
+              "label_row_count": 4,
+              "label_value_counts": {
+                "left": 2,
+                "right": 2
+              },
+              "selected_anchor_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "1.0": 1,
+                  "2.0": 1,
+                  "3.0": 1,
+                  "4.0": 1
+                },
+                "numeric_count": 4,
+                "min": 1.0,
+                "max": 4.0
+              },
+              "selected_duration_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "0.5": 4
+                },
+                "numeric_count": 4,
+                "min": 0.5,
+                "max": 0.5
+              },
+              "time_label_preview": [
+                {
+                  "time": "1.0",
+                  "label": "left"
+                },
+                {
+                  "time": "2.0",
+                  "label": "right"
+                },
+                {
+                  "time": "3.0",
+                  "label": "left"
+                }
+              ],
+              "bids_event_columns": [
+                "onset",
+                "duration",
+                "trial_type"
+              ],
+              "warnings": [],
               "time_model": "seconds",
               "granularity": "trial",
-              "role": "class cue labels",
-              "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
+              "placement_method": "interval",
+              "role": "external labels",
+              "selected_target_file": "",
               "decision": "needs_confirmation",
-              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying.",
+              "placement_reviews": {
+                "eeg_event": {
+                  "method": "eeg_event",
+                  "status": "blocked",
+                  "label_field": "trial_type",
+                  "summary": "Target EEG event(s) were not found: onset.",
+                  "next_action": "Choose EEG events present in the selected files.",
+                  "target_event": "onset",
+                  "target_events": [
+                    "onset"
+                  ],
+                  "label_rows": 4,
+                  "excluded_eeg_events": 0
+                },
+                "time_field": {
+                  "method": "time_field",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "onset: 4/4 numeric rows, range 1 to 4.",
+                  "next_action": "Confirm the time base before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds"
+                },
+                "interval": {
+                  "method": "interval",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "4 interval rows using onset and duration.",
+                  "next_action": "Confirm interval semantics before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds",
+                  "duration_field": "duration",
+                  "duration_numeric_rows": 4,
+                  "duration_min": 0.5,
+                  "duration_max": 0.5
+                },
+                "event_code": {
+                  "method": "event_code",
+                  "status": "needs_review",
+                  "label_field": "trial_type",
+                  "summary": "No EEG event-code preview is available for matching.",
+                  "next_action": "Review internal EEG events before applying.",
+                  "event_code_field": "onset",
+                  "label_rows": 4,
+                  "label_code_count": 4,
+                  "matched_code_count": 0,
+                  "matched_codes": [],
+                  "missing_codes": [
+                    "1.0",
+                    "2.0",
+                    "3.0",
+                    "4.0"
+                  ]
+                }
+              },
+              "placement_review": {
+                "method": "interval",
+                "status": "ready",
+                "label_field": "trial_type",
+                "summary": "4 interval rows using onset and duration.",
+                "next_action": "Confirm interval semantics before epoch setup.",
+                "time_field": "onset",
+                "label_rows": 4,
+                "numeric_rows": 4,
+                "time_min": 1.0,
+                "time_max": 4.0,
+                "time_model": "seconds",
+                "duration_field": "duration",
+                "duration_numeric_rows": 4,
+                "duration_min": 0.5,
+                "duration_max": 0.5
+              }
             }
           ],
           "format_capabilities": [
@@ -3248,33 +4650,14 @@
             "label_carrier": "external label or event source",
             "onset": "time anchor",
             "duration": "event duration",
-            "trial_type": "class cue"
+            "trial_type": "class label candidate"
           },
           "class_map": {
             "left": "Left hand",
             "right": "Right hand"
           },
-          "label_import_count": 1,
-          "label_imports": [
-            {
-              "mode": "timestamp",
-              "label_carriers": [
-                "<replay_source>/events.tsv"
-              ],
-              "target_files": [
-                "<replay_source>/sub-01_task-mi_run-2_raw.fif"
-              ],
-              "file_mapping": {
-                "<replay_source>/sub-01_task-mi_run-2_raw.fif": "<replay_source>/events.tsv"
-              },
-              "selected_event_names": [],
-              "class_map": {
-                "left": "Left hand",
-                "right": "Right hand"
-              },
-              "success_count": 1
-            }
-          ],
+          "label_import_count": 0,
+          "label_imports": [],
           "recipe_path": null
         },
         "active_dataset": {
@@ -3336,14 +4719,153 @@
               "anchor_candidates": [
                 "onset"
               ],
+              "time_field_candidates": [
+                "onset"
+              ],
+              "interval_start_candidates": [
+                "onset"
+              ],
+              "event_code_candidates": [],
+              "duration_candidates": [
+                "duration"
+              ],
               "selected_label_field": "trial_type",
               "selected_anchor": "onset",
+              "selected_target_event_codes": [],
+              "selected_duration_field": "duration",
+              "label_row_count": 4,
+              "label_value_counts": {
+                "left": 2,
+                "right": 2
+              },
+              "selected_anchor_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "1.0": 1,
+                  "2.0": 1,
+                  "3.0": 1,
+                  "4.0": 1
+                },
+                "numeric_count": 4,
+                "min": 1.0,
+                "max": 4.0
+              },
+              "selected_duration_stats": {
+                "row_count": 4,
+                "value_counts": {
+                  "0.5": 4
+                },
+                "numeric_count": 4,
+                "min": 0.5,
+                "max": 0.5
+              },
+              "time_label_preview": [
+                {
+                  "time": "1.0",
+                  "label": "left"
+                },
+                {
+                  "time": "2.0",
+                  "label": "right"
+                },
+                {
+                  "time": "3.0",
+                  "label": "left"
+                }
+              ],
+              "bids_event_columns": [
+                "onset",
+                "duration",
+                "trial_type"
+              ],
+              "warnings": [],
               "time_model": "seconds",
               "granularity": "trial",
-              "role": "class cue labels",
-              "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
+              "placement_method": "interval",
+              "role": "external labels",
+              "selected_target_file": "",
               "decision": "needs_confirmation",
-              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying.",
+              "placement_reviews": {
+                "eeg_event": {
+                  "method": "eeg_event",
+                  "status": "blocked",
+                  "label_field": "trial_type",
+                  "summary": "Target EEG event(s) were not found: onset.",
+                  "next_action": "Choose EEG events present in the selected files.",
+                  "target_event": "onset",
+                  "target_events": [
+                    "onset"
+                  ],
+                  "label_rows": 4,
+                  "excluded_eeg_events": 0
+                },
+                "time_field": {
+                  "method": "time_field",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "onset: 4/4 numeric rows, range 1 to 4.",
+                  "next_action": "Confirm the time base before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds"
+                },
+                "interval": {
+                  "method": "interval",
+                  "status": "ready",
+                  "label_field": "trial_type",
+                  "summary": "4 interval rows using onset and duration.",
+                  "next_action": "Confirm interval semantics before epoch setup.",
+                  "time_field": "onset",
+                  "label_rows": 4,
+                  "numeric_rows": 4,
+                  "time_min": 1.0,
+                  "time_max": 4.0,
+                  "time_model": "seconds",
+                  "duration_field": "duration",
+                  "duration_numeric_rows": 4,
+                  "duration_min": 0.5,
+                  "duration_max": 0.5
+                },
+                "event_code": {
+                  "method": "event_code",
+                  "status": "needs_review",
+                  "label_field": "trial_type",
+                  "summary": "No EEG event-code preview is available for matching.",
+                  "next_action": "Review internal EEG events before applying.",
+                  "event_code_field": "onset",
+                  "label_rows": 4,
+                  "label_code_count": 4,
+                  "matched_code_count": 0,
+                  "matched_codes": [],
+                  "missing_codes": [
+                    "1.0",
+                    "2.0",
+                    "3.0",
+                    "4.0"
+                  ]
+                }
+              },
+              "placement_review": {
+                "method": "interval",
+                "status": "ready",
+                "label_field": "trial_type",
+                "summary": "4 interval rows using onset and duration.",
+                "next_action": "Confirm interval semantics before epoch setup.",
+                "time_field": "onset",
+                "label_rows": 4,
+                "numeric_rows": 4,
+                "time_min": 1.0,
+                "time_max": 4.0,
+                "time_model": "seconds",
+                "duration_field": "duration",
+                "duration_numeric_rows": 4,
+                "duration_min": 0.5,
+                "duration_max": 0.5
+              }
             }
           ],
           "metadata": [
@@ -3469,6 +4991,8 @@
             }
           ],
           "skip_labels": false,
+          "label_carrier": "",
+          "excluded_label_carriers": [],
           "validation_decision": "needs_confirmation",
           "confirmations": [
             "Confirm label carrier alignment, anchor event, and class map before applying.",
@@ -3478,41 +5002,20 @@
             "label_carrier": "external label or event source",
             "onset": "time anchor",
             "duration": "event duration",
-            "trial_type": "class cue"
+            "trial_type": "class label candidate"
           },
           "class_map": {
             "left": "Left hand",
             "right": "Right hand"
           },
-          "label_imports": [
-            {
-              "mode": "timestamp",
-              "label_carriers": [
-                "<replay_source>/events.tsv"
-              ],
-              "target_files": [
-                "<replay_source>/sub-01_task-mi_run-2_raw.fif"
-              ],
-              "file_mapping": {
-                "<replay_source>/sub-01_task-mi_run-2_raw.fif": "<replay_source>/events.tsv"
-              },
-              "selected_event_names": [],
-              "class_map": {
-                "left": "Left hand",
-                "right": "Right hand"
-              },
-              "success_count": 1
-            }
-          ],
+          "label_imports": [],
           "recipe_trace": [
             "scan:scan-1",
             "candidate:candidate-4",
             "choices:metadata_overrides",
-            "choices:event_roles",
             "choices:label_carriers",
             "validation:needs_confirmation",
-            "applied:interpretation-6",
-            "label_import:timestamp:1"
+            "applied:interpretation-6"
           ]
         },
         "metadata_apply": [
@@ -3535,31 +5038,8 @@
           "<replay_source>/events.tsv"
         ],
         "label_apply": {
-          "status": "applied",
-          "success_count": 1,
-          "mode": "timestamp",
-          "label_import": {
-            "mode": "timestamp",
-            "label_carriers": [
-              "<replay_source>/events.tsv"
-            ],
-            "target_files": [
-              "<replay_source>/sub-01_task-mi_run-2_raw.fif"
-            ],
-            "file_mapping": {
-              "<replay_source>/sub-01_task-mi_run-2_raw.fif": "<replay_source>/events.tsv"
-            },
-            "selected_event_names": [],
-            "class_map": {
-              "left": "Left hand",
-              "right": "Right hand"
-            },
-            "success_count": 1
-          },
-          "label_carrier": "<replay_source>/events.tsv",
-          "label_carriers": [
-            "<replay_source>/events.tsv"
-          ]
+          "status": "skipped",
+          "reason": "No reviewed label carrier uniquely matches loaded EEG file sub-01_task-mi_run-1_raw.fif."
         }
       }
     }
@@ -3574,12 +5054,12 @@
         "enabled": true
       },
       "next_button": {
-        "text": "Next: Attach Labels",
+        "text": "Next: Load Labels",
         "visible": false
       },
       "visible_text": [
         "1. Choose EEG Data",
-        "2. Attach Labels",
+        "2. Load Labels",
         "3. Review Metadata",
         "4. Match Labels",
         "5. Review and Import",
@@ -3592,32 +5072,27 @@
         "Source, metadata edits, label choices, and confirmations",
         "Choose EEG Data",
         "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
-        "Impact",
-        "Import may still be usable, but downstream labels or metadata may need review.",
-        "Next",
-        "Open the target step and resolve or confirm this item before import.",
+        "Target step: Choose EEG Data",
+        "Impact: Import may still be usable, but downstream labels or metadata may need review.",
+        "Next: Open the target step and resolve or confirm this item before import.",
         "Review Metadata",
         "Confirm session metadata for sub-01_task-mi_run-1_raw.fif.",
-        "Impact",
-        "This choice affects imported metadata, labels, or downstream training readiness.",
-        "Next",
-        "Review the target step and confirm the choice.",
+        "Target step: Review Metadata",
+        "Impact: This choice affects imported metadata, labels, or downstream training readiness.",
+        "Next: Review the target step and confirm the choice.",
         "Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
-        "Impact",
-        "This choice affects imported metadata, labels, or downstream training readiness.",
-        "Next",
-        "Review the target step and confirm the choice.",
+        "Target step: Review Metadata",
+        "Impact: This choice affects imported metadata, labels, or downstream training readiness.",
+        "Next: Review the target step and confirm the choice.",
         "Match Labels",
         "Confirm label carrier alignment, anchor event, and class map before applying.",
-        "Impact",
-        "This choice affects imported metadata, labels, or downstream training readiness.",
-        "Next",
-        "Review the target step and confirm the choice.",
+        "Target step: Match Labels",
+        "Impact: This choice affects imported metadata, labels, or downstream training readiness.",
+        "Next: Review the target step and confirm the choice.",
         "External label/event carriers require preview before apply.",
-        "Impact",
-        "Import may still be usable, but downstream labels or metadata may need review.",
-        "Next",
-        "Open the target step and resolve or confirm this item before import.",
+        "Target step: Match Labels",
+        "Impact: Import may still be usable, but downstream labels or metadata may need review.",
+        "Next: Open the target step and resolve or confirm this item before import.",
         "Review the items marked Needs confirmation, then confirm and apply."
       ],
       "metadata_rows": [
@@ -3639,42 +5114,22 @@
       "label_carrier_rows": [
         [
           "events.tsv",
-          "sub-01 run-2",
+          "sub-01_task-mi_run-2_raw.fif",
           "Trial type",
           "Onset",
           "Trial",
-          "Class cue labels"
+          "External labels"
         ]
       ],
       "event_rows": [
         [
-          "Label carrier",
-          "event role",
-          "External label or event source"
-        ],
-        [
-          "Onset",
-          "event role",
-          "Time anchor"
-        ],
-        [
-          "Duration",
-          "event role",
-          "Event duration"
-        ],
-        [
-          "Trial type",
-          "event role",
-          "Class cue"
-        ],
-        [
           "left",
-          "class map",
+          "class name",
           "Left hand"
         ],
         [
           "right",
-          "class map",
+          "class name",
           "Right hand"
         ]
       ],
@@ -3743,13 +5198,13 @@
             "Interactive"
           ],
           "stretch_last_section": false,
-          "header_length": 958,
-          "viewport_width": 958,
+          "header_length": 968,
+          "viewport_width": 968,
           "column_widths": [
-            351,
-            148,
-            162,
-            202,
+            354,
+            150,
+            164,
+            205,
             95
           ],
           "horizontal_scrollbar_max": 0,
@@ -3770,11 +5225,11 @@
           "rows": [
             [
               "events.tsv",
-              "sub-01 run-2",
+              "sub-01_task-mi_run-2_raw.fif",
               "Trial type",
               "Onset",
               "Trial",
-              "Class cue labels"
+              "External labels"
             ]
           ],
           "resize_modes": [
@@ -3786,15 +5241,15 @@
             "Interactive"
           ],
           "stretch_last_section": false,
-          "header_length": 958,
-          "viewport_width": 958,
+          "header_length": 638,
+          "viewport_width": 638,
           "column_widths": [
-            193,
-            147,
-            152,
-            177,
-            137,
-            152
+            122,
+            72,
+            103,
+            115,
+            95,
+            131
           ],
           "horizontal_scrollbar_max": 0,
           "vertical_scrollbar_max": 0,
@@ -3804,39 +5259,19 @@
         },
         "events": {
           "headers": [
-            "Item",
+            "Label / event",
             "Use as",
-            "Meaning"
+            "Name / meaning"
           ],
           "rows": [
             [
-              "Label carrier",
-              "event role",
-              "External label or event source"
-            ],
-            [
-              "Onset",
-              "event role",
-              "Time anchor"
-            ],
-            [
-              "Duration",
-              "event role",
-              "Event duration"
-            ],
-            [
-              "Trial type",
-              "event role",
-              "Class cue"
-            ],
-            [
               "left",
-              "class map",
+              "class name",
               "Left hand"
             ],
             [
               "right",
-              "class map",
+              "class name",
               "Right hand"
             ]
           ],
@@ -3846,12 +5281,12 @@
             "Interactive"
           ],
           "stretch_last_section": false,
-          "header_length": 948,
-          "viewport_width": 948,
+          "header_length": 638,
+          "viewport_width": 638,
           "column_widths": [
-            264,
             180,
-            504
+            127,
+            331
           ],
           "horizontal_scrollbar_max": 0,
           "vertical_scrollbar_max": 0,
@@ -3928,20 +5363,15 @@
             "task": "motor-imagery"
           }
         },
-        "event_roles": {
-          "label_carrier": "external label or event source",
-          "onset": "time anchor",
-          "duration": "event duration",
-          "trial_type": "class cue"
-        },
         "label_carrier_choices": {
           "<replay_source>/events.tsv": {
-            "target_file": "sub-01_task-mi_run-2_raw.fif",
             "granularity": "trial",
-            "role": "class cue labels",
             "time_model": "seconds",
             "label_field": "trial_type",
-            "anchor": "onset"
+            "anchor": "onset",
+            "role": "external labels",
+            "placement_method": "interval",
+            "duration_field": "duration"
           }
         }
       },
@@ -3956,7 +5386,7 @@
       "current_step": "Review and Import",
       "visible_text": [
         "1. Choose EEG Data",
-        "2. Attach Labels",
+        "2. Load Labels",
         "3. Review Metadata",
         "4. Match Labels",
         "5. Review and Import",
@@ -3969,22 +5399,19 @@
         "Source, metadata edits, label choices, and confirmations",
         "Choose EEG Data",
         "Cannot import yet",
-        "Impact",
-        "Selected EEG file(s) were not found in the current scan: old_raw.fif.",
-        "Next",
-        "Fix first",
-        "Attach Labels",
+        "Target step: Choose EEG Data",
+        "Impact: Selected EEG file(s) were not found in the current scan: old_raw.fif.",
+        "Next: Fix first",
+        "Load Labels",
         "Cannot import yet",
-        "Impact",
-        "Saved label/event carrier(s) were not found in the current scan: old_events.tsv.",
-        "Next",
-        "Fix first",
+        "Target step: Load Labels",
+        "Impact: Saved label/event carrier(s) were not found in the current scan: old_events.tsv.",
+        "Next: Fix first",
         "Review and Import",
         "Reloaded recipe",
-        "Impact",
-        "Saved recipe choices were reapplied before validation.",
-        "Next",
-        "Review any changed files before importing.",
+        "Target step: Review and Import",
+        "Impact: Saved recipe choices were reapplied before validation.",
+        "Next: Review any changed files before importing.",
         "Recipe replacements",
         "Choose replacement EEG files and label/event carriers, then apply the remap to recheck this saved recipe."
       ],
@@ -4014,7 +5441,7 @@
           "Fix first"
         ],
         [
-          "Attach Labels",
+          "Load Labels",
           "Cannot import yet",
           "Saved label/event carrier(s) were not found in the current scan: old_events.tsv.",
           "Fix first"
@@ -4053,13 +5480,13 @@
             "Interactive"
           ],
           "stretch_last_section": false,
-          "header_length": 958,
-          "viewport_width": 958,
+          "header_length": 968,
+          "viewport_width": 968,
           "column_widths": [
-            351,
-            148,
-            162,
-            202,
+            354,
+            150,
+            164,
+            205,
             95
           ],
           "horizontal_scrollbar_max": 0,
@@ -4096,15 +5523,15 @@
             "Interactive"
           ],
           "stretch_last_section": false,
-          "header_length": 958,
-          "viewport_width": 958,
+          "header_length": 638,
+          "viewport_width": 638,
           "column_widths": [
-            193,
-            147,
-            152,
-            177,
-            137,
-            152
+            122,
+            100,
+            103,
+            59,
+            123,
+            131
           ],
           "horizontal_scrollbar_max": 0,
           "vertical_scrollbar_max": 0,
@@ -4114,9 +5541,9 @@
         },
         "events": {
           "headers": [
-            "Item",
+            "Label / event",
             "Use as",
-            "Meaning"
+            "Name / meaning"
           ],
           "rows": [
             [
@@ -4131,12 +5558,12 @@
             "Interactive"
           ],
           "stretch_last_section": false,
-          "header_length": 598,
-          "viewport_width": 598,
+          "header_length": 638,
+          "viewport_width": 638,
           "column_widths": [
-            169,
-            121,
-            308
+            180,
+            127,
+            331
           ],
           "horizontal_scrollbar_max": 0,
           "vertical_scrollbar_max": 0,
@@ -4177,7 +5604,7 @@
               "Fix first"
             ],
             [
-              "Attach Labels",
+              "Load Labels",
               "Cannot import yet",
               "Saved label/event carrier(s) were not found in the current scan: old_events.tsv.",
               "Fix first"
@@ -4211,7 +5638,9 @@
         },
         "label_carrier_choices": {
           "<replay_source>/events.tsv": {
-            "role": "external labels"
+            "role": "external labels",
+            "placement_method": "eeg_event",
+            "time_model": "trial_order"
           }
         },
         "label_carrier_remap": {
@@ -4244,7 +5673,7 @@
           "tooltip": "Review a saved import recipe before applying it"
         },
         "import_labels": {
-          "text": "Add Labels to Loaded Data",
+          "text": "Add labels",
           "enabled": true,
           "tooltip": "Add labels to loaded data and update the current recipe trace."
         },
@@ -4260,13 +5689,13 @@
         },
         "clear_dataset": {
           "text": "Clear Dataset",
-          "enabled": true,
-          "tooltip": "Remove all loaded data"
+          "enabled": false,
+          "tooltip": "Create epochs before clearing the dataset."
         }
       },
       "import_button_text": "Import file",
       "import_button_enabled": true,
-      "import_label_button_text": "Add Labels to Loaded Data",
+      "import_label_button_text": "Add labels",
       "import_label_button_enabled": true,
       "import_label_button_tooltip": "Add labels to loaded data and update the current recipe trace.",
       "table_rows": 2,
@@ -4297,7 +5726,7 @@
             "4",
             "128.0",
             "1",
-            "Labels (4)"
+            "Events (6)"
           ]
         ],
         "resize_modes": [
@@ -4358,7 +5787,7 @@
           "tooltip": "Review a saved import recipe before applying it"
         },
         "import_labels": {
-          "text": "Add Labels to Loaded Data",
+          "text": "Add labels",
           "enabled": false,
           "tooltip": "Load raw data before attaching labels."
         },
@@ -4375,10 +5804,10 @@
         "clear_dataset": {
           "text": "Clear Dataset",
           "enabled": false,
-          "tooltip": "No dataset to clear."
+          "tooltip": "Create epochs before clearing the dataset."
         }
       },
-      "import_label_button_text": "Add Labels to Loaded Data",
+      "import_label_button_text": "Add labels",
       "import_label_button_enabled": false,
       "import_label_button_tooltip": "Load raw data before attaching labels."
     }
@@ -4401,8 +5830,8 @@
             "Run"
           ],
           "row_count": 2,
-          "header_length": 958,
-          "viewport_width": 958,
+          "header_length": 968,
+          "viewport_width": 968,
           "width_gap": 0,
           "widget_width": 0,
           "panel_width": 0,
@@ -4422,10 +5851,10 @@
             "Interactive"
           ],
           "column_widths": [
-            351,
-            148,
-            162,
-            202,
+            354,
+            150,
+            164,
+            205,
             95
           ],
           "text_elide_mode": "ElideRight",
@@ -4442,8 +5871,8 @@
             "Use as"
           ],
           "row_count": 1,
-          "header_length": 958,
-          "viewport_width": 958,
+          "header_length": 638,
+          "viewport_width": 638,
           "width_gap": 0,
           "widget_width": 0,
           "panel_width": 0,
@@ -4464,12 +5893,12 @@
             "Interactive"
           ],
           "column_widths": [
-            193,
-            147,
-            152,
-            177,
-            137,
-            152
+            122,
+            72,
+            103,
+            115,
+            95,
+            131
           ],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
@@ -4477,13 +5906,13 @@
         {
           "widget": "dialog.tables.events",
           "headers": [
-            "Item",
+            "Label / event",
             "Use as",
-            "Meaning"
+            "Name / meaning"
           ],
-          "row_count": 6,
-          "header_length": 948,
-          "viewport_width": 948,
+          "row_count": 2,
+          "header_length": 638,
+          "viewport_width": 638,
           "width_gap": 0,
           "widget_width": 0,
           "panel_width": 0,
@@ -4501,9 +5930,9 @@
             "Interactive"
           ],
           "column_widths": [
-            264,
             180,
-            504
+            127,
+            331
           ],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
@@ -4555,8 +5984,8 @@
             "Run"
           ],
           "row_count": 2,
-          "header_length": 958,
-          "viewport_width": 958,
+          "header_length": 968,
+          "viewport_width": 968,
           "width_gap": 0,
           "widget_width": 0,
           "panel_width": 0,
@@ -4576,10 +6005,10 @@
             "Interactive"
           ],
           "column_widths": [
-            351,
-            148,
-            162,
-            202,
+            354,
+            150,
+            164,
+            205,
             95
           ],
           "text_elide_mode": "ElideRight",
@@ -4596,8 +6025,8 @@
             "Use as"
           ],
           "row_count": 1,
-          "header_length": 958,
-          "viewport_width": 958,
+          "header_length": 638,
+          "viewport_width": 638,
           "width_gap": 0,
           "widget_width": 0,
           "panel_width": 0,
@@ -4618,12 +6047,12 @@
             "Interactive"
           ],
           "column_widths": [
-            193,
-            147,
-            152,
-            177,
-            137,
-            152
+            122,
+            100,
+            103,
+            59,
+            123,
+            131
           ],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
@@ -4631,13 +6060,13 @@
         {
           "widget": "remap_dialog.tables.events",
           "headers": [
-            "Item",
+            "Label / event",
             "Use as",
-            "Meaning"
+            "Name / meaning"
           ],
           "row_count": 1,
-          "header_length": 598,
-          "viewport_width": 598,
+          "header_length": 638,
+          "viewport_width": 638,
           "width_gap": 0,
           "widget_width": 0,
           "panel_width": 0,
@@ -4655,9 +6084,9 @@
             "Interactive"
           ],
           "column_widths": [
-            169,
-            121,
-            308
+            180,
+            127,
+            331
           ],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false

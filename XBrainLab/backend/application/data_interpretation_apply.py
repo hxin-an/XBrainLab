@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import contextlib
+import csv
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
+
+import numpy as np
 
 from XBrainLab.backend.load_data.label_loader import load_label_file
 from XBrainLab.backend.utils.logger import logger
 
 from .commands import LabelImportPlan
 from .data_interpretation import InterpretationCandidate
+from .epoch_context import EPOCH_HINT_KEY
 
 
 class LabelImportRecorder(Protocol):
@@ -103,21 +107,34 @@ class DataInterpretationApplyService:
             for item in candidate.label_carrier_plan
             if self._is_auto_applicable_sequence_label_plan(item, candidate.class_map)
         ]
+        event_code_applicable = [
+            item
+            for item in candidate.label_carrier_plan
+            if self._is_auto_applicable_event_code_label_plan(item, candidate.class_map)
+        ]
         if (
             not timestamp_applicable
             and not anchored_applicable
             and not sequence_applicable
+            and not event_code_applicable
         ):
             return {
                 "status": "skipped",
                 "reason": ("No reviewed label carrier is safe to apply automatically."),
             }
 
-        applicable = timestamp_applicable or anchored_applicable or sequence_applicable
+        applicable = (
+            timestamp_applicable
+            or anchored_applicable
+            or event_code_applicable
+            or sequence_applicable
+        )
         if timestamp_applicable:
             mode = "timestamp"
         elif anchored_applicable:
             mode = "anchored"
+        elif event_code_applicable:
+            mode = "event_code"
         else:
             mode = "legacy"
 
@@ -154,8 +171,23 @@ class DataInterpretationApplyService:
             }
 
         try:
-            label_map = self._load_reviewed_label_map(applicable, mode)
             mapping = self._label_import_mapping_from_class_map(candidate.class_map)
+            if mode == "event_code":
+                label_map, count = self._apply_reviewed_event_code_label_map(
+                    mapped_target_files,
+                    applicable,
+                    file_mapping,
+                    mapping,
+                )
+                selected_event_names = None
+            else:
+                label_map = self._load_reviewed_label_map(applicable, mode)
+                selected_event_names = (
+                    self._selected_event_names_for_sequence_plans(applicable)
+                    if mode == "legacy"
+                    else None
+                )
+                count = 0
             if mode in {"timestamp", "anchored"}:
                 count = self.dataset.apply_labels_batch(
                     mapped_target_files,
@@ -164,12 +196,13 @@ class DataInterpretationApplyService:
                     mapping,
                     None,
                 )
-            else:
+            elif mode == "legacy":
                 count = self._apply_reviewed_sequence_label_map(
                     mapped_target_files,
                     label_map,
                     file_mapping,
                     mapping,
+                    selected_event_names,
                 )
             plan = LabelImportPlan(
                 target_indices=list(range(len(mapped_target_files))),
@@ -183,8 +216,16 @@ class DataInterpretationApplyService:
                 mode=mode,
                 target_files=mapped_target_files,
                 file_mapping=file_mapping,
-                selected_event_names=None,
+                selected_event_names=selected_event_names,
                 success_count=count,
+            )
+            self._record_epoch_hints(
+                candidate=candidate,
+                label_plans=applicable,
+                target_files=mapped_target_files,
+                file_mapping=file_mapping,
+                label_map=label_map,
+                mode=mode,
             )
         except Exception as exc:
             logger.error(
@@ -211,6 +252,149 @@ class DataInterpretationApplyService:
             "label_carriers": label_carriers,
         }
 
+    def _apply_reviewed_event_code_label_map(
+        self,
+        target_files: list[Any],
+        label_plans: list[dict[str, Any]],
+        file_mapping: dict[str, str],
+        mapping: dict[Any, str],
+    ) -> tuple[dict[str, Any], int]:
+        label_map = self._load_event_code_label_map(label_plans)
+        success_count = 0
+        for target in target_files:
+            data_path = self._data_filepath(target)
+            carrier_path = file_mapping.get(data_path)
+            if carrier_path is None:
+                continue
+            code_rows = label_map.get(carrier_path)
+            if not code_rows:
+                continue
+            events, _event_id = target.get_event_list()
+            remapped_events, remapped_event_id = self._remap_events_by_label_codes(
+                events,
+                code_rows,
+                mapping,
+            )
+            target.set_event(remapped_events, remapped_event_id)
+            setter = getattr(target, "set_labels_imported", None)
+            if callable(setter):
+                setter(True)
+            success_count += 1
+        return label_map, success_count
+
+    def _load_event_code_label_map(
+        self,
+        label_plans: list[dict[str, Any]],
+    ) -> dict[str, list[dict[str, str]]]:
+        label_map: dict[str, list[dict[str, str]]] = {}
+        for carrier in label_plans:
+            carrier_path = str(carrier.get("path") or "").strip()
+            code_field = str(carrier.get("selected_anchor") or "").strip()
+            label_field = str(carrier.get("selected_label_field") or "").strip()
+            if not carrier_path or not code_field or not label_field:
+                raise ValueError(
+                    "Reviewed event-code label carrier is missing code or label field.",
+                )
+            delimiter = "\t" if Path(carrier_path).suffix.lower() == ".tsv" else ","
+            rows: list[dict[str, str]] = []
+            with Path(carrier_path).open("r", encoding="utf-8", newline="") as handle:
+                reader = csv.DictReader(handle, delimiter=delimiter)
+                if not reader.fieldnames:
+                    raise ValueError("Event-code label carrier has no header row.")
+                normalized = {
+                    field.lower().strip(): field for field in reader.fieldnames
+                }
+                code_column = normalized.get(code_field.lower())
+                label_column = normalized.get(label_field.lower())
+                if code_column is None or label_column is None:
+                    raise ValueError(
+                        "Event-code label carrier is missing selected columns.",
+                    )
+                for row in reader:
+                    code = str(row.get(code_column) or "").strip()
+                    label = str(row.get(label_column) or "").strip()
+                    if code and label:
+                        rows.append({"event_code": code, "label": label})
+            if not rows:
+                raise ValueError("Event-code label carrier contains no usable rows.")
+            label_map[carrier_path] = rows
+        return label_map
+
+    @staticmethod
+    def _remap_events_by_label_codes(
+        events: Any,
+        code_rows: list[dict[str, str]],
+        mapping: dict[Any, str],
+    ) -> tuple[Any, dict[str, int]]:
+        code_to_label: dict[str, str] = {}
+        for row in code_rows:
+            code = str(row.get("event_code") or "").strip()
+            label = str(row.get("label") or "").strip()
+            if not code or not label:
+                continue
+            existing = code_to_label.get(code)
+            if existing is not None and existing != label:
+                raise ValueError(f"Event code {code} maps to multiple labels.")
+            code_to_label[code] = label
+        event_array = events.copy()
+        selected_rows: list[Any] = []
+        label_to_code: dict[str, int] = {}
+        event_id: dict[str, int] = {}
+        for row in event_array:
+            event_code = str(row[-1]).strip()
+            if event_code not in code_to_label:
+                continue
+            label_value = code_to_label[event_code]
+            display_name = str(mapping.get(label_value, label_value)).strip()
+            if display_name not in label_to_code:
+                next_code = len(label_to_code) + 1
+                label_to_code[display_name] = next_code
+                event_id[display_name] = next_code
+            updated = row.copy()
+            updated[-1] = label_to_code[display_name]
+            selected_rows.append(updated)
+        if not selected_rows:
+            raise ValueError("No EEG events matched reviewed event-code labels.")
+        return np.asarray(selected_rows, dtype=event_array.dtype), event_id
+
+    def record_internal_epoch_hints(
+        self,
+        candidate: InterpretationCandidate,
+    ) -> list[dict[str, Any]]:
+        """Persist internal-event class choices for later epoch setup."""
+        if candidate.label_carrier_plan or not candidate.class_map:
+            return []
+        if (
+            str(candidate.choices.get("label_carrier") or "").strip()
+            != "embedded_events"
+            and "internal_events" not in candidate.event_roles
+        ):
+            return []
+        records: list[dict[str, Any]] = []
+        hint = {
+            "source": "Labels inside EEG files",
+            "placement_method": "internal_events",
+            "label_field": "Internal event",
+            "time_field": "Event onset",
+            "duration_field": "",
+            "time_model": "sample_index_or_annotation_time",
+            "granularity": "trial_or_event",
+            "class_map": dict(candidate.class_map),
+            "event_roles": dict(candidate.event_roles),
+            "recommended_events": [
+                str(value) for value in candidate.class_map.values()
+            ],
+        }
+        for data in list(self.dataset.get_loaded_data_list() or []):
+            setter = getattr(data, "set_runtime_detail", None)
+            if not callable(setter):
+                continue
+            setter(EPOCH_HINT_KEY, hint)
+            records.append(
+                {"file": self._safe_data_filepath(data), "source": hint["source"]}
+            )
+        return records
+
     @staticmethod
     def _load_reviewed_label_map(
         label_plans: list[dict[str, Any]],
@@ -229,8 +413,99 @@ class DataInterpretationApplyService:
                 carrier_path,
                 label_field=label_field,
                 anchor=anchor if mode in {"timestamp", "anchored"} else None,
+                duration_field=str(carrier.get("selected_duration_field") or "").strip()
+                or None,
             )
         return label_map
+
+    def _record_epoch_hints(
+        self,
+        *,
+        candidate: InterpretationCandidate,
+        label_plans: list[dict[str, Any]],
+        target_files: list[Any],
+        file_mapping: dict[str, str],
+        label_map: dict[str, Any],
+        mode: str,
+    ) -> None:
+        plan_by_path = {
+            str(plan.get("path") or "").strip(): plan for plan in label_plans
+        }
+        for target in target_files:
+            setter = getattr(target, "set_runtime_detail", None)
+            if not callable(setter):
+                continue
+            carrier_path = file_mapping.get(self._data_filepath(target), "")
+            plan = plan_by_path.get(carrier_path)
+            if not plan:
+                continue
+            setter(
+                EPOCH_HINT_KEY,
+                self._epoch_hint_from_label_plan(
+                    plan,
+                    candidate=candidate,
+                    labels=label_map.get(carrier_path),
+                    mode=mode,
+                ),
+            )
+
+    def _epoch_hint_from_label_plan(
+        self,
+        plan: dict[str, Any],
+        *,
+        candidate: InterpretationCandidate,
+        labels: Any,
+        mode: str,
+    ) -> dict[str, Any]:
+        class_map = dict(candidate.class_map)
+        return {
+            "source": self._epoch_hint_source(plan),
+            "placement_method": str(plan.get("placement_method") or "").strip(),
+            "label_field": str(plan.get("selected_label_field") or "").strip(),
+            "time_field": str(plan.get("selected_anchor") or "").strip(),
+            "duration_field": str(plan.get("selected_duration_field") or "").strip(),
+            "time_model": str(plan.get("time_model") or "").strip(),
+            "granularity": str(plan.get("granularity") or "").strip(),
+            "class_map": class_map,
+            "event_roles": dict(candidate.event_roles),
+            "recommended_events": [str(value) for value in class_map.values()],
+            "duration_stats": self._duration_stats_from_loaded_labels(labels)
+            or dict(plan.get("selected_duration_stats") or {}),
+            "label_import_mode": mode,
+        }
+
+    @staticmethod
+    def _epoch_hint_source(plan: dict[str, Any]) -> str:
+        if str(plan.get("format") or "") == "BIDS events":
+            return "BIDS events.tsv"
+        return "Loaded label file"
+
+    @staticmethod
+    def _duration_stats_from_loaded_labels(labels: Any) -> dict[str, Any]:
+        if not isinstance(labels, list):
+            return {}
+        values: list[float] = []
+        for item in labels:
+            if not isinstance(item, dict) or "duration" not in item:
+                continue
+            try:
+                value = float(item["duration"])
+            except (TypeError, ValueError):
+                continue
+            values.append(value)
+        if not values:
+            return {}
+        counts: dict[str, int] = {}
+        for value in values:
+            key = f"{value:g}"
+            counts[key] = counts.get(key, 0) + 1
+        return {
+            "row_count": len(values),
+            "value_counts": dict(sorted(counts.items())),
+            "numeric_count": len(values),
+            "min": min(values),
+            "max": max(values),
+        }
 
     def _apply_reviewed_sequence_label_map(
         self,
@@ -238,6 +513,7 @@ class DataInterpretationApplyService:
         label_map: dict[str, Any],
         file_mapping: dict[str, str],
         mapping: dict[Any, str],
+        selected_event_names: set[str] | None,
     ) -> int:
         success_count = 0
         for target in target_files:
@@ -250,11 +526,33 @@ class DataInterpretationApplyService:
                     [target],
                     label_map[carrier_path],
                     mapping,
-                    None,
+                    selected_event_names,
                     force_import=False,
                 ),
             )
         return success_count
+
+    @staticmethod
+    def _selected_event_names_for_sequence_plans(
+        label_plans: list[dict[str, Any]],
+    ) -> set[str] | None:
+        selected: list[str] = []
+        for carrier in label_plans:
+            if str(carrier.get("placement_method") or "").strip() != "eeg_event":
+                continue
+            raw_values = carrier.get("selected_target_event_codes")
+            if isinstance(raw_values, str):
+                values = raw_values.split(",")
+            elif isinstance(raw_values, (list, tuple, set)):
+                values = raw_values
+            else:
+                anchor = str(carrier.get("selected_anchor") or "").strip()
+                values = [anchor] if anchor and anchor != "trial order" else []
+            for value in values:
+                text = str(value).strip()
+                if text and text != "trial order" and text not in selected:
+                    selected.append(text)
+        return set(selected) if selected else None
 
     def _reviewed_label_file_mapping(
         self,
@@ -430,6 +728,21 @@ class DataInterpretationApplyService:
             and bool(str(plan.get("selected_label_field") or "").strip())
             and time_model == "trial_order"
             and granularity == "trial"
+            and bool(class_map)
+        )
+
+    @staticmethod
+    def _is_auto_applicable_event_code_label_plan(
+        plan: dict[str, Any],
+        class_map: dict[str, str],
+    ) -> bool:
+        carrier_format = str(plan.get("format") or "").strip()
+        placement_method = str(plan.get("placement_method") or "").strip().lower()
+        return (
+            carrier_format in {"CSV", "TSV", "BIDS events"}
+            and placement_method == "event_code"
+            and bool(str(plan.get("selected_label_field") or "").strip())
+            and bool(str(plan.get("selected_anchor") or "").strip())
             and bool(class_map)
         )
 

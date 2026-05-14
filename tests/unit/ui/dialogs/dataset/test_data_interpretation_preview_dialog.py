@@ -88,7 +88,7 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
         for index in range(dialog.review_tree.columnCount())
     ] == ["Target step", "Issue", "Impact", "Next action"]
     assert dialog.confirmation_label.text() == (
-        "Review the items marked Needs confirmation, then confirm and apply."
+        "Confirm this import recipe before applying."
     )
     assert "Confirm session metadata." in review_text
     assert "After import" in review_text
@@ -448,6 +448,10 @@ def test_match_labels_pairing_board_applies_dataset_level_choices(qtbot):
     qtbot.wait(0)
 
     assert dialog.label_match_mode_combo.currentData() == "filename_stem"
+    assert not dialog.label_match_mode_combo.isVisibleTo(dialog)
+    visible_text = _visible_step_text(dialog, "Match Labels")
+    assert "Pair by" not in visible_text
+    assert "Same base name" not in visible_text
     assert "2/2 EEG files paired" in dialog.pairing_status_label.text()
     assert "2/2 paired" in dialog.rule_status_label.text()
     pairing_rows = [
@@ -1209,6 +1213,35 @@ def test_match_labels_placement_methods_use_mode_specific_panels(qtbot):
                             "method": "event_code",
                             "status": "needs_review",
                             "event_code_field": "event_code",
+                            "label_code_count": 2,
+                            "matched_code_count": 1,
+                            "matched_codes": ["11"],
+                            "missing_codes": ["13"],
+                            "code_mappings": [
+                                {
+                                    "event_code": "11",
+                                    "label_values": ["left"],
+                                    "label_rows": 6,
+                                    "eeg_event_count": 6,
+                                    "status": "ready",
+                                    "review": "Ready.",
+                                },
+                                {
+                                    "event_code": "13",
+                                    "label_values": ["right"],
+                                    "label_rows": 6,
+                                    "eeg_event_count": None,
+                                    "status": "needs_review",
+                                    "review": "Not found in EEG events.",
+                                },
+                            ],
+                            "unlabeled_eeg_events": [
+                                {
+                                    "event_code": "768",
+                                    "use_as": "Trial timing",
+                                    "event_count": 12,
+                                }
+                            ],
                             "summary": "1/2 label event codes were found in EEG events.",
                         },
                     },
@@ -1268,6 +1301,15 @@ def test_match_labels_placement_methods_use_mode_specific_panels(qtbot):
             assert "Range: 0 to 11 seconds" in visible_text
             assert "Epoch window will be set later" in visible_text
         if method == "event_code":
+            assert "Code mapping review" in visible_text
+            assert "Label code" in visible_text
+            assert "Label value" in visible_text
+            assert "11" in visible_text
+            assert "left" in visible_text
+            assert "13" in visible_text
+            assert "Not found in EEG events" in visible_text
+            assert "EEG events not labeled" in visible_text
+            assert "Trial timing" in visible_text
             assert "1/2 label event codes were found" in (
                 dialog.placement_status_label.text()
             )
@@ -1779,8 +1821,7 @@ def test_data_interpretation_preview_dialog_product_flow_adds_label_folder_then_
     assert "Review Metadata" in review_text
     assert "Confirm session metadata." in review_text
     assert "Session labels affect split and traceability." in review_text
-    assert "Impact" in review_text
-    assert "Next" in review_text
+    assert "Go to Review Metadata" in review_text
 
     result = dialog.get_result()
     assert result["label_sources"] == ["/tmp/external-labels"]
@@ -1993,6 +2034,176 @@ def test_data_interpretation_preview_dialog_tables_fit_product_layout(qtbot):
     assert dialog.label_carrier_tree.columnWidth(0) >= 96
 
 
+def test_match_labels_step_surfaces_bids_event_review(qtbot):
+    events_path = "/tmp/source/sub-01_task-mi_run-01_events.tsv"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/sub-01_task-mi_run-01_raw.fif"],
+            "label_carriers": [events_path],
+            "bids": {
+                "is_bids": True,
+                "subjects": ["01"],
+                "sessions": [],
+                "tasks": ["mi"],
+                "runs": ["01"],
+                "events_files": [events_path],
+            },
+        },
+        preview={
+            "label_carrier_preview": [
+                {
+                    "path": events_path,
+                    "name": "sub-01_task-mi_run-01_events.tsv",
+                    "format": "BIDS events",
+                    "bids_event_columns": ["onset", "duration", "trial_type"],
+                    "label_candidates": ["trial_type"],
+                    "anchor_candidates": ["onset"],
+                    "time_field_candidates": ["onset"],
+                    "duration_candidates": ["duration"],
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                    "selected_duration_field": "duration",
+                    "time_model": "seconds",
+                    "placement_method": "time_field",
+                    "granularity": "trial",
+                    "warnings": [
+                        "sub-01_task-mi_run-01_events.tsv events.json sidecar is "
+                        "missing; class names and event semantics need confirmation."
+                    ],
+                },
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(1040, 820)
+    dialog.show()
+    qtbot.wait(0)
+
+    _show_step(dialog, "Match Labels")
+    qtbot.wait(0)
+    text = _visible_step_text(dialog, "Match Labels")
+
+    assert "BIDS events.tsv" in text
+    assert (
+        "Review BIDS event timing and class fields for subject 01, task mi, run 01"
+        in text
+    )
+    assert "events.tsv columns" in text
+    assert "onset, duration, trial_type" in text
+    assert "Label field" in text
+    assert "trial_type recommended" in text
+    assert "Timing fields" in text
+    assert "onset + duration" in text
+    assert "events.json sidecar is missing" in text
+
+
+def test_bids_preset_surfaces_scope_labels_metadata_and_review(qtbot):
+    events_path = "/tmp/source/sub-01_task-mi_run-01_events.tsv"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "source_kind": "bids",
+            "eeg_files": ["/tmp/source/sub-01_task-mi_run-01_raw.fif"],
+            "label_carriers": [events_path],
+            "bids": {
+                "is_bids": True,
+                "subjects": ["01"],
+                "tasks": ["mi"],
+                "runs": ["01"],
+                "events_files": [events_path],
+                "has_participants_tsv": False,
+            },
+        },
+        preview={
+            "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+            "source_selection": "BIDS-like folder",
+            "metadata_preview": [
+                {
+                    "file": "sub-01_task-mi_run-01_raw.fif",
+                    "subject": {"value": "01", "decision": "safe"},
+                    "session": {"value": "", "decision": "safe"},
+                    "task": {"value": "mi", "decision": "safe"},
+                    "run": {"value": "01", "decision": "safe"},
+                }
+            ],
+            "label_carrier_preview": [
+                {
+                    "path": events_path,
+                    "name": "sub-01_task-mi_run-01_events.tsv",
+                    "format": "BIDS events",
+                    "bids_event_columns": ["onset", "duration", "trial_type"],
+                    "label_candidates": ["trial_type", "value"],
+                    "anchor_candidates": ["onset"],
+                    "duration_candidates": ["duration"],
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                    "selected_duration_field": "duration",
+                    "time_model": "seconds",
+                    "placement_method": "interval",
+                    "granularity": "trial",
+                    "warnings": ["events.json sidecar is missing."],
+                },
+            ],
+            "action_items": [
+                {
+                    "target_step": "Match Labels",
+                    "issue": "Confirm BIDS class names.",
+                    "impact": "events.json was not found.",
+                    "next_action": "Confirm class names in Match Labels.",
+                }
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(1040, 820)
+    dialog.show()
+    qtbot.wait(0)
+
+    _show_step(dialog, "Choose EEG Data")
+    choose_text = _visible_step_text(dialog, "Choose EEG Data")
+    assert "BIDS-aware import" in choose_text
+    assert "1 subject" in choose_text
+    assert "1 task" in choose_text
+    assert "1 events.tsv file" in choose_text
+    assert "Full BIDS validation not claimed" in choose_text
+
+    _show_step(dialog, "Load Labels")
+    load_text = _visible_step_text(dialog, "Load Labels")
+    assert "BIDS events detected" in load_text
+    assert "default label and timing source" in load_text
+    assert "events.json" in load_text
+    assert "Missing" in load_text
+    assert not dialog.skip_labels_btn.isVisibleTo(dialog)
+
+    _show_step(dialog, "Review Metadata")
+    metadata_text = _visible_step_text(dialog, "Review Metadata")
+    assert "BIDS metadata" in metadata_text
+    assert "participants.tsv" in metadata_text
+    assert "Not found" in metadata_text
+    assert dialog.smart_parse_btn.text() == "Adjust parsing"
+
+    _show_step(dialog, "Review and Import")
+    qtbot.wait(0)
+    review_text = _visible_step_text(dialog, "Review and Import")
+    assert "BIDS entities reviewed" in review_text
+    assert "BIDS events.tsv" in review_text
+    assert "Trial type" in review_text
+    assert "Label interval" in review_text
+    assert "Recipe note" in review_text
+    action_text = "\n".join(
+        label.text()
+        for label in dialog.review_actions_panel.findChildren(QLabel)
+        if label.text().strip()
+    )
+    assert "Confirm before import" in action_text
+    assert "Go to Match Labels" in action_text
+
+
 def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,
@@ -2146,6 +2357,73 @@ def test_data_interpretation_preview_dialog_review_summary_shows_whole_rows(qtbo
     assert (
         review_tree.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
     )
+
+
+def test_review_and_import_saves_label_choices_for_later_epoch_setup(qtbot):
+    label_path = "/tmp/labels/A01T.mat"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+            "label_carriers": [label_path],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+            "selected_eeg_files": ["/tmp/source/A01T.gdf"],
+            "metadata_preview": [
+                {
+                    "file": "A01T.gdf",
+                    "subject": {"value": "A01", "decision": "safe"},
+                    "session": {"value": "T", "decision": "safe"},
+                    "task": {"value": "mi", "decision": "safe"},
+                    "run": {"value": "01", "decision": "safe"},
+                },
+            ],
+            "label_carrier_preview": [
+                {
+                    "path": label_path,
+                    "name": "A01T.mat",
+                    "format": "MAT",
+                    "label_candidates": ["classlabel"],
+                    "anchor_candidates": ["768", "769"],
+                    "selected_label_field": "classlabel",
+                    "selected_anchor": "768",
+                    "selected_target_event_codes": ["768"],
+                    "time_model": "trial_order",
+                    "granularity": "trial",
+                    "placement_method": "eeg_event",
+                    "role": "class cue labels",
+                    "label_row_count": 288,
+                },
+            ],
+        },
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(1040, 760)
+    dialog.show()
+    qtbot.wait(0)
+    _show_step(dialog, "Review and Import")
+    qtbot.wait(0)
+
+    review_text = _visible_step_text(dialog, "Review and Import")
+
+    assert "Import summary" in review_text
+    assert "EEG data" in review_text
+    assert "1 EEG file" in review_text
+    assert "A01T.gdf" in review_text
+    assert "Label placement" in review_text
+    assert "Classlabel" in review_text
+    assert "target EEG events 768" in review_text
+    assert "Recipe note" in review_text
+    assert "Label matching is saved" in review_text
+    assert "Epoch window and baseline are set later" in review_text
+    assert dialog.save_recipe_check.text() == "Save reusable import recipe"
+    assert dialog.save_recipe_check.isVisibleTo(dialog)
+    assert "Ready to import" not in review_text
+    assert "No blocking review items" not in review_text
+    assert "Epoch setup will use" not in review_text
 
 
 def test_data_interpretation_preview_dialog_returns_review_edits(qtbot):

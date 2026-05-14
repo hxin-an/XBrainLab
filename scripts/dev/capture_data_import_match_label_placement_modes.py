@@ -236,6 +236,52 @@ def placement_reviews() -> dict[str, dict[str, Any]]:
             "matched_code_count": 4,
             "matched_codes": ["769", "770", "771", "772"],
             "missing_codes": [],
+            "code_mappings": [
+                {
+                    "event_code": "769",
+                    "label_values": ["Left hand"],
+                    "label_rows": 72,
+                    "eeg_event_count": 72,
+                    "status": "ready",
+                    "review": "Ready.",
+                },
+                {
+                    "event_code": "770",
+                    "label_values": ["Right hand"],
+                    "label_rows": 70,
+                    "eeg_event_count": 70,
+                    "status": "ready",
+                    "review": "Ready.",
+                },
+                {
+                    "event_code": "771",
+                    "label_values": ["Feet"],
+                    "label_rows": 70,
+                    "eeg_event_count": 70,
+                    "status": "ready",
+                    "review": "Ready.",
+                },
+                {
+                    "event_code": "772",
+                    "label_values": ["Tongue"],
+                    "label_rows": 70,
+                    "eeg_event_count": 70,
+                    "status": "ready",
+                    "review": "Ready.",
+                },
+            ],
+            "unlabeled_eeg_events": [
+                {
+                    "event_code": "768",
+                    "use_as": "Trial timing",
+                    "event_count": 288,
+                },
+                {
+                    "event_code": "1023",
+                    "use_as": "Artifact",
+                    "event_count": 6,
+                },
+            ],
             "summary": "All 4 label event codes match EEG events.",
         },
     }

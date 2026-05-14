@@ -155,6 +155,9 @@ class DataInterpretationCommandService:
             candidate,
         )
         label_apply = self.apply_service.apply_label_carriers(candidate)
+        internal_epoch_hints = self.apply_service.record_internal_epoch_hints(
+            candidate,
+        )
         applied_payload = self.state.resolve_applied_interpretation().to_dict()
         label_message = ""
         if label_apply.get("status") == "applied":
@@ -177,6 +180,7 @@ class DataInterpretationCommandService:
                 "metadata_apply": metadata_apply,
                 "label_carriers_pending": list(candidate.label_carriers),
                 "label_apply": label_apply,
+                "internal_epoch_hints": internal_epoch_hints,
             },
         )
 

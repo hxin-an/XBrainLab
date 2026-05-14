@@ -279,6 +279,17 @@ def _event_code_review(
         [code for code in value_counts if code not in event_counts],
         key=_code_sort_key,
     )
+    code_mappings = _event_code_mapping_rows(
+        value_counts=value_counts,
+        label_counts_by_code=_dict(carrier.get("event_code_label_counts")),
+        event_counts=event_counts,
+    )
+    conflict_codes = [
+        str(row.get("event_code") or "")
+        for row in code_mappings
+        if row.get("status") == "needs_review" and row.get("conflict")
+    ]
+    unlabeled_eeg_events = _unlabeled_eeg_event_rows(event_rows, value_counts)
     review.update(
         {
             "event_code_field": field,
@@ -287,6 +298,9 @@ def _event_code_review(
             "matched_code_count": len(matched_codes),
             "matched_codes": matched_codes,
             "missing_codes": missing_codes,
+            "conflict_codes": conflict_codes,
+            "code_mappings": code_mappings,
+            "unlabeled_eeg_events": unlabeled_eeg_events,
         }
     )
     if not field:
@@ -316,15 +330,20 @@ def _event_code_review(
             }
         )
         return review
-    if missing_codes:
+    if missing_codes or conflict_codes:
+        parts = [
+            f"{len(matched_codes)}/{len(value_counts)} label event codes "
+            "were found in EEG events"
+        ]
+        if conflict_codes:
+            parts.append(f"{len(conflict_codes)} code(s) map to multiple label values")
         review.update(
             {
                 "status": "needs_review",
-                "summary": (
-                    f"{len(matched_codes)}/{len(value_counts)} label event codes "
-                    "were found in EEG events."
+                "summary": "; ".join(parts) + ".",
+                "next_action": (
+                    "Map missing codes or fix code rows with conflicting labels."
                 ),
-                "next_action": "Map or remove missing label event codes.",
             }
         )
         return review
@@ -336,6 +355,65 @@ def _event_code_review(
         }
     )
     return review
+
+
+def _event_code_mapping_rows(
+    *,
+    value_counts: dict[str, int],
+    label_counts_by_code: dict[str, Any],
+    event_counts: dict[str, int | None],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for code in sorted(value_counts, key=_code_sort_key):
+        label_counts = {
+            str(label): int(count)
+            for label, count in _dict(label_counts_by_code.get(code)).items()
+            if str(label).strip() and isinstance(count, int)
+        }
+        label_values = sorted(label_counts, key=lambda item: (item.casefold(), item))
+        conflict = len(label_values) > 1
+        eeg_count = event_counts.get(code)
+        missing = code not in event_counts
+        if conflict:
+            status = "needs_review"
+            review = "Same code maps to multiple label values."
+        elif missing:
+            status = "needs_review"
+            review = "Not found in EEG events."
+        else:
+            status = "ready"
+            review = "Ready."
+        rows.append(
+            {
+                "event_code": code,
+                "label_values": label_values,
+                "label_rows": sum(label_counts.values()) or value_counts.get(code),
+                "eeg_event_count": eeg_count,
+                "status": status,
+                "conflict": conflict,
+                "review": review,
+            }
+        )
+    return rows
+
+
+def _unlabeled_eeg_event_rows(
+    event_rows: list[dict[str, Any]],
+    value_counts: dict[str, int],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for row in event_rows:
+        code = _event_code(row)
+        if not code or code in value_counts:
+            continue
+        rows.append(
+            {
+                "event_code": code,
+                "use_as": str(row.get("use_as") or row.get("reason") or "").strip(),
+                "event_count": _event_count(row),
+            }
+        )
+    return sorted(rows, key=lambda item: _code_sort_key(str(item["event_code"])))
 
 
 def _base_review(method: str, carrier: dict[str, Any]) -> dict[str, Any]:

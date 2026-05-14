@@ -145,11 +145,23 @@ def _label_carrier_plan_for_path(
     label_stats = _observed_label_stats(path, selected_label)
     anchor_stats = _observed_field_stats(path, selected_anchor)
     duration_stats = _observed_field_stats(path, selected_duration)
+    event_code_label_counts = _event_code_label_counts(
+        path,
+        selected_anchor,
+        selected_label,
+    )
     time_label_preview = _time_label_preview(
         path,
         selected_anchor,
         selected_label,
         limit=3,
+    )
+    bids_event_columns = _bids_event_columns(path)
+    warnings = _label_carrier_warnings(
+        path,
+        bids_event_columns=bids_event_columns,
+        time_field_candidates=time_field_candidates,
+        duration_candidates=duration_candidates,
     )
     return {
         "path": source_path,
@@ -173,7 +185,10 @@ def _label_carrier_plan_for_path(
         "label_value_counts": label_stats["value_counts"],
         "selected_anchor_stats": anchor_stats,
         "selected_duration_stats": duration_stats,
+        "event_code_label_counts": event_code_label_counts,
         "time_label_preview": time_label_preview,
+        "bids_event_columns": bids_event_columns,
+        "warnings": warnings,
         "time_model": time_model,
         "granularity": granularity,
         "placement_method": placement_method,
@@ -479,6 +494,101 @@ def _time_label_preview(
             limit=limit,
         )
     return []
+
+
+def _event_code_label_counts(
+    path: Path,
+    event_code_field: str,
+    label_field: str,
+) -> dict[str, dict[str, int]]:
+    event_code_field = str(event_code_field or "").strip()
+    label_field = str(label_field or "").strip()
+    if not event_code_field or not label_field or event_code_field == "trial order":
+        return {}
+    suffix = path.suffix.lower()
+    if suffix in {".csv", ".tsv"} or _is_bids_events_file(path):
+        return _tabular_event_code_label_counts(path, event_code_field, label_field)
+    if suffix == ".mat":
+        return _mat_event_code_label_counts(path, event_code_field, label_field)
+    return {}
+
+
+def _tabular_event_code_label_counts(
+    path: Path,
+    event_code_field: str,
+    label_field: str,
+) -> dict[str, dict[str, int]]:
+    delimiter = (
+        "\t" if path.suffix.lower() == ".tsv" or _is_bids_events_file(path) else ","
+    )
+    counts: dict[str, Counter[str]] = {}
+    try:
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle, delimiter=delimiter)
+            if (
+                not reader.fieldnames
+                or event_code_field not in reader.fieldnames
+                or label_field not in reader.fieldnames
+            ):
+                return {}
+            for row in reader:
+                code = _clean_label_value(row.get(event_code_field))
+                label = _clean_label_value(row.get(label_field))
+                if not code or not label:
+                    continue
+                counts.setdefault(code, Counter())[label] += 1
+    except (OSError, UnicodeDecodeError, csv.Error):
+        return {}
+    return _nested_counter_dict(counts)
+
+
+def _mat_event_code_label_counts(
+    path: Path,
+    event_code_field: str,
+    label_field: str,
+) -> dict[str, dict[str, int]]:
+    try:
+        payload = loadmat(str(path), squeeze_me=True, struct_as_record=False)
+    except Exception:
+        return {}
+    code_value = _mat_variable(payload, event_code_field)
+    label_value = _mat_variable(payload, label_field)
+    if code_value is None or label_value is None:
+        return {}
+    code_array = np.asarray(code_value)
+    label_array = np.asarray(label_value)
+    if (
+        code_array.dtype.names is not None
+        or label_array.dtype.names is not None
+        or object in (code_array.dtype, label_array.dtype)
+    ):
+        return {}
+    counts: dict[str, Counter[str]] = {}
+    for code_item, label_item in zip(
+        code_array.reshape(-1),
+        label_array.reshape(-1),
+        strict=False,
+    ):
+        code = _clean_label_value(
+            code_item.item() if hasattr(code_item, "item") else code_item
+        )
+        label = _clean_label_value(
+            label_item.item() if hasattr(label_item, "item") else label_item
+        )
+        if not code or not label:
+            continue
+        counts.setdefault(code, Counter())[label] += 1
+    return _nested_counter_dict(counts)
+
+
+def _nested_counter_dict(counts: dict[str, Counter[str]]) -> dict[str, dict[str, int]]:
+    return {
+        code: {
+            label: values[label]
+            for label in sorted(values, key=lambda item: (item.casefold(), item))
+        }
+        for code, values in sorted(counts.items(), key=lambda item: (item[0], item[0]))
+    }
 
 
 def _tabular_time_label_preview(
@@ -944,12 +1054,12 @@ def _default_placement_method(
     time_field_candidates: list[str],
     event_code_candidates: list[str],
 ) -> str:
-    if granularity == "segment" or duration_field:
+    if (granularity == "segment" or duration_field) and time_field_candidates:
         return "interval"
-    if time_model in {"seconds", "relative_time", "sample_index"}:
-        return "time_field"
     if event_code_candidates and not time_field_candidates:
         return "event_code"
+    if time_model in {"seconds", "relative_time", "sample_index"}:
+        return "time_field"
     return "eeg_event"
 
 
@@ -1025,3 +1135,44 @@ def _label_carrier_reason(
 
 def _is_bids_events_file(path: Path) -> bool:
     return path.name.endswith("_events.tsv") or path.name == "events.tsv"
+
+
+def _bids_event_columns(path: Path) -> list[str]:
+    return _tabular_columns(path) if _is_bids_events_file(path) else []
+
+
+def _label_carrier_warnings(
+    path: Path,
+    *,
+    bids_event_columns: list[str],
+    time_field_candidates: list[str],
+    duration_candidates: list[str],
+) -> list[str]:
+    if not _is_bids_events_file(path):
+        return []
+    warnings: list[str] = []
+    if not _existing_bids_events_json_candidates(path):
+        warnings.append(
+            f"{path.name} events.json sidecar is missing; class names and event "
+            "semantics need confirmation."
+        )
+    normalized_columns = {column.lower() for column in bids_event_columns}
+    if "onset" not in normalized_columns and not time_field_candidates:
+        warnings.append(
+            f"{path.name} onset column is missing; event timing cannot be "
+            "confirmed from BIDS-style event time."
+        )
+    if "duration" not in normalized_columns and not duration_candidates:
+        warnings.append(
+            f"{path.name} duration column is missing; epoch windows will need "
+            "manual review after import."
+        )
+    return warnings
+
+
+def _existing_bids_events_json_candidates(path: Path) -> list[Path]:
+    return [
+        candidate
+        for candidate in _bids_events_json_candidates(path)
+        if candidate.exists()
+    ]

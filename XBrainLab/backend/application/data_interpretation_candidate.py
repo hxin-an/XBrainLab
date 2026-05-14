@@ -117,6 +117,7 @@ def build_interpretation_candidate(
         label_carrier_choices,
         carrier_sources=scan.label_carrier_sources,
     )
+    warnings.extend(_label_carrier_plan_warnings(label_carrier_plan))
     if not class_map and use_external_label_carriers:
         class_map = _infer_class_map_from_label_carrier_plan(label_carrier_plan)
         if class_map:
@@ -164,6 +165,7 @@ def build_interpretation_candidate(
         label_carrier_plan,
         internal_event_preview,
     )
+    blocked_reasons.extend(_blocked_placement_reasons(label_carrier_plan))
     confirmation_items.extend(_placement_confirmation_items(label_carrier_plan))
 
     event_roles.update(_string_mapping(choices.get("event_roles")))
@@ -273,6 +275,38 @@ def _apply_metadata_overrides(
             )
         )
     return result
+
+
+def _label_carrier_plan_warnings(
+    label_carrier_plan: list[dict[str, Any]],
+) -> list[str]:
+    warnings: list[str] = []
+    for carrier in label_carrier_plan:
+        for item in carrier.get("warnings", []) or []:
+            text = str(item).strip()
+            if text and text not in warnings:
+                warnings.append(text)
+    return warnings
+
+
+def _blocked_placement_reasons(
+    label_carrier_plan: list[dict[str, Any]],
+) -> list[str]:
+    reasons: list[str] = []
+    for carrier in label_carrier_plan:
+        review = carrier.get("placement_review")
+        if not isinstance(review, dict):
+            continue
+        if str(review.get("status") or "").strip() != "blocked":
+            continue
+        carrier_name = str(
+            carrier.get("name") or Path(str(carrier.get("path") or "")).name
+        ).strip()
+        summary = str(review.get("summary") or "Label placement is blocked.").strip()
+        reason = f"{carrier_name}: {summary}" if carrier_name else summary
+        if reason not in reasons:
+            reasons.append(reason)
+    return reasons
 
 
 def _override_field(

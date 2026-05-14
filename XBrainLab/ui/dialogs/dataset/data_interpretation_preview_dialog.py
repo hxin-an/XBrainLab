@@ -496,6 +496,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
             2,
         )
         source_panel_layout.addLayout(source_overview_layout)
+        if self._is_bids_like_source():
+            bids_source_card, bids_source_layout = self._card("BIDS-aware import")
+            self._build_bids_source_card(bids_source_layout)
+            source_panel_layout.addWidget(bids_source_card)
         source_panel_layout.addStretch()
         self.step_stack.addWidget(source_panel)
 
@@ -503,13 +507,17 @@ class DataInterpretationPreviewDialog(BaseDialog):
         attach_panel_layout.addWidget(
             self._panel_header(
                 "Load Labels",
-                "Load the label files that will be matched to this EEG data.",
+                self._load_labels_panel_detail(),
             )
         )
-        label_sources_card, label_sources_layout = self._card("Label files")
+        label_sources_card, label_sources_layout = self._card(
+            "BIDS events detected" if self._has_bids_events() else "Label files"
+        )
         label_sources_layout.addWidget(
             self._wrapped_label(self._label_detection_text())
         )
+        if self._has_bids_events():
+            label_sources_layout.addWidget(self._bids_label_source_summary())
         self.label_source_rows_widget = QWidget()
         self.label_source_rows_widget.setObjectName("DataImportSourceRows")
         self.label_source_rows_layout = QVBoxLayout(self.label_source_rows_widget)
@@ -528,10 +536,14 @@ class DataInterpretationPreviewDialog(BaseDialog):
         label_button_layout.setContentsMargins(0, 0, 0, 0)
         label_button_layout.setSpacing(8)
         self.add_label_file_btn = QPushButton("Load label file")
+        if self._has_bids_events():
+            self.add_label_file_btn.setText("Add extra label file")
         self.add_label_file_btn.setObjectName("DataImportToolButton")
         self.add_label_file_btn.setToolTip("Load a label file from another location.")
         self.add_label_file_btn.clicked.connect(self._add_label_file)
         self.add_label_folder_btn = QPushButton("Load label folder")
+        if self._has_bids_events():
+            self.add_label_folder_btn.setText("Add extra label folder")
         self.add_label_folder_btn.setObjectName("DataImportToolButton")
         self.add_label_folder_btn.setToolTip(
             "Load a folder of label files from another location.",
@@ -542,6 +554,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.skip_labels_btn.setToolTip(
             "Continue this import without labels; supervised workflows may be limited.",
         )
+        self.skip_labels_btn.setVisible(not self._has_bids_events())
         self.skip_labels_btn.clicked.connect(self._skip_labels_for_now)
         label_button_layout.addWidget(self.add_label_file_btn)
         label_button_layout.addWidget(self.add_label_folder_btn)
@@ -556,10 +569,12 @@ class DataInterpretationPreviewDialog(BaseDialog):
         metadata_panel_layout.addWidget(
             self._panel_header(
                 "Review Metadata",
-                "Subject, session, task, and run choices are saved into the recipe.",
+                self._metadata_panel_detail(),
             )
         )
-        self.smart_parse_btn = QPushButton("Smart Parse metadata")
+        self.smart_parse_btn = QPushButton(
+            "Adjust parsing" if self._is_bids_like_source() else "Smart Parse metadata"
+        )
         self.smart_parse_btn.setObjectName("DataImportToolButton")
         self.smart_parse_btn.clicked.connect(self._run_smart_parse)
         self.file_tree = QTreeWidget()
@@ -579,6 +594,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         self._fit_compact_tree_height(self.file_tree, min_height=86, max_height=160)
         complete_count, missing_fields = self._metadata_completion_counts()
+        missing_fields = self._metadata_required_missing_fields(missing_fields)
+        if self._is_bids_like_source():
+            bids_metadata_card, bids_metadata_layout = self._card("BIDS metadata")
+            self._build_bids_metadata_card(bids_metadata_layout)
+            metadata_panel_layout.addWidget(bids_metadata_card)
         metadata_table_card = QFrame()
         metadata_table_card.setObjectName("DataImportCard")
         metadata_table_card.setSizePolicy(
@@ -661,6 +681,12 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._build_label_source_mode_card(label_source_layout)
         label_panel_layout.addWidget(label_source_card)
 
+        self.bids_event_review_card, bids_event_review_layout = self._card(
+            "BIDS events.tsv"
+        )
+        self._build_bids_event_review_card(bids_event_review_layout)
+        label_panel_layout.addWidget(self.bids_event_review_card)
+
         self.internal_event_card, internal_event_layout = self._card(
             "Events inside EEG files"
         )
@@ -708,27 +734,30 @@ class DataInterpretationPreviewDialog(BaseDialog):
         label_panel_layout.addStretch()
         self.step_stack.addWidget(label_panel)
 
+        self.confirmation_label = QLabel(self._confirmation_text())
+        self.confirmation_label.setObjectName("InterpretationConfirmation")
+        self.confirmation_label.setWordWrap(True)
+        self.save_recipe_check = QCheckBox("Save reusable import recipe")
+        self.save_recipe_check.setObjectName("DataImportSaveRecipeCheck")
+        apply_allowed = self._apply_allowed()
+        self.save_recipe_check.setChecked(apply_allowed)
+        self.save_recipe_check.setEnabled(apply_allowed)
+        self.save_recipe_check.setToolTip(
+            "Recipe records source, metadata decisions, label carriers, and "
+            "confirmations for review or replay."
+        )
+
         review_panel, review_panel_layout = self._step_panel()
         review_panel_layout.addWidget(
             self._panel_header(
                 "Review and Import",
-                "Only items that affect import readiness are shown here.",
+                "Confirm the import recipe and save label decisions for later "
+                "epoch setup.",
             )
         )
-        review_status_layout = QHBoxLayout()
-        review_status_layout.setContentsMargins(0, 0, 0, 0)
-        review_status_layout.setSpacing(12)
-        decision_card, decision_layout = self._card("Import readiness")
-        decision_layout.addWidget(self.decision_label)
-        review_status_layout.addWidget(decision_card, stretch=2)
-        recipe_card, recipe_layout = self._card("Recipe")
-        recipe_layout.addWidget(
-            self._wrapped_label(
-                "Source, metadata edits, label choices, and confirmations"
-            )
-        )
-        review_status_layout.addWidget(recipe_card, stretch=2)
-        review_panel_layout.addLayout(review_status_layout)
+        import_summary_card, import_summary_layout = self._card("Import summary")
+        self._build_review_import_summary(import_summary_layout)
+        review_panel_layout.addWidget(import_summary_card)
         self.review_actions_panel = QWidget()
         self.review_actions_panel.setObjectName("DataImportActionItemsPanel")
         self.review_actions_layout = QVBoxLayout(self.review_actions_panel)
@@ -774,21 +803,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.scroll_area.setWidget(self.step_stack)
         root_layout.addWidget(self.scroll_area, stretch=1)
 
-        self.confirmation_label = QLabel(self._confirmation_text())
-        self.confirmation_label.setObjectName("InterpretationConfirmation")
-        self.confirmation_label.setWordWrap(True)
-        root_layout.addWidget(self.confirmation_label)
-
-        self.save_recipe_check = QCheckBox("Save reusable import recipe after applying")
-        apply_allowed = self._apply_allowed()
-        self.save_recipe_check.setChecked(apply_allowed)
-        self.save_recipe_check.setEnabled(apply_allowed)
-        self.save_recipe_check.setToolTip(
-            "Recipe records source, metadata decisions, label carriers, and "
-            "confirmations for review or replay."
-        )
-        root_layout.addWidget(self.save_recipe_check)
-
         separator = QFrame()
         separator.setObjectName("DataImportFooterSeparator")
         separator.setFrameShape(QFrame.Shape.HLine)
@@ -819,7 +833,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         self.apply_button.setObjectName("DataImportPrimaryButton")
         self.apply_button.setStyleSheet(self._primary_button_style())
-        self.apply_button.setEnabled(apply_allowed)
+        self.apply_button.setEnabled(self._apply_allowed())
         self.apply_button.clicked.connect(self.accept)
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setObjectName("DataImportSecondaryButton")
@@ -831,6 +845,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         footer_layout.addWidget(self.next_button)
         footer_layout.addWidget(self.apply_button)
         root_layout.addWidget(footer_frame)
+        self._sync_apply_state()
         self._sync_step_state()
         self._fit_all_tree_columns_to_viewport()
 
@@ -929,9 +944,12 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
 
     def _label_source_mode_choices(self) -> list[tuple[str, str]]:
+        loaded_label = (
+            "BIDS events.tsv" if self._has_bids_events() else "Loaded label files"
+        )
         choices = [
             ("Labels inside EEG files", "internal_events"),
-            ("Loaded label files", "loaded_label_files"),
+            (loaded_label, "loaded_label_files"),
         ]
         if self._label_carrier_items:
             return [choices[1], choices[0]]
@@ -949,6 +967,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if mode == "loaded_label_files":
             if not self._label_carrier_items:
                 return "No label files are loaded. Load a label file or switch source."
+            if self._has_bids_events():
+                return (
+                    "Use BIDS events.tsv for labels and timing; add extra labels "
+                    "only if this dataset needs them."
+                )
             return "Pair each label file, then choose how label values are placed."
         return (
             "Use events inside the EEG files, then confirm which events become classes."
@@ -1000,6 +1023,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
         fallback_visible = use_loaded and self._should_show_label_table_fallback()
         if hasattr(self, "pairing_card"):
             self.pairing_card.setVisible(use_loaded)
+        if hasattr(self, "bids_event_review_card"):
+            self.bids_event_review_card.setVisible(
+                use_loaded and bool(self._bids_event_review_rows())
+            )
         for widget in (
             getattr(self, "label_values_card", None),
             getattr(self, "placement_card", None),
@@ -1364,10 +1391,218 @@ class DataInterpretationPreviewDialog(BaseDialog):
         visible = ", ".join(values[:limit])
         return f"{visible} +{len(values) - limit} more"
 
+    def _build_bids_source_card(self, layout: QVBoxLayout) -> None:
+        layout.addWidget(
+            self._inline_notice(
+                "BIDS-like EEG files and events.tsv were detected. XBrainLab "
+                "uses this as an import preset, not a full BIDS validator."
+            )
+        )
+        layout.addWidget(
+            self._event_rules_table(
+                ["Item", "Detected", "Import behavior"],
+                self._bids_source_rows(),
+            )
+        )
+
+    def _bids_label_source_summary(self) -> QWidget:
+        return self._event_rules_table(
+            ["Item", "Detected", "Import behavior"],
+            self._bids_label_source_rows(),
+        )
+
+    def _build_bids_metadata_card(self, layout: QVBoxLayout) -> None:
+        layout.addWidget(
+            self._inline_notice(
+                "Subject, session, task, and run were read from BIDS-style "
+                "entities. Participants metadata is shown when available."
+            )
+        )
+        layout.addWidget(
+            self._event_rules_table(
+                ["Item", "Detected", "Recipe behavior"],
+                self._bids_metadata_rows(),
+            )
+        )
+
+    def _bids_source_rows(self) -> list[tuple[str, str, str]]:
+        return [
+            (
+                "BIDS-like structure",
+                self._bids_entities_summary_text(),
+                "All detected EEG runs in the selected folder are included.",
+            ),
+            (
+                "events.tsv",
+                self._bids_event_count_text(),
+                "Used as the default label and timing source.",
+            ),
+            (
+                "Boundary",
+                "Full BIDS validation not claimed",
+                "Review labels, metadata, and events before applying.",
+            ),
+        ]
+
+    def _bids_label_source_rows(self) -> list[tuple[str, str, str]]:
+        carriers = self._bids_event_carriers()
+        events = self._bids_event_count_text()
+        matched = (
+            self._matched_eeg_pair_count()
+            if self._label_carrier_items
+            else self._preview_matched_eeg_pair_count()
+        )
+        total = len(self._selected_eeg_file_names())
+        if not carriers:
+            return [
+                (
+                    "events.tsv",
+                    "Not detected",
+                    "Load label files manually or switch to labels inside EEG files.",
+                )
+            ]
+        return [
+            (
+                "events.tsv",
+                events,
+                "Automatically loaded from the BIDS-like folder.",
+            ),
+            (
+                "EEG pairing",
+                f"{matched}/{total} EEG files paired",
+                "Adjust only rows that are matched incorrectly.",
+            ),
+            (
+                "events.json",
+                self._bids_events_json_text(),
+                "Used for class descriptions when present; otherwise class names "
+                "need confirmation.",
+            ),
+        ]
+
+    def _bids_metadata_rows(self) -> list[tuple[str, str, str]]:
+        return [
+            (
+                "Entities",
+                self._bids_entities_summary_text(),
+                "Saved as subject/session/task/run metadata.",
+            ),
+            (
+                "participants.tsv",
+                self._bids_participants_text(),
+                "Used to supplement participants when available.",
+            ),
+            (
+                "Smart Parse",
+                "Secondary adjustment",
+                "Use only when BIDS-style entities need manual correction.",
+            ),
+        ]
+
+    def _bids_entities_summary_text(self) -> str:
+        parts: list[str] = []
+        for key, label in (
+            ("subjects", "subject"),
+            ("sessions", "session"),
+            ("tasks", "task"),
+            ("runs", "run"),
+        ):
+            values = self._bids_values(key)
+            if values:
+                parts.append(f"{len(values)} {label}")
+        return " · ".join(parts) or "Entities pending"
+
+    def _bids_event_count_text(self) -> str:
+        events = self._bids_values("events_files")
+        if not events:
+            return "No events.tsv"
+        file_word = "file" if len(events) == 1 else "files"
+        return f"{len(events)} events.tsv {file_word}"
+
+    def _bids_participants_text(self) -> str:
+        bids = self._bids_payload()
+        for key in ("participants_tsv", "participants_file"):
+            value = str(bids.get(key) or "").strip()
+            if value:
+                return Path(value).name
+        if bool(bids.get("has_participants_tsv")):
+            return "Found"
+        return "Not found"
+
+    def _bids_events_json_text(self) -> str:
+        carriers = self._bids_event_carriers()
+        found = any(
+            carrier.get("events_json")
+            or carrier.get("events_json_path")
+            or carrier.get("has_events_json")
+            for carrier in carriers
+        )
+        if found:
+            return "Found"
+        warnings = " ".join(
+            str(item)
+            for carrier in carriers
+            for item in carrier.get("warnings", []) or []
+        ).lower()
+        if "events.json" in warnings:
+            return "Missing"
+        return "Not detected"
+
+    def _preview_matched_eeg_pair_count(self) -> int:
+        matched: set[str] = set()
+        for carrier in self._bids_event_carriers():
+            match = self._label_carrier_match_text(carrier)
+            if match and match != "Needs review":
+                matched.add(Path(match).name)
+        return len(matched)
+
+    def _bids_payload(self) -> dict[str, Any]:
+        bids = self.scan_result.get("bids") or {}
+        return bids if isinstance(bids, dict) else {}
+
+    def _bids_values(self, key: str) -> list[str]:
+        values = self._bids_payload().get(key) or []
+        if not isinstance(values, list):
+            return []
+        return [str(value).strip() for value in values if str(value).strip()]
+
+    def _is_bids_like_source(self) -> bool:
+        source_kind = str(self.scan_result.get("source_kind") or "").lower()
+        return (
+            source_kind == "bids"
+            or bool(self._bids_payload().get("is_bids"))
+            or self._has_bids_events()
+        )
+
+    def _has_bids_events(self) -> bool:
+        return bool(self._bids_event_carriers())
+
+    def _bids_event_carriers(self) -> list[dict[str, Any]]:
+        carriers: list[dict[str, Any]] = []
+        preview_carriers = self.preview.get("label_carrier_preview") or []
+        if isinstance(preview_carriers, list):
+            carriers.extend(
+                dict(item)
+                for item in preview_carriers
+                if isinstance(item, dict)
+                and str(item.get("format") or "") == "BIDS events"
+            )
+        carriers.extend(
+            dict(original)
+            for _item, original in self._label_carrier_items
+            if str(original.get("format") or "") == "BIDS events"
+        )
+        unique: dict[str, dict[str, Any]] = {}
+        for carrier in carriers:
+            key = str(carrier.get("path") or carrier.get("name") or "").strip()
+            if key and key not in unique:
+                unique[key] = carrier
+        return list(unique.values())
+
     def _event_rules_table(
         self,
         headers: list[str],
-        rows: list[tuple[str, str, str]],
+        rows: list[tuple[str, ...]],
     ) -> QWidget:
         table = QFrame()
         table.setObjectName("DataImportEventRulesTable")
@@ -1390,12 +1625,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 label.setObjectName(
                     "DataImportPairingFile" if column == 0 else "DataImportSourceDetail"
                 )
-                label.setWordWrap(column == 2)
+                label.setWordWrap(column == len(row) - 1)
                 label.setMinimumHeight(18)
                 grid.addWidget(label, row_index, column)
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 2)
-        grid.setColumnStretch(2, 3)
+        for column in range(len(headers)):
+            grid.setColumnStretch(column, 2 if column == len(headers) - 1 else 1)
         return table
 
     def _build_internal_event_card(self, layout: QVBoxLayout) -> None:
@@ -1403,6 +1637,152 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self._internal_event_status_text()
         )
         layout.addWidget(self.internal_event_status_label)
+
+    def _build_bids_event_review_card(self, layout: QVBoxLayout) -> None:
+        intro = QLabel(self._bids_event_review_intro_text())
+        intro.setObjectName("DataImportSourceDetail")
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        rows = self._bids_event_review_rows()
+        if rows:
+            layout.addWidget(
+                self._event_rules_table(
+                    ["Item", "Detected", "Review note"],
+                    rows,
+                )
+            )
+        else:
+            layout.addWidget(
+                self._empty_state(
+                    "No BIDS-like events.tsv carrier is available in this preview."
+                )
+            )
+        self._bids_event_review_intro_label = intro
+
+    def _bids_event_review_intro_text(self) -> str:
+        context = self._bids_context_text()
+        if context:
+            return f"Review BIDS event timing and class fields for {context}."
+        return "Review BIDS event timing and class fields before import."
+
+    def _bids_event_review_rows(self) -> list[tuple[str, str, str]]:
+        rows: list[tuple[str, str, str]] = []
+        carriers = [
+            original
+            for _item, original in self._label_carrier_items
+            if str(original.get("format") or "") == "BIDS events"
+        ]
+        if not carriers:
+            return rows
+        columns = self._unique_values(
+            column
+            for carrier in carriers
+            for column in carrier.get("bids_event_columns", []) or []
+        )
+        label_fields = self._unique_values(
+            str(carrier.get("selected_label_field") or "").strip()
+            for carrier in carriers
+            if str(carrier.get("selected_label_field") or "").strip()
+        )
+        start_fields = self._unique_values(
+            str(carrier.get("selected_anchor") or "").strip()
+            for carrier in carriers
+            if str(carrier.get("selected_anchor") or "").strip()
+        )
+        duration_fields = self._unique_values(
+            str(carrier.get("selected_duration_field") or "").strip()
+            for carrier in carriers
+            if str(carrier.get("selected_duration_field") or "").strip()
+        )
+        warnings = self._unique_values(
+            str(item).strip()
+            for carrier in carriers
+            for item in carrier.get("warnings", []) or []
+            if str(item).strip()
+        )
+        rows.append(
+            (
+                "events.tsv columns",
+                self._list_preview(columns) or "Needs review",
+                "Use onset/duration for timing and trial_type or value for labels.",
+            )
+        )
+        label_field_text = self._list_preview(label_fields) or "Choose in Label values"
+        if "trial_type" in label_fields:
+            label_field_text = "trial_type recommended"
+        elif "value" in label_fields:
+            label_field_text = "value"
+        rows.append(
+            (
+                "Label field",
+                label_field_text,
+                "This becomes the class or event label value.",
+            )
+        )
+        rows.append(
+            (
+                "Timing fields",
+                self._bids_timing_fields_text(start_fields, duration_fields),
+                "Saved for import recipe and later epoch setup.",
+            )
+        )
+        if warnings:
+            rows.append(
+                (
+                    "Needs review",
+                    self._list_preview(warnings, limit=2),
+                    "Resolve or confirm before applying.",
+                )
+            )
+        return rows
+
+    @staticmethod
+    def _unique_values(values: Iterable[str]) -> list[str]:
+        result: list[str] = []
+        for value in values:
+            text = str(value).strip()
+            if text and text not in result:
+                result.append(text)
+        return result
+
+    @staticmethod
+    def _list_preview(values: Iterable[str], *, limit: int = 5) -> str:
+        items = [str(value).strip() for value in values if str(value).strip()]
+        if not items:
+            return ""
+        if len(items) <= limit:
+            return ", ".join(items)
+        return ", ".join(items[:limit]) + f" +{len(items) - limit} more"
+
+    def _bids_timing_fields_text(
+        self,
+        start_fields: list[str],
+        duration_fields: list[str],
+    ) -> str:
+        start = self._list_preview(start_fields) or "Missing onset/start"
+        duration = self._list_preview(duration_fields) or "Duration set later"
+        return f"{start} + {duration}"
+
+    def _bids_context_text(self) -> str:
+        bids = self.scan_result.get("bids") or {}
+        if not isinstance(bids, dict):
+            return ""
+        parts: list[str] = []
+        for key, label in (
+            ("subjects", "subject"),
+            ("sessions", "session"),
+            ("tasks", "task"),
+            ("runs", "run"),
+        ):
+            values = bids.get(key) or []
+            if isinstance(values, list) and values:
+                preview = self._list_preview(
+                    (str(item) for item in values),
+                    limit=3,
+                )
+                parts.append(f"{label} {preview}")
+        return ", ".join(parts)
 
     def _internal_event_status_text(self) -> str:
         if self._event_role_items or self._class_map_items:
@@ -1742,11 +2122,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.label_match_mode_combo = self._rule_combo(
             self._match_mode_choices(),
             self._default_match_mode(),
-            "Choose how label files are matched to EEG files.",
+            "Label files are paired automatically; adjust individual rows below.",
         )
-        header.addWidget(
-            self._inline_rule_control("Pair by", self.label_match_mode_combo)
-        )
+        self.label_match_mode_combo.setVisible(False)
         layout.addLayout(header)
 
         self.label_pairing_rows_widget = QWidget()
@@ -2522,6 +2900,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         controls.setColumnStretch(0, 1)
         controls.setColumnStretch(1, 1)
         layout.addLayout(controls)
+        layout.addWidget(self._interval_review_panel())
         layout.addStretch(1)
         return page
 
@@ -2557,9 +2936,64 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         controls.setColumnStretch(0, 1)
         layout.addLayout(controls)
-        layout.addWidget(self._placement_note("Matches against EEG event codes."))
+        layout.addWidget(self._event_code_review_panel())
         layout.addStretch(1)
         return page
+
+    def _interval_review_panel(self) -> QFrame:
+        panel = QFrame()
+        panel.setObjectName("DataImportTimeCheckPanel")
+        panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(12, 10, 12, 11)
+        layout.setSpacing(6)
+        title = QLabel("Interval check")
+        title.setObjectName("DataImportSourceTitle")
+        self.interval_check_label = QLabel(self._interval_check_text())
+        self.interval_check_label.setObjectName("DataImportRuleStatus")
+        self.interval_check_label.setWordWrap(True)
+        layout.addWidget(title)
+        layout.addWidget(
+            self._event_rules_table(
+                ["Field", "Rows", "Review"],
+                self._interval_review_rows(),
+            )
+        )
+        layout.addWidget(self.interval_check_label)
+        return panel
+
+    def _event_code_review_panel(self) -> QFrame:
+        panel = QFrame()
+        panel.setObjectName("DataImportTimeCheckPanel")
+        panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(12, 10, 12, 11)
+        layout.setSpacing(6)
+        title = QLabel("Code mapping review")
+        title.setObjectName("DataImportSourceTitle")
+        self.event_code_check_label = QLabel(self._event_code_check_text())
+        self.event_code_check_label.setObjectName("DataImportRuleStatus")
+        self.event_code_check_label.setWordWrap(True)
+        layout.addWidget(title)
+        layout.addWidget(
+            self._event_rules_table(
+                ["Label code", "Label value", "EEG events", "Review"],
+                self._event_code_mapping_rows(),
+            )
+        )
+        unlabeled_rows = self._unlabeled_eeg_event_rows()
+        if unlabeled_rows:
+            unlabeled_title = QLabel("EEG events not labeled")
+            unlabeled_title.setObjectName("DataImportSourceTitle")
+            layout.addWidget(unlabeled_title)
+            layout.addWidget(
+                self._event_rules_table(
+                    ["Event", "Suggested use", "Count"],
+                    unlabeled_rows,
+                )
+            )
+        layout.addWidget(self.event_code_check_label)
+        return panel
 
     @staticmethod
     def _placement_detail_frame() -> QFrame:
@@ -2876,6 +3310,243 @@ class DataInterpretationPreviewDialog(BaseDialog):
             combined["time_model"] = next(iter(models))
         return combined
 
+    def _single_or_combined_placement_review(self, method: str) -> dict[str, Any]:
+        reviews = self._active_backend_placement_reviews(method)
+        if not reviews:
+            return {}
+        if len(reviews) == 1:
+            return reviews[0]
+        combined: dict[str, Any] = {"method": method}
+        for key in (
+            "label_rows",
+            "numeric_rows",
+            "duration_numeric_rows",
+            "label_code_count",
+            "matched_code_count",
+        ):
+            values = [
+                value
+                for value in (self._int_value(review.get(key)) for review in reviews)
+                if value is not None
+            ]
+            if values:
+                combined[key] = sum(values)
+        missing_codes: list[str] = []
+        matched_codes: list[str] = []
+        for review in reviews:
+            for key, target in (
+                ("missing_codes", missing_codes),
+                ("matched_codes", matched_codes),
+            ):
+                raw_values = review.get(key)
+                if not isinstance(raw_values, list):
+                    continue
+                for value in raw_values:
+                    text = str(value).strip()
+                    if text and text not in target:
+                        target.append(text)
+        if missing_codes:
+            combined["missing_codes"] = missing_codes
+        if matched_codes:
+            combined["matched_codes"] = matched_codes
+        return combined
+
+    def _interval_review(self) -> dict[str, Any]:
+        return self._single_or_combined_placement_review("interval")
+
+    def _event_code_review(self) -> dict[str, Any]:
+        return self._single_or_combined_placement_review("event_code")
+
+    def _interval_review_rows(self) -> list[tuple[str, str, str]]:
+        review = self._interval_review()
+        label_rows = self._int_value(review.get("label_rows"))
+        start_rows = self._int_value(review.get("numeric_rows"))
+        duration_rows = self._int_value(review.get("duration_numeric_rows"))
+        start_field = str(review.get("time_field") or "").strip() or (
+            self._combo_current_data(self.rule_alignment_combo)
+        )
+        duration_field = str(review.get("duration_field") or "").strip() or (
+            self._combo_current_data(self.rule_duration_field_combo)
+        )
+        return [
+            (
+                "Label rows",
+                self._count_or_review(label_rows),
+                "Rows that will receive class or event labels.",
+            ),
+            (
+                "Start field",
+                self._count_pair_text(start_rows, label_rows),
+                start_field or "Choose an onset, start, sample, or time field.",
+            ),
+            (
+                "Duration / end",
+                self._count_pair_text(duration_rows, label_rows),
+                duration_field or "Choose duration, end, offset, or stop.",
+            ),
+        ]
+
+    def _interval_check_text(self) -> str:
+        review = self._interval_review()
+        summary = str(review.get("summary") or "").strip()
+        status = str(review.get("status") or "needs_review").replace("_", " ")
+        if summary:
+            return (
+                f"{summary.rstrip('.')} · {status}. "
+                "Epoch setup will use this timing evidence."
+            )
+        return "Review interval start and duration/end fields before import."
+
+    def _event_code_review_rows(self) -> list[tuple[str, str, str]]:
+        review = self._event_code_review()
+        field = str(review.get("event_code_field") or "").strip() or (
+            self._combo_current_data(self.rule_alignment_combo)
+        )
+        code_count = self._int_value(review.get("label_code_count"))
+        matched_count = self._int_value(review.get("matched_code_count"))
+        matched_codes = [
+            str(item).strip()
+            for item in review.get("matched_codes", []) or []
+            if str(item).strip()
+        ]
+        missing_codes = [
+            str(item).strip()
+            for item in review.get("missing_codes", []) or []
+            if str(item).strip()
+        ]
+        return [
+            (
+                "Code field",
+                field or "Choose field",
+                "Label-file values are matched against EEG event codes.",
+            ),
+            (
+                "Matched codes",
+                self._matched_code_count_text(matched_count, code_count),
+                self._list_preview(matched_codes, limit=6) or "No matched codes yet.",
+            ),
+            (
+                "Missing codes",
+                str(len(missing_codes)) if missing_codes else "None",
+                self._list_preview(missing_codes, limit=6)
+                or "Every label code is present in EEG events.",
+            ),
+        ]
+
+    def _event_code_mapping_rows(self) -> list[tuple[str, ...]]:
+        review = self._event_code_review()
+        rows = review.get("code_mappings")
+        if not isinstance(rows, list) or not rows:
+            return self._event_code_review_rows()
+        result: list[tuple[str, ...]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            code = str(row.get("event_code") or "").strip()
+            if not code:
+                continue
+            labels = [
+                str(value).strip()
+                for value in row.get("label_values", []) or []
+                if str(value).strip()
+            ]
+            label_text = self._list_preview(labels, limit=3) or "Needs review"
+            event_count = self._int_value(row.get("eeg_event_count"))
+            events_text = (
+                f"{event_count} events" if event_count is not None else "Not found"
+            )
+            result.append(
+                (
+                    code,
+                    label_text,
+                    events_text,
+                    str(row.get("review") or self._mapping_status_text(row)),
+                )
+            )
+        return result or self._event_code_review_rows()
+
+    def _unlabeled_eeg_event_rows(self) -> list[tuple[str, ...]]:
+        review = self._event_code_review()
+        raw_rows = review.get("unlabeled_eeg_events")
+        if isinstance(raw_rows, list) and raw_rows:
+            rows: list[tuple[str, ...]] = []
+            for row in raw_rows[:6]:
+                if not isinstance(row, dict):
+                    continue
+                code = str(row.get("event_code") or "").strip()
+                if not code:
+                    continue
+                count = self._int_value(row.get("event_count"))
+                rows.append(
+                    (
+                        code,
+                        str(row.get("use_as") or "Available EEG event"),
+                        f"{count} events" if count is not None else "Needs review",
+                    )
+                )
+            return rows
+
+        used = {
+            str(value).strip()
+            for key in ("matched_codes", "missing_codes")
+            for value in review.get(key, []) or []
+            if str(value).strip()
+        }
+        result: list[tuple[str, ...]] = []
+        for event in self._target_eeg_event_rows():
+            code = self._internal_event_code_from_row(event)
+            if not code or code in used:
+                continue
+            result.append(
+                (
+                    code,
+                    str(event.get("use_as") or event.get("reason") or ""),
+                    self._event_count_text(event) or "Needs review",
+                )
+            )
+            if len(result) >= 6:
+                break
+        return result
+
+    @staticmethod
+    def _mapping_status_text(row: dict[str, Any]) -> str:
+        status = str(row.get("status") or "needs_review")
+        if status == "ready":
+            return "Ready."
+        if status == "blocked":
+            return "Blocked."
+        return "Needs review."
+
+    def _event_code_check_text(self) -> str:
+        review = self._event_code_review()
+        summary = str(review.get("summary") or "").strip()
+        status = str(review.get("status") or "needs_review").replace("_", " ")
+        if summary:
+            return f"{summary.rstrip('.')} · {status}."
+        return "Review label-file code coverage against EEG event codes."
+
+    @staticmethod
+    def _count_or_review(value: int | None) -> str:
+        return f"{value} rows" if value is not None else "Needs review"
+
+    def _count_pair_text(self, value: int | None, total: int | None) -> str:
+        if value is None:
+            return "Needs review"
+        if total is not None:
+            return f"{value}/{total} rows"
+        return f"{value} rows"
+
+    @staticmethod
+    def _matched_code_count_text(
+        matched: int | None,
+        total: int | None,
+    ) -> str:
+        if matched is None and total is None:
+            return "Needs review"
+        if total is None:
+            return f"{matched or 0} matched"
+        return f"{matched or 0}/{total} codes"
+
     def _refresh_time_field_review(self) -> None:
         if hasattr(self, "time_field_check_label"):
             self.time_field_check_label.setText(self._time_field_check_text())
@@ -2884,6 +3555,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 self._time_field_preview_caption_text()
             )
         self._refresh_time_field_preview_rows()
+        if hasattr(self, "interval_check_label"):
+            self.interval_check_label.setText(self._interval_check_text())
+        if hasattr(self, "event_code_check_label"):
+            self.event_code_check_label.setText(self._event_code_check_text())
 
     def _refresh_time_field_preview_rows(self) -> None:
         if not hasattr(self, "time_field_preview_row_labels"):
@@ -3634,7 +4309,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             layout.addWidget(
                 self._empty_state("No nearby label/event source detected.")
             )
-        for carrier in carriers[:5]:
+        for carrier in carriers:
             name = str(
                 carrier.get("name")
                 or Path(str(carrier.get("path", ""))).name
@@ -3654,8 +4329,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
                     else None,
                 )
             )
-        if len(carriers) > 5:
-            layout.addWidget(self._empty_state(f"{len(carriers) - 5} more source(s)."))
 
         for source in self._extra_label_sources:
             layout.addWidget(
@@ -3724,7 +4397,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         title_label.setObjectName("DataImportSourceTitle")
         detail_label = QLabel(detail)
         detail_label.setObjectName("DataImportSourceDetail")
-        detail_label.setWordWrap(False)
+        detail_label.setWordWrap(True)
         detail_label.setToolTip(detail)
         detail_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
@@ -3732,8 +4405,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         text_layout.addWidget(title_label)
         if detail:
             text_layout.addWidget(detail_label)
-        layout.addLayout(text_layout)
-        layout.addStretch()
+        layout.addLayout(text_layout, stretch=1)
         if remove_callback is not None:
             remove_btn = QPushButton("Remove")
             remove_btn.setObjectName("DataImportTertiaryButton")
@@ -3843,59 +4515,302 @@ class DataInterpretationPreviewDialog(BaseDialog):
     def _looks_like_file(path: str) -> bool:
         return bool(Path(path).suffix)
 
+    def _build_review_import_summary(self, layout: QVBoxLayout) -> None:
+        layout.addWidget(self.decision_label)
+        rows_layout = QGridLayout()
+        rows_layout.setContentsMargins(0, 0, 0, 0)
+        rows_layout.setHorizontalSpacing(12)
+        rows_layout.setVerticalSpacing(6)
+        for index, (label, value) in enumerate(self._review_import_summary_rows()):
+            rows_layout.addWidget(
+                self._review_summary_cell(label, value),
+                index // 2,
+                index % 2,
+            )
+        rows_layout.setColumnStretch(0, 1)
+        rows_layout.setColumnStretch(1, 1)
+        layout.addLayout(rows_layout)
+        layout.addWidget(self._review_recipe_note_panel())
+
+    def _review_recipe_note_panel(self) -> QFrame:
+        panel = QFrame()
+        panel.setObjectName("DataImportApplyConfirmPanel")
+        rows_layout = QGridLayout()
+        rows_layout.setContentsMargins(10, 8, 10, 8)
+        rows_layout.setHorizontalSpacing(12)
+        rows_layout.setVerticalSpacing(4)
+        note_title = QLabel("Recipe note")
+        note_title.setObjectName("DataImportSummaryLabel")
+        note_text = QLabel(self._review_recipe_note_text())
+        note_text.setObjectName("DataImportSummaryValue")
+        note_text.setWordWrap(True)
+        note_text.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        rows_layout.addWidget(note_title, 0, 0)
+        rows_layout.addWidget(note_text, 0, 1)
+        rows_layout.addWidget(self.confirmation_label, 1, 1)
+        rows_layout.addWidget(
+            self.save_recipe_check,
+            0,
+            2,
+            2,
+            1,
+            alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+        )
+        rows_layout.setColumnMinimumWidth(0, 100)
+        rows_layout.setColumnStretch(1, 1)
+        panel.setLayout(rows_layout)
+        return panel
+
+    def _review_import_summary_rows(self) -> list[tuple[str, str]]:
+        return [
+            ("EEG data", self._review_eeg_data_text()),
+            ("Metadata", self._review_metadata_text()),
+            ("Label source", self._review_label_source_text()),
+            ("Label placement", self._review_label_placement_text()),
+        ]
+
+    @staticmethod
+    def _review_summary_cell(label: str, value: str) -> QFrame:
+        cell = QFrame()
+        cell.setObjectName("DataImportSummaryCell")
+        cell.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Maximum,
+        )
+        layout = QVBoxLayout(cell)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        label_widget = QLabel(label)
+        label_widget.setObjectName("DataImportSummaryLabel")
+        value_widget = QLabel(value)
+        value_widget.setObjectName("DataImportSummaryValue")
+        value_widget.setWordWrap(True)
+        value_widget.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        layout.addWidget(label_widget)
+        layout.addWidget(value_widget)
+        return cell
+
+    def _default_review_action_row(self) -> tuple[str, str, str, str]:
+        if self.decision == "blocked":
+            return (
+                "Review and Import",
+                "Cannot import yet",
+                "Blocking items must be resolved before this recipe can be applied.",
+                "Fix the action items below, then apply.",
+            )
+        if self.decision == "needs_confirmation":
+            return (
+                "Review and Import",
+                "Confirm import choices",
+                "No blocking items were found, but this recipe needs confirmation.",
+                "Confirm and apply when the summary matches your data.",
+            )
+        return (
+            "Review and Import",
+            "Ready to import",
+            "No blocking review items.",
+            "Confirm and apply when the summary matches your data.",
+        )
+
+    def _review_eeg_data_text(self) -> str:
+        names = self._selected_eeg_file_names()
+        count = self._file_count() or len(names)
+        file_word = "file" if count == 1 else "files"
+        summary = f"{count} EEG {file_word}"
+        preview = self._event_code_list_text(names, limit=3)
+        if preview:
+            return f"{summary} · {preview}"
+        return summary
+
+    def _review_metadata_text(self) -> str:
+        if not self.file_tree.topLevelItemCount():
+            return "No metadata rows detected."
+        complete_count, missing_fields = self._metadata_completion_counts()
+        missing_fields = self._metadata_required_missing_fields(missing_fields)
+        if self._is_bids_like_source() and not missing_fields:
+            file_count = self.file_tree.topLevelItemCount()
+            file_word = "file" if file_count == 1 else "files"
+            return f"BIDS entities reviewed · {file_count} {file_word}"
+        return self._metadata_review_summary(
+            complete_count,
+            missing_fields,
+        ).replace("Double-click a cell to edit", "edit in Review Metadata")
+
+    def _review_label_source_text(self) -> str:
+        if self._label_source_mode() == "internal_events":
+            candidate_count = len(self._class_map_items) or len(self._event_role_items)
+            if candidate_count:
+                event_word = "event" if candidate_count == 1 else "events"
+                return f"Labels inside EEG files · {candidate_count} {event_word}"
+            return "Labels inside EEG files · no class labels selected"
+        carrier_count = self._active_label_carrier_count()
+        if carrier_count <= 0:
+            return "No loaded label files"
+        if self._has_bids_events():
+            label_word = "file" if carrier_count == 1 else "files"
+            return f"BIDS events.tsv · {carrier_count} {label_word}"
+        label_word = "file" if carrier_count == 1 else "files"
+        source_note = (
+            "includes added label source"
+            if self._extra_label_sources
+            else "auto-detected or loaded"
+        )
+        return f"Loaded label files · {carrier_count} {label_word} · {source_note}"
+
+    def _review_label_placement_text(self) -> str:
+        if self._label_source_mode() == "internal_events":
+            selected = len(self._class_map_items)
+            if selected:
+                event_word = "event" if selected == 1 else "events"
+                return f"{selected} EEG {event_word} selected as class labels"
+            if self._event_role_items:
+                return "Event roles saved; confirm class labels before training"
+            return "No usable labels selected yet"
+        if self._active_label_carrier_count() <= 0:
+            return "No external labels selected"
+        if self._should_show_label_table_fallback():
+            return "Label format needs conversion before matching labels to EEG"
+        if not hasattr(self, "rule_placement_method_combo"):
+            return self._label_rule_status_text()
+
+        field = self.rule_label_field_combo.currentText().strip() or "Label field"
+        method = self._combo_current_data(self.rule_placement_method_combo)
+        method_text = self.rule_placement_method_combo.currentText().strip()
+        if method == "eeg_event":
+            targets = self._event_code_list_text(self._event_order_target_codes())
+            if targets:
+                return f"{field} · {method_text} · target EEG events {targets}"
+            return f"{field} · {method_text} · target EEG events need review"
+        if method == "time_field":
+            time_field = self.rule_alignment_combo.currentText().strip()
+            time_model = self.rule_time_model_combo.currentText().strip()
+            return f"{field} · {method_text} · {time_field} · {time_model}"
+        if method == "interval":
+            start = self.rule_alignment_combo.currentText().strip()
+            duration = self.rule_duration_field_combo.currentText().strip()
+            return f"{field} · {method_text} · start {start} · duration/end {duration}"
+        if method == "event_code":
+            code_field = self.rule_alignment_combo.currentText().strip()
+            return f"{field} · {method_text} · event code field {code_field}"
+        return self._label_rule_status_text()
+
+    def _review_recipe_note_text(self) -> str:
+        if self.decision == "blocked":
+            return (
+                "Fix blocking items before import. Epoch settings are configured later."
+            )
+        if self._label_source_mode() == "internal_events":
+            if self._class_map_items or self._event_role_items:
+                return (
+                    "Internal label choices are saved. Epoch window and baseline "
+                    "are set later."
+                )
+            return (
+                "This import has no training labels yet. Supervised epoch setup "
+                "will need labels later."
+            )
+        if self._active_label_carrier_count() <= 0:
+            return (
+                "No label files are selected. Supervised epoch setup will need "
+                "labels later."
+            )
+        if self._should_show_label_table_fallback():
+            return (
+                "Label files need conversion or matching before supervised epoch "
+                "setup can use them."
+            )
+        return "Label matching is saved. Epoch window and baseline are set later."
+
+    def _active_label_carrier_count(self) -> int:
+        return sum(
+            1
+            for item, original in self._label_carrier_items
+            if not self._is_label_carrier_excluded(
+                self._label_carrier_key(item, original)
+            )
+        )
+
     def _populate_review_action_cards(self) -> None:
         rows = self._review_rows()
         if not rows:
-            rows = [
-                (
-                    "Review and Import",
-                    "Import settings",
-                    "No warnings or confirmations.",
-                    "Import can continue.",
-                )
-            ]
-        grouped: dict[str, list[tuple[str, str, str]]] = {}
+            if self.decision == "safe":
+                self.review_actions_panel.setVisible(False)
+                return
+            rows = [self._default_review_action_row()]
+        self.review_actions_panel.setVisible(True)
+        grouped: dict[str, list[tuple[str, str, str, str]]] = {}
         for target_step, issue, impact, next_action in rows:
-            grouped.setdefault(target_step, []).append((issue, impact, next_action))
-        for target_step in self._step_titles:
-            items = grouped.get(target_step)
+            group_title = self._review_action_group_title(
+                target_step,
+                issue,
+                impact,
+                next_action,
+            )
+            grouped.setdefault(group_title, []).append(
+                (target_step, issue, impact, next_action)
+            )
+        for group_title in (
+            "Cannot import yet",
+            "Confirm before import",
+            "Review before import",
+        ):
+            items = grouped.get(group_title)
             if not items:
                 continue
-            group_card, group_layout = self._card(target_step)
-            for issue, impact, next_action in items:
+            group_card, group_layout = self._card(group_title)
+            for target_step, issue, impact, next_action in items:
                 group_layout.addWidget(
-                    self._action_item_card(issue, impact, next_action)
+                    self._action_item_card(target_step, issue, impact, next_action)
                 )
             self.review_actions_layout.addWidget(group_card)
 
+    def _review_action_group_title(
+        self,
+        target_step: str,
+        issue: str,
+        impact: str,
+        next_action: str,
+    ) -> str:
+        lowered = " ".join((issue, impact, next_action)).lower()
+        if self.decision == "blocked" or "cannot import" in lowered:
+            return "Cannot import yet"
+        if "confirm" in lowered or "required choice" in lowered:
+            return "Confirm before import"
+        return "Review before import"
+
     @staticmethod
-    def _action_item_card(issue: str, impact: str, next_action: str) -> QFrame:
+    def _action_item_card(
+        target_step: str,
+        issue: str,
+        impact: str,
+        next_action: str,
+    ) -> QFrame:
         row = QFrame()
         row.setObjectName("DataImportActionCard")
-        layout = QGridLayout(row)
-        layout.setContentsMargins(10, 9, 10, 9)
-        layout.setHorizontalSpacing(12)
-        layout.setVerticalSpacing(4)
+        layout = QVBoxLayout(row)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(5)
         issue_label = QLabel(issue)
         issue_label.setObjectName("DataImportActionIssue")
         issue_label.setWordWrap(True)
-        impact_label = QLabel("Impact")
-        impact_label.setObjectName("DataImportActionKicker")
-        impact_value = QLabel(impact)
-        impact_value.setObjectName("DataImportActionText")
-        impact_value.setWordWrap(True)
-        action_label = QLabel("Next")
-        action_label.setObjectName("DataImportActionKicker")
-        action_value = QLabel(next_action)
-        action_value.setObjectName("DataImportActionText")
-        action_value.setWordWrap(True)
-        layout.addWidget(issue_label, 0, 0, 1, 4)
-        layout.addWidget(impact_label, 1, 0)
-        layout.addWidget(impact_value, 1, 1)
-        layout.addWidget(action_label, 1, 2)
-        layout.addWidget(action_value, 1, 3)
-        layout.setColumnStretch(1, 3)
-        layout.setColumnStretch(3, 2)
+        layout.addWidget(issue_label)
+
+        details: list[str] = []
+        is_local_review_item = target_step == "Review and Import"
+        if impact:
+            details.append(impact)
+        if is_local_review_item:
+            if next_action:
+                details.append(next_action)
+        else:
+            details.append(f"Go to {target_step}")
+        for detail in details:
+            detail_label = QLabel(detail)
+            detail_label.setObjectName("DataImportActionMeta")
+            detail_label.setWordWrap(True)
+            layout.addWidget(detail_label)
         return row
 
     @staticmethod
@@ -4094,6 +5009,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
         return self._extra_label_sources != self._initial_label_sources
 
     def _label_detection_text(self) -> str:
+        if self._has_bids_events():
+            return (
+                f"{self._bids_event_count_text()} will be used as the default "
+                "label and timing source."
+            )
         carriers = self.preview.get("label_carrier_preview") or []
         if not isinstance(carriers, list) or not carriers:
             carriers = self.scan_result.get("label_carriers") or []
@@ -4109,6 +5029,22 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 "training remain limited until labels or events are added."
             )
         return ""
+
+    def _load_labels_panel_detail(self) -> str:
+        if self._has_bids_events():
+            return (
+                "BIDS events.tsv files are detected automatically; add extra "
+                "label files only if this dataset needs them."
+            )
+        return "Load the label files that will be matched to this EEG data."
+
+    def _metadata_panel_detail(self) -> str:
+        if self._is_bids_like_source():
+            return (
+                "BIDS-style subject, session, task, and run entities are saved "
+                "into the recipe."
+            )
+        return "Subject, session, task, and run choices are saved into the recipe."
 
     def _user_label_source_row(self, source: str) -> tuple[str, str]:
         source_path = Path(source)
@@ -4414,6 +5350,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             QLabel#DataImportMetricDetail,
             QLabel#DataImportSummaryValue,
             QLabel#DataImportActionText,
+            QLabel#DataImportActionMeta,
             QLabel#DataImportSourceDetail,
             QLabel#DataImportEmptyState {{
                 color: {Theme.TEXT_MUTED};
@@ -4481,6 +5418,15 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 padding: 0 0 2px 0;
                 font-size: 12px;
             }}
+            QLabel#DataImportStepChip {{
+                color: #d8ecff;
+                background-color: #17354b;
+                border: 1px solid #2f6690;
+                border-radius: 4px;
+                padding: 3px 8px;
+                font-size: 11px;
+                font-weight: 600;
+            }}
             QWidget#DataImportEventSectionSpacer {{
                 background-color: transparent;
                 border: none;
@@ -4500,7 +5446,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
             QFrame#DataImportEventRulesTable,
             QFrame#DataImportClassMapTable,
             QFrame#DataImportInternalLabelsTable,
-            QFrame#DataImportInternalOtherEventsTable {{
+            QFrame#DataImportInternalOtherEventsTable,
+            QFrame#DataImportApplyConfirmPanel {{
                 background-color: #202020;
                 border: 1px solid #343434;
                 border-radius: 5px;
@@ -4672,6 +5619,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 font-weight: 600;
             }}
             QFrame#DataImportSummaryLine {{
+                background-color: transparent;
+                border: none;
+                padding: 2px 0;
+            }}
+            QFrame#DataImportSummaryCell {{
                 background-color: transparent;
                 border: none;
                 padding: 2px 0;
@@ -4850,6 +5802,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
             QCheckBox {{
                 color: {Theme.TEXT_SECONDARY};
                 spacing: 8px;
+            }}
+            QCheckBox#DataImportSaveRecipeCheck {{
+                color: #e8e8e8;
+                font-size: 12px;
+                font-weight: 600;
             }}
             QRadioButton#DataImportPlacementRadio {{
                 color: #eeeeee;
@@ -5217,6 +6174,14 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 complete_count += 1
         return complete_count, missing_fields
 
+    def _metadata_required_missing_fields(self, missing_fields: set[str]) -> set[str]:
+        if not self._is_bids_like_source():
+            return set(missing_fields)
+        required = set(missing_fields)
+        required.discard("session")
+        required.discard("run")
+        return required
+
     @staticmethod
     def _metadata_missing_text(missing_fields: set[str]) -> str:
         if not missing_fields:
@@ -5288,11 +6253,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         bids = self.scan_result.get("bids") or {}
         if not isinstance(bids, dict) or not bids.get("is_bids"):
             return "Not detected"
-        subjects = ", ".join(str(item) for item in bids.get("subjects", []) or [])
-        events = bids.get("events_files", []) or []
-        event_count = len(events) if isinstance(events, list) else 0
-        subject_text = subjects or "subjects pending"
-        return f"BIDS-like source, {subject_text}, {event_count} events.tsv file(s)"
+        return f"{self._bids_entities_summary_text()} · {self._bids_event_count_text()}"
 
     def _decision_text(self) -> str:
         if self.decision == "blocked":
@@ -6255,14 +7216,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 tree_item.setToolTip(column, next_action or impact or issue)
             self.review_tree.addTopLevelItem(tree_item)
         if not rows and not remap_added:
+            target_step, issue, impact, next_action = self._default_review_action_row()
             self.review_tree.addTopLevelItem(
                 QTreeWidgetItem(
-                    [
-                        "Review and Import",
-                        "Import settings",
-                        "No warnings or confirmations.",
-                        "Import can continue.",
-                    ],
+                    [target_step, issue, impact, next_action],
                 )
             )
 
@@ -6507,9 +7464,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 )
             return "This interpretation is blocked and cannot be applied."
         if self.decision == "needs_confirmation":
-            return "Review the items marked Needs confirmation, then confirm and apply."
+            return "Confirm this import recipe before applying."
         if self.decision == "safe":
-            return "This interpretation can be applied."
+            return "This import recipe can be applied."
         return "Review this interpretation before applying."
 
     @staticmethod

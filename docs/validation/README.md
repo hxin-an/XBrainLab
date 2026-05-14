@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-05-11`
+最後更新：`2026-05-14`
 
 這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
@@ -88,8 +88,101 @@ external label carriers are not shown or saved when the user chooses `Labels ins
 Offscreen screenshots include:
 
 - `artifacts/ui/data-import-wizard-steps/04-match-labels-final-loaded-label-files.png`
-- `artifacts/ui/data-import-wizard-steps/04-match-labels-final-many-labels.png`
-- `artifacts/ui/data-import-wizard-steps/04-match-labels-final-internal-events.png`
+- `artifacts/ui/data-import-wizard-steps/04-match-labels-internal-suggested-events-full.png`
+- `artifacts/ui/data-import-wizard-steps/04-match-labels-bids-events.png`
+- `artifacts/ui/data-import-wizard-steps/04-match-labels-conversion-fallback.png`
+
+2026-05-13 Tier 1/Tier 2 Data Import coverage adds:
+
+- single-file selected-scope tests that still detect same-stem label carriers from nearby
+  `label/` subfolders without importing sibling EEG files;
+- BIDS-like `events.tsv` warning coverage for missing sidecar, missing duration, and missing
+  onset blocking;
+- internal-event evidence coverage for response/comment filtering and run-dependent `T1` / `T2`
+  warnings;
+- external label placement coverage that blocks invalid selected target events and preserves
+  selected event filters into reviewed label import recipe state;
+- UI coverage for BIDS-like event review cards and refreshed canonical wizard screenshots via
+  `scripts/dev/capture_data_import_wizard_steps.py`.
+
+Latest focused validation for this slice:
+
+```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/backend/application/test_data_interpretation_scan.py \
+  tests/unit/backend/application/test_data_interpretation_label_carriers.py \
+  tests/unit/backend/application/test_data_interpretation_candidate.py \
+  tests/unit/backend/application/test_data_interpretation_recipe.py \
+  tests/unit/backend/application/test_data_interpretation_review.py \
+  tests/unit/backend/application/test_application_service.py -q
+# 109 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
+  tests/unit/scripts/test_capture_data_interpretation_replay.py -q
+# 69 passed
+```
+
+2026-05-14 Epoch handoff coverage adds a focused bridge from Data Import review choices into the
+Create Epochs dialog:
+
+- reviewed internal EEG labels record recommended class events for epoching;
+- reviewed external label files record placement method, label field, target event selection,
+  time field, duration/end field, class map and duration statistics as runtime epoch hints;
+- interval labels using an end-time column are converted to durations before apply;
+- reviewed event-code label carriers remap matching EEG events instead of falling back to sequence
+  apply;
+- Create Epochs consumes the import hint for suggested events, time window and baseline defaults,
+  while keeping the old epoch dialog API compatible;
+- Create Epochs section titles use card headers instead of Qt group-box legends, avoiding title /
+  border overlap in the dark theme.
+
+Focused validation for this slice:
+
+```bash
+poetry run ruff check \
+  XBrainLab/backend/application/epoch_context.py \
+  XBrainLab/backend/application/data_interpretation_apply.py \
+  XBrainLab/backend/application/data_interpretation_service.py \
+  XBrainLab/backend/load_data/label_loader.py \
+  XBrainLab/ui/dialogs/preprocess/epoching_dialog.py \
+  tests/unit/backend/application/test_epoch_context.py \
+  tests/unit/backend/application/test_application_service.py \
+  tests/integration/ui/test_dialog_acceptance.py
+# All checks passed!
+
+poetry run basedpyright \
+  XBrainLab/backend/application/epoch_context.py \
+  XBrainLab/backend/application/data_interpretation_apply.py \
+  XBrainLab/backend/application/data_interpretation_service.py \
+  XBrainLab/backend/load_data/label_loader.py \
+  XBrainLab/ui/dialogs/preprocess/epoching_dialog.py \
+  tests/unit/backend/application/test_epoch_context.py \
+  tests/unit/backend/application/test_application_service.py \
+  tests/integration/ui/test_dialog_acceptance.py
+# 0 errors, 0 warnings, 0 notes
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/backend/application/test_epoch_context.py \
+  tests/unit/backend/application/test_application_service.py \
+  tests/unit/backend/application/test_preprocess_service.py \
+  tests/integration/ui/test_dialog_acceptance.py \
+  tests/unit/ui/components/test_dialogs.py::test_epoching_dialog_init \
+  tests/unit/ui/test_dialogs_extra.py::TestEpochingDialog \
+  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_accepted \
+  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_legacy_result_refreshes_shared_status \
+  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_uses_epoch_capability_not_preprocess_block \
+  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_uses_query_data_list_before_stale_controller \
+  tests/unit/ui/preprocess/test_preprocess_panel.py::test_preprocess_panel_epoching \
+  tests/unit/backend/load_data/test_label_loader.py \
+  tests/unit/backend/load_data/test_label_loader_coverage.py -q
+# 101 passed
+```
+
+Screenshot evidence:
+
+- `artifacts/ui/epoching-dialog/epoching-interval-import.png`
+- `artifacts/ui/epoching-dialog/epoching-internal-events.png`
 
 ## Backend Test Hygiene Inventory
 
