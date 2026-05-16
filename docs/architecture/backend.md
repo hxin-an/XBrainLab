@@ -1,20 +1,44 @@
 # Backend 目前架構
 
-最後更新：`2026-05-05`
+最後更新：`2026-05-13`
 
-## 可信度
+## 快速讀法
+
+如果只想知道現在 backend 離 target 多遠，先看這裡；下面的「驗證範圍與歷史脈絡」
+保留重構時間線，但不是讀本頁的第一入口。
+
+| 問題 | 目前答案 |
+| --- | --- |
+| backend 主入口是什麼？ | `ApplicationService / Command API`。UI high-value actions、assistant、MCP、headless scripts 都應從這裡進 backend。 |
+| `BackendFacade` 還是不是架構的一部分？ | 不是。module 已刪除，architecture guard 會擋 product runtime 和 product-success tests 重新 import / construct。 |
+| `ApplicationService` 是不是 god object？ | 已從早期 god-object 形狀拆成 focused services；目前主要負責 dispatch、capability / confirmation gate、state/result envelope。 |
+| UI 是否完全不碰 controllers？ | 還不是。controllers 仍存在於 panel bootstrap、observer bridge、mock / legacy compatibility、部分 readonly display fallback。 |
+| product success 應該怎麼證明？ | 用 command result、`QueryStateCommand` / state snapshot、typed diagnostics、UI-visible state、exact event/epoch/split/history evidence；不要用 facade、legacy fallback、direct mutable `Study` state、generic non-empty / no-crash assertion。 |
+
+## Current Target Gap
+
+| Area | 已接近 target | 剩餘距離 |
+| --- | --- | --- |
+| Command spine | load / preprocess / epoch / split / train / evaluate / visualize / saliency / reset / Data Interpretation / MCP job progress 都有 command or query truth。 | 要持續防止新 wrapper、direct manager mutation、direct service bypass 回流。 |
+| Focused services | Data Interpretation、analysis、training、dataset generation、lifecycle、compatibility、data table、preprocess、state/query 都已從 `ApplicationService` 拆出。 | focused service 間仍要靠 tests/guard 維持邊界，避免把 orchestration 塞回單一檔。 |
+| State truth | `StateSnapshotService` / `QueryStateCommandService` 是 UI / assistant / MCP 判斷狀態的主要讀法。 | 少數 lower-level domain / fixture tests 仍直接 setup/read `Study`，不能當 product smoke。 |
+| UI boundary | product action method 不可直接呼叫 legacy fallback helper；MainWindow controller lookup 收進 named quarantine。 | panels 還吃 injected controllers 作為 observer / adapter，不是完整 zero-controller UI。 |
+| Evidence | exact-evidence stack 已替換多個 generic non-empty product smokes。 | human Windows desktop acceptance 和長時間 local-model session 仍缺人工 evidence。 |
+
+## 驗證範圍與歷史脈絡
 
 狀態：`partially-verified`
 
 這份文件已對照目前 source code：
 
 - `XBrainLab/backend/application/*.py`
-- `XBrainLab/backend/facade.py`
+- `XBrainLab/backend/runtime.py`
 - `XBrainLab/backend/study.py`
 - `XBrainLab/backend/data_manager.py`
 - `XBrainLab/backend/training_manager.py`
 - `XBrainLab/backend/controller/*.py`
 - `XBrainLab/ui/main_window.py`
+- `XBrainLab/ui/legacy_controller_bootstrap.py`
 - `XBrainLab/llm/tools/real/*.py`
 - `XBrainLab/llm/pipeline_state.py`
 
@@ -63,6 +87,13 @@ mock / legacy adapter 回傳 `None` 的相容情境。
 後續 Training sidebar cleanup 也把重新 split 前的 dataset cleanup 和 Clear History 接回
 `ClearDatasetsCommand` / `ClearTrainingHistoryCommand`；successful service result 不再落回
 training controller mutation。
+2026-05-12 UI fallback helper-scope cleanup 又把 product UI methods 內的直接
+`run_legacy_controller_fallback()` 呼叫收進 explicit `_legacy_*` / fallback helpers，並新增
+architecture guard：real product method 若直接呼叫 fallback helper 會 fail。這次涵蓋
+Dataset actions / panel / sidebar、Preprocess sidebar、Training sidebar、Visualization
+control sidebar、AgentManager montage flow、TrainingSettingDialog initial-option fallback。
+mock / legacy `None` adapter branches 仍保留，但它們在程式碼上和 service-backed success path
+分離。
 最新 command-gate cleanup 又把 capability / confirmation enforcement 從
 `ApplicationService._ensure_command_allowed()` 的硬編碼清單抽到
 `XBrainLab/backend/application/command_gate.py`。`train` 的 long-running confirmation 現在由
@@ -111,12 +142,51 @@ headless `command_specs()` 和 MCP `tools/list` 共用同一份 `eeg_file_remap`
 remap 不再只是 UI/backend 私有能力；external agent 和 headless payload 也能走同一個
 `preview_interpretation(choices=...)` command truth。
 
+2026-05-11 legacy command spine cleanup removed `BackendFacade` from product runtime
+packages. `get_application_service(study)` now owns Study-scoped `ApplicationService`
+reuse, and UI capability helpers, AgentManager, LLMController, real agent tools, MCP
+adapters, and current dev walkthrough scripts enter the backend through
+`ApplicationService / Command API` directly. 2026-05-12 physical removal then deleted
+`XBrainLab/backend/facade.py` and the facade compatibility-only test files; architecture
+compliance now rejects any test that imports or constructs `BackendFacade`.
+
+2026-05-12 zero-legacy runtime cleanup tightened the evidence boundary: product-success
+IO and pipeline integration tests now execute `ApplicationService` command sequences
+instead of `BackendFacade` or direct `Study.train(...)`, and architecture compliance
+rejects `BackendFacade` usage in product-success integration suites. The dataset split
+blocker was traced to the Data Splitting dialog defaulting test/validation splitters to
+`Disable`; the dialog now defaults both to trial splits and an ApplicationService
+regression proves generated train/val/test splits unlock `TRAIN` readiness. `TrainCommand`
+also now passes `append` and `interactive` through `TrainingCommandService` to
+`TrainingController`, so synchronous test/product smoke training does not bypass the
+command contract.
+
+Follow-up command-spine hardening on 2026-05-12 fixed three product-runtime contract
+gaps. UI command execution now suppresses controller observer-driven refresh while
+`ApplicationService.execute(...)` is running, so synchronous controller notifications wait for
+the returned `CommandResult.changed_state` refresh scope instead of causing a stale duplicate UI
+refresh first. Read-only commands that product UI may call with `refresh=False`
+(`QueryStateCommand`, `EvaluateCommand`, `VisualizeCommand`, and no-parameter
+`SaliencyCommand`) no longer clear `last_error`, keeping those queries state-preserving.
+Unsupported command objects passed to `ApplicationService.execute(...)` now return a structured
+`unsupported_command` failure `CommandResult` instead of leaking a raw Python exception. The
+architecture guard now also rejects UI code that bypasses `execute_application_command()` by
+calling `get_application_service(...).execute(...)` directly.
+
+2026-05-13 LLM pipeline-stage cleanup closed another product-runtime bypass. Real `Study`
+instances now derive assistant stage from the shared ApplicationService state snapshot only; if
+that snapshot is unavailable or invalid, stage calculation fails closed to `EMPTY` instead of
+guessing from mutable `Study.loaded_data_list`, `epoch_data`, `datasets`, or `trainer`. Direct
+Study-shaped stage fallback remains only for mock / legacy compatibility tests, and architecture
+compliance now rejects LLM product code that adds new direct mutable `Study` stage/state reads
+outside explicit legacy / fallback helpers.
+
 ## 一句話架構
 
 XBrainLab backend 目前是以 `Study` 作為中心狀態容器，`DataManager` 和
 `TrainingManager` 分別承接資料生命週期與訓練生命週期；UI 仍保留 controller 操作
 `Study` 的歷史路徑，但高價值 workflow 按鈕已開始透過 `ApplicationService / Command API`
-執行；assistant / headless script 的 `BackendFacade` 已改成包 command layer。
+執行；assistant、MCP 和 current headless scripts 也直接進同一個 command layer。
 
 ## 實際分層
 
@@ -128,7 +198,7 @@ PyQt panels
   |       +--> ApplicationService.execute(...) for import / label / metadata / preprocess / epoch / split / query / train / reset / montage
   |       |
   |       v
-  |     Study.get_controller(...) mock fallback / read-only UI population
+  |     explicit legacy helpers for mock fallback / panel bootstrap adapters
   |
   v
 DatasetController / PreprocessController / TrainingController
@@ -150,9 +220,6 @@ Study
         +-- saliency_params
 
 Assistant real tools / headless scripts
-  |
-  v
-BackendFacade
   |
   v
 ApplicationService / Command API
@@ -210,17 +277,18 @@ ApplicationService.get_capabilities()
 
 UI 不是透過 `BackendFacade` 操作 backend。
 
-`XBrainLab/ui/main_window.py` 在初始化 panels 時直接呼叫：
+`XBrainLab/ui/main_window.py` 初始化 panels 時不再把 `study.get_controller(...)` 當成
+未命名例外散在 MainWindow 內；它呼叫
+`get_legacy_workflow_controllers_for_panel_bootstrap(study)`，由
+`XBrainLab/ui/legacy_controller_bootstrap.py` 統一取得 dataset / preprocess / training /
+evaluation / visualization controller adapters。這個 helper 是具名 legacy quarantine：目前
+panel constructors、observer bridge 和部分 read-only population 仍需要 injected controllers，
+但 product action execution、capability/readiness、command result refresh 不在這條路徑上。
 
-- `study.get_controller("dataset")`
-- `study.get_controller("preprocess")`
-- `study.get_controller("training")`
-- `study.get_controller("evaluation")`
-- `study.get_controller("visualization")`
-
-因此現在 UI 仍會取得 controller layer；這些 controller 仍是 panel refresh、dialog-local
-logic 和部分 legacy action 的現況入口。但高價值 workflow action 已不再只直接呼叫
-controller，而是先經過 UI command adapter 進 `ApplicationService.execute()`。
+因此現在 UI 仍會取得 controller layer；這些 controller 主要服務 panel bootstrap、
+observer bridge、dialog-local logic 和 read-only rendering compatibility。但高價值 workflow
+action 已不再直接呼叫 controller，而是先經過 UI command adapter 進
+`ApplicationService.execute()`。
 
 第一批 UI-facing decision 已改讀 ApplicationService capability policy：
 
@@ -230,8 +298,8 @@ controller，而是先經過 UI command adapter 進 `ApplicationService.execute(
 - Epoching readiness 先讀 `create_epoch` capability。
 - Training sidebar 的 Start Training enabled / tooltip / click-time guard 先讀 `train`
   capability，不再自己重寫一套 dataset/model/training option 判斷。
-- Chat panel / AgentManager 的 compact backend diagnostics 讀 `BackendFacade.get_state()` 和
-  `BackendFacade.get_capabilities()`。
+- Chat panel / AgentManager 的 compact backend diagnostics 透過
+  `get_application_service(study)` 讀 `get_state()` 和 `get_capabilities()`。
 
 同一批 high-value execution 也已接 service-backed command adapter：
 
@@ -260,8 +328,10 @@ controller，而是先經過 UI command adapter 進 `ApplicationService.execute(
 - Agent montage confirmation 使用 `ApplyMontageCommand`。
 - Info panel state refresh 使用 `QueryStateCommand(data_lists)`。
 
-UI 測試中的 mock `Study` 仍走 legacy fallback，避免 unit test 用不完整 mock state
-誤觸真 ApplicationService policy。
+UI 測試中的 mock `Study` 仍走 explicit legacy fallback，避免 unit test 用不完整 mock state
+誤觸真 ApplicationService policy。architecture guard 現在要求這些 fallback 只能出現在
+明確的 legacy / fallback helper，不可藏在 product action method 裡；MainWindow 的 panel
+bootstrap controller lookup 也只允許透過 named quarantine helper。
 
 仍保留 controller / UI-request path 包含：
 
@@ -271,11 +341,9 @@ UI 測試中的 mock `Study` 仍走 legacy fallback，避免 unit test 用不完
 
 ### Assistant / headless 入口
 
-`BackendFacade` 是 app 內 assistant real tools 和 headless scripts 的高階入口。
-
-它會建立或接收一個 `Study`，再建立 `ApplicationService`。`BackendFacade`
-保留舊方法名稱和舊回傳形狀，例如 `load_data()` 回傳 `(count, errors)`，
-但核心 workflow 已開始委派給 command layer。
+Assistant real tools、LLMController、dev walkthrough scripts 和 MCP adapters 現在直接使用
+`get_application_service(study)` 或自己持有的 `ApplicationService` session。
+`BackendFacade` 不再存在；assistant / headless 入口不保留舊方法名稱或舊回傳形狀。
 
 `XBrainLab.backend.application.automation` 是新的 headless / MCP-ready adapter。它輸出
 `ApplicationService` command schema、MCP-shaped tool specs 和 live capability / autonomy
@@ -303,13 +371,17 @@ token；token 比對使用 constant-time compare，JSON-RPC body 也有 bounded 
 local external-agent adapter，不是遠端多使用者服務或完整 authorization server。Backend-ready
 long-running `train` over HTTP 現在會建立 in-memory job，並提供 `GET /jobs` list、
 `GET /jobs/{id}` status / progress snapshot 和 `POST /jobs/{id}/cancel` cancellation endpoint；
-cancel 仍透過
+progress message 由 `ApplicationService.get_state().training.progress_message` 提供，不直接讀
+`service.study.trainer`；cancel 仍透過
 `StopTrainingCommand` / `ApplicationService.execute()`，不直接碰 controller。HTTP registry 也會
 拒絕同一 session 內 duplicate train start：既有 job 正在 start 或 running 時回
 `job_already_running`，不會啟動第二個 training command；cancelled / completed job records 會
 保存 terminal status，避免後續新 training run 把舊 job 重新顯示成 active。這是 train-only HTTP
 job baseline；evaluation / visualization jobs、job persistence / recovery、multi-client
 recovery-grade resource lock 和 full remote authorization 仍是後續 architecture work。
+Architecture compliance 也會拒絕 MCP product status/progress code 直接讀 mutable `Study`
+state，例如 `service.study.trainer`，或直接呼叫 `service.study.get_controller(...)` /
+`service.study.get_datasets_generator(...)`；只允許 explicit legacy / fallback helper 保留相容性。
 
 `ApplicationService` 會拿同一組 cached controllers：
 
@@ -319,14 +391,15 @@ recovery-grade resource lock 和 full remote authorization 仍是後續 architec
 - `evaluation`
 - `visualization`
 
-目前 `XBrainLab/llm/tools/real/dataset_real.py`、`preprocess_real.py`、`training_real.py`
-大多仍可透過 `BackendFacade(study)` 操作 backend。另有一批 mapped workflow tools
-已由 `LLMController` 透過 `execute_application_tool_command(...)` 直接執行
-ApplicationService command 並回傳 `ToolCommandResult.from_command_result(...)`。
+`XBrainLab/llm/tools/real/dataset_real.py`、`preprocess_real.py`、`training_real.py` 和
+`analysis_real.py` 也已改成 command-backed real tools。Mapped workflow tools 由
+`LLMController` 透過 `execute_application_tool_command(...)` 直接執行 ApplicationService
+command 並回傳 `ToolCommandResult.from_command_result(...)`；read-only tools 也從 command
+query result 取得 state truth。
 
-結論：`BackendFacade` 可以視為 agent/tool surface 的相容入口，但它不再是新的
-核心邏輯層。新邏輯應進 `ApplicationService` 下的 focused command service / handler；
-UI 目前是 service-first migration 的中間狀態，尚未完整完成。
+結論：`BackendFacade` 是 non-product legacy wrapper，不是 agent/tool surface 的 runtime
+入口。新邏輯應進 `ApplicationService` 下的 focused command service / handler；UI 目前仍是
+service-first migration 的中間狀態，尚未完整完成。
 
 ### Data Interpretation command baseline
 
@@ -407,10 +480,10 @@ ApplicationService command，包含 `load_data`、`attach_labels`、preprocess t
 
 ### Script / headless path
 
-Headless script 仍應使用 `BackendFacade`。`BackendFacade` 保留舊 method names 和 return
-shape，但核心 load / attach labels / preprocess / epoch / dataset / training / reset workflow
-都透過 `ApplicationService.execute()`。不要在 script 裡直接重建 readiness 判斷；需要狀態或
-blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
+Headless script 應使用 `ApplicationService`、`get_application_service(study)`，或
+`backend.application.automation.execute_automation_payload()`。不要在 script 裡直接重建
+readiness 判斷；需要狀態或 blocked reason 時使用 `ApplicationService.get_state()` /
+`get_capabilities()`。
 
 ### Application Service / Command API
 
@@ -558,16 +631,16 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
   interpretation state。
 - Analysis / visualization readiness truth 目前在 `AnalysisCommandService`，但 capability
   exposure 仍由 `ApplicationService.get_capabilities()` 產生。
-- `BackendFacade` 是 wrapper；它不應再承載新的 workflow business logic。
-- `BackendFacade(study)` 會重用掛在同一個 `Study` 上的 `ApplicationService`。這是 Data
-  Interpretation lifecycle 的必要邊界，否則 `scan_source` 產生的 scan state 會在下一個
+- `BackendFacade` 是 legacy wrapper；product runtime 不應 import 或 instantiate 它。
+- `get_application_service(study)` 會重用掛在同一個 `Study` 上的 `ApplicationService`。這是
+  Data Interpretation lifecycle 的必要邊界，否則 `scan_source` 產生的 scan state 會在下一個
   `preview_interpretation` tool call 因重新建立 service 而遺失。
 - `application_surface.py` 是 agent tool-name 與 ApplicationService command-name 的 adapter；
-  read-only / legacy tools 可以保留在 facade path，但 visible output 必須經 typed formatter，
-  不可讓 facade/string result 直接進 transcript。
-- `set_montage()` 仍保留在 `BackendFacade` 的 legacy path，因為它牽涉 UI confirmation
-  和 channel mapping；agent tool 的 availability 已改讀 `apply_montage` capability，
-  confirmation 後由 `ApplyMontageCommand` 實際寫入 channel positions。
+  read-only / compatibility tools 必須回到 command query / typed formatter，不可讓 legacy string
+  result 直接進 transcript。
+- `set_montage` 仍是 UI confirmation request path；agent tool 的 availability 讀
+  `apply_montage` capability，confirmation 後由 `ApplyMontageCommand` 實際寫入 channel
+  positions。
 - `reset_session` 目前代表清掉 active backend session：raw / preprocess / epoch /
   dataset / trainer / model option / saliency config 都會失效；有既有 state 時需要
   confirmation。
@@ -587,7 +660,9 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - 快取 controllers，確保同一個 `Study` 內 controller 是 singleton-like。
 - 提供舊屬性相容層，例如 `study.loaded_data_list` 實際委派到 `study.data_manager.loaded_data_list`。
 - 提供清理 cascade，例如清 raw data 時也清 datasets / trainer。
-- 提供 `pipeline_stage` computed property，狀態由 `XBrainLab/llm/pipeline_state.py` 即時計算，不是手動儲存。
+- 提供 `pipeline_stage` computed property；real `Study` 會透過 cached
+  `ApplicationService.get_state().pipeline_stage` 取得 shared snapshot truth，mock /
+  legacy non-product callers 才 fallback 到 direct Study-shaped reads。
 
 重要判斷：`Study` 仍是新舊架構混合點。它已經把資料與訓練狀態拆給 manager，但仍保留大量 delegation property 來維持 UI 和 tests 相容。
 
@@ -665,15 +740,16 @@ assistant / headless path：
 
 ```text
 LLM real tool
-  -> BackendFacade.load_data(...)
-  -> DatasetController.import_files(...)
+  -> get_application_service(study).execute(LoadDataCommand(...))
+  -> DataCompatibilityCommandService
 ```
 
 ### Preprocess
 
 ```text
-UI PreprocessPanel or BackendFacade
-  -> PreprocessController.apply_*
+UI PreprocessPanel or agent real tool
+  -> ApplicationService.execute(PreprocessCommand(...))
+  -> PreprocessCommandService
   -> copy current study.preprocessed_data_list
   -> processor.data_preprocess(...)
   -> Study.set_preprocessed_data_list(...)
@@ -685,7 +761,8 @@ UI PreprocessPanel or BackendFacade
 ### Dataset / Training
 
 ```text
-BackendFacade.generate_dataset(...)
+ApplicationService.execute(GenerateDatasetCommand(...))
+  -> DatasetGenerationCommandService
   -> Study.get_datasets_generator(config)
   -> TrainingController.apply_data_splitting(generator)
   -> generator.apply(study)
@@ -722,9 +799,8 @@ UI 也會透過 `TrainingController` 設定 model / option / data splitting。
 ## 已驗證事實
 
 - `Study.get_controller()` 會 cache built-in controllers；`tests/unit/test_architecture.py` 有 coverage。
-- UI panels 目前直接吃 controllers，不吃 `BackendFacade`。
-- `BackendFacade` 的主要用途是 agent/headless high-level API，目前已改成包
-  `ApplicationService`。
+- UI panels 目前直接吃 controllers 或 command helpers，不吃 `BackendFacade`。
+- `BackendFacade` module 已移除；product runtime packages 和 tests 不應使用它。
 - `ApplicationService` 第一版已可回傳 state snapshot、capability policy 和
   `CommandResult`，並可執行 load / label / preprocess / epoch / dataset /
   training setup / train / reset commands。
@@ -743,10 +819,8 @@ UI 也會透過 `TrainingController` 設定 model / option / data splitting。
 
 1. `Study` 是否應繼續保留大量 delegation property，還是逐步收斂成更明確的 state API。
 2. controller 裡的 workflow logic 是否要下沉到 service / manager，讓 controller 更接近 UI adapter。
-3. `BackendFacade` 已開始作為 command wrapper；仍需審視 agent tools 是否直接格式化
-   `CommandResult`，避免長期只靠 facade 舊回傳值。
-4. UI 是否應逐步改成和 assistant 共用同一組 backend capability command，而不是各自繞 controller / facade。
-5. error handling 已有第一版分類，但仍需用更多 real workflow 驗證是否足以支撐
+3. UI 是否應逐步改成和 assistant 共用同一組 backend capability command，而不是各自繞 controller。
+4. error handling 已有第一版分類，但仍需用更多 real workflow 驗證是否足以支撐
    tool-call verification，包括可恢復狀態和可回報給 agent 的 diagnostics。
 
 ## 目標方向
@@ -801,7 +875,8 @@ Agent tool: load_data(files)
   -> LoadDataCommand(files)
 ```
 
-`BackendFacade` 可以保留，但它不應該變成另一個承載大量邏輯的平行 backend。比較好的角色是 command API 的 wrapper，讓 assistant / script 有穩定入口，同時不讓 UI 和 agent 行為分裂。
+Assistant / script 的穩定入口是 `ApplicationService / Command API` 或薄 command adapter；
+不再保留 `BackendFacade` wrapper。
 
 這個方向已由使用者確認。第一版 service 已採取保守路線：command layer 先呼叫既有
 controllers，保留 observer event、refresh、lock / running-state 行為；後續再逐步把
@@ -809,17 +884,15 @@ controller 內的 business workflow 下沉。
 
 ## 重構原則
 
-目前不應直接大改 `Study` 或把所有東西塞進 `BackendFacade`。
+目前不應直接大改 `Study`，也不應重新加入 `BackendFacade`。
 
 比較安全的順序是：
 
 1. 盤點每個 controller 裡的 workflow logic。
 2. 把真正 business workflow 抽成 service / command。
 3. controller 變成 UI adapter，只負責輸入轉換、事件通知、呼叫 command。
-4. `BackendFacade` 變成 assistant / script 的 wrapper，只呼叫 command。這一步已先完成
-   核心 workflow 的第一版。
-5. agent tools 只包 command input / output，不自己實作另一套流程。
-6. 先測 command API，再用 UI / agent integration tests 驗證兩條入口一致。
+4. agent tools 只包 command input / output，不自己實作另一套流程。
+5. 先測 command API，再用 UI / agent integration tests 驗證兩條入口一致。
 
 ## 目前判斷
 
@@ -828,8 +901,8 @@ controller 內的 business workflow 下沉。
 
 因此下一階段後端重構不應直接大改資料流。比較合理的順序是：
 
-1. 擴充 command API 的 real workflow coverage，尤其是 facade/controller parity 與
-   更完整的 training execution boundary。
+1. 擴充 command API 的 real workflow coverage，尤其是 controller parity 與更完整的
+   training execution boundary。
 2. 逐步讓 controllers 呼叫 service，再由 controllers 發出既有 observer events。
-3. 將 agent real tools 從舊字串 wrapper 慢慢改成 `CommandResult` formatter。
-4. UI panel 仍保持保守，等 command API 和 tests 更穩再開始移入口。
+3. 繼續將剩餘 legacy string compatibility tests 改成 `CommandResult` / state assertions。
+4. UI panel 仍保持保守，等 command API 和 tests 更穩再移除更多 controller compatibility。

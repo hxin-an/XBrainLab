@@ -1,6 +1,6 @@
 # XBrainLab 目前架構
 
-最後更新：`2026-05-09`
+最後更新：`2026-05-14`
 
 這裡描述目前實作，不描述理想終局。目標態請看 [target/architecture.md](../target/architecture.md)。
 
@@ -15,7 +15,29 @@ UI / assistant / MCP / scripts
   -> Study / DataManager / TrainingManager
 ```
 
-這個方向已經有實作基礎，但還沒有完全收乾淨。
+這個方向已經有實作基礎。Backend command spine 和 `BackendFacade` removal 已經落地；
+剩餘距離主要在 UI controller adapter、human desktop acceptance、以及 product evidence
+claim boundary。讀本頁時先看下方「目前距離目標多遠」，再進 `ui.md` 的例外地圖；不要從
+歷史 checkpoint 數量推論目前架構乾淨度。
+
+## 目前距離目標多遠
+
+| Area | 現況 | 距離目標 |
+| --- | --- | --- |
+| Backend command spine | `ApplicationService / Command API` 是 product runtime 主入口；`BackendFacade` 已物理移除。 | 還要防止新 wrapper / direct manager mutation 回流。 |
+| UI refresh | command-result、navigation、known observer event 已集中到 refresh coordinator。 | panel constructor / observer bridge 還依賴 injected controllers，不是 full zero-controller UI。 |
+| Product evidence | guarded product smokes、real-tools evidence、real GDF full-pipeline smoke 已轉向 command/query truth；product-success tests 也開始阻擋 no-crash / generic panel assertion 形狀。 | lower-level integration tests 仍有 setup/domain 目的的 direct `Study` access，不能全部當 product smoke。 |
+| Desktop acceptance | startup、UI baseline、dialog/unit、real-data IO dashboard PASS。 | 還缺人手 Windows desktop click-through 和長時間 local-model session。 |
+
+## 目前不要誤讀
+
+| 看到的訊號 | 正確解讀 | 不能推論 |
+| --- | --- | --- |
+| `BackendFacade` 已刪除 | product runtime 不應再從 facade 進 backend。 | UI 已 full zero-controller。 |
+| `ApplicationService` tests / smokes 綠 | command spine 和 state/query truth 有保護。 | 每個 panel display path 都已完全不讀 controller。 |
+| product-success weak evidence guard 綠 | facade、legacy fallback、direct `Study` state、controller lookup、no-crash / generic panel assertion 等回歸會被擋。 | 所有 mock-heavy 或 lower-level tests 都已重寫。 |
+| artifacts current tree 已 prune | current evidence 入口比較少、比較好讀。 | screenshot freshness 或 human Windows acceptance 已完成。 |
+| automated walkthrough / dashboard PASS | 可支撐 engineering health 和 offscreen product evidence。 | 可取代人手 Windows launcher / Data Import / local model click-through。 |
 
 ## 目前分層
 
@@ -24,9 +46,8 @@ UI / assistant / MCP / scripts
 | PyQt UI | 使用者 workflow、dialogs、visible state、page refresh。 | 還要避免各頁自己維護第二份 workflow truth。 |
 | `ApplicationService` | command dispatch、capability / confirmation gate、result envelope。 | 必須保持 spine，不要變成 god object。 |
 | focused services | Data Interpretation、preprocess、dataset、training、analysis、lifecycle。 | 邊界要靠 tests 和 architecture guard 維持。 |
-| `Study` / managers | domain state、data lifecycle、training lifecycle。 | legacy controller mutation path 還要在 product runtime 清乾淨。 |
-| `BackendFacade` | assistant / script 的 high-level wrapper。 | 不能變成第二套 backend 或重新定義成功條件。 |
-| assistant / MCP | tool / JSON payload 轉 command。 | MVP 先做 baseline；client certification 屬 Phase 4。 |
+| `Study` / managers | domain state、data lifecycle、training lifecycle。 | product path 不應直接繞過 command spine；lower-level domain tests 仍可 setup state。 |
+| assistant / MCP | tool / JSON payload 轉 command；real `Study` pipeline stage 來自 ApplicationService state snapshot。 | MVP 先做 baseline；mock compatibility fallback 不等於 product runtime truth，client certification 屬 Phase 4。 |
 
 ## Roadmap 對應
 
@@ -41,9 +62,11 @@ UI / assistant / MCP / scripts
 
 | Risk | 為什麼重要 | 處理方向 |
 | --- | --- | --- |
-| legacy controller path | 桌面操作可能繞過 command spine，測試也可能保護舊路徑。 | real `Study` product path 不再 hidden fallback。 |
-| UI refresh split truth | backend state 正確但畫面顯示舊狀態。 | command result / changed state 驅動 refresh。 |
-| `BackendFacade` scope creep | wrapper 若重做 workflow logic，就會和 UI / MCP 分裂。 | 只包 command API，不自己判斷 workflow 成功。 |
+| controller adapter remains | UI still needs injected controllers for panel constructors and observer bridges. | Treat these as adapter / observer boundary; do not use them as action, readiness, or product-success truth. |
+| UI refresh split truth | backend state 正確但畫面顯示舊狀態。 | command result / changed state 驅動 refresh；command 執行期間的 observer refresh 會被暫停，避免先用 stale controller state 重刷。 |
+| `BackendFacade` reintroduction | 這是 guarded regression，不是 current implementation。若 wrapper 回來，就會和 UI / MCP 分裂。 | Architecture guard blocks `BackendFacade` use in product UI / assistant / MCP packages and tests. |
+| evidence overclaim | dashboard PASS 或 offscreen smoke 被誤解成 product complete。 | Validation docs must keep human desktop acceptance and long local-model sessions as separate claims. |
+| weak product tests returning | product-success test 可能退回 no-crash、generic string 或 generic widget assertion。 | Architecture guard now blocks known weak shapes; add new exact-evidence guards only when a real weak pattern appears. |
 | Data Interpretation maturity | 資料語意錯會污染後續 training / evidence。 | MVP 先處理代表性 ambiguity，不誇大 final support。 |
 | MCP session confusion | headless session 容易被誤解成桌面 UI 控制。 | Phase 4 明確 session ownership 和 client matrix。 |
 
@@ -51,7 +74,7 @@ UI / assistant / MCP / scripts
 
 | File | 用途 |
 | --- | --- |
-| [backend.md](backend.md) | backend command spine、controllers、facade 詳細現況。 |
+| [backend.md](backend.md) | backend command spine、controllers、legacy removal 詳細現況。 |
 | [ui.md](ui.md) | PyQt panels、refresh、observer boundary。 |
 | [agent.md](agent.md) | in-app assistant、local-only runtime、tool calls。 |
 | [data_pipeline.md](data_pipeline.md) | EEG import / preprocess / dataset / training pipeline。 |

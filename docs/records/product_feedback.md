@@ -16,15 +16,17 @@
 
 | 主題 | 使用者觀察 | 產品判讀 | 狀態 |
 | --- | --- | --- | --- |
-| Dataset operations 命名不直觀 | Dataset Operations 一次露出多種 import / interpret / recipe / metadata 操作；問題不只是數量，而是名稱不像一般使用者會找的入口。 | 常用入口應用 `Import file`、`Import folder` 這類直觀命名；進階功能再用次要分組或 advanced wording。 | Open |
-| Data Interpretation preview 太雜 | Preview 同時顯示 source、metadata、label carrier、event role、class map、format capability，讀起來像 debug panel。 | 第一屏應只回答「會 import 哪些檔案、label 怎麼配、還有什麼需要確認、能不能套用」。 | Open |
-| Preview 有 nested scrolling | Preview 已有全域上下捲動，但每個 table 也可能各自上下捲，操作時會覺得卡在小區塊裡。 | Dialog 應保留單一主要 vertical scroll；表格自己不要再垂直捲動，必要時讓整個 preview 變長。 | In progress |
-| 第一次使用不知道每個表格要做什麼 | Preview 一次揭露多個表格，初次接觸者不知道哪個是主要確認、哪個只是進階細節。 | 資訊架構要改成 task hierarchy：import scope、label matching、needs attention 是主層；event/class/raw metadata 是細節層。 | In progress |
+| Dataset operations 命名不直觀 | Dataset Operations 一次露出多種 import / interpret / recipe / metadata 操作；問題不只是數量，而是名稱不像一般使用者會找的入口。 | 常用入口應用 `Import file`、`Import folder` 這類直觀命名；進階功能再用次要分組或 advanced wording。 | Fixed, keep smoke |
+| Data Interpretation preview 太雜 | Preview 同時顯示 source、metadata、label carrier、event role、class map、format capability，讀起來像 debug panel。 | 第一屏應只回答「會 import 哪些檔案、label 怎麼配、還有什麼需要確認、能不能套用」。 | Fixed, keep smoke |
+| Preview 有 nested scrolling | Preview 已有全域上下捲動，但每個 table 也可能各自上下捲，操作時會覺得卡在小區塊裡。 | Dialog 應保留單一主要 vertical scroll；表格自己不要再垂直捲動，必要時讓整個 preview 變長。 | Fixed, keep smoke |
+| 第一次使用不知道每個表格要做什麼 | Preview 一次揭露多個表格，初次接觸者不知道哪個是主要確認、哪個只是進階細節。 | 資訊架構要改成 task hierarchy：import scope、label matching、needs attention 是主層；event/class/raw metadata 是細節層。 | Fixed, keep smoke |
 | 選 3 個檔案卻像選整個資料夾 | 多選 `A01T/A02T/A03T` 時，畫面顯示 folder source，讓人以為整個資料夾都會被 import。 | scan root 和 selected scope 要清楚分開；使用者看到的主要範圍應是 selected files。 | Partially fixed |
+| Import Scope 把 file 選擇顯示成 folder | 使用者明明選 `File`，但 Import Scope 的 `Type` 顯示 `folder`，因為底層用 common parent 掃描。 | UI 要顯示 `Selection` 與 `Scan location`，不要把 scan root type 當成使用者選擇 type。 | Fixed, keep smoke |
 | Preview 太長看不到 Apply | 內容區域太長時，主要操作按鈕會被擠出視窗。 | Primary action 必須固定可見；任何 preview table 都不能讓 apply / cancel 消失。 | Fixed, keep smoke |
 | Metadata 明明空卻占很大 | `A01T.gdf` 這類非 BIDS 檔名沒有 subject/session/task/run，但 metadata table 仍占一大塊。 | 空 metadata 應該 compact、collapsed，或用一行說明「未偵測到 BIDS-style metadata」。 | Open |
-| Label / Event Interpretation 難讀 | 最重要的是 `A01T.mat -> A01T.gdf` 是否配對正確，但畫面也顯示很多 event role / class map 細節。 | Carrier matching 應是主要視覺層級；role / anchor / granularity / class map 是進階確認。 | Partially fixed |
-| 確認列表不夠直觀 | Attention / Review Summary 類文字仍像系統診斷；第一次使用者不知道列表是在要求確認、修正、還是只是提醒。 | 確認列表要改成使用者任務語言，例如 `Check Before Import`、`Check / Action / Why this matters`，並把 warning / confirmation / format capability 翻成可操作文字。 | In progress |
+| File Metadata 和 Smart Parse 沒連起來 | File Metadata 看起來像靜態表格，但使用者會自然期待它能接 Smart Parse 或手動整理 metadata。 | Metadata 應該是可互動的 metadata review step；Smart Parse 可以作為該 step 的 action，而不是另一個不相干 operation。 | Partially fixed |
+| Label / Event Interpretation 難讀 | 最重要的是 `A01T.mat -> A01T.gdf` 是否配對正確，但畫面也顯示很多 event role / class map 細節。 | Carrier matching 應是主要視覺層級；role / anchor / granularity / class map 是進階確認。 | Fixed, keep smoke |
+| 確認列表不夠直觀 | Attention / Review Summary 類文字仍像系統診斷；第一次使用者不知道列表是在要求確認、修正、還是只是提醒。 | 確認列表要改成使用者任務語言，例如 `Check Before Import`、`Check / Action / Why this matters`，並把 warning / confirmation / format capability 翻成可操作文字。 | Fixed, keep smoke |
 | Launcher 看起來啟動但實際不可用 | log 顯示 `MainWindow initialized`，但可能閃退或視窗跑出螢幕。 | startup smoke 不能只看 process / log；還要驗證視窗可見、可互動、在目前螢幕範圍內。 | Partially fixed |
 | Loading screen 太晚出現 | App 開起來會等很久才看到載入畫面；如果 splash 幾乎快結束才跳出來，使用者感覺上等於沒有載入畫面。 | Splash 必須在 heavy backend / training / panel imports 前出現。Package `__init__`、startup helper import、top-level UI imports 都不能偷偷拖重依賴。 | In progress |
 | 測試很多但抓不到實機 bug | Unit / integration / artifact tests 能證明局部正確，仍漏掉 hidden apply、offscreen window、scope confusion 等問題。 | 需要 Validation Reality-Gap Audit，補 human-observable product smoke。 | In planning |
@@ -38,9 +40,13 @@
 - Label carrier table 和 lower event choices 減少重複列，讓 carrier matching 更清楚。
 - Review Summary format capability rows 已做初步 dedupe。
 - Windows WSL launcher 預設使用 `QT_QPA_PLATFORM=xcb`，降低 WSLg / Wayland 下 Qt native segfault 風險。
-- Data Interpretation preview 開始移除 per-table vertical scroll，並把 section title 往使用者任務語言收斂。
+- Data Interpretation preview 已改成 step-panel wizard，一次只顯示一個使用者任務 panel。
 - Import 前確認列表開始改成 `Check / Action / Why this matters`，降低 `Needs review` 這類狀態字造成的誤解。
 - Package root `XBrainLab` 開始避免 eager import `Study`，讓 startup helper imports 不會在 splash 前拖入 backend / training stack。
+- Import Scope 開始分開顯示 `Selection` 和 `Scan location`，避免選 files 時被 scan root 誤導成 folder。
+- Data Import wizard baseline 已使用 `Import file` / `Import folder` / `Import BIDS folder`、
+  `Add label file` / `Add label folder` / `Skip labels for now`、task-oriented label table 和
+  structured action items，並用 Back / Next / final Apply 支援逐步流程。
 
 ## 建議設計方向
 
@@ -58,6 +64,13 @@ Data Interpretation preview 的預設視角應該是使用者視角，不是 imp
 4. **Primary action**：固定可見，文字要讓人知道會發生什麼，例如 `Import selected files` 或 `Apply interpretation`。
 5. **Advanced details**：format capability、recipe trace、raw metadata、class map 細節可摺疊或放在次要區。
 6. **Single scroll model**：整個 dialog 可以上下捲，但 table 不應各自再做垂直捲動。
+
+Data Interpretation 不應堅持把所有資訊都塞進同一個 panel。比較好的方向是：
+
+1. **Import scope step**：只確認要匯入哪些檔案或 folder。
+2. **Metadata review step**：顯示 metadata，並提供 Smart Parse / manual edit。
+3. **Label matching step**：確認 label/event carrier 對應。
+4. **Advanced details**：format support、recipe trace、raw event/class details。
 
 ## 後續要補的驗證
 

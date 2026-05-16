@@ -1,33 +1,62 @@
 # XBrainLab Now
 
-最後更新：`2026-05-10`
+最後更新：`2026-05-14`
 
 這頁只放下一輪施工焦點。
 
 ## 目前焦點
 
-**Phase 1A：Backend Command Spine / Legacy / UI Refresh / Test Cleanup。**
+**Phase 1A 收尾：UI refresh truth、test evidence boundary、human desktop acceptance。**
 
-要先做這件事，因為 MVP 前最大的風險不是功能不夠多，而是 UI、backend、assistant、MCP
-各自保存一套 workflow truth。
+Backend command spine 已經是 product runtime 主路徑；`BackendFacade` 已物理移除。現在要避免
+把「已經沒有 facade」誤讀成「UI 已經 full zero-controller」或「產品已人工驗收」。
+
+短期工作要從目前 target gap 反推，而不是再重複 audit：
+
+- real `Study` product path 已禁止 `BackendFacade` 和 direct legacy fallback success。
+- high-value UI actions、real-data smokes、以及多個 product-success tests 已改走 command /
+  query truth。
+- product-success evidence guard 已開始擋 no-crash / generic panel assertion 形狀；弱測試要改成
+  command/result/state/UI-visible evidence。
+- 剩餘 controller path 多半是 panel constructor / observer bridge、human-in-loop UI request、
+  mock / legacy compatibility、或 lower-level fixture setup。
+- 下一個可動手的 engineering gap 不是泛稱 backend cleanup，而是逐一收斂 UI readonly
+  display fallback、把仍有價值的 lower-level evidence 改成更清楚的 command/query 或
+  controller-level claim。
+- 產品仍缺 Windows human desktop acceptance；automated smoke 不能取代。
+- artifacts current tree 已做 duplicate / stale evidence pruning；新 artifact 要有清楚 claim
+  boundary，不要再長出第二套 current truth。
 
 ## 本輪要達到
 
 | 工作 | 完成判準 |
 | --- | --- |
-| Legacy product path cleanup | real `Study` runtime 的主要 mutating path 不再 silent fallback 到 legacy controller mutation。 |
-| UI refresh cleanup | command 成功後的頁面更新由 shared refresh route / changed state 驅動，不由各頁自己猜。 |
-| Test cleanup | 測試不再把 legacy fallback 當作預期成功路徑；mock 只隔離外部依賴。 |
-| Validation reality-gap audit | 盤點現有 tests / artifacts / smoke 的 claim boundary，補上 human-observable product smoke，避免 dashboard PASS 但實機 workflow 仍不可用。 |
-| BackendFacade boundary | `BackendFacade` 只包 `ApplicationService / Command API`，不重做 workflow logic。 |
-| Architecture guard | 新增或維持 guard，防止 product path 繞過 command spine。 |
-| Docs alignment | `current`、`roadmap`、`architecture` 不互相矛盾。 |
+| Controller exception reduction | 從剩餘例外地圖挑一類可安全替換的 real-product read/display path；若不能替換，要寫清楚分類和原因。 |
+| UI refresh proof | 對 touched path 補 command/query truth assertion 或 product smoke；不接受 no-crash / generic string evidence。 |
+| Test evidence cleanup | product-success tests 不回到 facade、legacy fallback、direct mutable `Study` state 或 positive controller lookup。 |
+| Human acceptance prep | 明確列出 Windows desktop click-through 尚缺哪些步驟和 artifact；不把 dashboard PASS 當人工驗收。 |
+| Docs readability | current / architecture / validation / now 可以讓新工程師先讀摘要，再追 checkpoint。 |
+| Artifact current tree | 只保留目前要判讀的 evidence 入口；短版、affected-case、探索型、或被 consolidated walkthrough / dashboard 覆蓋的 artifact 留在 git history。 |
+
+## Human Windows acceptance checklist
+
+這不是本輪已完成事項；這是 MVP 前要補的人工證據清單。每一項都要記錄 branch、
+commit、環境、操作步驟、截圖或 artifact、預期結果、實際結果與 blocker。
+
+| 路徑 | 需要補的證據 |
+| --- | --- |
+| Launcher -> MainWindow | Windows launcher / shortcut 人手啟動，MainWindow 在目前螢幕可見且 geometry 正常。 |
+| Data Import -> Apply | file/folder scan、preview、metadata review、label matching、review/import、apply selected scope 的人手紀錄。 |
+| Preprocess -> Epoch | 使用代表性資料跑 preprocess / epoch，確認 UI 不卡住、不被 modal 擋住，狀態與 command result 一致。 |
+| Split -> Train readiness | split 後可見 train/validation/test summary，Training gate 由 command state 解鎖。 |
+| Training confirmation | Start Training confirmation、running/progress/stopped 狀態可見，並記錄中斷或失敗時的 recoverability。 |
+| Assistant local runtime | local model missing / available 兩種狀態都要人手點過，確認不閃退且錯誤語意不是 debug dump。 |
 
 ## 接下來才做
 
 | Phase | 開始條件 |
 | --- | --- |
-| 1B Data Interpretation MVP Slice | Phase 1A 的 product path / refresh / test truth 收斂到可維護狀態。 |
+| 1B Data Interpretation MVP Slice | Phase 1A 的 product runtime / refresh / evidence 邊界足夠穩，不再把 UX bug 和 backend truth 混在一起。 |
 | 1C Tool-Call Product Baseline | command surface 和 state snapshot 足夠穩定。 |
 | 1D Windows Desktop Acceptance | backend / UI / Data Interpretation / assistant baseline 可跑代表性 workflow。 |
 | 2 Release Candidate | human desktop MVP acceptance 有證據。 |
@@ -37,6 +66,7 @@
 | 改動類型 | 至少要跑 |
 | --- | --- |
 | docs only | `poetry run mkdocs build --strict`、`git diff --check` |
+| docs / artifact cleanup | `poetry run mkdocs build --strict`、`poetry run python tests/architecture_compliance.py`、`poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`、`git diff --check` |
 | backend command / legacy cleanup | `tests/architecture_compliance.py`、focused backend command tests |
 | UI refresh cleanup | focused UI refresh tests 或 walkthrough artifact |
 | validation reality-gap audit | test matrix、human-observable walkthrough smoke、至少一條 launcher -> import preview -> apply 的 product smoke。 |

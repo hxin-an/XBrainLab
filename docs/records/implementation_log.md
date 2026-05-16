@@ -1,6 +1,6 @@
 # XBrainLab Implementation Log
 
-最後更新：`2026-05-06`
+最後更新：`2026-05-12`
 
 ## 這份文件的用途
 
@@ -41,6 +41,49 @@
 
 ### 下一手重點
 ```
+
+## 2026-05-12 Epoch UI Freeze / Hidden Modal Fix
+
+### 狀態
+
+The reported Epoch UI freeze/hang after A01T/A02T/A03T epoching was traced to post-command UI
+behavior rather than backend command failure. The ApplicationService-backed epoch command reached
+`Dataset locked`; product success feedback then used a blocking modal, and the preprocess preview
+also allowed queued redraws to target epoched data after lock.
+
+Product `CreateEpochCommand` success now reports through the main status bar instead of a blocking
+success dialog. Locked/no-data preview states stop pending plot timers, and queued plot-only
+refreshes refuse epoched data.
+
+### 已可宣稱
+
+- Real-GDF offscreen product smoke loads A01T/A02T/A03T, runs all-event epoching through
+  `ApplicationService`, and returns to UI without opening `QMessageBox.information`.
+- Preprocess locked-state regression tests prevent pending plot timers from redrawing epoched
+  data after epoching.
+- Legacy mock/non-`Study` sidebar behavior still has compatibility coverage.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/preprocess/sidebar.py`,
+  `XBrainLab/ui/panels/preprocess/panel.py`,
+  `XBrainLab/ui/panels/preprocess/preview_widget.py`
+- Tests：`tests/integration/ui/test_epoch_runtime.py`,
+  `tests/unit/ui/preprocess/test_preprocess_panel.py`
+- Validation boundary：`docs/validation/README.md`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is offscreen automated product-runtime evidence for the reported Epoch UI freeze class.
+  It does not replace human Windows desktop acceptance, long-session local-model testing, or full
+  MVP product completion.
+
+### 下一手重點
+
+- Re-run a human desktop click-through on Windows after merge into the stabilization line.
+- Keep expanding product smokes around the full import -> preprocess -> epoch -> split -> train
+  path instead of relying on dashboard PASS alone.
 
 ## 2026-05-06 Data Interpretation Class-map Preview
 
@@ -6115,3 +6158,446 @@ current blockers.
 
 - This is only the first documentation reset slice. `current.md`, `validation/README.md`, and the
   records still need follow-up trimming and better information hierarchy.
+
+## 2026-05-11 Legacy Command Spine Runtime Cleanup
+
+### 狀態
+
+Product runtime paths now enter the backend through `ApplicationService / Command API` directly;
+`BackendFacade` is legacy compatibility only.
+
+### 已可宣稱
+
+- Added `get_application_service(study)` as the Study-scoped command-spine accessor.
+- UI capability helpers, AgentManager status refresh, LLMController state / capability checks,
+  agent application surface, real dataset / preprocess / training / analysis tools, MCP product
+  paths, and current dev walkthrough scripts no longer import or instantiate `BackendFacade`.
+- `tests/architecture_compliance.py` now runs as a pytest gate and blocks `BackendFacade` usage
+  under `XBrainLab/ui`, `XBrainLab/llm`, and `XBrainLab/mcp`.
+- Real-tool tests now assert typed ApplicationService commands instead of facade method calls.
+- Older LLM coverage tests, root agent-tool tests, and real-tool integration tests were converted
+  away from `BackendFacade` patching so they verify command-service access instead of a removed
+  product runtime symbol.
+
+### 仍保留的 legacy
+
+- `XBrainLab/backend/facade.py` remains as non-product compatibility wrapper.
+- Facade-specific tests and legacy fixtures remain outside product runtime and should not be used
+  as completion evidence for new workflow behavior.
+
+### 不能宣稱完成
+
+- This does not remove all controller compatibility paths or complete human Windows desktop
+  acceptance.
+
+## 2026-05-12 Backend Command-Spine Hardening Follow-Up
+
+### 狀態
+
+Command-spine runtime cleanup continued without Data Import UX redesign. This slice focused on
+contract holes found after the zero-legacy pass: observer refresh ordering, read-only command
+purity, unsupported command result envelopes, and walkthrough test evidence alignment.
+
+### 已可宣稱
+
+- UI command execution now wraps `ApplicationService.execute(...)` with
+  `suppress_observer_refresh_during_command(...)`; synchronous controller observer events fired
+  inside command handlers no longer trigger a stale duplicate refresh before
+  `CommandResult.changed_state` is available.
+- `QueryStateCommand`, `EvaluateCommand`, `VisualizeCommand`, and no-parameter
+  `SaliencyCommand` no longer clear `ApplicationService.last_error`; read-only commands that may
+  be called with `refresh=False` remain state-preserving.
+- Unsupported command objects passed to `ApplicationService.execute(...)` now return a structured
+  `unsupported_command` `CommandResult` instead of leaking a raw `TypeError` / `ValueError`.
+- Architecture compliance now also blocks UI code that directly calls
+  `get_application_service(...).execute(...)` outside `execute_application_command()`.
+- The product walkthrough now simulates Start Training confirmation and its fake training hook
+  accepts the current `TrainCommand.append` / `interactive` kwargs.
+
+### Evidence 入口
+
+- Source:
+  - `XBrainLab/backend/application/service.py`
+  - `XBrainLab/ui/application_capabilities.py`
+  - `XBrainLab/ui/refresh_coordinator.py`
+  - `tests/architecture_compliance.py`
+- Tests:
+  - `tests/unit/backend/application/test_application_service.py`
+  - `tests/unit/ui/test_refresh_coordinator.py`
+  - `tests/unit/ui/test_application_capabilities.py`
+  - `tests/unit/test_architecture_compliance.py`
+  - `tests/integration/ui/test_product_walkthrough.py`
+- Detailed validation: `docs/records/worklog.md` and `docs/validation/README.md`.
+
+### 不能宣稱完成
+
+- This is not product complete and does not replace human Windows desktop acceptance.
+- Controller compatibility code remains present for mock / legacy non-`Study` contexts, guarded
+  from product runtime rather than deleted wholesale.
+
+## 2026-05-12 Backend/UI Legacy Test Hygiene Follow-Up
+
+### 狀態
+
+Focused test hygiene continued on `test/backend-ui-legacy-hygiene` without Data Import UX
+changes. This slice tightened the evidence boundary for product-success tests and made selected
+mock-only sidebar tests explicit compatibility coverage.
+
+### 已可宣稱
+
+- `tests/architecture_compliance.py` now rejects product-success integration tests that import or
+  call `run_legacy_controller_fallback()` or `get_legacy_controller_from_study()`.
+- Unit compatibility tests may still cover legacy fallback helpers; those tests cannot be cited as
+  product workflow success.
+- Ambiguous TrainingSidebar tests for split generation and start training were renamed and
+  strengthened so they explicitly assert legacy mock-context controller fallback behavior.
+- Ambiguous PreprocessSidebar tests for filtering, resample, rereference, normalization, and
+  epoching were renamed and strengthened so they explicitly assert command attempts and
+  legacy mock-context controller fallback parameters.
+- `docs/validation/README.md` now records a `BackendFacade` compatibility replacement map. Most
+  facade clusters have ApplicationService / command replacement coverage.
+- Montage fuzzy matching has been extracted from `BackendFacade.set_montage()` into
+  `XBrainLab.backend.utils.montage_mapping` with direct helper coverage; facade compatibility tests
+  now keep old API behavior while command/service/dialog/helper tests own replacement evidence.
+- `tests/unit/backend/test_facade_coverage.py` now passes its mocked `Study` into `BackendFacade`,
+  so its compatibility assertions no longer accidentally run against a real `Study`.
+- `tests/unit/backend/test_facade_headless.py` now uses the same explicit `BackendFacade(study=...)`
+  pattern; headless facade compatibility and shared `ApplicationService` runtime tests pass
+  together.
+- Architecture compliance now quarantines `BackendFacade` test usage: new tests outside explicit
+  facade compatibility/runtime/guard files must use `ApplicationService / Command API` replacement
+  coverage instead of reintroducing facade workflow truth.
+- TrainingSidebar model-selection and training-setting unit tests no longer use ambiguous
+  `accepted` names for mock-only paths; they now explicitly assert command attempts followed by
+  legacy controller fallback in mock contexts.
+- `tests/unit/ui/test_sidebars_and_components.py` has no remaining `accepted` / `no_crash` test
+  names; the former smoke tests now assert info-panel service boundaries and command-plus-legacy
+  channel-selection behavior.
+- A repo-level weak-name scan for `accepted`, `no_crash`, and `does_not_crash` test names across
+  unit/integration tests now returns no matches after tightening the remaining focused UI tests.
+- Architecture compliance now enforces that weak-name cleanup with `check_weak_test_names()`, so
+  vague `accepted` / `no_crash` / `does_not_crash` test names cannot be reintroduced silently.
+- `BackendFacade` quarantine tests now must carry the registered `facade_compatibility` pytest
+  marker, making allowed facade-only compatibility evidence explicit instead of silently product-like.
+- The old monolithic facade headless test was split into focused compatibility tests, exposing and
+  removing hidden state coupling around training prerequisites.
+- `test_facade_coverage.py` now labels itself as legacy facade compatibility coverage and uses
+  behavior-specific names for montage, training-state, latest-result, and clear-data checks.
+- Export saliency dialog tests now run again after breaking the visualization/training circular
+  import with a lightweight saliency-method module, and their no-crash paths now assert concrete
+  combo state, warning, export-cancel, and accept/no-accept behavior.
+- Saliency map widget coverage no longer swallows generic matplotlib exceptions; the data-path test
+  now asserts visualizer invocation, figure replacement, canvas ownership, and hidden error state.
+- MessageBubble file-link coverage now asserts Windows Explorer selection and non-Windows
+  `QDesktopServices.openUrl` side effects separately instead of accepting either branch as no-crash.
+- InfoPanelService initialization coverage now asserts the dataset/preprocess observer bridge
+  observables and event names instead of treating construction without error as enough.
+
+### Evidence 入口
+
+- Source:
+  - `tests/architecture_compliance.py`
+  - `tests/unit/test_architecture_compliance.py`
+  - `tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation: `docs/records/worklog.md` and `docs/validation/README.md`.
+
+### 不能宣稱完成
+
+- This is not product complete and does not replace human Windows desktop acceptance.
+- This does not remove all controller compatibility code; it prevents product-success evidence from
+  blessing that compatibility layer.
+- Physical `BackendFacade` removal still needs the remaining compatibility-only tests either moved
+  to command/service/dialog/helper coverage or deleted with documented replacement evidence.
+
+## 2026-05-12 Repo Weak Assertion Cleanup
+
+### 狀態
+
+Continued the backend/test hygiene lane on `test/backend-ui-legacy-hygiene`. This slice did not
+touch answer UI layout or Data Import UX. It removed the remaining repo-wide weak
+`no crash` / `should not raise` style test wording and replaced those checks with explicit
+observable assertions.
+
+### 已可宣稱
+
+- A full test scan for weak assertion wording now returns no matches across `tests/**/*.py`.
+- Training panel update-event coverage now asserts empty-history cleanup, refresh dispatch, and no
+  legacy fallback call.
+- LLM retriever/config/downloader/worker coverage now asserts BM25 builder wiring, CUDA import
+  fallback, save-error logging, no-worker cancellation state, and no-engine reinitialize behavior.
+- UI coverage now asserts file-link side effects, visualization download-error logging, dialog
+  warning/result behavior, AgentManager status/message behavior, and no-op state preservation.
+- Backend/load-data/preprocessor coverage now asserts truncation output, event IDs, accepted
+  preprocessor data lists, observer logging, idle trainer cleanup, and TrainRecord no-op state.
+- Small product type annotations were added where the tests exposed real type holes:
+  `EventLoader` mutable event fields, `TimeEpoch` optional baseline/event selections, and
+  `WindowEpoch` UI-origin empty-string overlap.
+- Focused validation is green: touched tests `585 passed`, changed-file ruff PASS, changed-file
+  basedpyright `0 errors`.
+
+### 不能宣稱完成
+
+- This is test-hygiene and type-hygiene evidence, not a product-complete claim.
+- It does not remove `BackendFacade`; it prepares the test suite so future removal is judged
+  against stronger replacement coverage rather than weak no-crash assertions.
+- Human Windows desktop acceptance and full MVP flow validation remain separate gates.
+
+## 2026-05-12 AgentManager Montage Command Route Guard
+
+### 狀態
+
+Added a focused AgentManager montage-selection command-route test without changing UX. This pairs
+the existing mock-context legacy fallback coverage with an explicit assertion that the command path
+does not call the legacy preprocess controller when `ApplicationService` command results are
+available.
+
+### 已可宣稱
+
+- AgentManager montage setup now has a unit guard for the intended command path:
+  `QueryStateCommand(query="state")` provides channel names and confirmed dialog output emits
+  `ApplyMontageCommand`.
+- The test asserts normalized montage positions are passed as tuples and
+  `preprocess_controller.apply_montage()` is not called on the command route.
+- The existing legacy mock-context fallback test still passes as compatibility-only coverage.
+- Focused validation is green: the two montage tests `2 passed`, full `test_ui_misc.py`
+  `144 passed`, ruff PASS, basedpyright `0 errors`.
+
+### 不能宣稱完成
+
+- This is not human montage-dialog acceptance.
+- Legacy fallback remains for mock / non-real-`Study` compatibility paths; the new guard prevents
+  that fallback test from being the only montage evidence.
+
+## 2026-05-12 Dataset Generation Facade-Replacement Guard
+
+### 狀態
+
+Continued the backend/test hygiene lane on `test/backend-ui-legacy-hygiene`. This slice did not
+touch answer UI layout or Data Import UX. It moved the `BackendFacade` split strategy / training
+mode compatibility behavior into direct `GenerateDatasetCommand` service tests.
+
+### 已可宣稱
+
+- Dataset generation command-service coverage now checks `trial`, `session`, and `subject` split
+  strategy mapping without entering through `BackendFacade`.
+- Dataset generation command-service coverage now checks `individual` and `group` training mode
+  mapping without entering through `BackendFacade`.
+- The focused dataset fixture now carries epoch subject/session/label metadata, so subject-wise and
+  session-wise replacement tests exercise the real split-audit contract.
+- Focused validation is green: dataset-generation service `8 passed`, facade compatibility plus
+  replacement coverage `51 passed`, ruff PASS, basedpyright `0 errors`, architecture compliant.
+
+### 不能宣稱完成
+
+- This does not physically remove `BackendFacade`.
+- This is command-service replacement evidence for one facade cluster, not full desktop runtime
+  acceptance or full external-dataset coverage.
+
+## 2026-05-12 Training Configure Facade-Replacement Guard
+
+### 狀態
+
+Continued the backend/test hygiene lane on `test/backend-ui-legacy-hygiene`. This slice did not
+touch answer UI layout or Data Import UX. It moved `BackendFacade` training configure compatibility
+behavior into direct `TrainingCommandService` tests.
+
+### 已可宣稱
+
+- Training command-service coverage now checks case-insensitive model resolution without entering
+  through `BackendFacade`.
+- Training command-service coverage now checks unknown-model rejection without entering through
+  `BackendFacade`.
+- Training command-service coverage now checks AdamW optimizer mapping and `auto` device mapping.
+- Focused validation is green: training service `7 passed`, facade compatibility plus replacement
+  coverage `50 passed`, ruff PASS, basedpyright `0 errors`, architecture compliant.
+
+### 不能宣稱完成
+
+- This does not physically remove `BackendFacade`.
+- This is command-service replacement evidence for one facade cluster, not full training quality,
+  GPU runtime acceptance, or desktop workflow completion.
+
+## 2026-05-12 Evaluation Latest-Results Facade-Replacement Guard
+
+### 狀態
+
+Continued the backend/test hygiene lane on `test/backend-ui-legacy-hygiene`. This slice did not
+touch answer UI layout or Data Import UX. It moved `BackendFacade.get_latest_results()`
+compatibility behavior into direct `EvaluateCommand` / `AnalysisCommandService` coverage.
+
+### 已可宣稱
+
+- Evaluation command diagnostics now include `training_active` from the shared application state
+  snapshot.
+- Analysis command-service coverage now checks no-results behavior without entering through
+  `BackendFacade`.
+- Analysis command-service coverage now checks multiple plans, multiple finished runs, and active
+  training state without entering through `BackendFacade`.
+- Focused validation is green: analysis service `6 passed`, facade compatibility plus replacement
+  coverage `49 passed`, ApplicationService evaluate focused tests `2 passed`, ruff PASS,
+  basedpyright `0 errors`, architecture compliant.
+
+### 不能宣稱完成
+
+- This does not physically remove `BackendFacade`.
+- This is command-result replacement evidence for one facade cluster, not full evaluation UI
+  acceptance or training quality evidence.
+
+## 2026-05-12 Preprocess Operation Facade-Replacement Guard
+
+### 狀態
+
+Continued the backend/test hygiene lane on `test/backend-ui-legacy-hygiene`. This slice did not
+touch answer UI layout or Data Import UX. It moved remaining `BackendFacade` preprocess operation
+mapping behavior into direct `PreprocessCommandService` tests.
+
+### 已可宣稱
+
+- Preprocess command-service coverage now checks individual `NOTCH`, `RESAMPLE`, `NORMALIZE`, and
+  channel-list `REREFERENCE` operations without entering through `BackendFacade`.
+- The replacement test asserts the exact controller side effects, not only old facade method names.
+- Focused validation is green: preprocess service `5 passed`, facade compatibility plus replacement
+  coverage `48 passed`, ruff PASS, basedpyright `0 errors`, architecture compliant.
+
+### 不能宣稱完成
+
+- This does not physically remove `BackendFacade`.
+- This is command-service replacement evidence for one facade cluster, not full preprocessing
+  workflow acceptance.
+
+## 2026-05-12 Data Compatibility Attach-Label Facade-Replacement Guard
+
+### 狀態
+
+Continued the backend/test hygiene lane on `test/backend-ui-legacy-hygiene`. This slice did not
+touch answer UI layout or Data Import UX. It moved remaining `BackendFacade.attach_labels()`
+compatibility behavior into direct `DataCompatibilityCommandService` tests.
+
+### 已可宣稱
+
+- Data compatibility command-service coverage now checks no matching data file without entering
+  through `BackendFacade`.
+- Data compatibility command-service coverage now checks label-loader error handling without
+  entering through `BackendFacade`.
+- Data compatibility command-service coverage now checks full-data-path mapping and multi-file
+  batch attachment without entering through `BackendFacade`.
+- Focused validation is green: data compatibility service `7 passed`, facade compatibility plus
+  replacement coverage `50 passed`, ruff PASS, basedpyright `0 errors`, architecture compliant.
+
+### 不能宣稱完成
+
+- This does not physically remove `BackendFacade`.
+- This is command-service replacement evidence for one facade cluster, not Data Import UX
+  acceptance or complete external-label format coverage.
+
+## 2026-05-12 State Diagnostics Facade-Replacement Guard
+
+### 狀態
+
+Continued the backend/test hygiene lane on `test/backend-ui-legacy-hygiene`. This slice did not
+touch answer UI layout or Data Import UX. It moved `BackendFacade.get_data_summary()` and
+`get_preprocess_diagnostics()` compatibility behavior into direct state/query service tests.
+
+### 已可宣稱
+
+- State snapshot coverage now checks raw and preprocessed runtime diagnostics without entering
+  through `BackendFacade`.
+- Query-state coverage now checks `data_summary` carries `runtime_signals`,
+  `gdf_duplicate_channel_files`, and detailed duplicate-channel diagnostics.
+- Focused validation is green: state service `3 passed`, facade compatibility plus replacement
+  coverage `46 passed`, ruff PASS, basedpyright `0 errors`, architecture compliant.
+
+### 不能宣稱完成
+
+- This does not physically remove `BackendFacade`.
+- This is state/query replacement evidence for one facade cluster, not human UI diagnostics
+  acceptance.
+
+## 2026-05-12 Background Stabilization / Branch Readiness Audit
+
+### 狀態
+
+Continued on `test/backend-ui-legacy-hygiene` while UX work stayed separate. This pass did not
+redesign answer UI layout or Data Import UX. It closed the current background readiness lane by
+running non-UX product validation gates, recording facade-removal readiness, and updating canonical
+evidence docs.
+
+### 已可宣稱
+
+- Architecture compliance is green: `Architecture compliant!`, and architecture guard unit coverage
+  is `70 passed`.
+- Backend ApplicationService / command-service coverage is green: `160 passed`.
+- Quarantined facade compatibility/runtime-cache/helper coverage is green: `59 passed`.
+- Real-data IO and representative tiny pipeline smokes are green: `31 passed, 8 warnings` and
+  `2 passed`.
+- Fast quality dashboard is green at `2026-05-12 22:51:43 UTC+08:00`, including lint, type,
+  architecture, startup, UI baseline/dialog/unit, and real-data IO checks.
+- Product package scan shows no direct `BackendFacade` import or construction outside
+  `XBrainLab/backend/facade.py` itself; test usage is confined to architecture guard examples,
+  explicit facade compatibility tests, and the shared runtime-cache test.
+
+### 不能宣稱完成
+
+- This does not physically remove `BackendFacade`; deletion should be a separate slice that removes
+  or migrates the compatibility-only tests.
+- This is not product complete, release approval, human Windows desktop acceptance, Data Import UX
+  approval, or answer UI approval.
+
+## 2026-05-12 Physical BackendFacade Removal
+
+### 狀態
+
+Created `refactor/remove-backend-facade` from `test/backend-ui-legacy-hygiene`. This slice did not
+redesign answer UI layout or Data Import UX. It physically removed the legacy facade layer after the
+prior replacement-map slices had moved durable behavior coverage into ApplicationService, focused
+command services, helper tests, and integration smokes.
+
+### 已可宣稱
+
+- `XBrainLab/backend/facade.py` is deleted.
+- `tests/unit/backend/test_facade_coverage.py` and `tests/unit/backend/test_facade_headless.py` are
+  deleted.
+- `pyproject.toml` no longer registers `facade_compatibility`.
+- Architecture compliance now rejects any test-side `BackendFacade` import / construction; before
+  deletion, the tightened guard failed on the old facade compatibility cluster with 6 violations.
+- Replacement validation is green: architecture guard `70 passed` / `Architecture compliant!`,
+  backend application suite `159 passed`, montage helper plus guard `77 passed`, real-data IO
+  `31 passed, 8 warnings`, tiny pipeline smoke `2 passed`, and fast dashboard `PASS` generated
+  `2026-05-12 23:20:21 UTC+08:00`.
+
+### 不能宣稱完成
+
+- This is not product complete, release approval, human Windows desktop acceptance, Data Import UX
+  approval, or answer UI approval.
+- UI controller fallback compatibility still exists in guarded mock/legacy boundaries and must be
+  handled separately.
+
+## 2026-05-12 UI Controller Fallback Helper-Scope Guard
+
+### 狀態
+
+Created `refactor/remove-ui-controller-fallback` from `test/backend-ui-legacy-hygiene`. This slice
+did not redesign answer UI layout or Data Import UX. It turned direct product-method
+`run_legacy_controller_fallback()` usage into a guarded architecture violation and moved current
+call sites into explicit legacy/fallback helpers.
+
+### 已可宣稱
+
+- Product UI methods in the scanned UI tree no longer directly call
+  `run_legacy_controller_fallback()`.
+- Dataset actions / panel / sidebar, Preprocess sidebar, Training sidebar, Visualization control
+  sidebar, AgentManager montage flow, and TrainingSettingDialog now keep mock / legacy `None`
+  adapter fallback in explicit helper boundaries.
+- Architecture compliance and architecture guard unit tests are green:
+  `Architecture compliant!` and `72 passed`.
+- Focused UI regression is green: `220 passed`.
+- Backend ApplicationService and workflow coverage remain green: `159 passed` and `8 passed`.
+- Representative pipeline smoke remains green: `2 passed`.
+- Fast dashboard is green: `PASS`, generated `2026-05-12 23:59:02 UTC+08:00`.
+
+### 不能宣稱完成
+
+- This does not remove every controller object from UI construction or all read-only controller
+  population paths.
+- This does not complete human Windows desktop acceptance, Data Import UX approval, answer UI
+  approval, release approval, or product completion.
