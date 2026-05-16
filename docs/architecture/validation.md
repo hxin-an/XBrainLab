@@ -62,8 +62,8 @@ protocol 是支撐工作流可信度，不是主要 thesis accuracy。
 | `tests/baselines/ui/` | approved UI baseline images。 |
 | `artifacts/quality/latest.json` | 最新 dashboard machine-readable artifact。 |
 | `artifacts/quality/latest.md` | 最新 dashboard human-readable artifact。 |
-| `artifacts/quality/history.jsonl` | dashboard 歷史紀錄。 |
-| `artifacts/ui/` | 最新 UI capture artifacts。 |
+| `artifacts/quality/history.jsonl` | local generated dashboard history；ignored，不作 current evidence 入口。 |
+| `artifacts/ui/` | dashboard transient UI capture output and named UI evidence subdirectories。 |
 
 ## Fast Quality Dashboard
 
@@ -112,10 +112,14 @@ fast dashboard clean 必須同時滿足：
 
 UI baseline validation 分成兩步：
 
-1. `scripts/dev/capture_ui_baseline.py` 將目前畫面寫入 `artifacts/ui/`。
-2. `scripts/dev/update_quality_dashboard.py` 將 `artifacts/ui/` 和 `tests/baselines/ui/` 的 approved references 比對。
+1. `scripts/dev/capture_ui_baseline.py` 將目前畫面寫入 top-level `artifacts/ui/*.png`
+   transient captures。
+2. `scripts/dev/update_quality_dashboard.py` 將這些 live captures 和 `tests/baselines/ui/`
+   的 approved references 比對。
 
-dashboard 會用 `CAPTURE_STEPS` 宣告的檔名作為 expected artifacts。
+dashboard 會用 `CAPTURE_STEPS` 宣告的檔名作為 expected live capture paths。這些 top-level
+captures 是 generated output，已由 `artifacts/ui/.gitignore` 排除；approved baseline truth
+只放在 `tests/baselines/ui/`。
 
 以下情況會 fail：
 

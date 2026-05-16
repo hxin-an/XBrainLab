@@ -34,6 +34,7 @@
 | `ui/chatpanel-local-pipeline-chain/` | local ChatPanel 從 Data Interpretation 到 dataset 的 command-chain walkthrough。 | long human desktop local-model session。 |
 | `ui/chatpanel-local-training-completion/` | local ChatPanel 訓練、evaluation、visualization、saliency completion walkthrough。 | training quality 或 release approval。 |
 | `ui/visualization-render/` | offscreen VisualizationPanel render / blocked-3D evidence。 | interactive Windows 3D acceptance。 |
+| top-level `ui/*.png` | transient dashboard UI capture outputs, ignored by git. | approved baseline truth；approved references live in `tests/baselines/ui/`. |
 
 ## 高價值入口
 
@@ -73,6 +74,8 @@
 - 舊 Data Interpretation replay screenshots，當 canonical Data Import wizard screenshots 和
   consolidated human-like walkthrough 已覆蓋目前要判讀的畫面。
 - exploratory smart-parser / sidebar option screenshots，除非它們被 current product docs 直接引用。
+- tracked top-level `artifacts/ui/*.png` copies that duplicate `tests/baselines/ui/` approved
+  references; dashboard captures may recreate them locally, but they should stay git-ignored.
 
 ## 最近清理
 
@@ -119,6 +122,19 @@
 
 The corresponding capture scripts were updated so these exact duplicates should not
 be regenerated during the next artifact refresh.
+
+2026-05-14 dashboard/live-capture cleanup removed:
+
+- tracked top-level `artifacts/ui/*.png` baseline screenshots that duplicated
+  `tests/baselines/ui/` byte-for-byte.
+- unreferenced `artifacts/ui/sidebar-operation-alignment.png`; it was not a current evidence
+  entrance and remains recoverable from git history.
+- local generated `artifacts/quality/history.jsonl`; dashboard history is ignored generated output,
+  while current dashboard truth remains `artifacts/quality/latest.*`.
+
+`artifacts/ui/.gitignore` now keeps future top-level dashboard captures local-only. UI walkthrough
+and review evidence should live in named artifact subdirectories with a clear README or markdown
+entry.
 
 ## 新 artifact 要寫清楚
 

@@ -41,6 +41,18 @@ current truth 以這些文件為準：
 - [architecture/README.md](../architecture/README.md)
 - [validation/README.md](README.md)
 
+## 2026-05-14 Artifact Live-Capture Deduplication Checkpoint
+
+Artifact hygiene removed tracked top-level `artifacts/ui/*.png` live-capture files that duplicated
+approved `tests/baselines/ui/` references byte-for-byte and made future top-level dashboard captures
+local-only through `artifacts/ui/.gitignore`. Current UI walkthrough evidence remains in named
+`artifacts/ui/*/` subdirectories, while approved regression references remain in
+`tests/baselines/ui/`.
+
+Focused validation from that slice covered dashboard markdown / UI baseline helper tests, strict
+docs build, architecture compliance, and whitespace checks. This supports artifact retention hygiene;
+it does not prove visual freshness, runtime correctness, or human desktop acceptance.
+
 ## Reality-Gap Audit
 
 當 human walkthrough 發現 dashboard / automated smoke 沒抓到的問題時，不能只修單點 bug。

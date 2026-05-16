@@ -49,7 +49,8 @@ def test_render_markdown_lists_checks_and_artifacts():
 
     assert "# XBrainLab Quality Dashboard" in rendered
     assert "Overall status: `WARN`" in rendered
-    assert "UI Artifacts" in rendered
+    assert "UI Baseline Capture" in rendered
+    assert "Generated capture paths (transient, git-ignored)" in rendered
     assert "artifacts/ui/main-window-initial.png" in rendered
     assert "tests/baselines/ui/main-window-initial.png" in rendered
 
@@ -105,6 +106,7 @@ def test_compare_ui_images_detects_visual_drift(tmp_path: Path):
     status, metrics = compare_ui_images(reference, candidate)
 
     assert status == "fail"
+    assert isinstance(metrics["mean_diff"], float)
     assert metrics["mean_diff"] > 0
 
 
