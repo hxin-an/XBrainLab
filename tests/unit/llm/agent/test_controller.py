@@ -39,6 +39,7 @@ def _assert_confirmation_prompt(
     params: dict[str, Any],
     remaining: list[tuple[str, dict[str, Any]]],
     description: str,
+    decision_boundary: str = "tool_confirmation",
 ) -> None:
     assert ctrl._pending_confirmation == (tool_name, params, remaining)
     ctrl.status_update.emit.assert_any_call(f"Waiting for confirmation: {tool_name}")
@@ -48,6 +49,7 @@ def _assert_confirmation_prompt(
             "tool_name": tool_name,
             "params": params,
             "description": description,
+            "decision_boundary": decision_boundary,
         },
     )
 
@@ -738,6 +740,7 @@ class TestProcessToolCallsConfirmation:
             params={},
             remaining=[],
             description="Apply data interpretation",
+            decision_boundary="semantic_apply",
         )
 
     def test_no_confirmation_executes_directly(self, ctrl):

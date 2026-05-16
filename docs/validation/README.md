@@ -53,6 +53,13 @@ Focused validation from that slice covered dashboard markdown / UI baseline help
 docs build, architecture compliance, and whitespace checks. This supports artifact retention hygiene;
 it does not prove visual freshness, runtime correctness, or human desktop acceptance.
 
+## 2026-05-14 Agent Confirmation Boundary Payload Evidence Checkpoint
+
+Agent confirmation payloads now include a `decision_boundary` field so UI clients can distinguish
+ordinary tool confirmation from backend semantic-apply confirmation. The focused controller test
+asserts both the default `tool_confirmation` path and `semantic_apply` for Data Interpretation apply.
+This supports clearer agent/UI confirmation behavior; it does not prove full agent tool-call quality.
+
 ## Reality-Gap Audit
 
 當 human walkthrough 發現 dashboard / automated smoke 沒抓到的問題時，不能只修單點 bug。
