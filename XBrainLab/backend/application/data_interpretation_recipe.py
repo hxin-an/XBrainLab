@@ -239,7 +239,7 @@ def _label_carrier_choices_from_recipe(
         path = str(carrier.get("path") or "").strip()
         if not path:
             continue
-        carrier_choices = {
+        carrier_choices: dict[str, Any] = {
             choice_key: str(carrier.get(recipe_key) or "").strip()
             for recipe_key, choice_key in field_map.items()
             if str(carrier.get(recipe_key) or "").strip()

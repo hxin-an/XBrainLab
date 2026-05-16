@@ -98,7 +98,7 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
     assert dialog.get_result() == {
         "confirmed": True,
         "save_recipe": True,
-        "choices": {},
+        "choices": {"label_carrier": "embedded_events"},
     }
 
 
@@ -559,6 +559,7 @@ def test_match_labels_internal_source_hides_loaded_label_setup(qtbot):
     assert not dialog.label_values_card.isVisible()
     assert not dialog.placement_card.isVisible()
     assert "Using labels inside EEG files" in dialog.rule_status_label.text()
+    assert dialog.get_result()["choices"]["label_carrier"] == "embedded_events"
 
 
 def test_match_labels_internal_source_does_not_return_label_file_choices(qtbot):
@@ -1545,6 +1546,8 @@ def test_match_labels_shows_conversion_fallback_when_label_field_is_missing(
     visible_text = _visible_step_text(dialog, "Match Labels")
     assert "label format needs conversion" in visible_text
     assert "ready to place on EEG" not in visible_text
+    assert "Needs setup" in visible_text
+    assert "Matched" not in visible_text
     assert "XBrainLab cannot match this label file yet" in visible_text
     assert "cannot tell which column or variable contains the labels" in visible_text
     visible_buttons = [

@@ -690,9 +690,11 @@ class DataInterpretationApplyService:
     @staticmethod
     def _is_auto_applicable_timestamp_label_plan(plan: dict[str, Any]) -> bool:
         carrier_format = str(plan.get("format") or "").strip()
+        placement_method = str(plan.get("placement_method") or "").strip().lower()
         time_model = str(plan.get("time_model") or "").strip().lower()
         return (
             carrier_format in {"BIDS events", "CSV", "TSV"}
+            and placement_method != "event_code"
             and bool(str(plan.get("selected_label_field") or "").strip())
             and bool(str(plan.get("selected_anchor") or "").strip())
             and time_model in {"seconds", "relative_time"}

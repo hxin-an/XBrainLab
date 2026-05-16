@@ -1034,6 +1034,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             if widget is not None:
                 widget.setVisible(use_loaded and not fallback_visible)
         self._refresh_label_table_fallback()
+        self._refresh_pairing_badges()
         if hasattr(self, "match_check_card"):
             self.match_check_card.setVisible(False)
         if hasattr(self, "internal_event_card"):
@@ -2224,10 +2225,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         layout.addWidget(selector, stretch=3)
 
-        matched = bool(selector.currentData())
-        badge = QLabel("Matched" if matched else "Needs label")
+        badge_text, badge_state = self._pairing_badge_text(selector)
+        badge = QLabel(badge_text)
         badge.setObjectName("DataImportPairingBadge")
-        badge.setProperty("pairingState", "matched" if matched else "review")
+        badge.setProperty("pairingState", badge_state)
         badge.setFixedWidth(92)
         badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._eeg_label_status_widgets[eeg_file] = badge
@@ -2321,9 +2322,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
             badge = self._eeg_label_status_widgets.get(eeg_file)
             if badge is None:
                 continue
-            matched = bool(selector.currentData())
-            badge.setText("Matched" if matched else "Needs label")
-            badge.setProperty("pairingState", "matched" if matched else "review")
+            badge_text, badge_state = self._pairing_badge_text(selector)
+            badge.setText(badge_text)
+            badge.setProperty("pairingState", badge_state)
             style = badge.style()
             if style is not None:
                 style.unpolish(badge)
@@ -2331,6 +2332,31 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if hasattr(self, "pairing_status_label"):
             self.pairing_status_label.setText(self._pairing_summary_text())
         self._refresh_label_rule_status()
+
+    def _refresh_pairing_badges(self) -> None:
+        for eeg_file, selector in getattr(self, "_eeg_label_widgets", {}).items():
+            badge = self._eeg_label_status_widgets.get(eeg_file)
+            if badge is None:
+                continue
+            badge_text, badge_state = self._pairing_badge_text(selector)
+            badge.setText(badge_text)
+            badge.setProperty("pairingState", badge_state)
+            style = badge.style()
+            if style is not None:
+                style.unpolish(badge)
+                style.polish(badge)
+
+    def _pairing_badge_text(self, selector: QComboBox) -> tuple[str, str]:
+        if not bool(selector.currentData()):
+            return "Needs label", "review"
+        fallback_reason = (
+            self._label_table_fallback_reason()
+            if hasattr(self, "rule_label_field_combo")
+            else ""
+        )
+        if fallback_reason:
+            return "Needs setup", "review"
+        return "Paired", "matched"
 
     def _pairing_summary_text(self) -> str:
         if not self._label_carrier_items:
@@ -2578,6 +2604,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self.label_table_fallback_reason_label.setText(
                 self._label_table_fallback_reason()
             )
+        self._refresh_pairing_badges()
 
     def _should_show_label_table_fallback(self) -> bool:
         if not hasattr(self, "label_source_mode_combo"):
@@ -6544,7 +6571,16 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if not hasattr(self, "label_source_mode_combo"):
             return ""
         mode = self._label_source_mode()
-        if mode == "internal_events" and self._label_carrier_items:
+        event_roles = self.preview.get("event_roles")
+        has_internal_evidence = (
+            bool(self._selected_eeg_file_names())
+            or bool(self._internal_event_preview_payload())
+            or (
+                isinstance(event_roles, dict)
+                and "internal_events" in {str(key) for key in event_roles}
+            )
+        )
+        if mode == "internal_events" and has_internal_evidence:
             return "embedded_events"
         return ""
 
@@ -6565,7 +6601,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             file_key = str(original.get("file") or tree_item.text(0)).strip()
             if not file_key:
                 continue
-            changed: dict[str, str] = {}
+            changed: dict[str, Any] = {}
             for column, field in enumerate(fields, start=1):
                 current = tree_item.text(column).strip()
                 original_value = self._field_value(original.get(field))
@@ -6718,7 +6754,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 continue
             if self._is_label_carrier_excluded(carrier_key):
                 continue
-            changed: dict[str, str] = {}
+            changed: dict[str, Any] = {}
             for choice_key, original_key, column in fields:
                 current = self._label_carrier_choice_text(
                     choice_key,

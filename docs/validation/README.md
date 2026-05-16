@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-05-14`
+最後更新：`2026-05-16`
 
 這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
@@ -40,6 +40,37 @@ current truth 以這些文件為準：
 - [planning/roadmap.md](../planning/roadmap.md)
 - [architecture/README.md](../architecture/README.md)
 - [validation/README.md](README.md)
+
+## 2026-05-16 Manual-Test Integration Preflight
+
+Manual-test branch `integrate/all-branches-manual-test` was refreshed after a
+multi-agent read-only audit found capability, label-placement, MCP, and UI status
+risks. The follow-up patch fixed preprocessing-aware raw-load blockers, destructive
+command confirmation metadata, event-code versus timestamp label placement, internal
+EEG label choice persistence, conversion-fallback pairing status, MCP HTTP conflict
+confirmation metadata, and dashboard typecheck failures.
+
+Validation run from `/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`:
+
+- `poetry run python scripts/dev/update_quality_dashboard.py`: `PASS`.
+- `poetry run ruff check .`: `PASS`.
+- `poetry run basedpyright`: `PASS`.
+- `poetry run mkdocs build --strict`: `PASS`.
+- `poetry run python tests/architecture_compliance.py`: `PASS`.
+- Data Import / Epoch / UI focused suite: `178 passed`.
+- ApplicationService / automation / agent surface suite: `153 passed`.
+- MCP unit and integration suite: `18 passed`.
+- `poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q`:
+  `21 passed, 10 skipped` because optional public fixtures are not present.
+- Pipeline smoke:
+  `tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics`
+  and
+  `tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet`:
+  `2 passed`.
+
+This supports a runnable automated preflight for hand testing. It still does not
+prove human Windows click-through acceptance, full BIDS validation, every public EEG
+format fixture, or final UI approval for Match Labels / Review and Import.
 
 ## 2026-05-14 Artifact Live-Capture Deduplication Checkpoint
 

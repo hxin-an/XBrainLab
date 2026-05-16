@@ -27,6 +27,7 @@ class InterpretationPreview:
     confirmation_items: list[str] = dc_field(default_factory=list)
     blocked_reasons: list[str] = dc_field(default_factory=list)
     downstream_impacts: list[str] = dc_field(default_factory=list)
+    bids: dict[str, Any] = dc_field(default_factory=dict)
     event_roles: dict[str, str] = dc_field(default_factory=dict)
     class_map: dict[str, str] = dc_field(default_factory=dict)
     class_map_source: str = ""
@@ -99,6 +100,7 @@ def build_interpretation_preview(
             "invalidate downstream preprocessing, epochs, datasets, training, "
             "and saliency for the current session.",
         ],
+        bids=dict(getattr(candidate, "bids", {}) or {}),
         event_roles=dict(candidate.event_roles),
         class_map=dict(candidate.class_map),
         class_map_source=str(getattr(candidate, "class_map_source", "") or ""),

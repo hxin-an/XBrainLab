@@ -163,6 +163,17 @@ _CHOICES_SCHEMA: dict[str, Any] = {
                 "and target-file choices keyed by carrier path or file name."
             ),
         },
+        "run_event_mappings": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "object",
+                "additionalProperties": {"type": "string"},
+            },
+            "description": (
+                "Per-run event-code meaning overrides keyed by EEG file path or "
+                "run identifier."
+            ),
+        },
         "event_roles": {
             **_STRING_MAP_SCHEMA,
             "description": "Map event field names to user-confirmed roles.",

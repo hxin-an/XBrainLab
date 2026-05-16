@@ -265,10 +265,7 @@ class EventLoader:
             self.raw.get_mne().set_annotations(self.annotations)
 
             try:
-                events, event_id = mne.events_from_annotations(
-                    self.raw.get_mne(),
-                    event_id=None,
-                )
+                events, event_id = mne.events_from_annotations(self.raw.get_mne())
                 self.events = events
                 self.event_id = event_id
             except Exception as e:

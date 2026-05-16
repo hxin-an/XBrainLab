@@ -300,10 +300,10 @@ def _training_ready_service(source: Path) -> ApplicationService:
     cast(Any, service.study).training_option = object()
     running = {"value": False}
 
-    def start_training() -> None:
+    def start_training(*_args: Any, **_kwargs: Any) -> None:
         running["value"] = True
 
-    def stop_training() -> None:
+    def stop_training(*_args: Any, **_kwargs: Any) -> None:
         running["value"] = False
 
     def is_training() -> bool:

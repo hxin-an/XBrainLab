@@ -919,7 +919,9 @@ def test_apply_interpretation_applies_reviewed_event_code_label_carrier(
                         "label_field": "condition",
                         "anchor": "event_code",
                         "placement_method": "event_code",
-                        "time_model": "trial_order",
+                        # Event-code placement must not fall into the timestamp path
+                        # when a label table also carries timing-style metadata.
+                        "time_model": "seconds",
                         "granularity": "trial",
                     }
                 },
@@ -1301,6 +1303,24 @@ def test_preprocess_capability_requires_raw_data_not_existing_preprocessed_copy(
         "Preprocess data before creating epochs"
         in (policy.get(CommandName.CREATE_EPOCH).reasons[0])
     )
+
+
+def test_load_data_blocks_after_preprocessing_operations():
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    raw.get_preprocess_history.return_value = ["bandpass"]
+    service.study.data_manager.loaded_data_list = [raw]
+    service.study.data_manager.preprocessed_data_list = [raw]
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+
+    policy = service.get_capabilities()
+    result = service.execute(LoadDataCommand(paths=["/tmp/new_file.gdf"]))
+
+    assert policy.get(CommandName.LOAD_DATA).available is False
+    assert "Reset preprocessing" in policy.get(CommandName.LOAD_DATA).reasons[0]
+    assert result.failed is True
+    assert result.error_type == ErrorType.PRECONDITION
+    service.dataset.import_files.assert_not_called()
 
 
 def test_evaluate_command_returns_typed_service_backed_summary():
@@ -1920,6 +1940,28 @@ def test_new_session_requires_confirmation_and_clears_single_backend_session():
     assert confirmed.ok is True
     assert confirmed.command_name == "new_session"
     assert confirmed.state.raw.loaded is False
+
+
+def test_destructive_capabilities_expose_confirmation_boundary_metadata():
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    service.study.data_manager.loaded_data_list = [raw]
+    service.study.data_manager.preprocessed_data_list = [raw]
+    cast(Any, service.study).datasets = [object()]
+    cast(Any, service.study).trainer = object()
+
+    policy = service.get_capabilities()
+
+    for command_name in (
+        CommandName.RESET_SESSION,
+        CommandName.NEW_SESSION,
+        CommandName.CLEAR_DATASETS,
+    ):
+        capability = policy.get(command_name)
+        assert capability.confirmation_required is True
+        assert capability.requires_confirmation is True
+        assert capability.can_auto_execute is False
+        assert capability.decision_boundary
 
 
 def test_set_montage_preprocess_operation_requires_ui_confirmation():

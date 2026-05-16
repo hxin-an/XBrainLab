@@ -366,10 +366,9 @@ class MCPHTTPJobRegistry:
             "verification": {
                 "schema_valid": True,
                 "capability_enabled": False,
-                "confirmation_required": getattr(
-                    fresh_capability,
-                    "confirmation_required",
-                    False,
+                "confirmation_required": bool(
+                    getattr(fresh_capability, "confirmation_required", False)
+                    or getattr(fresh_capability, "requires_confirmation", False)
                 ),
                 "long_running_job_created": False,
                 "resource_locked": True,

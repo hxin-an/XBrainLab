@@ -170,6 +170,11 @@ class DataInterpretationCommandService:
                 f" Reviewed labels were not applied: "
                 f"{label_apply.get('reason', 'unknown error')}."
             )
+        elif label_apply.get("status") == "skipped" and candidate.label_carrier_plan:
+            label_message = (
+                f" Reviewed labels still need setup: "
+                f"{label_apply.get('reason', 'manual review required')}."
+            )
         return (
             f"Applied interpretation and loaded {count} file(s).{label_message}",
             {

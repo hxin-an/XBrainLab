@@ -158,6 +158,10 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
             "Reset the session before loading new raw data after epoching, "
             "dataset generation, or trainer creation."
         )
+    if _has_preprocess_operations(state):
+        load_reasons.append(
+            "Reset preprocessing before loading new raw data into this session."
+        )
     capabilities[CommandName.LOAD_DATA.value] = _cap(
         CommandName.LOAD_DATA,
         load_reasons,
@@ -242,12 +246,18 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         clear_dataset_reasons.append(
             "No generated datasets or training plans to clear.",
         )
+    clear_dataset_confirmation = not clear_dataset_reasons
     capabilities[CommandName.CLEAR_DATASETS.value] = CommandCapability(
         command_name=CommandName.CLEAR_DATASETS.value,
         enabled=not clear_dataset_reasons,
         reasons=clear_dataset_reasons,
         destructive=True,
-        confirmation_required=not clear_dataset_reasons,
+        confirmation_required=clear_dataset_confirmation,
+        requires_confirmation=clear_dataset_confirmation,
+        can_auto_execute=not clear_dataset_confirmation,
+        decision_boundary="destructive_dataset_cleanup"
+        if clear_dataset_confirmation
+        else None,
     )
 
     configure_reasons = []
@@ -297,12 +307,18 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         clear_history_reasons.append("Stop training before clearing history.")
     if not active_training.has_trainer or state.evaluation.total_plans == 0:
         clear_history_reasons.append("No training history is available to clear.")
+    clear_history_confirmation = not clear_history_reasons
     capabilities[CommandName.CLEAR_TRAINING_HISTORY.value] = CommandCapability(
         command_name=CommandName.CLEAR_TRAINING_HISTORY.value,
         enabled=not clear_history_reasons,
         reasons=clear_history_reasons,
         destructive=True,
-        confirmation_required=not clear_history_reasons,
+        confirmation_required=clear_history_confirmation,
+        requires_confirmation=clear_history_confirmation,
+        can_auto_execute=not clear_history_confirmation,
+        decision_boundary="destructive_training_history_cleanup"
+        if clear_history_confirmation
+        else None,
     )
 
     evaluate_reasons = []
@@ -360,33 +376,50 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
     reset_preprocess_reasons = []
     if not active_dataset.has_raw_data:
         reset_preprocess_reasons.append("Load raw data before resetting preprocessing.")
+    reset_preprocess_confirmation = not reset_preprocess_reasons and (
+        bool(state.preprocessed.operations)
+        or active_dataset.has_epoch_data
+        or active_dataset.has_datasets
+        or active_training.has_trainer
+    )
     capabilities[CommandName.RESET_PREPROCESS.value] = CommandCapability(
         command_name=CommandName.RESET_PREPROCESS.value,
         enabled=not reset_preprocess_reasons,
         reasons=reset_preprocess_reasons,
         destructive=True,
-        confirmation_required=not reset_preprocess_reasons
-        and (
-            bool(state.preprocessed.operations)
-            or active_dataset.has_epoch_data
-            or active_dataset.has_datasets
-            or active_training.has_trainer
-        ),
+        confirmation_required=reset_preprocess_confirmation,
+        requires_confirmation=reset_preprocess_confirmation,
+        can_auto_execute=not reset_preprocess_confirmation,
+        decision_boundary="destructive_preprocess_reset"
+        if reset_preprocess_confirmation
+        else None,
     )
 
+    reset_session_confirmation = has_state
     capabilities[CommandName.RESET_SESSION.value] = CommandCapability(
         command_name=CommandName.RESET_SESSION.value,
         enabled=True,
         reasons=[],
         destructive=True,
-        confirmation_required=has_state,
+        confirmation_required=reset_session_confirmation,
+        requires_confirmation=reset_session_confirmation,
+        can_auto_execute=not reset_session_confirmation,
+        decision_boundary="destructive_session_reset"
+        if reset_session_confirmation
+        else None,
     )
+    new_session_confirmation = has_state
     capabilities[CommandName.NEW_SESSION.value] = CommandCapability(
         command_name=CommandName.NEW_SESSION.value,
         enabled=True,
         reasons=[],
         destructive=True,
-        confirmation_required=has_state,
+        confirmation_required=new_session_confirmation,
+        requires_confirmation=new_session_confirmation,
+        can_auto_execute=not new_session_confirmation,
+        decision_boundary="destructive_new_session"
+        if new_session_confirmation
+        else None,
     )
 
     return CapabilityPolicy(capabilities)
@@ -409,6 +442,7 @@ def _cap(
         enabled=not reasons,
         reasons=reasons,
         long_running=long_running,
+        confirmation_required=requires_confirmation,
         can_auto_execute=can_auto_execute,
         requires_confirmation=requires_confirmation,
         decision_boundary=decision_boundary,
@@ -430,6 +464,10 @@ def _raw_edit_blockers(state: ApplicationStateSnapshot) -> list[str]:
     active_dataset = state.active_dataset
     active_training = state.active_training
     reasons = []
+    if _has_preprocess_operations(state):
+        reasons.append(
+            "Reset preprocessing before changing raw files, labels, or metadata."
+        )
     if active_dataset.has_epoch_data or active_dataset.has_datasets:
         reasons.append(
             "Reset the session before changing raw files, labels, or metadata "
@@ -446,6 +484,10 @@ def _raw_edit_blockers(state: ApplicationStateSnapshot) -> list[str]:
             "raw files, labels, or metadata."
         )
     return reasons
+
+
+def _has_preprocess_operations(state: ApplicationStateSnapshot) -> bool:
+    return bool(state.preprocessed.operations)
 
 
 def _supervised_label_blockers(state: ApplicationStateSnapshot) -> list[str]:
