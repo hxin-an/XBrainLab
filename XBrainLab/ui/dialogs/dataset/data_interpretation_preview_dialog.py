@@ -5189,6 +5189,29 @@ class DataInterpretationPreviewDialog(BaseDialog):
             for item in self._extra_label_sources
         )
 
+    def _has_loaded_source_covering(self, source: str) -> bool:
+        source_key = self._normalized_label_source_key(source)
+        if not source_key:
+            return False
+        source_parent_key = (
+            self._normalized_label_source_key(Path(source).parent.as_posix())
+            if self._looks_like_file(source)
+            else ""
+        )
+        for existing_source in self._extra_label_sources:
+            existing_key = self._normalized_label_source_key(existing_source)
+            if not existing_key:
+                continue
+            if existing_key == source_key:
+                return True
+            if (
+                source_parent_key
+                and not self._looks_like_file(existing_source)
+                and existing_key == source_parent_key
+            ):
+                return True
+        return False
+
     def _restore_excluded_label_source(self, source: str) -> bool:
         if not self._excluded_label_carriers:
             return False
@@ -5318,7 +5341,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 continue
             if self._restore_excluded_label_source(text):
                 initial_source = self._initial_label_source_for(text)
-                if initial_source and not self._has_extra_label_source(initial_source):
+                if self._has_loaded_source_covering(text):
+                    pass
+                elif initial_source and not self._has_extra_label_source(
+                    initial_source
+                ):
                     self._extra_label_sources.append(initial_source)
                 elif not self._restored_source_is_auto_detected(
                     text

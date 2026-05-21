@@ -13,6 +13,7 @@ def mock_widget():
     # Mock PyQtGraph items
     widget.plot_time = MagicMock()
     widget.plot_freq = MagicMock()
+    widget.clear_plot_data = MagicMock()
 
     # Mock Crosshair items
     widget.v_line_time = MagicMock()
@@ -75,12 +76,7 @@ def test_plot_sample_data_time_domain(mock_widget, mock_controller):
     ) as MockWorker:
         plotter.plot_sample_data()
 
-        # Check clears
-        mock_widget.plot_time.clear.assert_called_once()
-        mock_widget.plot_freq.clear.assert_called_once()
-
-        # Check re-adding crosshairs
-        mock_widget.plot_time.addItem.assert_called()
+        mock_widget.clear_plot_data.assert_called_once()
 
         # Check plot called
         assert mock_widget.plot_time.plot.call_count >= 1
@@ -149,8 +145,8 @@ def test_plot_no_data(mock_widget, mock_controller):
 
     plotter.plot_sample_data()
 
-    # Should clear but not plot
-    mock_widget.plot_time.clear.assert_called_once()
+    # Should clear transient data but not plot
+    mock_widget.clear_plot_data.assert_called_once()
     mock_widget.plot_time.plot.assert_not_called()
 
 

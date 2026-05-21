@@ -188,18 +188,8 @@ class PreprocessPlotter:
         self._plot_generation += 1
         plot_generation = self._plot_generation
 
-        # 1. Clear previous plots
-        self.widget.plot_time.clear()
-        self.widget.plot_freq.clear()
-
-        # Re-add crosshair items (clearing removes them)
-        self.widget.plot_time.addItem(self.widget.v_line_time)
-        self.widget.plot_time.addItem(self.widget.h_line_time)
-        self.widget.plot_time.addItem(self.widget.label_time)
-
-        self.widget.plot_freq.addItem(self.widget.v_line_freq)
-        self.widget.plot_freq.addItem(self.widget.h_line_freq)
-        self.widget.plot_freq.addItem(self.widget.label_freq)
+        # 1. Clear previous data without deleting persistent crosshair items.
+        self.widget.clear_plot_data()
 
         orig_list = original_data_list or []
         if data_list is None:

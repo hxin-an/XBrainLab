@@ -36,6 +36,20 @@ class TestPreviewWidgetMethods:
     def test_show_locked_message(self, preview):
         preview.show_locked_message("Data locked")
 
+    def test_clear_plot_data_keeps_crosshair_items(self, preview):
+        import pyqtgraph as pg
+
+        curve = pg.PlotDataItem([0, 1], [0, 1], name="Current")
+        preview.plot_time.addItem(curve)
+
+        preview.clear_plot_data()
+
+        time_items = preview.plot_time.getPlotItem().items
+        assert curve not in time_items
+        assert preview.v_line_time in time_items
+        assert preview.h_line_time in time_items
+        assert preview.label_time in time_items
+
     def test_on_plot_param_changed(self, preview):
         preview._on_plot_param_changed()
 

@@ -375,16 +375,14 @@ class PreviewWidget(QWidget):
     def reset_view(self):
         """Clear both plots and show a *No Data* title."""
         self.plot_timer.stop()
-        self.plot_time.clear()
-        self.plot_freq.clear()
+        self.clear_plot_data()
         self.plot_time.setTitle("No Data")
         self.plot_freq.setTitle("No Data")
 
     def show_locked_message(self, message: str):
         """Display a locked/status message on the plots."""
         self.plot_timer.stop()
-        self.plot_time.clear()
-        self.plot_freq.clear()
+        self.clear_plot_data()
 
         # Use simple titles for now as it's most robust
         self.plot_time.setTitle(message)
@@ -393,3 +391,32 @@ class PreviewWidget(QWidget):
         # Disable interaction cues if needed, or just clear content
         # Adding a centered text item would be nicer but requires ViewBox mapping
         # Title is sufficient for "Data is Epoched" status.
+
+    def clear_plot_data(self):
+        """Clear transient plot data without deleting persistent crosshair items."""
+        self._clear_plot_items(
+            self.plot_time,
+            keep={self.v_line_time, self.h_line_time, self.label_time},
+        )
+        self._clear_plot_items(
+            self.plot_freq,
+            keep={self.v_line_freq, self.h_line_freq, self.label_freq},
+        )
+        self._ensure_plot_item(self.plot_time, self.v_line_time)
+        self._ensure_plot_item(self.plot_time, self.h_line_time)
+        self._ensure_plot_item(self.plot_time, self.label_time)
+        self._ensure_plot_item(self.plot_freq, self.v_line_freq)
+        self._ensure_plot_item(self.plot_freq, self.h_line_freq)
+        self._ensure_plot_item(self.plot_freq, self.label_freq)
+
+    @staticmethod
+    def _clear_plot_items(plot, *, keep: set[object]) -> None:
+        for item in list(plot.getPlotItem().items):
+            if item in keep:
+                continue
+            plot.removeItem(item)
+
+    @staticmethod
+    def _ensure_plot_item(plot, item) -> None:
+        if item not in plot.getPlotItem().items:
+            plot.addItem(item, ignoreBounds=True)

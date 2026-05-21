@@ -50,17 +50,38 @@ when the same known label file or folder is loaded again, refreshes the Match La
 state, and returns the wizard to the outer scan loop before entering Match Labels
 when a brand-new label source requires rescanning.
 
+A follow-up manual test found that removing one label file from an already-loaded
+label folder, then loading the same file back, could show the carrier twice because
+the file was also added as a second source. The restore path now treats files already
+covered by a loaded folder as the same source: it restores the carrier but does not
+add a duplicate file-level label source.
+
+The same validation pass exposed a reproducible UI-suite crash in the preprocessing
+preview: `PlotWidget.clear()` deleted persistent PyQtGraph crosshair/title items and
+later resize events touched deleted Qt objects. Preprocess preview clearing now removes
+transient plot data only and keeps persistent crosshair items alive.
+
 Focused validation:
 
 ```bash
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
-  tests/unit/ui/test_ui_misc.py -q
-# 208 passed
+  tests/unit/ui/test_ui_misc.py \
+  tests/unit/ui/dialogs/test_preview_widget.py \
+  tests/unit/ui/preprocess/test_preprocess_plotter.py \
+  tests/unit/ui/preprocess/test_preprocess_panel.py -q
+# 269 passed
+
+poetry run python scripts/dev/run_tests.py ui
+# 1156 passed
 
 poetry run ruff check \
   XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py \
-  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py
+  XBrainLab/ui/panels/preprocess/preview_widget.py \
+  XBrainLab/ui/panels/preprocess/plotters/preprocess_plotter.py \
+  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
+  tests/unit/ui/dialogs/test_preview_widget.py \
+  tests/unit/ui/preprocess/test_preprocess_plotter.py
 # All checks passed!
 
 poetry run basedpyright
