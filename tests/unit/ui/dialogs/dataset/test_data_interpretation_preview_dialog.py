@@ -4,6 +4,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDialog,
     QFrame,
     QGroupBox,
     QHeaderView,
@@ -1617,6 +1618,61 @@ def test_load_labels_step_can_remove_auto_detected_label_carrier(qtbot):
     assert dialog.label_sources_label.text() == "Removed label file."
 
 
+def test_load_labels_step_can_restore_removed_auto_detected_label_carrier(
+    qtbot,
+    monkeypatch,
+):
+    auto_label = "/tmp/source/labels/A01T.mat"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+            "label_carriers": [auto_label],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+            "label_carrier_preview": [
+                {
+                    "path": auto_label,
+                    "name": "A01T.mat",
+                    "source_kind": "auto",
+                    "source_location": "/tmp/source/labels",
+                    "selected_label_field": "classlabel",
+                    "selected_anchor": "768",
+                    "placement_method": "eeg_event_order",
+                }
+            ],
+        },
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Load Labels")
+    qtbot.wait(0)
+
+    remove_buttons = [
+        button
+        for button in dialog.findChildren(QPushButton)
+        if button.text() == "Remove"
+    ]
+    assert len(remove_buttons) == 1
+    remove_buttons[0].click()
+    qtbot.wait(0)
+    assert "A01T.mat" not in _visible_step_text(dialog, "Load Labels")
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog.QFileDialog.getOpenFileNames",
+        lambda *_args, **_kwargs: ([auto_label], ""),
+    )
+    dialog.add_label_file_btn.click()
+    qtbot.wait(0)
+
+    assert "excluded_label_carriers" not in dialog.get_result()["choices"]
+    _show_step(dialog, "Match Labels")
+    assert "A01T.mat" in _tree_text(dialog.label_carrier_tree)
+
+
 def test_load_labels_step_keeps_remove_for_loaded_source_after_rescan(qtbot):
     label_source = "/tmp/external-labels"
     label_file = "/tmp/external-labels/A01T.mat"
@@ -1666,6 +1722,36 @@ def test_load_labels_step_keeps_remove_for_loaded_source_after_rescan(qtbot):
     assert "A01T.mat" not in _visible_step_text(dialog, "Load Labels")
     _show_step(dialog, "Match Labels")
     assert "A01T.mat" not in _tree_text(dialog.label_carrier_tree)
+
+
+def test_load_labels_next_requests_rescan_for_new_label_source(qtbot, monkeypatch):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+        },
+        preview={"summary": "Found 1 EEG file(s)."},
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Load Labels")
+    qtbot.wait(0)
+    monkeypatch.setattr(
+        "XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog.QFileDialog.getExistingDirectory",
+        lambda *_args, **_kwargs: "/tmp/external-labels",
+    )
+
+    dialog.add_label_folder_btn.click()
+    qtbot.wait(0)
+    dialog.next_button.click()
+    qtbot.wait(0)
+
+    assert dialog.result() == QDialog.DialogCode.Accepted
+    result = dialog.get_result()
+    assert result["label_sources_changed"] is True
+    assert result["label_sources"] == ["/tmp/external-labels"]
 
 
 def test_data_interpretation_preview_dialog_rejects_duplicate_label_sources(
@@ -1740,7 +1826,7 @@ def test_data_interpretation_preview_dialog_rejects_duplicate_label_folder(
     assert "Already included" in dialog.label_sources_label.text()
 
 
-def test_data_interpretation_preview_dialog_product_flow_adds_label_folder_then_reviews(
+def test_data_interpretation_preview_dialog_add_label_folder_requests_rescan(
     qtbot,
     monkeypatch,
 ):
@@ -1804,34 +1890,11 @@ def test_data_interpretation_preview_dialog_product_flow_adds_label_folder_then_
 
     dialog.next_button.click()
     qtbot.wait(0)
-    assert _visible_group_titles(dialog) == ["Review Metadata"]
-    metadata_item = dialog.file_tree.topLevelItem(0)
-    assert metadata_item is not None
-    metadata_item.setText(2, "session-01")
-
-    dialog.next_button.click()
-    qtbot.wait(0)
-    assert _visible_group_titles(dialog) == ["Match Labels"]
-    assert dialog.label_carrier_tree.topLevelItemCount() == 1
-
-    dialog.next_button.click()
-    qtbot.wait(0)
-    ok_button = dialog.apply_button
-    assert _visible_group_titles(dialog) == ["Review and Import"]
-    assert ok_button.isVisible()
-    assert ok_button.text() == "Confirm and Apply"
-    review_text = _group_text(dialog, "Review and Import")
-    assert "Review Metadata" in review_text
-    assert "Confirm session metadata." in review_text
-    assert "Session labels affect split and traceability." in review_text
-    assert "Go to Review Metadata" in review_text
+    assert dialog.result() == QDialog.DialogCode.Accepted
 
     result = dialog.get_result()
     assert result["label_sources"] == ["/tmp/external-labels"]
     assert result["label_sources_changed"] is True
-    assert result["choices"]["metadata_overrides"] == {
-        "sub-01_task-mi_raw.fif": {"session": "session-01"}
-    }
 
 
 def test_data_interpretation_preview_dialog_skip_labels_marks_choice(qtbot):

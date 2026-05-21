@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-05-16`
+最後更新：`2026-05-21`
 
 這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
@@ -40,6 +40,32 @@ current truth 以這些文件為準：
 - [planning/roadmap.md](../planning/roadmap.md)
 - [architecture/README.md](../architecture/README.md)
 - [validation/README.md](README.md)
+
+## 2026-05-21 Load Labels Restore Regression
+
+Manual testing found that removing a label file in Load Labels and loading it back
+could leave Match Labels stale: the Load Labels page showed the source, while Match
+Labels still filtered the carrier as removed. The fix restores excluded carriers
+when the same known label file or folder is loaded again, refreshes the Match Labels
+state, and returns the wizard to the outer scan loop before entering Match Labels
+when a brand-new label source requires rescanning.
+
+Focused validation:
+
+```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
+  tests/unit/ui/test_ui_misc.py -q
+# 208 passed
+
+poetry run ruff check \
+  XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py \
+  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py
+# All checks passed!
+
+poetry run basedpyright
+# 0 errors, 0 warnings, 0 notes
+```
 
 ## 2026-05-16 Manual-Test Integration Preflight
 

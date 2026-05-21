@@ -4382,7 +4382,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 widget.hide()
                 widget.deleteLater()
 
-    def _label_carrier_preview_rows(self) -> list[dict[str, Any]]:
+    def _label_carrier_preview_rows(
+        self,
+        *,
+        include_excluded: bool = False,
+    ) -> list[dict[str, Any]]:
         carriers = self.preview.get("label_carrier_preview") or []
         if not isinstance(carriers, list) or not carriers:
             carriers = [
@@ -4400,7 +4404,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
             if not isinstance(carrier, dict):
                 continue
             carrier_path = str(carrier.get("path") or "").strip()
-            if carrier_path and self._is_label_carrier_excluded(carrier_path):
+            if (
+                carrier_path
+                and not include_excluded
+                and self._is_label_carrier_excluded(carrier_path)
+            ):
                 continue
             result.append(carrier)
         return result
@@ -4506,6 +4514,17 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if hasattr(self, "pairing_status_label"):
             self._refresh_pairing_status()
         self._refresh_label_source_mode()
+
+    def _select_loaded_label_source_if_available(self) -> None:
+        if (
+            not hasattr(self, "label_source_mode_combo")
+            or not self._label_carrier_items
+        ):
+            return
+        self._set_combo_current_data(
+            self.label_source_mode_combo,
+            "loaded_label_files",
+        )
 
     @staticmethod
     def _empty_state(text: str) -> QLabel:
@@ -4894,6 +4913,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         """
 
     def _go_next_step(self) -> None:
+        if self._label_sources_need_rescan_before_matching():
+            self.accept()
+            return
         self._go_to_step(self.step_stack.currentIndex() + 1)
 
     def _go_previous_step(self) -> None:
@@ -5140,6 +5162,78 @@ class DataInterpretationPreviewDialog(BaseDialog):
             for item in self._excluded_label_carriers
         )
 
+    def _label_sources_need_rescan_before_matching(self) -> bool:
+        if not hasattr(self, "step_stack"):
+            return False
+        load_labels_index = self._step_titles.index("Load Labels")
+        return (
+            self.step_stack.currentIndex() == load_labels_index
+            and self._label_sources_changed()
+        )
+
+    def _initial_label_source_for(self, source: str) -> str:
+        source_key = self._normalized_label_source_key(source)
+        if not source_key:
+            return ""
+        for initial_source in self._initial_label_sources:
+            if self._normalized_label_source_key(initial_source) == source_key:
+                return initial_source
+        return ""
+
+    def _has_extra_label_source(self, source: str) -> bool:
+        source_key = self._normalized_label_source_key(source)
+        if not source_key:
+            return False
+        return any(
+            self._normalized_label_source_key(item) == source_key
+            for item in self._extra_label_sources
+        )
+
+    def _restore_excluded_label_source(self, source: str) -> bool:
+        if not self._excluded_label_carriers:
+            return False
+        source_key = self._normalized_label_source_key(source)
+        if not source_key:
+            return False
+        restored_keys: set[str] = set()
+        if self._looks_like_file(source):
+            restored_keys.add(source_key)
+        for carrier in self._label_carrier_preview_rows(include_excluded=True):
+            carrier_path = str(carrier.get("path") or "").strip()
+            if carrier_path and self._carrier_belongs_to_source(carrier, source):
+                restored_keys.add(self._normalized_label_source_key(carrier_path))
+        if not restored_keys:
+            return False
+        before = list(self._excluded_label_carriers)
+        self._excluded_label_carriers = [
+            item
+            for item in self._excluded_label_carriers
+            if self._normalized_label_source_key(item) not in restored_keys
+        ]
+        return self._excluded_label_carriers != before
+
+    def _restored_source_is_auto_detected(self, source: str) -> bool:
+        matching_carriers = [
+            carrier
+            for carrier in self._label_carrier_preview_rows(include_excluded=True)
+            if self._carrier_belongs_to_source(carrier, source)
+        ]
+        if not matching_carriers:
+            return False
+        carrier_sources = self.scan_result.get("label_carrier_sources")
+        if not isinstance(carrier_sources, dict):
+            carrier_sources = {}
+        for carrier in matching_carriers:
+            carrier_path = str(carrier.get("path") or "").strip()
+            source_kind = str(
+                carrier.get("source_kind")
+                or carrier_sources.get(carrier_path)
+                or "auto",
+            ).strip()
+            if source_kind != "auto":
+                return False
+        return True
+
     def _carrier_belongs_to_source(
         self,
         carrier: dict[str, Any],
@@ -5217,9 +5311,21 @@ class DataInterpretationPreviewDialog(BaseDialog):
     def _add_label_sources(self, paths: list[str]) -> None:
         changed = False
         skipped_duplicate = False
+        restored_source = False
         for path in paths:
             text = str(path).strip()
             if not text:
+                continue
+            if self._restore_excluded_label_source(text):
+                initial_source = self._initial_label_source_for(text)
+                if initial_source and not self._has_extra_label_source(initial_source):
+                    self._extra_label_sources.append(initial_source)
+                elif not self._restored_source_is_auto_detected(
+                    text
+                ) and not self._has_extra_label_source(text):
+                    self._extra_label_sources.append(text)
+                restored_source = True
+                changed = True
                 continue
             if self._is_duplicate_label_source(text):
                 skipped_duplicate = True
@@ -5229,10 +5335,16 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if changed:
             self._skip_labels = False
             self._refresh_label_source_rows()
+            self._refresh_label_matching_after_source_change()
+            self._select_loaded_label_source_if_available()
             self.label_sources_label.setText(
-                "Already included sources were skipped." if skipped_duplicate else ""
+                "Label source restored."
+                if restored_source
+                else "Already included sources were skipped."
+                if skipped_duplicate
+                else ""
             )
-            self.label_sources_label.setVisible(skipped_duplicate)
+            self.label_sources_label.setVisible(restored_source or skipped_duplicate)
         elif skipped_duplicate:
             self.label_sources_label.setText(
                 "Already included. No new label source added."
