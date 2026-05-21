@@ -1666,11 +1666,49 @@ def test_load_labels_step_can_restore_removed_auto_detected_label_carrier(
         lambda *_args, **_kwargs: ([auto_label], ""),
     )
     dialog.add_label_file_btn.click()
-    qtbot.wait(0)
+    qtbot.waitUntil(
+        lambda: "A01T.mat" in _visible_step_text(dialog, "Load Labels"),
+        timeout=1000,
+    )
 
     assert "excluded_label_carriers" not in dialog.get_result()["choices"]
+    visible_lines = _visible_step_text(dialog, "Load Labels").splitlines()
+    assert visible_lines.count("A01T.mat") == 1
     _show_step(dialog, "Match Labels")
     assert "A01T.mat" in _tree_text(dialog.label_carrier_tree)
+
+
+def test_load_labels_step_hides_file_source_when_carrier_row_exists(qtbot):
+    label_file = "/tmp/external-labels/A01T.mat"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+            "label_sources": [label_file],
+            "label_carriers": [label_file],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+            "label_carrier_preview": [
+                {
+                    "path": label_file,
+                    "name": "A01T.mat",
+                    "source_kind": "user_added",
+                    "source_location": label_file,
+                }
+            ],
+        },
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Load Labels")
+    qtbot.wait(0)
+
+    visible_lines = _visible_step_text(dialog, "Load Labels").splitlines()
+    assert visible_lines.count("A01T.mat") == 1
+    assert not any(line.startswith("File path:") for line in visible_lines)
 
 
 def test_load_labels_step_keeps_remove_for_loaded_source_after_rescan(qtbot):

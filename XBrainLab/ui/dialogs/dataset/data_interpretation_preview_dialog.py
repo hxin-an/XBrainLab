@@ -4358,6 +4358,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
             )
 
         for source in self._extra_label_sources:
+            if self._source_has_visible_label_carrier(source):
+                continue
             layout.addWidget(
                 self._source_row(
                     *self._user_label_source_row(source),
@@ -4412,6 +4414,28 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 continue
             result.append(carrier)
         return result
+
+    def _source_has_visible_label_carrier(self, source: str) -> bool:
+        if not self._looks_like_file(source):
+            return False
+        source_key = self._normalized_label_source_key(source)
+        if not source_key:
+            return False
+        for carrier in self._label_carrier_preview_rows():
+            carrier_path = str(carrier.get("path") or "").strip()
+            if (
+                carrier_path
+                and self._normalized_label_source_key(carrier_path) == source_key
+            ):
+                return True
+            source_location = str(carrier.get("source_location") or "").strip()
+            if (
+                source_location
+                and self._looks_like_file(source_location)
+                and self._normalized_label_source_key(source_location) == source_key
+            ):
+                return True
+        return False
 
     def _source_row(
         self,

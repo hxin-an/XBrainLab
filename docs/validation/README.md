@@ -56,6 +56,12 @@ the file was also added as a second source. The restore path now treats files al
 covered by a loaded folder as the same source: it restores the carrier but does not
 add a duplicate file-level label source.
 
+Another manual test found the same visual duplicate when the loaded source itself was
+the exact label file: Load Labels rendered both the carrier row and the loaded file
+source row. The UI now collapses an exact file source when a visible carrier row has
+the same normalized path, while keeping loaded folder sources visible as the source
+scope.
+
 The same validation pass exposed a reproducible UI-suite crash in the preprocessing
 preview: `PlotWidget.clear()` deleted persistent PyQtGraph crosshair/title items and
 later resize events touched deleted Qt objects. Preprocess preview clearing now removes
@@ -70,10 +76,10 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/dialogs/test_preview_widget.py \
   tests/unit/ui/preprocess/test_preprocess_plotter.py \
   tests/unit/ui/preprocess/test_preprocess_panel.py -q
-# 269 passed
+# 270 passed
 
 poetry run python scripts/dev/run_tests.py ui
-# 1156 passed
+# 1157 passed
 
 poetry run ruff check \
   XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py \
