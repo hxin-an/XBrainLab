@@ -1745,7 +1745,7 @@ def test_load_labels_step_keeps_remove_for_loaded_source_after_rescan(qtbot):
     assert "Folder path" in visible_text
     assert "Will scan" not in visible_text
 
-    _click_source_row_button(dialog, "external-labels", "Unload folder")
+    _click_source_row_button(dialog, "Loaded folder", "Unload folder")
     qtbot.wait(0)
 
     result = dialog.get_result()
@@ -1822,6 +1822,29 @@ def test_load_labels_step_removes_one_file_from_loaded_folder(qtbot):
     assert "A03T.mat" in tree_text
 
 
+def test_load_labels_step_names_loaded_folder_as_scope_not_basename(qtbot):
+    label_source = "/tmp/source/label"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+            "label_sources": [label_source],
+        },
+        preview={"summary": "Found 1 EEG file(s)."},
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Load Labels")
+    qtbot.wait(0)
+
+    assert _source_row_titles(dialog) == ["Loaded folder"]
+    visible_lines = _visible_step_text(dialog, "Load Labels").splitlines()
+    assert "label" not in visible_lines
+    assert "Folder path: /tmp/source/label" in visible_lines
+
+
 def test_load_labels_step_restores_loaded_folder_carrier_without_duplicate_file_source(
     qtbot,
     monkeypatch,
@@ -1874,7 +1897,8 @@ def test_load_labels_step_restores_loaded_folder_carrier_without_duplicate_file_
     assert "excluded_label_carriers" not in result["choices"]
     visible_lines = _visible_step_text(dialog, "Load Labels").splitlines()
     assert visible_lines.count("A01T.mat") == 1
-    assert visible_lines.count("external-labels") == 1
+    assert visible_lines.count("Loaded folder") == 1
+    assert "Folder path: /tmp/external-labels" in visible_lines
     _show_step(dialog, "Match Labels")
     assert "A01T.mat" in _tree_text(dialog.label_carrier_tree)
 
@@ -3544,6 +3568,15 @@ def _source_row_button_texts(dialog) -> list[str]:
         buttons = row.findChildren(QPushButton)
         assert len(buttons) == 1
         result.append(buttons[0].text())
+    return result
+
+
+def _source_row_titles(dialog) -> list[str]:
+    result: list[str] = []
+    for row in _visible_source_rows(dialog):
+        labels = [label.text() for label in row.findChildren(QLabel)]
+        assert labels
+        result.append(labels[0])
     return result
 
 

@@ -5137,7 +5137,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
     def _user_label_source_row(self, source: str) -> tuple[str, str]:
         source_path = Path(source)
-        source_type = "File path" if self._looks_like_file(source) else "Folder path"
+        if not self._looks_like_file(source):
+            return "Loaded folder", f"Folder path: {source}"
+        source_type = "File path"
         title = source_path.name or source
         return title, f"{source_type}: {source}"
 

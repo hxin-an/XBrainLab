@@ -69,6 +69,11 @@ folder-scope row uses `Unload folder`. Regression coverage verifies that removin
 file from a loaded folder leaves sibling label files and the loaded folder scope
 intact.
 
+A folder named `label` also looked like another label file when its basename was used
+as the row title. Loaded folder rows now use the scope title `Loaded folder` and keep
+the actual path in the detail line, so the list separates label files from their
+loaded folder scope.
+
 The same validation pass exposed a reproducible UI-suite crash in the preprocessing
 preview: `PlotWidget.clear()` deleted persistent PyQtGraph crosshair/title items and
 later resize events touched deleted Qt objects. Preprocess preview clearing now removes
@@ -83,10 +88,10 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/dialogs/test_preview_widget.py \
   tests/unit/ui/preprocess/test_preprocess_plotter.py \
   tests/unit/ui/preprocess/test_preprocess_panel.py -q
-# 271 passed
+# 272 passed
 
 poetry run python scripts/dev/run_tests.py ui
-# 1158 passed
+# 1159 passed
 
 poetry run ruff check \
   XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py \
