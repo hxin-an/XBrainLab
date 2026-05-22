@@ -4347,6 +4347,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 self._source_row(
                     name,
                     self._label_source_detail(carrier, carrier_path),
+                    remove_button_text="Remove file",
+                    remove_tooltip="Remove this label file from the import.",
                     remove_callback=(
                         lambda _checked=False, item=carrier_path: (
                             self._remove_label_carrier(item)
@@ -4360,9 +4362,21 @@ class DataInterpretationPreviewDialog(BaseDialog):
         for source in self._extra_label_sources:
             if self._source_has_visible_label_carrier(source):
                 continue
+            is_file_source = self._looks_like_file(source)
             layout.addWidget(
                 self._source_row(
                     *self._user_label_source_row(source),
+                    remove_button_text=(
+                        "Remove file" if is_file_source else "Unload folder"
+                    ),
+                    remove_tooltip=(
+                        "Remove this loaded label file from the import."
+                        if is_file_source
+                        else (
+                            "Unload this label folder and remove all label files it "
+                            "contributed."
+                        )
+                    ),
                     remove_callback=lambda _checked=False, item=source: (
                         self._remove_label_source(item)
                     ),
@@ -4442,6 +4456,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         title: str,
         detail: str,
         *,
+        remove_button_text: str = "Remove",
+        remove_tooltip: str = "Remove this loaded label source from the import.",
         remove_callback: Any | None = None,
     ) -> QFrame:
         row = QFrame()
@@ -4466,9 +4482,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
             text_layout.addWidget(detail_label)
         layout.addLayout(text_layout, stretch=1)
         if remove_callback is not None:
-            remove_btn = QPushButton("Remove")
+            remove_btn = QPushButton(remove_button_text)
             remove_btn.setObjectName("DataImportTertiaryButton")
-            remove_btn.setToolTip("Remove this loaded label source from the import.")
+            remove_btn.setToolTip(remove_tooltip)
             remove_btn.clicked.connect(remove_callback)
             layout.addWidget(remove_btn)
         return row

@@ -62,6 +62,13 @@ source row. The UI now collapses an exact file source when a visible carrier row
 the same normalized path, while keeping loaded folder sources visible as the source
 scope.
 
+Another follow-up found that a loaded folder rendered file rows and the folder-scope
+row with identical `Remove` buttons, making single-file removal indistinguishable
+from unloading the whole folder. File carrier rows now use `Remove file`, while the
+folder-scope row uses `Unload folder`. Regression coverage verifies that removing one
+file from a loaded folder leaves sibling label files and the loaded folder scope
+intact.
+
 The same validation pass exposed a reproducible UI-suite crash in the preprocessing
 preview: `PlotWidget.clear()` deleted persistent PyQtGraph crosshair/title items and
 later resize events touched deleted Qt objects. Preprocess preview clearing now removes
@@ -76,10 +83,10 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/dialogs/test_preview_widget.py \
   tests/unit/ui/preprocess/test_preprocess_plotter.py \
   tests/unit/ui/preprocess/test_preprocess_panel.py -q
-# 270 passed
+# 271 passed
 
 poetry run python scripts/dev/run_tests.py ui
-# 1157 passed
+# 1158 passed
 
 poetry run ruff check \
   XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py \

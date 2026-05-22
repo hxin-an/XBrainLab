@@ -1433,7 +1433,7 @@ def test_load_labels_step_removes_loaded_label_source(qtbot):
     remove_buttons = [
         button
         for button in dialog.findChildren(QPushButton)
-        if button.text() == "Remove"
+        if button.text() == "Unload folder"
     ]
     assert len(remove_buttons) == 1
 
@@ -1603,7 +1603,7 @@ def test_load_labels_step_can_remove_auto_detected_label_carrier(qtbot):
     remove_buttons = [
         button
         for button in dialog.findChildren(QPushButton)
-        if button.text() == "Remove"
+        if button.text() == "Remove file"
     ]
     assert len(remove_buttons) == 1
 
@@ -1654,7 +1654,7 @@ def test_load_labels_step_can_restore_removed_auto_detected_label_carrier(
     remove_buttons = [
         button
         for button in dialog.findChildren(QPushButton)
-        if button.text() == "Remove"
+        if button.text() == "Remove file"
     ]
     assert len(remove_buttons) == 1
     remove_buttons[0].click()
@@ -1740,17 +1740,12 @@ def test_load_labels_step_keeps_remove_for_loaded_source_after_rescan(qtbot):
     _show_step(dialog, "Load Labels")
     qtbot.wait(0)
 
-    remove_buttons = [
-        button
-        for button in dialog.findChildren(QPushButton)
-        if button.text() == "Remove"
-    ]
-    assert len(remove_buttons) == 2
+    assert _source_row_button_texts(dialog) == ["Remove file", "Unload folder"]
     visible_text = _visible_step_text(dialog, "Load Labels")
     assert "Folder path" in visible_text
     assert "Will scan" not in visible_text
 
-    remove_buttons[-1].click()
+    _click_source_row_button(dialog, "external-labels", "Unload folder")
     qtbot.wait(0)
 
     result = dialog.get_result()
@@ -1760,6 +1755,71 @@ def test_load_labels_step_keeps_remove_for_loaded_source_after_rescan(qtbot):
     assert "A01T.mat" not in _visible_step_text(dialog, "Load Labels")
     _show_step(dialog, "Match Labels")
     assert "A01T.mat" not in _tree_text(dialog.label_carrier_tree)
+
+
+def test_load_labels_step_removes_one_file_from_loaded_folder(qtbot):
+    label_source = "/tmp/external-labels"
+    label_files = [
+        f"{label_source}/A01T.mat",
+        f"{label_source}/A02T.mat",
+        f"{label_source}/A03T.mat",
+    ]
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": [
+                "/tmp/source/A01T.gdf",
+                "/tmp/source/A02T.gdf",
+                "/tmp/source/A03T.gdf",
+            ],
+            "label_sources": [label_source],
+            "label_carriers": label_files,
+        },
+        preview={
+            "summary": "Found 3 EEG file(s) and 3 label/event carrier(s).",
+            "label_carrier_preview": [
+                {
+                    "path": label_file,
+                    "name": label_file.rsplit("/", 1)[-1],
+                    "source_kind": "user_added",
+                    "source_location": label_source,
+                }
+                for label_file in label_files
+            ],
+        },
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Load Labels")
+    qtbot.wait(0)
+
+    assert _source_row_button_texts(dialog) == [
+        "Remove file",
+        "Remove file",
+        "Remove file",
+        "Unload folder",
+    ]
+
+    _click_source_row_button(dialog, "A02T.mat", "Remove file")
+    qtbot.waitUntil(
+        lambda: "A01T.mat" in _visible_step_text(dialog, "Load Labels"),
+        timeout=1000,
+    )
+
+    result = dialog.get_result()
+    assert result["choices"]["excluded_label_carriers"] == [label_files[1]]
+    visible_text = _visible_step_text(dialog, "Load Labels")
+    assert "A01T.mat" in visible_text
+    assert "A02T.mat" not in visible_text
+    assert "A03T.mat" in visible_text
+    assert "external-labels" in visible_text
+    _show_step(dialog, "Match Labels")
+    tree_text = _tree_text(dialog.label_carrier_tree)
+    assert "A01T.mat" in tree_text
+    assert "A02T.mat" not in tree_text
+    assert "A03T.mat" in tree_text
 
 
 def test_load_labels_step_restores_loaded_folder_carrier_without_duplicate_file_source(
@@ -1794,13 +1854,8 @@ def test_load_labels_step_restores_loaded_folder_carrier_without_duplicate_file_
     _show_step(dialog, "Load Labels")
     qtbot.wait(0)
 
-    remove_buttons = [
-        button
-        for button in dialog.findChildren(QPushButton)
-        if button.text() == "Remove"
-    ]
-    assert len(remove_buttons) == 2
-    remove_buttons[0].click()
+    assert _source_row_button_texts(dialog) == ["Remove file", "Unload folder"]
+    _click_source_row_button(dialog, "A01T.mat", "Remove file")
     qtbot.wait(0)
     assert "A01T.mat" not in _visible_step_text(dialog, "Load Labels")
 
@@ -3469,6 +3524,39 @@ def _visible_step_text(dialog, title: str) -> str:
         for label in panel.findChildren(QLabel)
         if label.text().strip() and label.isVisibleTo(panel)
     )
+
+
+def _visible_source_rows(dialog) -> list[QFrame]:
+    panel = dialog.step_stack.widget(dialog._step_titles.index("Load Labels"))
+    return [
+        row
+        for row in dialog.label_source_rows_widget.findChildren(
+            QFrame,
+            "DataImportSourceRow",
+        )
+        if row.isVisibleTo(panel)
+    ]
+
+
+def _source_row_button_texts(dialog) -> list[str]:
+    result: list[str] = []
+    for row in _visible_source_rows(dialog):
+        buttons = row.findChildren(QPushButton)
+        assert len(buttons) == 1
+        result.append(buttons[0].text())
+    return result
+
+
+def _click_source_row_button(dialog, title: str, button_text: str) -> None:
+    for row in _visible_source_rows(dialog):
+        labels = [label.text() for label in row.findChildren(QLabel)]
+        if title not in labels:
+            continue
+        for button in row.findChildren(QPushButton):
+            if button.text() == button_text:
+                button.click()
+                return
+    raise AssertionError(f"No {button_text!r} button found for source row {title!r}")
 
 
 def _click_button(dialog, text: str, *, event_code: str | None = None) -> None:
