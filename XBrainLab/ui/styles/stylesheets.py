@@ -339,6 +339,7 @@ class Stylesheets:
     # Dialog Info Label
     DIALOG_INFO_LABEL = f"""
         QLabel {{
+            background-color: transparent;
             color: {Theme.TEXT_MUTED};
             font-size: 11px;
             font-style: italic;
@@ -348,6 +349,7 @@ class Stylesheets:
     # Dialog Warning Label
     DIALOG_WARNING_LABEL = f"""
         QLabel {{
+            background-color: transparent;
             color: {Theme.WARNING};
             font-size: 11px;
             font-weight: bold;

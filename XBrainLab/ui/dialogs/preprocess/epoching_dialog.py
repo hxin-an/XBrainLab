@@ -109,7 +109,9 @@ class EpochingDialog(BaseDialog):
 
         header = QLabel("Create Epochs")
         header.setObjectName("EpochDialogTitle")
-        header.setStyleSheet("font-size: 18px; font-weight: 700;")
+        header.setStyleSheet(
+            "background-color: transparent; font-size: 18px; font-weight: 700;"
+        )
         layout.addWidget(header)
 
         subtitle = QLabel(
@@ -322,13 +324,19 @@ class EpochingDialog(BaseDialog):
                 padding: 8px;
             }
             QLabel#EpochImportHintTitle {
+                background-color: transparent;
                 font-weight: 700;
             }
+            QLabel#EpochImportHintSummary {
+                background-color: transparent;
+            }
             QLabel#EpochImportHintKey {
+                background-color: transparent;
                 color: #aeb6c2;
                 font-weight: 600;
             }
             QLabel#EpochImportHintValue {
+                background-color: transparent;
                 font-weight: 600;
             }
             """
@@ -459,10 +467,12 @@ class EpochingDialog(BaseDialog):
             color: #f2f5f8;
         }
         QLabel {
+            background-color: transparent;
             color: #f2f5f8;
         }
         QLabel#EpochDialogSubtitle,
         QLabel#EpochDialogEvidence {
+            background-color: transparent;
             color: #bac2cc;
         }
         QFrame#EpochSectionCard {
@@ -471,11 +481,13 @@ class EpochingDialog(BaseDialog):
             border-radius: 6px;
         }
         QLabel#EpochSectionTitle {
+            background-color: transparent;
             color: #f2f5f8;
             font-size: 15px;
             font-weight: 700;
         }
         QLabel#EpochFieldLabel {
+            background-color: transparent;
             color: #d8dde4;
             font-weight: 600;
         }
@@ -485,10 +497,12 @@ class EpochingDialog(BaseDialog):
             border-radius: 6px;
         }
         QLabel#EpochImportHintKey {
+            background-color: transparent;
             color: #aeb6c2;
             font-weight: 600;
         }
         QLabel#EpochImportHintValue {
+            background-color: transparent;
             color: #f2f5f8;
             font-weight: 700;
         }

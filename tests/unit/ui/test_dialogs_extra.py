@@ -6,7 +6,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QComboBox, QDialog, QWidget
+from PyQt6.QtWidgets import QComboBox, QDialog, QLabel, QWidget
 
 # ============ EventFilterDialog ============
 
@@ -256,6 +256,19 @@ class TestEpochingDialog:
 
     def test_update_duration_info(self, dlg):
         dlg.update_duration_info()
+
+    def test_label_backgrounds_are_transparent(self, dlg):
+        assert "QLabel {" in dlg.styleSheet()
+        assert "background-color: transparent" in dlg.styleSheet()
+
+        labels_with_local_style = [
+            label for label in dlg.findChildren(QLabel) if label.styleSheet().strip()
+        ]
+        assert labels_with_local_style
+        assert all(
+            "background-color: transparent" in label.styleSheet()
+            for label in labels_with_local_style
+        )
 
     def test_import_handoff_preselects_epoch_targets(self, qtbot):
         from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog

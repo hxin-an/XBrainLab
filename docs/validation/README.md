@@ -41,6 +41,28 @@ current truth 以這些文件為準：
 - [architecture/README.md](../architecture/README.md)
 - [validation/README.md](README.md)
 
+## 2026-05-22 Epoch Dialog Label Transparency
+
+Manual UI review found that Epoch dialog text labels could render with visible
+label-background blocks on some Qt/desktop themes because the dialog and shared
+dialog info/warning label styles did not set transparent label backgrounds. Epoch
+dialog label rules and shared dialog info/warning label styles now explicitly use
+`background-color: transparent`.
+
+Focused validation:
+
+```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_dialogs_extra.py \
+  tests/unit/ui/components/test_dialogs.py \
+  tests/unit/ui/dialogs/test_dialogs_structure.py \
+  tests/unit/ui/preprocess/test_preprocess_panel.py -q
+# 74 passed
+
+QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/run_tests.py ui
+# 1161 passed
+```
+
 ## 2026-05-21 Load Labels Restore Regression
 
 Manual testing found that removing a label file in Load Labels and loading it back
