@@ -2728,6 +2728,53 @@ def test_review_and_import_saves_label_choices_for_later_epoch_setup(qtbot):
     assert "Epoch setup will use" not in review_text
 
 
+def test_review_and_import_groups_repeated_file_action_items(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={"source_path": "/tmp/source"},
+        preview={
+            "summary": "Found 3 EEG file(s).",
+            "action_items": [
+                {
+                    "target_step": "Review Metadata",
+                    "issue": "Confirm subject metadata.",
+                    "impact": f"A0{index}T.gdf needs subject review.",
+                    "next_action": "Confirm subject in Review Metadata.",
+                }
+                for index in range(1, 4)
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(1040, 760)
+    dialog.show()
+    qtbot.wait(0)
+    _show_step(dialog, "Review and Import")
+    qtbot.wait(0)
+
+    action_cards = dialog.review_actions_panel.findChildren(
+        QFrame,
+        "DataImportActionCard",
+    )
+    action_text = "\n".join(
+        label.text()
+        for label in dialog.review_actions_panel.findChildren(QLabel)
+        if label.text().strip()
+    )
+
+    assert len(action_cards) == 1
+    assert action_text.count("Confirm subject metadata.") == 1
+    assert "3 files" in action_text
+    assert "A01T.gdf" in action_text
+    assert "A02T.gdf" in action_text
+    assert "A03T.gdf" in action_text
+    assert dialog.review_tree.topLevelItemCount() == 1
+    review_item = dialog.review_tree.topLevelItem(0)
+    assert review_item is not None
+    assert "3 files" in review_item.text(2)
+
+
 def test_data_interpretation_preview_dialog_returns_review_edits(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,

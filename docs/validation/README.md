@@ -322,6 +322,35 @@ Screenshot evidence:
 - `artifacts/ui/epoching-dialog/epoching-interval-import.png`
 - `artifacts/ui/epoching-dialog/epoching-internal-events.png`
 
+2026-05-22 manual-test follow-up:
+
+- Create Epochs now keeps its action footer fixed while the content area scrolls above it, so
+  dense import hints / event lists do not push the Time Window card below the visible dialog.
+- Data Import Review and Import now groups repeated file-scoped action items with the same target
+  step, issue and next action into one review card / tree row, while preserving ordinary non-file
+  review rows as separate items.
+
+Focused validation:
+
+```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_dialogs_extra.py::TestEpochingDialog::test_content_scrolls_above_fixed_footer \
+  tests/unit/ui/test_dialogs_extra.py::TestEpochingDialog::test_label_backgrounds_are_transparent \
+  tests/unit/ui/components/test_dialogs.py::test_epoching_dialog_init \
+  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_review_and_import_groups_repeated_file_action_items -q
+# 4 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_dialogs_extra.py \
+  tests/unit/ui/components/test_dialogs.py \
+  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
+  tests/unit/ui/test_ui_misc.py -q
+# 266 passed
+
+QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/run_tests.py ui
+# 1163 passed
+```
+
 ## Backend Test Hygiene Inventory
 
 2026-05-11 compact inventory for the backend/test hygiene branch:

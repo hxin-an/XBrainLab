@@ -6,7 +6,15 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QComboBox, QDialog, QLabel, QWidget
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QLabel,
+    QScrollArea,
+    QWidget,
+)
 
 # ============ EventFilterDialog ============
 
@@ -269,6 +277,45 @@ class TestEpochingDialog:
             "background-color: transparent" in label.styleSheet()
             for label in labels_with_local_style
         )
+
+    def test_content_scrolls_above_fixed_footer(self, qtbot):
+        from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
+
+        dialog = EpochingDialog(
+            None,
+            [],
+            epoch_context={
+                "available_events": [
+                    {"name": f"event_{index:02d}", "count": 20} for index in range(16)
+                ],
+                "has_import_hint": True,
+                "source": "loaded label files",
+                "placement_label": "Label interval",
+                "label_field": "trial_type",
+                "time_field": "onset",
+                "duration_field": "duration",
+                "window_evidence": (
+                    "Suggested from imported event timing. Review this if the "
+                    "dataset uses a different reference point."
+                ),
+            },
+        )
+        qtbot.addWidget(dialog)
+        dialog.resize(620, 420)
+        dialog.show()
+        qtbot.wait(0)
+
+        scroll = dialog.findChild(QScrollArea, "EpochDialogContentScroll")
+        assert scroll is not None
+        assert scroll.widgetResizable()
+        assert (
+            scroll.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        assert scroll.isVisibleTo(dialog)
+
+        footer = dialog.findChild(QDialogButtonBox)
+        assert footer is not None
+        assert footer.isVisibleTo(dialog)
 
     def test_import_handoff_preselects_epoch_targets(self, qtbot):
         from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog

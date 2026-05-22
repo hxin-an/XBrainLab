@@ -4842,7 +4842,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
 
     def _populate_review_action_cards(self) -> None:
-        rows = self._review_rows()
+        rows = self._merged_review_rows(self._review_rows())
         if not rows:
             if self.decision == "safe":
                 self.review_actions_panel.setVisible(False)
@@ -7462,6 +7462,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self._label_carrier_remap_widgets[saved] = selector
             self.review_tree.setItemWidget(tree_item, 3, selector)
             remap_added = True
+        rows = self._merged_review_rows(rows)
         for target_step, issue, impact, next_action in rows:
             tree_item = QTreeWidgetItem([target_step, issue, impact, next_action])
             for column in range(4):
@@ -7606,6 +7607,73 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 )
             )
         return sorted(rows, key=lambda row: (step_order.get(row[0], 99), row[1]))
+
+    @classmethod
+    def _merged_review_rows(
+        cls,
+        rows: list[tuple[str, str, str, str]],
+    ) -> list[tuple[str, str, str, str]]:
+        grouped: dict[
+            tuple[str, str, str],
+            list[tuple[str, str, str, str]],
+        ] = {}
+        order: list[tuple[str, str, str]] = []
+        for row in rows:
+            target_step, issue, _impact, next_action = row
+            key = (target_step, issue, next_action)
+            if key not in grouped:
+                grouped[key] = []
+                order.append(key)
+            grouped[key].append(row)
+
+        merged: list[tuple[str, str, str, str]] = []
+        for target_step, issue, next_action in order:
+            group_rows = grouped[(target_step, issue, next_action)]
+            impacts = cls._unique_strings([row[2].strip() for row in group_rows])
+            if len(group_rows) <= 1 or not cls._review_impacts_are_file_scoped(impacts):
+                merged.extend(group_rows)
+                continue
+            merged.append(
+                (
+                    target_step,
+                    issue,
+                    cls._review_grouped_impact_text(impacts),
+                    next_action,
+                )
+            )
+        return merged
+
+    @staticmethod
+    def _review_impacts_are_file_scoped(items: list[str]) -> bool:
+        return len(items) > 1 and all(
+            DataInterpretationPreviewDialog._review_impact_is_file_scoped(item)
+            for item in items
+        )
+
+    @staticmethod
+    def _review_impact_is_file_scoped(text: str) -> bool:
+        file_extensions = (
+            ".gdf",
+            ".edf",
+            ".set",
+            ".fif",
+            ".vhdr",
+            ".mat",
+            ".csv",
+            ".tsv",
+        )
+        lowered = text.lower()
+        return any(extension in lowered for extension in file_extensions)
+
+    @staticmethod
+    def _review_grouped_impact_text(items: list[str]) -> str:
+        prefix = f"{len(items)} files"
+        shown = items[:4]
+        text = f"{prefix}: " + "; ".join(shown)
+        extra_count = len(items) - len(shown)
+        if extra_count > 0:
+            text = f"{text}; +{extra_count} more"
+        return text
 
     @staticmethod
     def _target_step_for_review_text(text: str) -> str:

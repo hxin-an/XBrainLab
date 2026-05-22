@@ -18,8 +18,10 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
+    QWidget,
 )
 
 from XBrainLab.backend.application.epoch_context import build_epoching_context
@@ -107,12 +109,25 @@ class EpochingDialog(BaseDialog):
         layout.setContentsMargins(18, 16, 18, 14)
         layout.setSpacing(12)
 
+        content = QWidget()
+        content.setObjectName("EpochDialogContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(12)
+
+        scroll = QScrollArea()
+        scroll.setObjectName("EpochDialogContentScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(content)
+
         header = QLabel("Create Epochs")
         header.setObjectName("EpochDialogTitle")
         header.setStyleSheet(
             "background-color: transparent; font-size: 18px; font-weight: 700;"
         )
-        layout.addWidget(header)
+        content_layout.addWidget(header)
 
         subtitle = QLabel(
             "Choose which events become epochs, then set the time window used "
@@ -120,10 +135,10 @@ class EpochingDialog(BaseDialog):
         )
         subtitle.setObjectName("EpochDialogSubtitle")
         subtitle.setWordWrap(True)
-        layout.addWidget(subtitle)
+        content_layout.addWidget(subtitle)
 
         if self.epoch_context.get("has_import_hint"):
-            layout.addWidget(self._build_import_hint_card())
+            content_layout.addWidget(self._build_import_hint_card())
 
         # 1. Event Selection
         event_group, event_layout = self._build_section_card("Events")
@@ -165,7 +180,7 @@ class EpochingDialog(BaseDialog):
         )
         self.event_list.setMaximumHeight(260)
         event_layout.addWidget(self.event_list)
-        layout.addWidget(event_group)
+        content_layout.addWidget(event_group)
 
         # 2. Parameters
         param_group, param_layout = self._build_section_card("Time Window")
@@ -262,7 +277,9 @@ class EpochingDialog(BaseDialog):
         param_layout.addLayout(baseline_grid)
         self.toggle_baseline(self.baseline_check.isChecked())
 
-        layout.addWidget(param_group)
+        content_layout.addWidget(param_group)
+        content_layout.addStretch(1)
+        layout.addWidget(scroll, stretch=1)
 
         footer_rule = QFrame()
         footer_rule.setObjectName("EpochFooterRule")
@@ -465,6 +482,12 @@ class EpochingDialog(BaseDialog):
         QDialog {
             background: #1b1b1d;
             color: #f2f5f8;
+        }
+        QScrollArea#EpochDialogContentScroll,
+        QScrollArea#EpochDialogContentScroll > QWidget,
+        QWidget#EpochDialogContent {
+            background: transparent;
+            border: none;
         }
         QLabel {
             background-color: transparent;
