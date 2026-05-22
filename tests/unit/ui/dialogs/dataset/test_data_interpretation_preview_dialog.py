@@ -1433,7 +1433,7 @@ def test_load_labels_step_removes_loaded_label_source(qtbot):
     remove_buttons = [
         button
         for button in dialog.findChildren(QPushButton)
-        if button.text() == "Unload folder"
+        if button.text() == "Remove all from this folder"
     ]
     assert len(remove_buttons) == 1
 
@@ -1740,12 +1740,13 @@ def test_load_labels_step_keeps_remove_for_loaded_source_after_rescan(qtbot):
     _show_step(dialog, "Load Labels")
     qtbot.wait(0)
 
-    assert _source_row_button_texts(dialog) == ["Remove file", "Unload folder"]
+    assert _source_row_button_texts(dialog) == ["Remove file"]
+    assert _source_scope_button_texts(dialog) == ["Remove all from this folder"]
     visible_text = _visible_step_text(dialog, "Load Labels")
-    assert "Folder path" in visible_text
+    assert "Label source: /tmp/external-labels" in visible_text
     assert "Will scan" not in visible_text
 
-    _click_source_row_button(dialog, "Loaded folder", "Unload folder")
+    _click_source_scope_button(dialog, "Label source: /tmp/external-labels")
     qtbot.wait(0)
 
     result = dialog.get_result()
@@ -1799,8 +1800,8 @@ def test_load_labels_step_removes_one_file_from_loaded_folder(qtbot):
         "Remove file",
         "Remove file",
         "Remove file",
-        "Unload folder",
     ]
+    assert _source_scope_button_texts(dialog) == ["Remove all from this folder"]
 
     _click_source_row_button(dialog, "A02T.mat", "Remove file")
     qtbot.waitUntil(
@@ -1814,7 +1815,7 @@ def test_load_labels_step_removes_one_file_from_loaded_folder(qtbot):
     assert "A01T.mat" in visible_text
     assert "A02T.mat" not in visible_text
     assert "A03T.mat" in visible_text
-    assert "external-labels" in visible_text
+    assert "Label source: /tmp/external-labels" in visible_text
     _show_step(dialog, "Match Labels")
     tree_text = _tree_text(dialog.label_carrier_tree)
     assert "A01T.mat" in tree_text
@@ -1839,10 +1840,12 @@ def test_load_labels_step_names_loaded_folder_as_scope_not_basename(qtbot):
     _show_step(dialog, "Load Labels")
     qtbot.wait(0)
 
-    assert _source_row_titles(dialog) == ["Loaded folder"]
+    assert _source_row_titles(dialog) == []
+    assert _source_scope_texts(dialog) == ["Label source: /tmp/source/label"]
     visible_lines = _visible_step_text(dialog, "Load Labels").splitlines()
     assert "label" not in visible_lines
-    assert "Folder path: /tmp/source/label" in visible_lines
+    assert "Loaded folder" not in visible_lines
+    assert "Label source: /tmp/source/label" in visible_lines
 
 
 def test_load_labels_step_restores_loaded_folder_carrier_without_duplicate_file_source(
@@ -1877,7 +1880,8 @@ def test_load_labels_step_restores_loaded_folder_carrier_without_duplicate_file_
     _show_step(dialog, "Load Labels")
     qtbot.wait(0)
 
-    assert _source_row_button_texts(dialog) == ["Remove file", "Unload folder"]
+    assert _source_row_button_texts(dialog) == ["Remove file"]
+    assert _source_scope_button_texts(dialog) == ["Remove all from this folder"]
     _click_source_row_button(dialog, "A01T.mat", "Remove file")
     qtbot.wait(0)
     assert "A01T.mat" not in _visible_step_text(dialog, "Load Labels")
@@ -1897,10 +1901,63 @@ def test_load_labels_step_restores_loaded_folder_carrier_without_duplicate_file_
     assert "excluded_label_carriers" not in result["choices"]
     visible_lines = _visible_step_text(dialog, "Load Labels").splitlines()
     assert visible_lines.count("A01T.mat") == 1
-    assert visible_lines.count("Loaded folder") == 1
-    assert "Folder path: /tmp/external-labels" in visible_lines
+    assert visible_lines.count("Label source: /tmp/external-labels") == 1
     _show_step(dialog, "Match Labels")
     assert "A01T.mat" in _tree_text(dialog.label_carrier_tree)
+
+
+def test_load_labels_step_replaces_stale_button_after_reload(qtbot, monkeypatch):
+    label_file = "/tmp/source/labels/A01T.mat"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+            "label_carriers": [label_file],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+            "label_carrier_preview": [
+                {
+                    "path": label_file,
+                    "name": "A01T.mat",
+                    "source_kind": "auto",
+                    "source_location": "/tmp/source/labels",
+                }
+            ],
+        },
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Load Labels")
+    qtbot.wait(0)
+
+    _click_source_row_button(dialog, "A01T.mat", "Remove file")
+    qtbot.wait(0)
+    assert "A01T.mat" not in _visible_step_text(dialog, "Load Labels")
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog.QFileDialog.getOpenFileNames",
+        lambda *_args, **_kwargs: ([label_file], ""),
+    )
+    dialog.add_label_file_btn.click()
+    qtbot.waitUntil(
+        lambda: "A01T.mat" in _visible_step_text(dialog, "Load Labels"),
+        timeout=1000,
+    )
+
+    remove_buttons = [
+        button
+        for button in dialog.findChildren(QPushButton)
+        if button.text() == "Remove file"
+    ]
+    assert len(remove_buttons) == 1
+    remove_buttons[0].click()
+    qtbot.waitUntil(
+        lambda: "A01T.mat" not in _visible_step_text(dialog, "Load Labels"),
+        timeout=1000,
+    )
 
 
 def test_load_labels_next_requests_rescan_for_new_label_source(qtbot, monkeypatch):
@@ -3562,6 +3619,18 @@ def _visible_source_rows(dialog) -> list[QFrame]:
     ]
 
 
+def _visible_source_scope_rows(dialog) -> list[QFrame]:
+    panel = dialog.step_stack.widget(dialog._step_titles.index("Load Labels"))
+    return [
+        row
+        for row in dialog.label_source_rows_widget.findChildren(
+            QFrame,
+            "DataImportSourceScopeRow",
+        )
+        if row.isVisibleTo(panel)
+    ]
+
+
 def _source_row_button_texts(dialog) -> list[str]:
     result: list[str] = []
     for row in _visible_source_rows(dialog):
@@ -3571,9 +3640,27 @@ def _source_row_button_texts(dialog) -> list[str]:
     return result
 
 
+def _source_scope_button_texts(dialog) -> list[str]:
+    result: list[str] = []
+    for row in _visible_source_scope_rows(dialog):
+        buttons = row.findChildren(QPushButton)
+        assert len(buttons) == 1
+        result.append(buttons[0].text())
+    return result
+
+
 def _source_row_titles(dialog) -> list[str]:
     result: list[str] = []
     for row in _visible_source_rows(dialog):
+        labels = [label.text() for label in row.findChildren(QLabel)]
+        assert labels
+        result.append(labels[0])
+    return result
+
+
+def _source_scope_texts(dialog) -> list[str]:
+    result: list[str] = []
+    for row in _visible_source_scope_rows(dialog):
         labels = [label.text() for label in row.findChildren(QLabel)]
         assert labels
         result.append(labels[0])
@@ -3590,6 +3677,18 @@ def _click_source_row_button(dialog, title: str, button_text: str) -> None:
                 button.click()
                 return
     raise AssertionError(f"No {button_text!r} button found for source row {title!r}")
+
+
+def _click_source_scope_button(dialog, text: str) -> None:
+    for row in _visible_source_scope_rows(dialog):
+        labels = [label.text() for label in row.findChildren(QLabel)]
+        if text not in labels:
+            continue
+        buttons = row.findChildren(QPushButton)
+        assert len(buttons) == 1
+        buttons[0].click()
+        return
+    raise AssertionError(f"No source scope button found for {text!r}")
 
 
 def _click_button(dialog, text: str, *, event_code: str | None = None) -> None:

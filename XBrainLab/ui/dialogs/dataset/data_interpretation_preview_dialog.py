@@ -4332,10 +4332,17 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
     def _add_label_source_rows(self, layout: QVBoxLayout) -> None:
         carriers = self._label_carrier_preview_rows()
-        if not carriers:
+        folder_sources = [
+            source
+            for source in self._extra_label_sources
+            if not self._looks_like_file(source)
+        ]
+        if not carriers and not self._extra_label_sources:
             layout.addWidget(
                 self._empty_state("No nearby label/event source detected.")
             )
+        for source in folder_sources:
+            layout.addWidget(self._source_scope_row(source))
         for carrier in carriers:
             name = str(
                 carrier.get("name")
@@ -4360,23 +4367,15 @@ class DataInterpretationPreviewDialog(BaseDialog):
             )
 
         for source in self._extra_label_sources:
+            if not self._looks_like_file(source):
+                continue
             if self._source_has_visible_label_carrier(source):
                 continue
-            is_file_source = self._looks_like_file(source)
             layout.addWidget(
                 self._source_row(
                     *self._user_label_source_row(source),
-                    remove_button_text=(
-                        "Remove file" if is_file_source else "Unload folder"
-                    ),
-                    remove_tooltip=(
-                        "Remove this loaded label file from the import."
-                        if is_file_source
-                        else (
-                            "Unload this label folder and remove all label files it "
-                            "contributed."
-                        )
-                    ),
+                    remove_button_text="Remove file",
+                    remove_tooltip="Remove this loaded label file from the import.",
                     remove_callback=lambda _checked=False, item=source: (
                         self._remove_label_source(item)
                     ),
@@ -4396,6 +4395,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             widget = item.widget()
             if widget is not None:
                 widget.hide()
+                widget.setParent(None)
                 widget.deleteLater()
 
     def _label_carrier_preview_rows(
@@ -4450,6 +4450,29 @@ class DataInterpretationPreviewDialog(BaseDialog):
             ):
                 return True
         return False
+
+    def _source_scope_row(self, source: str) -> QFrame:
+        row = QFrame()
+        row.setObjectName("DataImportSourceScopeRow")
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(10, 6, 10, 6)
+        layout.setSpacing(10)
+        source_label = QLabel(f"Label source: {source}")
+        source_label.setObjectName("DataImportSourceScopeText")
+        source_label.setWordWrap(True)
+        source_label.setToolTip(source)
+        source_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        layout.addWidget(source_label, stretch=1)
+        remove_btn = QPushButton("Remove all from this folder")
+        remove_btn.setObjectName("DataImportTertiaryButton")
+        remove_btn.setToolTip("Remove this folder and all label files it contributed.")
+        remove_btn.clicked.connect(
+            lambda _checked=False, item=source: self._remove_label_source(item)
+        )
+        layout.addWidget(remove_btn)
+        return row
 
     def _source_row(
         self,
@@ -5640,6 +5663,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 border: none;
             }}
             QFrame#DataImportSourceRow,
+            QFrame#DataImportSourceScopeRow,
             QFrame#DataImportConversionActionCard,
             QFrame#DataImportFormatRequirement,
             QFrame#DataImportFormatTile,
@@ -5659,6 +5683,17 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 background-color: #202020;
                 border: 1px solid #343434;
                 border-radius: 5px;
+            }}
+            QFrame#DataImportSourceScopeRow {{
+                background-color: #1b242b;
+                border: 1px solid #2a3f4f;
+            }}
+            QLabel#DataImportSourceScopeText {{
+                color: {Theme.TEXT_SECONDARY};
+                background-color: transparent;
+                border: none;
+                padding: 0;
+                font-size: 12px;
             }}
             QFrame#DataImportPairingBlock {{
                 background-color: transparent;

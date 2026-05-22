@@ -65,14 +65,15 @@ scope.
 Another follow-up found that a loaded folder rendered file rows and the folder-scope
 row with identical `Remove` buttons, making single-file removal indistinguishable
 from unloading the whole folder. File carrier rows now use `Remove file`, while the
-folder-scope row uses `Unload folder`. Regression coverage verifies that removing one
-file from a loaded folder leaves sibling label files and the loaded folder scope
-intact.
+folder source is shown as a separate source bar with `Remove all from this folder`.
+Regression coverage verifies that removing one file from a loaded folder leaves
+sibling label files and the loaded folder source intact.
 
 A folder named `label` also looked like another label file when its basename was used
-as the row title. Loaded folder rows now use the scope title `Loaded folder` and keep
-the actual path in the detail line, so the list separates label files from their
-loaded folder scope.
+as the row title. Loaded folder sources now render as `Label source: ...` above the
+file list, so the list itself contains only actual label files. Cleanup also detaches
+old source-row widgets from the dialog tree before `deleteLater()`, preventing stale
+hidden remove buttons from being picked up after remove -> reload cycles.
 
 The same validation pass exposed a reproducible UI-suite crash in the preprocessing
 preview: `PlotWidget.clear()` deleted persistent PyQtGraph crosshair/title items and
@@ -88,10 +89,10 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/dialogs/test_preview_widget.py \
   tests/unit/ui/preprocess/test_preprocess_plotter.py \
   tests/unit/ui/preprocess/test_preprocess_panel.py -q
-# 272 passed
+# 273 passed
 
 poetry run python scripts/dev/run_tests.py ui
-# 1159 passed
+# 1160 passed
 
 poetry run ruff check \
   XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py \
