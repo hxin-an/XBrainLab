@@ -53,11 +53,11 @@ def test_build_dataset_validation_rows_reports_checked_in_and_public_layers(
         / "fixtures"
         / "data"
         / "public"
-        / "tiny-bids-eeg"
+        / "mne-bids-tiny-eeg"
         / "sub-01"
-        / "ses-01"
+        / "ses-eeg"
         / "eeg"
-        / "sub-01_ses-01_task-mi_run-1_eeg.vhdr"
+        / "sub-01_ses-eeg_task-rest_eeg.vhdr"
     )
 
     rows = build_dataset_validation_rows(tmp_path)
@@ -73,12 +73,12 @@ def test_build_dataset_validation_rows_reports_checked_in_and_public_layers(
     assert "PhysioNet" in rows[2].source_families
     assert rows[3].layer == "public local-only import-only fixtures"
     assert "PhysioNet" in rows[3].source_families
-    assert rows[4].layer == "public local-only BIDS-like EEG fixture"
-    assert rows[4].representative_data == "BIDS-like EEG"
+    assert rows[4].layer == "public local-only BIDS EEG fixture"
+    assert rows[4].representative_data == "BIDS EEG"
     assert rows[4].label_attach == "BIDS events.tsv"
     assert rows[2].reproducibility_class == "local-only"
     assert rows[3].reproducibility_class == "local-only"
-    assert rows[4].reproducibility_class == "local-only generated"
+    assert rows[4].reproducibility_class == "local-only downloaded"
 
 
 def test_render_markdown_includes_current_truth(tmp_path: Path):
@@ -92,7 +92,7 @@ def test_render_markdown_includes_current_truth(tmp_path: Path):
     assert "# Dataset Validation Matrix" in rendered
     assert "checked-in core GDF + MAT" in rendered
     assert "public local-only event-rich fixtures" in rendered
-    assert "public local-only BIDS-like EEG fixture" in rendered
+    assert "public local-only BIDS EEG fixture" in rendered
     assert "event-rich public local-only fixtures" in rendered
     assert "cross-source evidence is stronger" in rendered.lower()
 

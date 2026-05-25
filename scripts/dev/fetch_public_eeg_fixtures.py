@@ -5,14 +5,207 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import shutil
 import ssl
 import urllib.request
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 ROOT = Path(__file__).resolve().parents[2]
 PUBLIC_DIR = ROOT / "tests" / "fixtures" / "data" / "public"
+MNE_BIDS_TINY_NAME = "mne-bids-tiny-eeg"
+MNE_BIDS_TINY_REVISION = (
+    "9dc7b5b8bdfb8bbdb72983900e2df7be484f2b0c"  # pragma: allowlist secret
+)
+MNE_BIDS_TINY_SOURCE_ROOT = "mne_bids/tests/data/tiny_bids"
+MNE_BIDS_TINY_RAW_BASE_URL = (
+    "https://raw.githubusercontent.com/mne-tools/mne-bids/"
+    f"{MNE_BIDS_TINY_REVISION}/{MNE_BIDS_TINY_SOURCE_ROOT}"
+)
+MNE_BIDS_TINY_ENTRYPOINT = (
+    "mne-bids-tiny-eeg/sub-01/ses-eeg/eeg/sub-01_ses-eeg_task-rest_eeg.vhdr"
+)
+
+
+def _sha256(*segments: str) -> str:
+    return "".join(segments)
+
+
+MNE_BIDS_TINY_FILES = (
+    (
+        "README",
+        _sha256(
+            "2424885a2575d03a",  # pragma: allowlist secret
+            "8a4733db5a8c9800",  # pragma: allowlist secret
+            "b3ab2aa956d41cd5",  # pragma: allowlist secret
+            "78a84ad79599b586",  # pragma: allowlist secret
+        ),
+    ),
+    (
+        "dataset_description.json",
+        _sha256(
+            "39ebf1b7a89a6e19",  # pragma: allowlist secret
+            "280dfdd7767207df",  # pragma: allowlist secret
+            "a5c962c709efe578",  # pragma: allowlist secret
+            "ba7c5d9ce3e8b041",  # pragma: allowlist secret
+        ),
+    ),
+    (
+        "participants.json",
+        _sha256(
+            "85d31cc698fd8f6c",  # pragma: allowlist secret
+            "d98522746c71fbbd",  # pragma: allowlist secret
+            "7e36ca42393607bf",  # pragma: allowlist secret
+            "cafcaff7f4edc2fd",  # pragma: allowlist secret
+        ),
+    ),
+    (
+        "participants.tsv",
+        _sha256(
+            "854ecc7216ba7648",  # pragma: allowlist secret
+            "348bd5f0d8ae51a6",  # pragma: allowlist secret
+            "df16ccbb8167d233",  # pragma: allowlist secret
+            "33def6abb2d88fda",  # pragma: allowlist secret
+        ),
+    ),
+    (
+        "sub-01/ses-eeg/eeg/sub-01_ses-eeg_coordsystem.json",
+        _sha256(
+            "e0e01df82e280710",  # pragma: allowlist secret
+            "3fd547af9ccae636",  # pragma: allowlist secret
+            "5b79f9f91e533b4c",  # pragma: allowlist secret
+            "7f5c9490b848b0c8",  # pragma: allowlist secret
+        ),
+    ),
+    (
+        "sub-01/ses-eeg/eeg/sub-01_ses-eeg_electrodes.tsv",
+        _sha256(
+            "50f00c3adb3b9d04",  # pragma: allowlist secret
+            "10ceddff84d51ed4",  # pragma: allowlist secret
+            "0fe90aa89f1204bf",  # pragma: allowlist secret
+            "0e41415d78083d3e",  # pragma: allowlist secret
+        ),
+    ),
+    (
+        "sub-01/ses-eeg/eeg/sub-01_ses-eeg_space-CapTrak_coordsystem.json",
+        _sha256(
+            "e0e01df82e280710",  # pragma: allowlist secret
+            "3fd547af9ccae636",  # pragma: allowlist secret
+            "5b79f9f91e533b4c",  # pragma: allowlist secret
+            "7f5c9490b848b0c8",  # pragma: allowlist secret
+        ),
+    ),
+    (
+        "sub-01/ses-eeg/eeg/sub-01_ses-eeg_space-CapTrak_electrodes.tsv",
+        _sha256(
+            "0172199f9543eb2e",  # pragma: allowlist secret
+            "7f3951518943d94b",  # pragma: allowlist secret
+            "15d85c3b842b0677",  # pragma: allowlist secret
+            "2a6b4e7130d71949",  # pragma: allowlist secret
+        ),
+    ),
+    (
+        "sub-01/ses-eeg/eeg/sub-01_ses-eeg_task-rest_channels.tsv",
+        _sha256(
+            "df8883c71cb70865",  # pragma: allowlist secret
+            "73c90d2e0945c761",  # pragma: allowlist secret
+            "a3fd09b3b24f11d3",  # pragma: allowlist secret
+            "cef62f84df6e89c5",  # pragma: allowlist secret
+        ),
+    ),
+    (
+        "sub-01/ses-eeg/eeg/sub-01_ses-eeg_task-rest_eeg.eeg",
+        _sha256(
+            "7dd6d01424bcd836",  # pragma: allowlist secret
+            "7a0c48b13253389f",  # pragma: allowlist secret
+            "3b5fb508755c56b3",  # pragma: allowlist secret
+            "214c90f3fe1e8212",  # pragma: allowlist secret
+        ),
+    ),
+    (
+        "sub-01/ses-eeg/eeg/sub-01_ses-eeg_task-rest_eeg.json",
+        _sha256(
+            "afe7def2643befa1",  # pragma: allowlist secret
+            "49800d927e18a6e6",  # pragma: allowlist secret
+            "7ff824f448fd44bf",  # pragma: allowlist secret
+            "42c84b582c124cd5",  # pragma: allowlist secret
+        ),
+    ),
+    (
+        "sub-01/ses-eeg/eeg/sub-01_ses-eeg_task-rest_eeg.vhdr",
+        _sha256(
+            "3ff0577005cd9e49",  # pragma: allowlist secret
+            "e672d48a256d365b",  # pragma: allowlist secret
+            "4f7cbe1e96fea2a2",  # pragma: allowlist secret
+            "6334645ef9b468af",  # pragma: allowlist secret
+        ),
+    ),
+    (
+        "sub-01/ses-eeg/eeg/sub-01_ses-eeg_task-rest_eeg.vmrk",
+        _sha256(
+            "df211bf40a9578b2",  # pragma: allowlist secret
+            "4951869f2610cd79",  # pragma: allowlist secret
+            "79d68bbb9fa2594a",  # pragma: allowlist secret
+            "d10b94f60048287e",  # pragma: allowlist secret
+        ),
+    ),
+    (
+        "sub-01/ses-eeg/eeg/sub-01_ses-eeg_task-rest_events.json",
+        _sha256(
+            "8bf8e6cdeb9eaa40",  # pragma: allowlist secret
+            "b57bba4066fa8bc2",  # pragma: allowlist secret
+            "30da76217cdeda0c",  # pragma: allowlist secret
+            "19efc31de11b9cb0",  # pragma: allowlist secret
+        ),
+    ),
+    (
+        "sub-01/ses-eeg/eeg/sub-01_ses-eeg_task-rest_events.tsv",
+        _sha256(
+            "7f20d56032752bef",  # pragma: allowlist secret
+            "41d8efcf3506f105",  # pragma: allowlist secret
+            "d747bc34556f3d8b",  # pragma: allowlist secret
+            "325df80b2aaba7c5",  # pragma: allowlist secret
+        ),
+    ),
+    (
+        "sub-01/ses-eeg/sub-01_ses-eeg_scans.tsv",
+        _sha256(
+            "1ec0eb51f143b243",  # pragma: allowlist secret
+            "afdecd1980060415",  # pragma: allowlist secret
+            "fb3fd4b34cfaef50",  # pragma: allowlist secret
+            "f843bd813c6c8728",  # pragma: allowlist secret
+        ),
+    ),
+    (
+        "sub-01/sub-01_sessions.json",
+        _sha256(
+            "92b0f5178442768d",  # pragma: allowlist secret
+            "cb5b67e4eb14c64d",  # pragma: allowlist secret
+            "627e534cec534ce6",  # pragma: allowlist secret
+            "a4157ae46e100e04",  # pragma: allowlist secret
+        ),
+    ),
+    (
+        "sub-01/sub-01_sessions.tsv",
+        _sha256(
+            "ca47aa9a0a90bf95",  # pragma: allowlist secret
+            "05a6d380c76968d7",  # pragma: allowlist secret
+            "7503c1baed42df61",  # pragma: allowlist secret
+            "944f754b62c8afd1",  # pragma: allowlist secret
+        ),
+    ),
+)
+
+
+def _mne_bids_tiny_downloads() -> list[dict[str, str]]:
+    return [
+        {
+            "filename": f"{MNE_BIDS_TINY_NAME}/{relative_path}",
+            "url": f"{MNE_BIDS_TINY_RAW_BASE_URL}/{quote(relative_path, safe='/')}",
+            "sha256": sha256,
+        }
+        for relative_path, sha256 in MNE_BIDS_TINY_FILES
+    ]
+
 
 FIXTURE_GROUPS = [
     {
@@ -103,13 +296,14 @@ FIXTURE_GROUPS = [
             },
         ],
     },
+    {
+        "name": MNE_BIDS_TINY_NAME,
+        "description": "Pinned MNE-BIDS tiny_bids EEG root, downloaded as a real external BIDS fixture.",
+        "source": "MNE-BIDS tiny_bids test data",
+        "entrypoint": MNE_BIDS_TINY_ENTRYPOINT,
+        "files": _mne_bids_tiny_downloads(),
+    },
 ]
-
-TINY_BIDS_NAME = "tiny-bids-eeg"
-TINY_BIDS_ENTRYPOINT = (
-    "tiny-bids-eeg/sub-01/ses-01/eeg/sub-01_ses-01_task-mi_run-1_eeg.vhdr"
-)
-TINY_BIDS_STEM = "sub-01_ses-01_task-mi_run-1_eeg"
 
 _ALLOWED_DOWNLOAD_HOSTS = {
     "physionet.org",
@@ -184,111 +378,6 @@ def validate_fixture_file(path: Path, expected_sha256: str) -> None:
         )
 
 
-def create_tiny_bids_eeg_fixture(
-    *,
-    force: bool = False,
-    public_dir: Path = PUBLIC_DIR,
-    repo_root: Path = ROOT,
-) -> None:
-    """Create a compact BIDS-like EEG root from checked-in BrainVision fixtures."""
-    source_dir = repo_root / "tests" / "fixtures" / "data" / "multiformat"
-    source_vhdr = source_dir / "A01T-mini-real.vhdr"
-    source_eeg = source_dir / "A01T-mini-real.eeg"
-    source_vmrk = source_dir / "A01T-mini-real.vmrk"
-    missing = [
-        path.name
-        for path in (source_vhdr, source_eeg, source_vmrk)
-        if not path.exists()
-    ]
-    if missing:
-        raise FileNotFoundError(
-            "Cannot create tiny BIDS EEG fixture; missing checked-in "
-            f"BrainVision source file(s): {', '.join(missing)}"
-        )
-
-    bids_root = public_dir / TINY_BIDS_NAME
-    eeg_dir = bids_root / "sub-01" / "ses-01" / "eeg"
-    target_vhdr = eeg_dir / f"{TINY_BIDS_STEM}.vhdr"
-    target_eeg = eeg_dir / f"{TINY_BIDS_STEM}.eeg"
-    target_vmrk = eeg_dir / f"{TINY_BIDS_STEM}.vmrk"
-
-    if (
-        target_vhdr.exists()
-        and target_eeg.exists()
-        and target_vmrk.exists()
-        and not force
-    ):
-        print(f"  Using existing fixture: {bids_root}")
-        return
-
-    if bids_root.exists():
-        shutil.rmtree(bids_root)
-    eeg_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source_eeg, target_eeg)
-    target_vhdr.write_text(
-        source_vhdr.read_text(encoding="utf-8")
-        .replace("DataFile=A01T-mini-real.eeg", f"DataFile={target_eeg.name}")
-        .replace("MarkerFile=A01T-mini-real.vmrk", f"MarkerFile={target_vmrk.name}"),
-        encoding="utf-8",
-    )
-    target_vmrk.write_text(
-        source_vmrk.read_text(encoding="utf-8").replace(
-            "DataFile=A01T-mini-real.eeg",
-            f"DataFile={target_eeg.name}",
-        ),
-        encoding="utf-8",
-    )
-
-    (bids_root / "dataset_description.json").write_text(
-        "{\n"
-        '  "Name": "XBrainLab tiny local BIDS EEG fixture",\n'
-        '  "BIDSVersion": "1.9.0",\n'
-        '  "DatasetType": "raw"\n'
-        "}\n",
-        encoding="utf-8",
-    )
-    (bids_root / "participants.tsv").write_text(
-        "participant_id\tsex\tage\nsub-01\tn/a\tn/a\n",
-        encoding="utf-8",
-    )
-    (eeg_dir / f"{TINY_BIDS_STEM[:-4]}_channels.tsv").write_text(
-        "name\ttype\tunits\tstatus\n"
-        "EEG-Fz\tEEG\tuV\tgood\n"
-        "EEG-0\tEEG\tuV\tgood\n"
-        "EEG-1\tEEG\tuV\tgood\n"
-        "EEG-2\tEEG\tuV\tgood\n"
-        "EEG-3\tEEG\tuV\tgood\n"
-        "EEG-4\tEEG\tuV\tgood\n"
-        "EEG-5\tEEG\tuV\tgood\n"
-        "EEG-C3\tEEG\tuV\tgood\n",
-        encoding="utf-8",
-    )
-    (eeg_dir / f"{TINY_BIDS_STEM[:-4]}_events.tsv").write_text(
-        "onset\tduration\ttrial_type\tvalue\n"
-        "1.0\t1.0\tleft_hand\t769\n"
-        "3.0\t1.0\tright_hand\t770\n"
-        "5.0\t1.0\tfeet\t771\n",
-        encoding="utf-8",
-    )
-    (eeg_dir / f"{TINY_BIDS_STEM[:-4]}_events.json").write_text(
-        "{\n"
-        '  "trial_type": {\n'
-        '    "Description": "Motor imagery class label",\n'
-        '    "Levels": {\n'
-        '      "left_hand": "Left hand motor imagery",\n'
-        '      "right_hand": "Right hand motor imagery",\n'
-        '      "feet": "Feet motor imagery"\n'
-        "    }\n"
-        "  },\n"
-        '  "value": {\n'
-        '    "Description": "Original event code"\n'
-        "  }\n"
-        "}\n",
-        encoding="utf-8",
-    )
-    print(f"  Saved {bids_root}")
-
-
 def main() -> int:
     """Download all configured fixtures unless they already exist."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -315,11 +404,6 @@ def main() -> int:
                 print(f"  - {fixture_file['filename']}")
                 print(f"    {fixture_file['url']}")
                 print(f"    sha256: {fixture_file['sha256']}")
-        print(
-            "tiny-bids-eeg: Compact BIDS-like EEG root generated from checked-in "
-            "BrainVision mini fixture. [XBrainLab derived fixture]"
-        )
-        print(f"  entrypoint: {TINY_BIDS_ENTRYPOINT}")
         return 0
 
     PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
@@ -332,6 +416,7 @@ def main() -> int:
         for fixture_file in fixture_group["files"]:
             destination = PUBLIC_DIR / fixture_file["filename"]
             expected_sha256 = str(fixture_file["sha256"])
+            destination.parent.mkdir(parents=True, exist_ok=True)
             if (
                 destination.exists()
                 and not args.force
@@ -348,9 +433,6 @@ def main() -> int:
             download_file(fixture_file["url"], destination)
             validate_fixture_file(destination, expected_sha256)
             print(f"  Saved {destination}")
-
-    print("Preparing tiny-bids-eeg (XBrainLab derived fixture)...")
-    create_tiny_bids_eeg_fixture(force=args.force)
 
     return 0
 

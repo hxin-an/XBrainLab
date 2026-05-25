@@ -43,6 +43,44 @@ def test_label_carrier_plan_uses_user_choices_for_bids_events(tmp_path):
     assert row["selected_target_file"] == "sub-01_raw.fif"
 
 
+def test_label_carrier_plan_accepts_bids_events_with_utf8_bom(tmp_path):
+    events = tmp_path / "sub-01_task-rest_events.tsv"
+    events.write_text(
+        "\ufeffonset\tduration\ttrial_type\tvalue\tsample\n"
+        "0.0\t0.0\tstart\t1\t0\n"
+        "0.2\t0.0\tstimulus\t2\t1000\n",
+        encoding="utf-8",
+    )
+
+    plan = build_label_carrier_plan(
+        [str(events)],
+        {
+            events.name: {
+                "label_field": "trial_type",
+                "anchor": "onset",
+                "duration_field": "duration",
+                "time_model": "seconds",
+                "placement_method": "interval",
+            }
+        },
+    )
+
+    row = plan[0]
+    assert row["bids_event_columns"] == [
+        "onset",
+        "duration",
+        "trial_type",
+        "value",
+        "sample",
+    ]
+    assert row["selected_anchor_stats"]["numeric_count"] == 2
+    assert row["label_value_counts"] == {"start": 1, "stimulus": 1}
+    assert row["time_label_preview"] == [
+        {"time": "0.0", "label": "start"},
+        {"time": "0.2", "label": "stimulus"},
+    ]
+
+
 def test_label_carrier_plan_flags_bids_events_missing_sidecar_and_duration(tmp_path):
     events = tmp_path / "sub-01_task-mi_events.tsv"
     events.write_text(

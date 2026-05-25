@@ -42,6 +42,10 @@ def test_metadata_for_filename_rule_requires_confirmation(tmp_path: Path):
 
 def test_bids_summary_collects_entities_and_dataset_description(tmp_path: Path):
     (tmp_path / "dataset_description.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "participants.tsv").write_text(
+        "\ufeffparticipant_id\tage\tsex\nsub-01\t29\tF\n",
+        encoding="utf-8",
+    )
     eeg_files = [
         str(
             tmp_path
@@ -69,6 +73,9 @@ def test_bids_summary_collects_entities_and_dataset_description(tmp_path: Path):
     assert summary["runs"] == ["1", "2"]
     assert summary["events_files"] == label_carriers
     assert summary["dataset_description"] == str(tmp_path / "dataset_description.json")
+    assert summary["participants"] == [
+        {"participant_id": "sub-01", "age": "29", "sex": "F"}
+    ]
 
 
 def test_file_metadata_from_dict_round_trips_minimal_payload():

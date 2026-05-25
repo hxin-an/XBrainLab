@@ -46,7 +46,7 @@ current truth 以這些文件為準：
 Mainstream format coverage was rechecked with checked-in compact fixtures plus
 local-only public fixtures under `tests/fixtures/data/public/`. The public fixture
 cache is intentionally ignored by git; `scripts/dev/fetch_public_eeg_fixtures.py`
-downloads or regenerates it and now verifies SHA-256 for downloaded files. Current
+downloads it and now verifies SHA-256 for downloaded files. Current
 small representatives cover:
 
 - checked-in GDF + MAT labels: BCI Competition IV 2a style `A01T/A02T/A03T`;
@@ -54,8 +54,9 @@ small representatives cover:
   EEGLAB SET, and epoched FIF;
 - public local-only fixtures: PhysioNet EDF, BBCI GDF, SCCN EEGLAB SET, MNE CNT,
   MNE BrainVision;
-- generated local-only BIDS-like EEG root with BrainVision data, `events.tsv`,
-  `events.json`, `channels.tsv`, and `participants.tsv`;
+- downloaded local-only MNE-BIDS tiny EEG root with BrainVision data,
+  `events.tsv`, `events.json`, `channels.tsv`, participants, sessions, scans,
+  and electrode sidecars;
 - scan/preview validation matrix entries for CSV, TSV, TXT, MAT, BIDS events,
   and explicitly blocked XDF/LSL.
 
@@ -68,7 +69,7 @@ Validation:
 
 ```bash
 poetry run python scripts/dev/fetch_public_eeg_fixtures.py
-# downloaded/validated public fixtures and generated tiny-bids-eeg
+# downloaded/validated public fixtures, including mne-bids-tiny-eeg
 
 poetry run python scripts/dev/report_data_interpretation_format_matrix.py --format json
 # all_expected_capabilities_observed: true

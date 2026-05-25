@@ -274,7 +274,7 @@ def _read_tsv_rows(path: Path) -> list[dict[str, str]]:
     if not path.exists():
         return []
     try:
-        with path.open("r", encoding="utf-8", newline="") as handle:
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
             reader = csv.DictReader(handle, delimiter="\t")
             return [
                 {str(key): str(value or "") for key, value in row.items() if key}
@@ -288,7 +288,7 @@ def _read_json_object(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return {}
     return payload if isinstance(payload, dict) else {}

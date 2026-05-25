@@ -297,7 +297,9 @@ class DataInterpretationApplyService:
                 )
             delimiter = "\t" if Path(carrier_path).suffix.lower() == ".tsv" else ","
             rows: list[dict[str, str]] = []
-            with Path(carrier_path).open("r", encoding="utf-8", newline="") as handle:
+            with Path(carrier_path).open(
+                "r", encoding="utf-8-sig", newline=""
+            ) as handle:
                 reader = csv.DictReader(handle, delimiter=delimiter)
                 if not reader.fieldnames:
                     raise ValueError("Event-code label carrier has no header row.")

@@ -419,7 +419,7 @@ def _tabular_columns(path: Path) -> list[str]:
         "\t" if path.suffix.lower() == ".tsv" or _is_bids_events_file(path) else ","
     )
     try:
-        with path.open("r", encoding="utf-8", newline="") as handle:
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
             reader = csv.reader(handle, delimiter=delimiter)
             header = next(reader, [])
     except (OSError, UnicodeDecodeError, csv.Error, StopIteration):
@@ -523,7 +523,7 @@ def _tabular_event_code_label_counts(
     )
     counts: dict[str, Counter[str]] = {}
     try:
-        with path.open("r", encoding="utf-8", newline="") as handle:
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
             reader = csv.DictReader(handle, delimiter=delimiter)
             if (
                 not reader.fieldnames
@@ -603,7 +603,7 @@ def _tabular_time_label_preview(
     )
     rows: list[dict[str, str]] = []
     try:
-        with path.open("r", encoding="utf-8", newline="") as handle:
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
             reader = csv.DictReader(handle, delimiter=delimiter)
             if (
                 not reader.fieldnames
@@ -681,7 +681,7 @@ def _tabular_field_stats(path: Path, field_name: str) -> dict[str, Any]:
     )
     values: list[Any] = []
     try:
-        with path.open("r", encoding="utf-8", newline="") as handle:
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
             reader = csv.DictReader(handle, delimiter=delimiter)
             if not reader.fieldnames or field_name not in reader.fieldnames:
                 return _empty_field_stats()
@@ -748,7 +748,7 @@ def _tabular_label_stats(path: Path, label_field: str) -> dict[str, Any]:
     )
     counts: Counter[str] = Counter()
     try:
-        with path.open("r", encoding="utf-8", newline="") as handle:
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
             reader = csv.DictReader(handle, delimiter=delimiter)
             if not reader.fieldnames or label_field not in reader.fieldnames:
                 return {"row_count": 0, "value_counts": {}}
@@ -783,7 +783,7 @@ def _mat_label_stats(path: Path, label_field: str) -> dict[str, Any]:
 def _text_label_stats(path: Path) -> dict[str, Any]:
     counts: Counter[str] = Counter()
     try:
-        with path.open("r", encoding="utf-8") as handle:
+        with path.open("r", encoding="utf-8-sig") as handle:
             for line in handle:
                 value = _clean_label_value(line)
                 if value:
@@ -825,7 +825,7 @@ def _tabular_label_values(path: Path, label_field: str, *, limit: int) -> list[s
     )
     values: list[str] = []
     try:
-        with path.open("r", encoding="utf-8", newline="") as handle:
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
             reader = csv.DictReader(handle, delimiter=delimiter)
             if not reader.fieldnames or label_field not in reader.fieldnames:
                 return []
@@ -844,7 +844,7 @@ def _tabular_label_values(path: Path, label_field: str, *, limit: int) -> list[s
 def _text_label_values(path: Path, *, limit: int) -> list[str]:
     values: list[str] = []
     try:
-        with path.open("r", encoding="utf-8") as handle:
+        with path.open("r", encoding="utf-8-sig") as handle:
             for line in handle:
                 value = _clean_label_value(line)
                 if not value or value in values:
@@ -901,7 +901,7 @@ def _bids_event_sidecar_names(path: Path) -> list[str]:
 
 def _json_object(path: Path) -> dict[str, Any]:
     try:
-        with path.open("r", encoding="utf-8") as handle:
+        with path.open("r", encoding="utf-8-sig") as handle:
             payload = json.load(handle)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return {}

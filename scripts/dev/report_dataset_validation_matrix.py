@@ -61,10 +61,10 @@ PUBLIC_IMPORT_ONLY_FIXTURES = (
 PUBLIC_BIDS_FIXTURES = (
     {
         "entrypoint": (
-            "tiny-bids-eeg/sub-01/ses-01/eeg/sub-01_ses-01_task-mi_run-1_eeg.vhdr"
+            "mne-bids-tiny-eeg/sub-01/ses-eeg/eeg/sub-01_ses-eeg_task-rest_eeg.vhdr"
         ),
-        "source_family": "XBrainLab derived BrainVision",
-        "format": "BIDS-like EEG",
+        "source_family": "MNE-BIDS",
+        "format": "BIDS EEG",
     },
 )
 
@@ -220,13 +220,13 @@ def build_dataset_validation_rows(
             ),
         ),
         DatasetLayerRow(
-            layer="public local-only BIDS-like EEG fixture",
+            layer="public local-only BIDS EEG fixture",
             representative_data=(
                 ", ".join(str(fixture["format"]) for fixture in public_bids_fixtures)
                 if public_bids_fixtures
-                else "not generated"
+                else "not downloaded"
             ),
-            reproducibility_class="local-only generated",
+            reproducibility_class="local-only downloaded",
             source_families=(
                 ", ".join(
                     sorted(
@@ -237,7 +237,7 @@ def build_dataset_validation_rows(
                     )
                 )
                 if public_bids_fixtures
-                else "not generated"
+                else "not downloaded"
             ),
             import_facade="yes" if public_bids_fixtures else "pending",
             label_attach="BIDS events.tsv" if public_bids_fixtures else "pending",
@@ -245,7 +245,7 @@ def build_dataset_validation_rows(
             training_smoke="no",
             notes=(
                 "Protects folder-level BIDS-EEG scan, events.tsv placement, "
-                "events.json Levels, recipe replay, and epoch handoff; not a full "
+                "events sidecars, recipe replay, and epoch handoff; not a full "
                 "BIDS validator claim."
             ),
         ),
@@ -269,8 +269,8 @@ def build_snapshot(repo_root: Path = ROOT) -> dict[str, object]:
                 "event-rich public local-only fixtures now extend one-epoch training "
                 "smoke into PhysioNet, BBCI, SCCN / EEGLAB, and MNE testing-data "
                 "CNT sources, while rest-style PhysioNet EDF and BrainVision stay "
-                "at import/facade-only; a generated tiny BIDS-like EEG root covers "
-                "folder-level Data Import and epoch handoff"
+                "at import/facade-only; a downloaded MNE-BIDS tiny EEG root covers "
+                "folder-level Data Import and BIDS events epoch handoff"
             ),
             "main_limit": (
                 "cross-source evidence is stronger, but part of it remains local-only "
