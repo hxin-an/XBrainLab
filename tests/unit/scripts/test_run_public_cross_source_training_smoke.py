@@ -85,3 +85,9 @@ def test_render_markdown_includes_summary():
     assert "bbci-competition-iii-O3VR.gdf" in rendered
     assert "passed" in rendered
     assert "repeatable cross-source one-epoch training-smoke protocol" in rendered
+
+
+def test_cnt_fixture_uses_larger_split_ratio_for_tiny_event_count():
+    fixture_by_name = {fixture["name"]: fixture for fixture in PUBLIC_TRAINING_FIXTURES}
+
+    assert fixture_by_name["mne-cnt"]["split_ratio"] == 0.5

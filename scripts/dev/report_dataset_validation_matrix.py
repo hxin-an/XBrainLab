@@ -7,6 +7,7 @@ import argparse
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[2]
 TEST_DATA_DIR = ROOT / "tests" / "fixtures" / "data"
@@ -57,6 +58,15 @@ PUBLIC_IMPORT_ONLY_FIXTURES = (
         "format": "BrainVision .vhdr",
     },
 )
+PUBLIC_BIDS_FIXTURES = (
+    {
+        "entrypoint": (
+            "tiny-bids-eeg/sub-01/ses-01/eeg/sub-01_ses-01_task-mi_run-1_eeg.vhdr"
+        ),
+        "source_family": "XBrainLab derived BrainVision",
+        "format": "BIDS-like EEG",
+    },
+)
 
 
 @dataclass
@@ -72,6 +82,10 @@ class DatasetLayerRow:
     dataset_generation: str
     training_smoke: str
     notes: str
+
+
+def _nonempty_file(path: Path) -> bool:
+    return path.exists() and path.is_file() and path.stat().st_size > 0
 
 
 def build_dataset_validation_rows(
@@ -93,12 +107,17 @@ def build_dataset_validation_rows(
     public_training_fixtures = [
         fixture
         for fixture in PUBLIC_EVENT_RICH_TRAINING_FIXTURES
-        if (tests_data_dir / "public" / fixture["filename"]).exists()
+        if _nonempty_file(tests_data_dir / "public" / fixture["filename"])
     ]
     public_import_only_fixtures = [
         fixture
         for fixture in PUBLIC_IMPORT_ONLY_FIXTURES
-        if (tests_data_dir / "public" / fixture["filename"]).exists()
+        if _nonempty_file(tests_data_dir / "public" / fixture["filename"])
+    ]
+    public_bids_fixtures = [
+        fixture
+        for fixture in PUBLIC_BIDS_FIXTURES
+        if _nonempty_file(tests_data_dir / "public" / fixture["entrypoint"])
     ]
     public_training_source_families = sorted(
         {str(fixture["source_family"]) for fixture in public_training_fixtures}
@@ -200,6 +219,36 @@ def build_dataset_validation_rows(
                 " currently provide a training-smoke path."
             ),
         ),
+        DatasetLayerRow(
+            layer="public local-only BIDS-like EEG fixture",
+            representative_data=(
+                ", ".join(str(fixture["format"]) for fixture in public_bids_fixtures)
+                if public_bids_fixtures
+                else "not generated"
+            ),
+            reproducibility_class="local-only generated",
+            source_families=(
+                ", ".join(
+                    sorted(
+                        {
+                            str(fixture["source_family"])
+                            for fixture in public_bids_fixtures
+                        }
+                    )
+                )
+                if public_bids_fixtures
+                else "not generated"
+            ),
+            import_facade="yes" if public_bids_fixtures else "pending",
+            label_attach="BIDS events.tsv" if public_bids_fixtures else "pending",
+            dataset_generation="epoch handoff" if public_bids_fixtures else "pending",
+            training_smoke="no",
+            notes=(
+                "Protects folder-level BIDS-EEG scan, events.tsv placement, "
+                "events.json Levels, recipe replay, and epoch handoff; not a full "
+                "BIDS validator claim."
+            ),
+        ),
     ]
 
 
@@ -220,7 +269,8 @@ def build_snapshot(repo_root: Path = ROOT) -> dict[str, object]:
                 "event-rich public local-only fixtures now extend one-epoch training "
                 "smoke into PhysioNet, BBCI, SCCN / EEGLAB, and MNE testing-data "
                 "CNT sources, while rest-style PhysioNet EDF and BrainVision stay "
-                "at import/facade-only"
+                "at import/facade-only; a generated tiny BIDS-like EEG root covers "
+                "folder-level Data Import and epoch handoff"
             ),
             "main_limit": (
                 "cross-source evidence is stronger, but part of it remains local-only "
@@ -232,13 +282,15 @@ def build_snapshot(repo_root: Path = ROOT) -> dict[str, object]:
 
 def render_markdown(snapshot: dict[str, object]) -> str:
     """Render the dataset validation snapshot in Markdown."""
+    rows = cast(list[dict[str, object]], snapshot["rows"])
+    current_truth = cast(dict[str, object], snapshot["current_truth"])
     lines = [
         "# Dataset Validation Matrix",
         "",
         "| Layer | Representative data | Reproducibility | Source families | Import / facade | Label attach | Dataset generation | Training smoke | Notes |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
-    for row in snapshot["rows"]:
+    for row in rows:
         lines.append(
             "| {layer} | {representative_data} | {reproducibility_class} | "
             "{source_families} | {import_facade} | {label_attach} | "
@@ -249,9 +301,9 @@ def render_markdown(snapshot: dict[str, object]) -> str:
             "",
             "## Current Truth",
             "",
-            f"- {snapshot['current_truth']['checked_in_depth']}",
-            f"- {snapshot['current_truth']['cross_source_breadth']}",
-            f"- {snapshot['current_truth']['main_limit']}",
+            f"- {current_truth['checked_in_depth']}",
+            f"- {current_truth['cross_source_breadth']}",
+            f"- {current_truth['main_limit']}",
         ]
     )
     return "\n".join(lines)

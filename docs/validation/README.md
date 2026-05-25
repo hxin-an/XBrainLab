@@ -41,6 +41,80 @@ current truth 以這些文件為準：
 - [architecture/README.md](../architecture/README.md)
 - [validation/README.md](README.md)
 
+## 2026-05-25 Mainstream EEG/BCI Format Gate
+
+Mainstream format coverage was rechecked with checked-in compact fixtures plus
+local-only public fixtures under `tests/fixtures/data/public/`. The public fixture
+cache is intentionally ignored by git; `scripts/dev/fetch_public_eeg_fixtures.py`
+downloads or regenerates it and now verifies SHA-256 for downloaded files. Current
+small representatives cover:
+
+- checked-in GDF + MAT labels: BCI Competition IV 2a style `A01T/A02T/A03T`;
+- checked-in compact multiformat derivatives: FIF, FIF.GZ, EDF, BDF, BrainVision,
+  EEGLAB SET, and epoched FIF;
+- public local-only fixtures: PhysioNet EDF, BBCI GDF, SCCN EEGLAB SET, MNE CNT,
+  MNE BrainVision;
+- generated local-only BIDS-like EEG root with BrainVision data, `events.tsv`,
+  `events.json`, `channels.tsv`, and `participants.tsv`;
+- scan/preview validation matrix entries for CSV, TSV, TXT, MAT, BIDS events,
+  and explicitly blocked XDF/LSL.
+
+The gate found one product issue: a generic `trial/class` TSV could be interpreted
+as if `trial` were an EEG event code. Event-order placement now defaults that case
+to `trial order` and asks the user to choose target EEG events instead of blocking
+on a nonexistent event called `trial`.
+
+Validation:
+
+```bash
+poetry run python scripts/dev/fetch_public_eeg_fixtures.py
+# downloaded/validated public fixtures and generated tiny-bids-eeg
+
+poetry run python scripts/dev/report_data_interpretation_format_matrix.py --format json
+# all_expected_capabilities_observed: true
+# all_expected_capabilities_match: true
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/integration/io/test_io_integration.py \
+  tests/integration/io/test_public_bids_fixture.py \
+  tests/integration/pipeline/test_public_cross_source_training_smoke.py -q
+# 36 passed
+
+poetry run python scripts/dev/run_public_cross_source_training_smoke.py \
+  --format json --strict
+# 4 passed, 0 missing, 0 failed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration -q
+# 215 passed
+
+poetry run ruff check .
+# PASS
+
+poetry run basedpyright scripts/dev/fetch_public_eeg_fixtures.py \
+  scripts/dev/report_data_interpretation_format_matrix.py \
+  scripts/dev/report_dataset_validation_matrix.py \
+  scripts/dev/run_public_cross_source_training_smoke.py \
+  tests/unit/scripts/test_fetch_public_eeg_fixtures.py \
+  tests/unit/scripts/test_report_data_interpretation_format_matrix.py \
+  tests/unit/scripts/test_report_dataset_validation_matrix.py \
+  tests/unit/scripts/test_run_public_cross_source_training_smoke.py \
+  tests/integration/io/test_public_bids_fixture.py
+# 0 errors, 0 warnings, 0 notes
+
+poetry run mkdocs build --strict
+# PASS
+
+poetry run python tests/architecture_compliance.py
+# Architecture compliant
+
+poetry run python scripts/dev/update_quality_dashboard.py
+# Overall status: PASS
+```
+
+This supports mainstream tier-1/tier-2 import breadth for the formats above. It
+does not claim full BIDS validator compliance, XDF/LSL support, or scientific
+replication quality for arbitrary public datasets.
+
 ## 2026-05-25 Manual-Test Audit Follow-Up
 
 Manual testing exposed multiple issues that older automated evidence did not catch.

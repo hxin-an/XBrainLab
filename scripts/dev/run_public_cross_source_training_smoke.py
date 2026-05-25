@@ -36,6 +36,7 @@ PUBLIC_TRAINING_FIXTURES = (
         "event_ids": ["T1", "T2"],
         "tmin": 0,
         "tmax": 2,
+        "split_ratio": 0.2,
     },
     {
         "name": "bbci-gdf",
@@ -44,6 +45,7 @@ PUBLIC_TRAINING_FIXTURES = (
         "event_ids": ["769", "770"],
         "tmin": 0,
         "tmax": 2,
+        "split_ratio": 0.2,
     },
     {
         "name": "sccn-eeglab",
@@ -52,6 +54,7 @@ PUBLIC_TRAINING_FIXTURES = (
         "event_ids": ["rt", "square"],
         "tmin": 0,
         "tmax": 2,
+        "split_ratio": 0.2,
     },
     {
         "name": "mne-cnt",
@@ -60,6 +63,7 @@ PUBLIC_TRAINING_FIXTURES = (
         "event_ids": ["0", "109", "7"],
         "tmin": 0,
         "tmax": 2,
+        "split_ratio": 0.5,
     },
 )
 
@@ -132,10 +136,11 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
             ),
         )
         _raise_if_failed(epoch_result)
+        split_ratio = float(cast(float | int | str, fixture.get("split_ratio", 0.2)))
         dataset_result = service.execute(
             GenerateDatasetCommand(
-                test_ratio=0.2,
-                val_ratio=0.2,
+                test_ratio=split_ratio,
+                val_ratio=split_ratio,
                 split_strategy="trial",
                 training_mode="individual",
             ),

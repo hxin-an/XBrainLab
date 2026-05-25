@@ -1077,6 +1077,8 @@ def _default_anchor_for_placement(
         return interval_start_candidates[0]
     if placement_method == "time_field" and time_field_candidates:
         return time_field_candidates[0]
+    if placement_method == "eeg_event":
+        return "trial order"
     return anchor_candidates[0] if anchor_candidates else ""
 
 

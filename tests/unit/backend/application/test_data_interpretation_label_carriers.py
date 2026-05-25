@@ -207,6 +207,20 @@ def test_label_carrier_plan_defaults_marker_table_to_event_code_placement(tmp_pa
     }
 
 
+def test_label_carrier_plan_does_not_treat_trial_column_as_eeg_event(tmp_path):
+    labels = tmp_path / "labels.tsv"
+    labels.write_text("trial\tclass\n1\tleft\n2\tright\n", encoding="utf-8")
+
+    plan = build_label_carrier_plan([str(labels)], {})
+
+    row = plan[0]
+    assert row["selected_label_field"] == "class"
+    assert row["anchor_candidates"] == ["trial"]
+    assert row["placement_method"] == "eeg_event"
+    assert row["selected_anchor"] == "trial order"
+    assert row["selected_target_event_codes"] == []
+
+
 def test_label_carrier_plan_exposes_mat_interval_fields(tmp_path):
     import numpy as np
     from scipy.io import savemat

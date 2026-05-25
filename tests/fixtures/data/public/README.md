@@ -9,6 +9,8 @@
 /home/administrator/.local/bin/poetry run python scripts/dev/fetch_public_eeg_fixtures.py
 ```
 
+下載器會驗證公開檔案的 SHA-256，避免 0-byte 或 partial download 被誤當成可用 fixture。
+
 目前 fixture 組合：
 
 - `physionet-eegmmidb-S008R01.edf`
@@ -36,6 +38,12 @@
   - Format: BrainVision `.vhdr`
   - Sidecars: `test_NO.eeg`, `test_NO.vmrk`
   - Type: compact BrainVision sample for sidecar-format coverage
+- `tiny-bids-eeg/`
+  - Source: XBrainLab derived fixture from checked-in compact BrainVision data
+  - Format: BIDS-like EEG root with BrainVision `.vhdr/.eeg/.vmrk`, `events.tsv`,
+    `events.json`, `channels.tsv`, and `participants.tsv`
+  - Type: compact folder-level BIDS-EEG import, metadata, label placement, recipe,
+    and epoch handoff coverage
 
 目前這組 public baseline 已覆蓋：
 
@@ -44,6 +52,7 @@
 - EEGLAB `.set`
 - CNT
 - BrainVision `.vhdr`
+- BIDS-like EEG folder
 
 其中目前可直接推進到 cross-source one-epoch training smoke 的 event-rich fixtures 是：
 
@@ -63,6 +72,11 @@
 
 - `physionet-eegmmidb-S008R01.edf`
 - `test_NO.vhdr`
+
+另外 `tiny-bids-eeg/` 是 folder-level Data Import / BIDS-EEG fixture；它不是
+OpenNeuro 下載資料，也不代表 full BIDS validator compliance，但用來保護
+XBrainLab 的 BIDS root scan、`events.tsv` label carrier、`events.json` Levels、
+metadata preview、recipe replay 和 epoch handoff。
 
 為什麼保持 local-only：
 
