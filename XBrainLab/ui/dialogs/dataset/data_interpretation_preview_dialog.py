@@ -360,6 +360,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.review_tree: QTreeWidget
         self.review_actions_panel: QWidget
         self.review_actions_layout: QVBoxLayout
+        self.review_recipe_note_label: QLabel
         self.event_layout: QVBoxLayout
         self.scroll_area: QScrollArea
         self.step_stack: QStackedWidget
@@ -383,6 +384,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._label_choice_widgets: dict[tuple[int, int], QComboBox] = {}
         self._eeg_file_remap_widgets: dict[str, QComboBox] = {}
         self._label_carrier_remap_widgets: dict[str, QComboBox] = {}
+        self._review_summary_value_labels: dict[str, QLabel] = {}
         self._event_role_widgets: dict[int, QComboBox] = {}
         self._event_role_items: list[tuple[QTreeWidgetItem, str, str]] = []
         self._class_map_items: list[tuple[QTreeWidgetItem, str, str]] = []
@@ -4667,12 +4669,14 @@ class DataInterpretationPreviewDialog(BaseDialog):
         rows_layout.setVerticalSpacing(4)
         note_title = QLabel("Recipe note")
         note_title.setObjectName("DataImportSummaryLabel")
-        note_text = QLabel(self._review_recipe_note_text())
-        note_text.setObjectName("DataImportSummaryValue")
-        note_text.setWordWrap(True)
-        note_text.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.review_recipe_note_label = QLabel(self._review_recipe_note_text())
+        self.review_recipe_note_label.setObjectName("DataImportSummaryValue")
+        self.review_recipe_note_label.setWordWrap(True)
+        self.review_recipe_note_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
         rows_layout.addWidget(note_title, 0, 0)
-        rows_layout.addWidget(note_text, 0, 1)
+        rows_layout.addWidget(self.review_recipe_note_label, 0, 1)
         rows_layout.addWidget(self.confirmation_label, 1, 1)
         rows_layout.addWidget(
             self.save_recipe_check,
@@ -4695,8 +4699,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             ("Label placement", self._review_label_placement_text()),
         ]
 
-    @staticmethod
-    def _review_summary_cell(label: str, value: str) -> QFrame:
+    def _review_summary_cell(self, label: str, value: str) -> QFrame:
         cell = QFrame()
         cell.setObjectName("DataImportSummaryCell")
         cell.setSizePolicy(
@@ -4714,9 +4717,20 @@ class DataInterpretationPreviewDialog(BaseDialog):
         value_widget.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
+        self._review_summary_value_labels[label] = value_widget
         layout.addWidget(label_widget)
         layout.addWidget(value_widget)
         return cell
+
+    def _refresh_review_import_summary(self) -> None:
+        if not hasattr(self, "_review_summary_value_labels"):
+            return
+        for label, value in self._review_import_summary_rows():
+            value_label = self._review_summary_value_labels.get(label)
+            if value_label is not None:
+                value_label.setText(value)
+        if hasattr(self, "review_recipe_note_label"):
+            self.review_recipe_note_label.setText(self._review_recipe_note_text())
 
     def _default_review_action_row(self) -> tuple[str, str, str, str]:
         if self.decision == "blocked":
@@ -5046,6 +5060,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.decision_label.setText(self._decision_text())
         self._refresh_label_source_rows()
         self._refresh_label_matching_after_source_change()
+        self._refresh_review_import_summary()
         self._refresh_review_step_after_rescan()
         self._sync_apply_state()
         self.label_sources_label.setText("Label files refreshed.")
@@ -5115,6 +5130,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._fit_all_tree_columns_to_viewport()
         self._fit_event_tree_height()
         self._fit_review_tree_height()
+        if final_step:
+            self._refresh_review_import_summary()
         self._sync_scroll_policy()
 
     def _sync_step_labels(self, current: int) -> None:

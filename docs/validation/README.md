@@ -337,6 +337,9 @@ Screenshot evidence:
 - Load Labels now supports in-place label-source rescan through the same command API, so the
   visible dialog stays open while refreshed label carriers are loaded and the wizard advances to
   Review Metadata without a close/reopen flash.
+- Review and Import now refreshes its Import Summary from current wizard state when the final
+  step is shown, so manual subject/session/task/run edits made in Review Metadata are reflected
+  before applying.
 
 Focused validation:
 
@@ -379,7 +382,7 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/components/test_dialogs.py \
   tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
   tests/unit/ui/test_ui_misc.py -q
-# 269 passed
+# 270 passed
 ```
 
 ## Backend Test Hygiene Inventory

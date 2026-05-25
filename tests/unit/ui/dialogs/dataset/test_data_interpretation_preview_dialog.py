@@ -2811,6 +2811,48 @@ def test_review_and_import_saves_label_choices_for_later_epoch_setup(qtbot):
     assert "Epoch setup will use" not in review_text
 
 
+def test_review_and_import_metadata_summary_uses_manual_edits(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s).",
+            "metadata_preview": [
+                {
+                    "file": "A01T.gdf",
+                    "subject": {"value": "", "decision": "needs_confirmation"},
+                    "session": {"value": "", "decision": "needs_confirmation"},
+                    "task": {"value": "mi", "decision": "safe"},
+                    "run": {"value": "01", "decision": "safe"},
+                },
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(1040, 760)
+    dialog.show()
+    qtbot.wait(0)
+    _show_step(dialog, "Review Metadata")
+    qtbot.wait(0)
+
+    item = dialog.file_tree.topLevelItem(0)
+    assert item is not None
+    item.setText(1, "A01")
+    item.setText(2, "T")
+
+    _show_step(dialog, "Review and Import")
+    qtbot.wait(0)
+    review_text = _visible_step_text(dialog, "Review and Import")
+
+    assert "Metadata complete" in review_text
+    assert "Missing subject" not in review_text
+    assert "Missing session" not in review_text
+
+
 def test_review_and_import_groups_repeated_file_action_items(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,
