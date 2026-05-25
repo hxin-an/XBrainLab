@@ -638,11 +638,77 @@ class DatasetActionHandler:
         )
         resume_dialog_step = ""
 
+        def refresh_label_sources_in_place(
+            next_label_sources: list[str],
+        ) -> dict[str, Any] | None:
+            nonlocal scan, preview, decision, candidate_id, label_sources
+            label_sources = list(next_label_sources)
+            refreshed_scan_result = execute_application_command(
+                self.panel,
+                ScanSourceCommand(
+                    source_path=source_path,
+                    source_hint=source_hint,
+                    label_sources=label_sources,
+                ),
+            )
+            if refreshed_scan_result is None:
+                return None
+            if refreshed_scan_result.failed:
+                QMessageBox.critical(
+                    self.panel,
+                    "Source scan failed",
+                    refreshed_scan_result.message,
+                )
+                return None
+            scan = self._diagnostic_payload(refreshed_scan_result, "scan_result")
+            refreshed_preview_result = execute_application_command(
+                self.panel,
+                PreviewInterpretationCommand(choices=choices),
+            )
+            if refreshed_preview_result is None:
+                return None
+            if refreshed_preview_result.failed:
+                QMessageBox.critical(
+                    self.panel,
+                    "Interpretation preview failed",
+                    refreshed_preview_result.message,
+                )
+                return None
+            preview = self._diagnostic_payload(refreshed_preview_result, "preview")
+            candidate = self._diagnostic_payload(
+                refreshed_preview_result,
+                "candidate",
+            )
+            candidate_id = self._optional_payload_id(candidate, "candidate_id")
+            refreshed_validation_result = execute_application_command(
+                self.panel,
+                ValidateInterpretationCommand(candidate_id=candidate_id),
+            )
+            if refreshed_validation_result is None:
+                return None
+            if refreshed_validation_result.failed:
+                QMessageBox.critical(
+                    self.panel,
+                    "Interpretation validation failed",
+                    refreshed_validation_result.message,
+                )
+                return None
+            decision = self._diagnostic_payload(
+                refreshed_validation_result,
+                "validation_decision",
+            )
+            return {
+                "scan_result": scan,
+                "preview": preview,
+                "validation_decision": decision,
+            }
+
         while True:
             dialog_kwargs: dict[str, Any] = {
                 "scan_result": scan,
                 "preview": preview,
                 "validation_decision": decision,
+                "label_rescan_handler": refresh_label_sources_in_place,
             }
             if resume_dialog_step:
                 dialog_kwargs["initial_step"] = resume_dialog_step

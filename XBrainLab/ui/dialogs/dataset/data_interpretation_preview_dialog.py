@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
@@ -293,12 +293,15 @@ class DataInterpretationPreviewDialog(BaseDialog):
         preview: dict[str, Any] | None = None,
         validation_decision: dict[str, Any] | None = None,
         initial_step: str | None = None,
+        label_rescan_handler: Callable[[list[str]], dict[str, Any] | None]
+        | None = None,
     ):
         self.scan_result = dict(scan_result or {})
         self.preview = dict(preview or {})
         self.validation_decision = dict(validation_decision or {})
         self._initial_step = str(initial_step or "")
         self._resume_step_after_accept = ""
+        self._label_rescan_handler = label_rescan_handler
         self.workflow_steps_label: QLabel
         self.step_labels: list[QLabel]
         self.summary_label: QLabel
@@ -4991,10 +4994,89 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
     def _go_next_step(self) -> None:
         if self._label_sources_need_rescan_before_matching():
+            if self._label_rescan_handler is not None:
+                if self._rescan_label_sources_in_place():
+                    self._go_to_step(self._step_titles.index("Review Metadata"))
+                return
             self._resume_step_after_accept = "Review Metadata"
             self.accept()
             return
         self._go_to_step(self.step_stack.currentIndex() + 1)
+
+    def _rescan_label_sources_in_place(self) -> bool:
+        if self._label_rescan_handler is None:
+            return False
+        label_sources = list(self._extra_label_sources)
+        self.next_button.setEnabled(False)
+        self.back_button.setEnabled(False)
+        self.label_sources_label.setText("Refreshing label files...")
+        self.label_sources_label.setVisible(True)
+        try:
+            payload = self._label_rescan_handler(label_sources)
+        finally:
+            self.next_button.setEnabled(True)
+            self.back_button.setEnabled(self.step_stack.currentIndex() > 0)
+        if not payload:
+            self.label_sources_label.setText("Label files were not refreshed.")
+            self.label_sources_label.setVisible(True)
+            return False
+        self._apply_label_rescan_payload(payload, label_sources)
+        return True
+
+    def _apply_label_rescan_payload(
+        self,
+        payload: dict[str, Any],
+        label_sources: list[str],
+    ) -> None:
+        self.scan_result = dict(payload.get("scan_result") or self.scan_result)
+        self.preview = dict(payload.get("preview") or self.preview)
+        self.validation_decision = dict(
+            payload.get("validation_decision") or self.validation_decision
+        )
+        self._initial_label_sources = self._clean_label_sources(
+            self.scan_result.get("label_sources")
+        )
+        if not self._initial_label_sources:
+            self._initial_label_sources = self._clean_label_sources(label_sources)
+        self._extra_label_sources = list(self._initial_label_sources)
+        self._resume_step_after_accept = ""
+        self.summary_label.setText(
+            str(self.preview.get("summary") or "Review the interpreted EEG source.")
+        )
+        self.decision_label.setText(self._decision_text())
+        self._refresh_label_source_rows()
+        self._refresh_label_matching_after_source_change()
+        self._refresh_review_step_after_rescan()
+        self._sync_apply_state()
+        self.label_sources_label.setText("Label files refreshed.")
+        self.label_sources_label.setVisible(True)
+        self._sync_scroll_policy()
+
+    def _refresh_review_step_after_rescan(self) -> None:
+        if hasattr(self, "confirmation_label"):
+            self.confirmation_label.setText(self._confirmation_text())
+        if hasattr(self, "save_recipe_check"):
+            apply_allowed = self._apply_allowed()
+            self.save_recipe_check.setChecked(apply_allowed)
+            self.save_recipe_check.setEnabled(apply_allowed)
+        if hasattr(self, "apply_button"):
+            self.apply_button.setText(
+                "Apply Remap"
+                if self.decision == "blocked" and self._has_remap_options()
+                else "Confirm and Apply"
+                if self.decision == "needs_confirmation"
+                else "Apply Interpretation"
+            )
+            self.apply_button.setEnabled(self._apply_allowed())
+        if hasattr(self, "review_actions_layout"):
+            self._clear_layout(self.review_actions_layout)
+            self._populate_review_action_cards()
+        if hasattr(self, "review_tree"):
+            self.review_tree.clear()
+            self._eeg_file_remap_widgets.clear()
+            self._label_carrier_remap_widgets.clear()
+            self._populate_review_tree()
+            self._fit_review_tree_height()
 
     def _go_previous_step(self) -> None:
         self._go_to_step(self.step_stack.currentIndex() - 1)

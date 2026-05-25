@@ -2011,6 +2011,68 @@ def test_data_interpretation_preview_dialog_can_open_at_resume_step(qtbot):
     assert dialog.next_button.text() == "Next: Match Labels"
 
 
+def test_load_labels_next_rescans_in_place_when_handler_is_available(
+    qtbot,
+    monkeypatch,
+):
+    calls: list[list[str]] = []
+
+    def rescan_handler(label_sources: list[str]) -> dict[str, object]:
+        calls.append(label_sources)
+        return {
+            "scan_result": {
+                "source_path": "/tmp/source",
+                "eeg_files": ["/tmp/source/A01T.gdf"],
+                "label_sources": list(label_sources),
+                "label_carriers": ["/tmp/external-labels/A01T.mat"],
+            },
+            "preview": {
+                "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+                "label_carrier_preview": [
+                    {
+                        "path": "/tmp/external-labels/A01T.mat",
+                        "name": "A01T.mat",
+                        "format": "MAT",
+                        "label_candidates": ["classlabel"],
+                        "selected_label_field": "classlabel",
+                    }
+                ],
+            },
+            "validation_decision": {"decision": "needs_confirmation"},
+        }
+
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+        },
+        preview={"summary": "Found 1 EEG file(s)."},
+        validation_decision={"decision": "safe"},
+        label_rescan_handler=rescan_handler,
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Load Labels")
+    qtbot.wait(0)
+    monkeypatch.setattr(
+        "XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog.QFileDialog.getExistingDirectory",
+        lambda *_args, **_kwargs: "/tmp/external-labels",
+    )
+
+    dialog.add_label_folder_btn.click()
+    qtbot.wait(0)
+    dialog.next_button.click()
+    qtbot.wait(0)
+
+    assert dialog.result() == QDialog.DialogCode.Rejected
+    assert calls == [["/tmp/external-labels"]]
+    assert dialog.step_stack.currentIndex() == 2
+    assert _visible_group_titles(dialog) == ["Review Metadata"]
+    assert dialog.get_result().get("label_sources_changed") is None
+    assert dialog.scan_result["label_carriers"] == ["/tmp/external-labels/A01T.mat"]
+
+
 def test_data_interpretation_preview_dialog_rejects_duplicate_label_sources(
     qtbot,
     monkeypatch,

@@ -334,6 +334,9 @@ Screenshot evidence:
   affected files instead of one repeated card per EEG file.
 - Load Labels rescan follow-up now resumes the wizard at Review Metadata after a user loads a
   new label source and presses Next, instead of rebuilding the dialog back at Choose EEG Data.
+- Load Labels now supports in-place label-source rescan through the same command API, so the
+  visible dialog stays open while refreshed label carriers are loaded and the wizard advances to
+  Review Metadata without a close/reopen flash.
 
 Focused validation:
 
@@ -353,7 +356,7 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
 # 266 passed
 
 QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/run_tests.py ui
-# 1165 passed
+# 1166 passed
 
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q
@@ -369,7 +372,14 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
   tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_rescans_after_add_label_folder_product_flow -q
-# 73 passed
+# 74 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_dialogs_extra.py \
+  tests/unit/ui/components/test_dialogs.py \
+  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
+  tests/unit/ui/test_ui_misc.py -q
+# 269 passed
 ```
 
 ## Backend Test Hygiene Inventory
