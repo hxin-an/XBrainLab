@@ -4555,15 +4555,70 @@ class DataInterpretationPreviewDialog(BaseDialog):
         carrier = str(carrier_path).strip()
         if not carrier:
             return
-        if self._is_label_carrier_excluded(carrier):
+        changed = False
+        if not self._is_label_carrier_excluded(carrier):
+            self._excluded_label_carriers.append(carrier)
+            changed = True
+        if self._remove_empty_label_sources_after_carrier_exclusion(carrier):
+            changed = True
+        if not changed:
             return
-        self._excluded_label_carriers.append(carrier)
         self._skip_labels = False
         self._refresh_label_source_rows()
         self._refresh_label_matching_after_source_change()
         self.label_sources_label.setText("Removed label file.")
         self.label_sources_label.setVisible(True)
         self._sync_scroll_policy()
+
+    def _remove_empty_label_sources_after_carrier_exclusion(
+        self,
+        carrier_path: str,
+    ) -> bool:
+        if not self._extra_label_sources:
+            return False
+        removed_key = self._normalized_label_source_key(carrier_path)
+        if not removed_key:
+            return False
+        before = list(self._extra_label_sources)
+        kept_sources: list[str] = []
+        for source in self._extra_label_sources:
+            if not self._label_source_covers_carrier(source, carrier_path):
+                kept_sources.append(source)
+                continue
+            if self._looks_like_file(source):
+                continue
+            if self._label_source_has_other_active_carriers(source, removed_key):
+                kept_sources.append(source)
+        self._extra_label_sources = kept_sources
+        return self._extra_label_sources != before
+
+    def _label_source_covers_carrier(self, source: str, carrier_path: str) -> bool:
+        source_key = self._normalized_label_source_key(source)
+        carrier_key = self._normalized_label_source_key(carrier_path)
+        if not source_key or not carrier_key:
+            return False
+        if self._looks_like_file(source):
+            return source_key == carrier_key
+        carrier_parent_key = self._normalized_label_source_key(
+            Path(carrier_path).parent.as_posix()
+        )
+        return source_key == carrier_parent_key
+
+    def _label_source_has_other_active_carriers(
+        self,
+        source: str,
+        removed_key: str,
+    ) -> bool:
+        for carrier in self._label_carrier_preview_rows(include_excluded=True):
+            carrier_path = str(carrier.get("path") or "").strip()
+            carrier_key = self._normalized_label_source_key(carrier_path)
+            if not carrier_path or carrier_key == removed_key:
+                continue
+            if self._is_label_carrier_excluded(carrier_path):
+                continue
+            if self._carrier_belongs_to_source(carrier, source):
+                return True
+        return False
 
     def _exclude_carriers_from_source(self, source: str) -> None:
         for carrier in self._label_carrier_preview_rows():

@@ -1448,6 +1448,99 @@ def test_load_labels_step_removes_loaded_label_source(qtbot):
     assert dialog.label_sources_label.text() == "Removed label source."
 
 
+def test_load_labels_removing_only_file_from_loaded_folder_removes_folder_source(qtbot):
+    label_folder = "/tmp/external-labels"
+    label_file = f"{label_folder}/A01T.mat"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+            "label_sources": [label_folder],
+            "label_carriers": [label_file],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+            "label_carrier_preview": [
+                {
+                    "path": label_file,
+                    "name": "A01T.mat",
+                    "format": "MAT",
+                    "source_kind": "user_added",
+                    "source_location": label_folder,
+                }
+            ],
+        },
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Load Labels")
+    qtbot.wait(0)
+
+    assert _source_scope_texts(dialog) == [f"Label source: {label_folder}"]
+    assert _source_row_titles(dialog) == ["A01T.mat"]
+
+    _click_source_row_button(dialog, "A01T.mat", "Remove file")
+    qtbot.wait(0)
+
+    assert _source_scope_texts(dialog) == []
+    assert _source_row_titles(dialog) == []
+    result = dialog.get_result()
+    assert result["label_sources"] == []
+    assert result["label_sources_changed"] is True
+    assert "A01T.mat" not in _visible_step_text(dialog, "Load Labels")
+
+
+def test_load_labels_removing_one_file_keeps_multi_file_folder_source(qtbot):
+    label_folder = "/tmp/external-labels"
+    first_label = f"{label_folder}/A01T.mat"
+    second_label = f"{label_folder}/A02T.mat"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf", "/tmp/source/A02T.gdf"],
+            "label_sources": [label_folder],
+            "label_carriers": [first_label, second_label],
+        },
+        preview={
+            "summary": "Found 2 EEG file(s) and 2 label/event carrier(s).",
+            "label_carrier_preview": [
+                {
+                    "path": first_label,
+                    "name": "A01T.mat",
+                    "format": "MAT",
+                    "source_kind": "user_added",
+                    "source_location": label_folder,
+                },
+                {
+                    "path": second_label,
+                    "name": "A02T.mat",
+                    "format": "MAT",
+                    "source_kind": "user_added",
+                    "source_location": label_folder,
+                },
+            ],
+        },
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Load Labels")
+    qtbot.wait(0)
+
+    _click_source_row_button(dialog, "A01T.mat", "Remove file")
+    qtbot.wait(0)
+
+    assert [row.get("name") for row in dialog._label_carrier_preview_rows()] == [
+        "A02T.mat"
+    ]
+    result = dialog.get_result()
+    assert "label_sources_changed" not in result
+    assert result["choices"]["excluded_label_carriers"] == [first_label]
+
+
 def test_load_labels_step_keeps_custom_fallback_out_of_first_layer(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,
@@ -1848,7 +1941,7 @@ def test_load_labels_step_names_loaded_folder_as_scope_not_basename(qtbot):
     assert "Label source: /tmp/source/label" in visible_lines
 
 
-def test_load_labels_step_restores_loaded_folder_carrier_without_duplicate_file_source(
+def test_load_labels_step_readds_removed_folder_carrier_as_single_file_source(
     qtbot,
     monkeypatch,
 ):
@@ -1897,11 +1990,12 @@ def test_load_labels_step_restores_loaded_folder_carrier_without_duplicate_file_
     )
 
     result = dialog.get_result()
-    assert "label_sources" not in result
+    assert result["label_sources"] == [label_file]
+    assert result["label_sources_changed"] is True
     assert "excluded_label_carriers" not in result["choices"]
     visible_lines = _visible_step_text(dialog, "Load Labels").splitlines()
     assert visible_lines.count("A01T.mat") == 1
-    assert visible_lines.count("Label source: /tmp/external-labels") == 1
+    assert "Label source: /tmp/external-labels" not in visible_lines
     _show_step(dialog, "Match Labels")
     assert "A01T.mat" in _tree_text(dialog.label_carrier_tree)
 

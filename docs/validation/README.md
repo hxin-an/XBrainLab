@@ -340,6 +340,9 @@ Screenshot evidence:
 - Review and Import now refreshes its Import Summary from current wizard state when the final
   step is shown, so manual subject/session/task/run edits made in Review Metadata are reflected
   before applying.
+- Load Labels now removes the containing user-loaded folder source when the removed label file is
+  the only active carrier from that folder, so duplicate auto/folder label paths do not require a
+  second removal. Multi-file folders keep the folder source and only exclude the selected file.
 
 Focused validation:
 
@@ -359,7 +362,7 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
 # 266 passed
 
 QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/run_tests.py ui
-# 1166 passed
+# 1169 passed
 
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q
@@ -382,7 +385,11 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/components/test_dialogs.py \
   tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
   tests/unit/ui/test_ui_misc.py -q
-# 270 passed
+# 272 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q
+# 76 passed
 ```
 
 ## Backend Test Hygiene Inventory
