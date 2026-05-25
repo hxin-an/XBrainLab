@@ -11,6 +11,8 @@ from XBrainLab.ui.styles.theme import Theme
 
 from .plot_3d_head import Saliency3D
 
+_INTERACTIVE_3D_OPT_IN_ENV = "XBRAINLAB_ENABLE_INTERACTIVE_3D"
+
 
 class Saliency3DPlotWidget(QWidget):
     """Widget for visualizing 3D Brain Saliency Maps using PyVista.
@@ -162,6 +164,9 @@ class Saliency3DPlotWidget(QWidget):
         """Return whether an interactive OpenGL Qt runtime is available."""
         qt_platform = os.environ.get("QT_QPA_PLATFORM", "").strip().lower()
         pyvista_offscreen = os.environ.get("PYVISTA_OFF_SCREEN", "").strip().lower()
+        wayland_display = os.environ.get("WAYLAND_DISPLAY", "").strip()
+        session_type = os.environ.get("XDG_SESSION_TYPE", "").strip().lower()
+        opt_in_3d = os.environ.get(_INTERACTIVE_3D_OPT_IN_ENV, "").strip().lower()
         if qt_platform in {"offscreen", "minimal"} or pyvista_offscreen in {
             "1",
             "true",
@@ -172,6 +177,18 @@ class Saliency3DPlotWidget(QWidget):
                 "3D rendering requires an interactive OpenGL desktop session. "
                 "Use the desktop launcher, or switch to Saliency Map, Spectrogram, "
                 "or Topographic Map in this headless environment.",
+            )
+        if (
+            sys.platform.startswith("linux")
+            and (wayland_display or session_type == "wayland")
+            and opt_in_3d not in {"1", "true", "yes"}
+        ):
+            return (
+                False,
+                "3D rendering is disabled in this desktop session because the "
+                "OpenGL runtime is not stable enough for PyVistaQt. Use Saliency "
+                "Map, Spectrogram, or Topographic Map. Enable interactive 3D only "
+                "after the PyVistaQt runtime probe passes.",
             )
         if sys.platform.startswith("linux") and not os.environ.get("DISPLAY"):
             return (

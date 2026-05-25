@@ -409,6 +409,8 @@ class Stylesheets:
     METRICS_TABLE = f"""
         QTableWidget {{
             background-color: {Theme.METRICS_TABLE_BG};
+            selection-background-color: {Theme.BLUE_PRESSED};
+            selection-color: {Theme.TEXT_PRIMARY};
             gridline-color: {Theme.METRICS_TABLE_GRID};
             border: 1px solid {Theme.METRICS_TABLE_BORDER};
             color: {Theme.TEXT_PRIMARY};
@@ -419,8 +421,11 @@ class Stylesheets:
             padding: 4px;
             border: 1px solid {Theme.METRICS_TABLE_GRID};
         }}
-        QTableWidget::item:selected {{
-            background-color: {Theme.METRICS_TABLE_SELECTION};
+        QTableWidget::item:selected,
+        QTableView::item:selected,
+        QTableView::item:selected:active,
+        QTableView::item:selected:!active {{
+            background-color: {Theme.BLUE_PRESSED};
             color: {Theme.TEXT_PRIMARY};
         }}
     """

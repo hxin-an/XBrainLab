@@ -343,6 +343,11 @@ Screenshot evidence:
 - Load Labels now removes the containing user-loaded folder source when the removed label file is
   the only active carrier from that folder, so duplicate auto/folder label paths do not require a
   second removal. Multi-file folders keep the folder source and only exclude the selected file.
+- Evaluation Metrics Summary now forces a dark selected-row palette, including inactive selection
+  state, so selected rows do not fall back to unreadable white system selection colors.
+- Visualization 3D Plot now blocks known-unstable Wayland / remote OpenGL PyVistaQt sessions before
+  creating `QtInteractor`, so opening the last saliency tab shows a product message instead of
+  risking a native crash.
 
 Focused validation:
 
@@ -362,7 +367,7 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
 # 266 passed
 
 QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/run_tests.py ui
-# 1169 passed
+# 1171 passed
 
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q

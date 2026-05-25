@@ -16,6 +16,7 @@ from XBrainLab.ui.panels.evaluation.confusion_matrix import ConfusionMatrixWidge
 from XBrainLab.ui.panels.evaluation.metrics_bar_chart import MetricsBarChartWidget
 from XBrainLab.ui.panels.evaluation.metrics_table import MetricsTableWidget
 from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
+from XBrainLab.ui.styles.theme import Theme
 
 
 # Mock classes
@@ -149,6 +150,19 @@ def test_evaluation_panel_layout(qtbot):
     assert isinstance(model_combo, QComboBox)
     assert isinstance(run_combo, QComboBox)
     assert isinstance(chk_percentage, QCheckBox)
+
+
+def test_metrics_table_selection_uses_dark_theme(qtbot):
+    table = MetricsTableWidget()
+    qtbot.addWidget(table)
+
+    stylesheet = table.styleSheet()
+
+    assert "selection-background-color" in stylesheet
+    assert f"selection-background-color: {Theme.BLUE_PRESSED}" in stylesheet
+    assert f"selection-color: {Theme.TEXT_PRIMARY}" in stylesheet
+    assert "QTableView::item:selected:!active" in stylesheet
+    assert "#ffffff" not in stylesheet.lower().replace(Theme.TEXT_PRIMARY, "")
 
 
 def test_evaluation_panel_logic(qtbot):
