@@ -1,6 +1,8 @@
 import time
 from types import SimpleNamespace
 
+from PIL import Image
+
 from scripts.dev.capture_visualization_render_walkthrough import (
     BLOCKED_TAB_SPECS,
     RENDER_TAB_SPECS,
@@ -100,6 +102,15 @@ def _base_payload():
     }
 
 
+def _payload_with_screenshots(tmp_path):
+    payload = _base_payload()
+    for item in [*payload["renders"], *payload["blocked_renders"]]:
+        path = tmp_path / item["screenshot"]
+        Image.new("RGB", (8, 8), (48, 72, 96)).save(path)
+        item["screenshot"] = str(path)
+    return payload
+
+
 def test_render_tab_specs_cover_matplotlib_saliency_views():
     assert [spec["tab"] for spec in RENDER_TAB_SPECS] == [
         "Saliency Map",
@@ -112,15 +123,17 @@ def test_blocked_tab_specs_cover_headless_3d_boundary():
     assert [spec["tab"] for spec in BLOCKED_TAB_SPECS] == ["3D Plot"]
 
 
-def test_validate_visualization_payload_accepts_rendered_tabs():
-    ok, reason = validate_visualization_render_payload(_base_payload())
+def test_validate_visualization_payload_accepts_rendered_tabs(tmp_path):
+    ok, reason = validate_visualization_render_payload(
+        _payload_with_screenshots(tmp_path)
+    )
 
     assert ok is True
     assert reason == ""
 
 
-def test_validate_visualization_payload_requires_each_render_tab():
-    payload = _base_payload()
+def test_validate_visualization_payload_requires_each_render_tab(tmp_path):
+    payload = _payload_with_screenshots(tmp_path)
     payload["renders"] = payload["renders"][:2]
 
     ok, reason = validate_visualization_render_payload(payload)
@@ -129,8 +142,8 @@ def test_validate_visualization_payload_requires_each_render_tab():
     assert "Topographic Map" in reason
 
 
-def test_validate_visualization_payload_rejects_placeholder_canvas():
-    payload = _base_payload()
+def test_validate_visualization_payload_rejects_placeholder_canvas(tmp_path):
+    payload = _payload_with_screenshots(tmp_path)
     payload["renders"][0]["image_count"] = 0
 
     ok, reason = validate_visualization_render_payload(payload)
@@ -140,14 +153,24 @@ def test_validate_visualization_payload_rejects_placeholder_canvas():
     assert "rendered image" in reason
 
 
-def test_validate_visualization_payload_requires_3d_blocked_reason():
-    payload = _base_payload()
+def test_validate_visualization_payload_requires_3d_blocked_reason(tmp_path):
+    payload = _payload_with_screenshots(tmp_path)
     payload["blocked_renders"] = []
 
     ok, reason = validate_visualization_render_payload(payload)
 
     assert ok is False
     assert "3D Plot" in reason
+
+
+def test_validate_visualization_payload_rejects_missing_screenshot_file(tmp_path):
+    payload = _payload_with_screenshots(tmp_path)
+    payload["renders"][0]["screenshot"] = str(tmp_path / "missing.png")
+
+    ok, reason = validate_visualization_render_payload(payload)
+
+    assert ok is False
+    assert "Saliency Map screenshot file was not found" in reason
 
 
 def test_render_markdown_records_render_claim_boundary():

@@ -244,3 +244,22 @@ def test_build_interpretation_preview_marks_skipped_labels_as_limited():
         "target_step": "Load Labels",
         "severity": "limited",
     } in preview.action_items
+
+
+def test_build_interpretation_preview_does_not_ask_for_external_labels_when_embedded_events_selected():
+    preview = build_interpretation_preview(
+        preview_id="preview-1",
+        candidate=_candidate(
+            label_carriers=[],
+            label_carrier_plan=[],
+            choices={"label_carrier": "embedded_events"},
+            internal_event_selection={"label_event_codes": ["769", "770"]},
+            warnings=[],
+            confirmation_items=["Confirm internal event labels."],
+        ),
+    )
+
+    issues = {item["issue"] for item in preview.action_items}
+
+    assert "No external label file or folder is attached." not in issues
+    assert "Confirm internal event labels." in issues

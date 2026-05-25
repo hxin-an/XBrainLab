@@ -24,6 +24,7 @@ from scripts.dev.capture_chatpanel_local_training_completion_walkthrough import 
     prepare_training_dataset_ready_state,
     write_synthetic_training_raw_fif,
 )
+from scripts.dev.capture_chatpanel_local_walkthrough import is_nearly_black
 from XBrainLab.backend.application import (
     ApplyMontageCommand,
     ConfigureTrainingCommand,
@@ -443,8 +444,12 @@ def validate_visualization_render_payload(
             return False, f"{tab} canvas was not visible."
         if int(render.get("image_count") or 0) < 1:
             return False, f"{tab} did not contain a rendered image artist."
-        if not render.get("screenshot"):
-            return False, f"{tab} screenshot path was not recorded."
+        screenshot_ok, screenshot_reason = _validate_screenshot(
+            render.get("screenshot"),
+            f"{tab} screenshot",
+        )
+        if not screenshot_ok:
+            return False, screenshot_reason
 
     blocked = {item.get("tab"): item for item in payload.get("blocked_renders", [])}
     for spec in BLOCKED_TAB_SPECS:
@@ -458,8 +463,23 @@ def validate_visualization_render_payload(
             return False, f"{tab} created a PyVista plotter in a blocked runtime."
         if spec["expected_reason"] not in str(render.get("blocked_reason", "")):
             return False, f"{tab} did not show a user-facing blocked reason."
-        if not render.get("screenshot"):
-            return False, f"{tab} blocked screenshot path was not recorded."
+        screenshot_ok, screenshot_reason = _validate_screenshot(
+            render.get("screenshot"),
+            f"{tab} blocked screenshot",
+        )
+        if not screenshot_ok:
+            return False, screenshot_reason
+    return True, ""
+
+
+def _validate_screenshot(path: Any, label: str) -> tuple[bool, str]:
+    screenshot = Path(str(path or "").strip())
+    if not str(screenshot):
+        return False, f"{label} path was not recorded."
+    if not screenshot.is_file():
+        return False, f"{label} file was not found: {screenshot}."
+    if is_nearly_black(screenshot):
+        return False, f"{label} was nearly all black: {screenshot}."
     return True, ""
 
 

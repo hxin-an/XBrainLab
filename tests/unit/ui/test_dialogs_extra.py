@@ -344,6 +344,65 @@ class TestEpochingDialog:
         assert selected == ["Left hand", "Right hand"]
         assert "BIDS events" in dialog.handoff_label.text()
 
+    def test_import_handoff_uses_checked_events_not_stale_selection(self, qtbot):
+        from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
+
+        data = MagicMock()
+        data.get_event_list.return_value = (
+            None,
+            {"Left hand": 1, "Right hand": 2},
+        )
+        dialog = EpochingDialog(
+            None,
+            [data],
+            epoch_handoff={
+                "ready": True,
+                "default_epoch_events": ["Left hand", "Right hand"],
+                "label_source": "bids_events",
+                "placement_modes": ["interval"],
+            },
+        )
+        qtbot.addWidget(dialog)
+
+        assert dialog.event_list is not None
+        for index in range(dialog.event_list.count()):
+            dialog.event_list.item(index).setCheckState(Qt.CheckState.Unchecked)
+
+        with patch(
+            "XBrainLab.ui.dialogs.preprocess.epoching_dialog.QMessageBox.warning"
+        ) as warning:
+            dialog.accept()
+
+        warning.assert_called_once()
+        assert dialog.get_params() is None
+
+    def test_rejects_baseline_outside_epoch_window(self, qtbot):
+        from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
+
+        data = MagicMock()
+        data.get_event_list.return_value = (
+            None,
+            {"Left hand": 1},
+        )
+        dialog = EpochingDialog(None, [data])
+        qtbot.addWidget(dialog)
+
+        assert dialog.event_list is not None
+        dialog.event_list.item(0).setCheckState(Qt.CheckState.Checked)
+        dialog.tmin_spin.setValue(0.0)
+        dialog.tmax_spin.setValue(1.0)
+        dialog.baseline_check.setChecked(True)
+        dialog.b_min_spin.setValue(-0.2)
+        dialog.b_max_spin.setValue(0.0)
+
+        with patch(
+            "XBrainLab.ui.dialogs.preprocess.epoching_dialog.QMessageBox.warning"
+        ) as warning:
+            dialog.accept()
+
+        warning.assert_called_once()
+        assert dialog.get_params() is None
+
     def test_import_handoff_blockers_override_epoch_defaults(self, qtbot):
         from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
 

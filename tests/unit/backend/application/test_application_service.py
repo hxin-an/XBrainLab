@@ -133,6 +133,11 @@ def test_data_interpretation_scan_preview_validate_requires_confirmation(tmp_pat
         str(eeg_path),
     ]
     assert confirmed_apply.state.interpretation.has_applied_interpretation is True
+    assert confirmed_apply.state.interpretation.pending_confirmation is False
+    apply_capability = service.get_capabilities().get(CommandName.APPLY_INTERPRETATION)
+    assert apply_capability.available is False
+    assert apply_capability.requires_confirmation is False
+    assert "Interpretation has already been applied." in apply_capability.reasons
 
 
 def test_data_interpretation_choices_flow_into_recipe(tmp_path):

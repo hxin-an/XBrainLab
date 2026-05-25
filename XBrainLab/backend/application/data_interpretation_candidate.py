@@ -20,6 +20,7 @@ from .data_interpretation_label_carriers import (
 from .data_interpretation_metadata import (
     FileMetadataResolution,
     MetadataFieldResolution,
+    bids_scope_summary,
 )
 from .data_interpretation_placement import (
     annotate_label_carrier_placements as _annotate_label_carrier_placements,
@@ -232,6 +233,7 @@ def build_interpretation_candidate(
             + "."
         )
 
+    bids = _bids_for_selected_scope(scan.bids, selected_files)
     return InterpretationCandidate(
         candidate_id=candidate_id,
         scan_id=scan.scan_id,
@@ -240,7 +242,7 @@ def build_interpretation_candidate(
         selected_eeg_files=selected_files,
         label_sources=list(scan.label_sources),
         label_carriers=active_label_carriers,
-        bids=dict(scan.bids),
+        bids=bids,
         label_carrier_plan=label_carrier_plan,
         event_roles=event_roles,
         class_map=class_map,
@@ -307,6 +309,19 @@ def _apply_metadata_overrides(
                 run=_override_field(item.run, field_overrides),
             )
         )
+    return result
+
+
+def _bids_for_selected_scope(
+    bids: dict[str, Any],
+    selected_files: list[str],
+) -> dict[str, Any]:
+    """Return BIDS summary scoped to the candidate's selected EEG files."""
+    result = dict(bids)
+    layout = result.get("layout")
+    if isinstance(layout, list):
+        rows = [dict(item) for item in layout if isinstance(item, dict)]
+        result["selected_scope"] = bids_scope_summary(selected_files, rows)
     return result
 
 

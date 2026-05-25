@@ -48,17 +48,27 @@ class SaliencyTopoMapViz(Visualizer):
 
         chs = self.epoch_data.get_channel_names()
         label_number = self.epoch_data.get_label_number()
+        saliency_by_label = [
+            (label_index, self.get_saliency(method, label_index))
+            for label_index in range(label_number)
+        ]
+        saliency_by_label = [
+            (label_index, saliency)
+            for label_index, saliency in saliency_by_label
+            if len(saliency) > 0
+        ]
+        if not saliency_by_label:
+            ax = plt.gca()
+            ax.text(0.5, 0.5, "No saliency data for selected labels.", ha="center")
+            ax.set_axis_off()
+            return plt.gcf()
 
-        rows = 1 if label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
-        cols = int(np.ceil(label_number / rows))
+        visible_label_number = len(saliency_by_label)
+        rows = 1 if visible_label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
+        cols = int(np.ceil(visible_label_number / rows))
 
-        for label_index in range(label_number):
-            ax = plt.subplot(rows, cols, label_index + 1)
-
-            saliency = self.get_saliency(method, label_index)
-            # no test data for this label
-            if len(saliency) == 0:
-                continue
+        for plot_index, (label_index, raw_saliency) in enumerate(saliency_by_label):
+            ax = plt.subplot(rows, cols, plot_index + 1)
             kwargs = {
                 "pos": pos_array[:, 0:2],
                 "ch_type": "eeg",
@@ -72,10 +82,10 @@ class SaliencyTopoMapViz(Visualizer):
             }
 
             if absolute:
-                saliency = np.abs(saliency).mean(axis=0)
+                saliency = np.abs(raw_saliency).mean(axis=0)
                 cmap = "Reds"
             else:
-                saliency = saliency.mean(axis=0)
+                saliency = raw_saliency.mean(axis=0)
                 cmap = "coolwarm"
 
             # average over time

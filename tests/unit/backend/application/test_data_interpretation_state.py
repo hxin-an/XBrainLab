@@ -162,7 +162,7 @@ def test_session_state_owns_lifecycle_snapshot_and_clear() -> None:
     assert snapshot.has_validation_decision is True
     assert snapshot.has_applied_interpretation is True
     assert snapshot.has_recipe is True
-    assert snapshot.pending_confirmation is True
+    assert snapshot.pending_confirmation is False
     assert snapshot.source_kind == "folder"
     assert snapshot.label_carrier_plan == candidate.label_carrier_plan
     assert snapshot.format_capabilities == candidate.format_capabilities

@@ -2579,6 +2579,66 @@ def test_match_labels_step_surfaces_bids_event_review(qtbot):
     assert "events.json sidecar is missing" in text
 
 
+def test_load_labels_removing_bids_events_refreshes_active_bids_state(qtbot):
+    events_path = "/tmp/source/sub-01_task-mi_run-01_events.tsv"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "source_kind": "bids",
+            "eeg_files": ["/tmp/source/sub-01_task-mi_run-01_raw.fif"],
+            "label_carriers": [events_path],
+            "bids": {
+                "is_bids": True,
+                "subjects": ["01"],
+                "tasks": ["mi"],
+                "runs": ["01"],
+                "events_files": [events_path],
+            },
+        },
+        preview={
+            "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+            "label_carrier_preview": [
+                {
+                    "path": events_path,
+                    "name": "sub-01_task-mi_run-01_events.tsv",
+                    "format": "BIDS events",
+                    "bids_event_columns": ["onset", "duration", "trial_type"],
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                    "selected_duration_field": "duration",
+                    "time_model": "seconds",
+                    "placement_method": "interval",
+                    "granularity": "trial",
+                },
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Load Labels")
+    qtbot.wait(0)
+
+    assert dialog._has_bids_events()
+    assert not dialog.skip_labels_btn.isVisibleTo(dialog)
+
+    _click_source_row_button(
+        dialog,
+        "sub-01_task-mi_run-01_events.tsv",
+        "Remove file",
+    )
+    qtbot.wait(0)
+
+    assert not dialog._has_bids_events()
+    assert dialog.skip_labels_btn.isVisibleTo(dialog)
+    assert "BIDS events detected" not in _visible_step_text(dialog, "Load Labels")
+    _show_step(dialog, "Match Labels")
+    qtbot.wait(0)
+    assert not dialog.bids_event_review_card.isVisibleTo(dialog)
+    assert dialog.get_result()["choices"]["excluded_label_carriers"] == [events_path]
+
+
 def test_bids_preset_surfaces_scope_labels_metadata_and_review(qtbot):
     events_path = "/tmp/source/sub-01_task-mi_run-01_events.tsv"
     dialog = DataInterpretationPreviewDialog(

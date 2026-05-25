@@ -111,9 +111,13 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         apply_reasons.append("Interpretation is blocked.")
         apply_reasons.extend(interpretation.blocked_reasons)
     apply_reasons.extend(_raw_edit_blockers(state))
-    apply_needs_confirmation = (
+    if (
         interpretation.validation_decision == "needs_confirmation"
-    )
+        and interpretation.has_applied_interpretation
+        and not interpretation.pending_confirmation
+    ):
+        apply_reasons.append("Interpretation has already been applied.")
+    apply_needs_confirmation = interpretation.pending_confirmation
     capabilities[CommandName.APPLY_INTERPRETATION.value] = CommandCapability(
         command_name=CommandName.APPLY_INTERPRETATION.value,
         enabled=not apply_reasons,

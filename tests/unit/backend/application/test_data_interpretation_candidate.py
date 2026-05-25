@@ -77,6 +77,63 @@ def test_build_interpretation_candidate_applies_user_choices_and_recipe_trace():
     assert "choices:label_carriers" in candidate.recipe_trace
 
 
+def test_build_interpretation_candidate_recomputes_bids_scope_for_selected_files():
+    selected_file = "/data/sub-01_task-mi_run-1_raw.fif"
+    skipped_file = "/data/sub-01_task-mi_run-2_raw.fif"
+    selected_events = "/data/sub-01_task-mi_run-1_events.tsv"
+    skipped_events = "/data/sub-01_task-mi_run-2_events.tsv"
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            eeg_files=[selected_file, skipped_file],
+            label_carriers=[selected_events, skipped_events],
+            label_carrier_sources={
+                selected_events: "auto",
+                skipped_events: "auto",
+            },
+            bids={
+                "is_bids": True,
+                "events_files": [selected_events, skipped_events],
+                "layout": [
+                    {
+                        "file": selected_file,
+                        "subject": "01",
+                        "task": "mi",
+                        "run": "1",
+                        "datatype": "eeg",
+                        "events_file": selected_events,
+                        "channels_file": "/data/sub-01_task-mi_run-1_channels.tsv",
+                    },
+                    {
+                        "file": skipped_file,
+                        "subject": "01",
+                        "task": "mi",
+                        "run": "2",
+                        "datatype": "eeg",
+                        "events_file": skipped_events,
+                        "channels_file": "/data/sub-01_task-mi_run-2_channels.tsv",
+                    },
+                ],
+                "selected_scope": {
+                    "eeg_files": [selected_file, skipped_file],
+                    "events_files": [selected_events, skipped_events],
+                },
+            },
+        ),
+        choices={
+            "selected_eeg_files": [selected_file],
+            "label_carrier_choices": {
+                selected_events: {"label_field": "trial_type", "anchor": "onset"}
+            },
+        },
+    )
+
+    assert candidate.selected_eeg_files == [selected_file]
+    assert candidate.bids["selected_scope"]["eeg_files"] == [selected_file]
+    assert candidate.bids["selected_scope"]["events_files"] == [selected_events]
+    assert candidate.bids["selected_scope"]["runs"] == ["1"]
+
+
 def test_build_interpretation_candidate_previews_tabular_label_class_values(tmp_path):
     events = tmp_path / "sub-01_task-mi_events.tsv"
     events.write_text(

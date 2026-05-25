@@ -87,6 +87,7 @@ def test_map(absolute, epochs, n_class, visualizer, mask_out):
     visualizer = visualizer.value(eval_record, epochs)
     assert visualizer.get_plt("Gradient", absolute) is not None
     assert sum([len(i.images) for i in visualizer.fig.axes]) == n_class
+    assert len([axis for axis in visualizer.fig.axes if axis.get_title()]) == n_class
     plt.close(visualizer.fig)
 
 
@@ -121,4 +122,5 @@ def test_eval_plot(epochs, n_class, mask_out, visualizer):
     visualizer = visualizer.value(eval_record, epochs)
     assert visualizer.get_plt("Gradient") is not None
     assert sum([len(i.images) for i in visualizer.fig.axes]) == n_class
+    assert len([axis for axis in visualizer.fig.axes if axis.get_title()]) == n_class
     plt.close(visualizer.fig)

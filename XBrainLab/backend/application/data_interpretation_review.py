@@ -245,7 +245,7 @@ def _build_action_items(candidate: Any) -> list[dict[str, str]]:
                 severity="limited",
             )
         )
-    elif not label_carriers:
+    elif not label_carriers and not _uses_internal_event_labels(candidate):
         items.append(
             _action_item(
                 issue="No external label file or folder is attached.",
@@ -262,6 +262,19 @@ def _build_action_items(candidate: Any) -> list[dict[str, str]]:
             )
         )
     return _dedupe_action_items(items)
+
+
+def _uses_internal_event_labels(candidate: Any) -> bool:
+    choices = getattr(candidate, "choices", {}) or {}
+    if isinstance(choices, dict) and str(choices.get("label_carrier") or "") == (
+        "embedded_events"
+    ):
+        return True
+    selection = getattr(candidate, "internal_event_selection", {}) or {}
+    if not isinstance(selection, dict):
+        return False
+    label_event_codes = selection.get("label_event_codes", [])
+    return any(str(item).strip() for item in label_event_codes)
 
 
 def _action_item(

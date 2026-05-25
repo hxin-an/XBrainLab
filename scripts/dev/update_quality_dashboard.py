@@ -464,6 +464,18 @@ def build_checks_for_mode(*, include_slow_checks: bool) -> list[CheckResult]:
             ui=True,
         ),
         run_check(
+            key="ui_product_walkthrough",
+            label="UI Product Walkthrough",
+            category="ui",
+            command=(
+                f"{UI_WRAPPER} "
+                "tests/integration/ui/test_product_walkthrough.py "
+                "tests/integration/ui/test_data_import_wizard_runtime.py -q"
+            ),
+            ui=True,
+            validator=validate_pytest_like,
+        ),
+        run_check(
             key="ui_unit_suite",
             label="UI Unit Suite",
             category="ui",

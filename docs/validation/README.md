@@ -104,6 +104,64 @@ poetry run pytest --capture=sys \
 This supports the integrated manual-test branch as a stronger automated preflight.
 It still does not replace human Windows click-through acceptance.
 
+## 2026-05-25 Gate E Test-Coverage Follow-Up
+
+Gate E reviewed integration-test completeness and failed the branch as originally
+gated: backend command tests were strong, but product-visible Data Import and
+wizard state still had too much mock-heavy coverage. Two regressions were then
+made reproducible and fixed:
+
+- Loading an external label folder from the Load Labels step could refresh the
+  carrier list but leave Match Labels in `Labels inside EEG files` mode. A new UI
+  integration test uses real `ApplicationService` scan / preview / validate plus
+  the real wizard rescan handler and asserts Match Labels switches to loaded
+  label files.
+- Epoch dialog event selection had regressed after checked-event support: normal
+  selection-only dialogs could no longer accept a selected event, while import
+  handoff dialogs still must reject stale selection when all recommended events
+  are unchecked.
+
+The fast quality dashboard now includes `UI Product Walkthrough`, which runs the
+existing product walkthrough plus the real Data Import wizard runtime regression.
+
+Focused validation:
+
+```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/integration/ui/test_product_walkthrough.py \
+  tests/integration/ui/test_data_import_wizard_runtime.py -q
+# 5 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/integration/ui/test_dialog_acceptance.py::test_epoching_dialog_accepts_selected_event_and_baseline_toggle \
+  tests/unit/ui/components/test_dialogs.py::test_epoching_dialog_init \
+  tests/unit/ui/test_dialogs_extra.py::TestEpochingDialog::test_import_handoff_uses_checked_events_not_stale_selection -q
+# 3 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/backend/application \
+  tests/integration/backend/test_application_service_workflow.py -q
+# 209 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/scripts/test_capture_visualization_render_walkthrough.py \
+  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
+  tests/unit/ui/test_dialogs_extra.py -q
+# 132 passed
+
+QT_QPA_PLATFORM=offscreen PYVISTA_OFF_SCREEN=true poetry run python \
+  scripts/dev/capture_visualization_render_walkthrough.py \
+  --output-dir artifacts/ui/audit-visualization-render --timeout-seconds 540
+# passed
+
+poetry run python scripts/dev/update_quality_dashboard.py
+# Overall status: PASS
+```
+
+Remaining coverage boundary: public cross-source fixtures are still optional /
+skipped when absent, and the default dashboard still does not claim human Windows
+click-through acceptance or full local-LLM runtime acceptance.
+
 ## 2026-05-22 Epoch Dialog Label Transparency
 
 Manual UI review found that Epoch dialog text labels could render with visible

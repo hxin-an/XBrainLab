@@ -30,26 +30,35 @@ class SaliencySpectrogramMapViz(Visualizer):
         """
         sfreq = self.epoch_data.get_model_args()["sfreq"]
         label_number = self.epoch_data.get_label_number()
-        # row and col of subplot
-        rows = 1 if label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
-        cols = int(np.ceil(label_number / rows))
-        # draw
-        for label_index in range(label_number):
-            plt.subplot(rows, cols, label_index + 1)
-            saliency = self.get_saliency(method, label_index)
-            # no test data for this label
-            if len(saliency) == 0:
-                continue
+        saliency_by_label = [
+            (label_index, self.get_saliency(method, label_index))
+            for label_index in range(label_number)
+        ]
+        saliency_by_label = [
+            (label_index, saliency)
+            for label_index, saliency in saliency_by_label
+            if len(saliency) > 0
+        ]
+        if not saliency_by_label:
+            ax = plt.gca()
+            ax.text(0.5, 0.5, "No saliency data for selected labels.", ha="center")
+            ax.set_axis_off()
+            return plt.gcf()
+        visible_label_number = len(saliency_by_label)
+        rows = 1 if visible_label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
+        cols = int(np.ceil(visible_label_number / rows))
+        for plot_index, (label_index, raw_saliency) in enumerate(saliency_by_label):
+            plt.subplot(rows, cols, plot_index + 1)
 
-            freqs, timestamps, saliency = signal.stft(
-                saliency,
+            freqs, timestamps, stft_saliency = signal.stft(
+                raw_saliency,
                 fs=sfreq,
                 axis=-1,
                 nperseg=int(sfreq),
                 noverlap=int(sfreq) // 2,
             )
             # [:saliency.shape[0]//2,:]
-            saliency = np.mean(np.mean(abs(saliency), axis=0), axis=0)
+            saliency = np.mean(np.mean(abs(stft_saliency), axis=0), axis=0)
             cmap = "coolwarm"
             im = plt.imshow(
                 saliency,

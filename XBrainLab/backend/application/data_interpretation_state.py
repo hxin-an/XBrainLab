@@ -219,6 +219,7 @@ class DataInterpretationSessionState:
             pending_confirmation=(
                 decision is not None
                 and decision.decision == InterpretationDecision.NEEDS_CONFIRMATION.value
+                and applied_review is None
             ),
             blocked_reasons=list(decision.blocked_reasons if decision else []),
             warnings=warnings,

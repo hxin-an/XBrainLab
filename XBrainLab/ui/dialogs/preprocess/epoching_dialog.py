@@ -654,11 +654,22 @@ class EpochingDialog(BaseDialog):
             return
 
         checked_items: list[QListWidgetItem] = []
+        has_checkable_items = False
         for index in range(self.event_list.count()):
             item = self.event_list.item(index)
-            if item is not None and item.checkState() == Qt.CheckState.Checked:
+            if item is None:
+                continue
+            if item.flags() & Qt.ItemFlag.ItemIsUserCheckable:
+                has_checkable_items = True
+            if item.checkState() == Qt.CheckState.Checked:
                 checked_items.append(item)
-        selected_items = checked_items or self.event_list.selectedItems()
+        recommended_events = set(self.epoch_context.get("recommended_events") or [])
+        if checked_items:
+            selected_items = checked_items
+        elif has_checkable_items and recommended_events:
+            selected_items = []
+        else:
+            selected_items = self.event_list.selectedItems()
         if not selected_items:
             QMessageBox.warning(self, "Warning", "Please select at least one event.")
             return
@@ -685,7 +696,23 @@ class EpochingDialog(BaseDialog):
 
         baseline = None
         if self.baseline_check.isChecked():
-            baseline = (self.b_min_spin.value(), self.b_max_spin.value())
+            baseline_min = self.b_min_spin.value()
+            baseline_max = self.b_max_spin.value()
+            if baseline_min > baseline_max:
+                QMessageBox.warning(
+                    self,
+                    "Invalid Input",
+                    "Baseline start must be less than or equal to baseline end.",
+                )
+                return
+            if baseline_min < tmin or baseline_max > tmax:
+                QMessageBox.warning(
+                    self,
+                    "Invalid Input",
+                    "Baseline must stay inside the epoch time window.",
+                )
+                return
+            baseline = (baseline_min, baseline_max)
 
         self.params = (baseline, selected_events, tmin, tmax)
         super().accept()

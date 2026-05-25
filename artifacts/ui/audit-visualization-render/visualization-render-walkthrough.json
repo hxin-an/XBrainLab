@@ -379,13 +379,6 @@
                 "next_action": "Review the target step and confirm the choice.",
                 "target_step": "Match Labels",
                 "severity": "needs_confirmation"
-              },
-              {
-                "issue": "No external label file or folder is attached.",
-                "impact": "Supervised workflows may be limited unless reliable internal events are confirmed.",
-                "next_action": "Load a label file, load a label folder, or continue without labels.",
-                "target_step": "Load Labels",
-                "severity": "warning"
               }
             ],
             "label_carrier_preview": [],
@@ -618,13 +611,6 @@
                 "next_action": "Review the target step and confirm the choice.",
                 "target_step": "Match Labels",
                 "severity": "needs_confirmation"
-              },
-              {
-                "issue": "No external label file or folder is attached.",
-                "impact": "Supervised workflows may be limited unless reliable internal events are confirmed.",
-                "next_action": "Load a label file, load a label folder, or continue without labels.",
-                "target_step": "Load Labels",
-                "severity": "warning"
               }
             ]
           }
@@ -1002,7 +988,7 @@
         "source_kind": "file",
         "label_sources": [],
         "validation_decision": "needs_confirmation",
-        "pending_confirmation": true,
+        "pending_confirmation": false,
         "blocked_reasons": [],
         "warnings": [],
         "action_items": [
@@ -1040,13 +1026,6 @@
             "next_action": "Review the target step and confirm the choice.",
             "target_step": "Match Labels",
             "severity": "needs_confirmation"
-          },
-          {
-            "issue": "No external label file or folder is attached.",
-            "impact": "Supervised workflows may be limited unless reliable internal events are confirmed.",
-            "next_action": "Load a label file, load a label folder, or continue without labels.",
-            "target_step": "Load Labels",
-            "severity": "warning"
           }
         ],
         "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
@@ -1377,9 +1356,9 @@
           "finished_run_count": 1,
           "metrics": {
             "0": {
-              "precision": 0.0,
-              "recall": 0.0,
-              "f1-score": 0.0,
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1-score": 1.0,
               "support": 1
             },
             "1": {
@@ -1389,9 +1368,9 @@
               "support": 0
             },
             "macro_avg": {
-              "precision": 0.0,
-              "recall": 0.0,
-              "f1-score": 0.0,
+              "precision": 0.5,
+              "recall": 0.5,
+              "f1-score": 0.5,
               "support": 1
             }
           }
@@ -1434,7 +1413,7 @@
       "failure_reason": "",
       "error_visible": false,
       "error_text": "Error: Please select a Plan and Run.",
-      "axes_count": 3,
+      "axes_count": 2,
       "image_count": 3,
       "canvas_visible": true
     },
@@ -1445,7 +1424,7 @@
       "failure_reason": "",
       "error_visible": false,
       "error_text": "",
-      "axes_count": 3,
+      "axes_count": 2,
       "image_count": 3,
       "canvas_visible": true
     },
@@ -1456,7 +1435,7 @@
       "failure_reason": "",
       "error_visible": false,
       "error_text": "",
-      "axes_count": 3,
+      "axes_count": 2,
       "image_count": 4,
       "canvas_visible": true
     }
@@ -1629,7 +1608,7 @@
       "source_kind": "file",
       "label_sources": [],
       "validation_decision": "needs_confirmation",
-      "pending_confirmation": true,
+      "pending_confirmation": false,
       "blocked_reasons": [],
       "warnings": [],
       "action_items": [
@@ -1667,13 +1646,6 @@
           "next_action": "Review the target step and confirm the choice.",
           "target_step": "Match Labels",
           "severity": "needs_confirmation"
-        },
-        {
-          "issue": "No external label file or folder is attached.",
-          "impact": "Supervised workflows may be limited unless reliable internal events are confirmed.",
-          "next_action": "Load a label file, load a label folder, or continue without labels.",
-          "target_step": "Load Labels",
-          "severity": "warning"
         }
       ],
       "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
@@ -1907,5 +1879,5 @@
     "run": "Run 1",
     "method": "Gradient"
   },
-  "elapsed_seconds": 6.995
+  "elapsed_seconds": 6.506
 }

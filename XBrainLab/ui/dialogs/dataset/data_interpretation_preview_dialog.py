@@ -522,9 +522,12 @@ class DataInterpretationPreviewDialog(BaseDialog):
         label_sources_card, label_sources_layout = self._card(
             "BIDS events detected" if self._has_bids_events() else "Label files"
         )
-        label_sources_layout.addWidget(
-            self._wrapped_label(self._label_detection_text())
+        self.label_sources_card_title_label = label_sources_card.findChild(
+            QLabel,
+            "DataImportCardTitle",
         )
+        self.label_detection_label = self._wrapped_label(self._label_detection_text())
+        label_sources_layout.addWidget(self.label_detection_label)
         if self._has_bids_events():
             label_sources_layout.addWidget(self._bids_label_source_summary())
         self.label_source_rows_widget = QWidget()
@@ -1615,6 +1618,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         unique: dict[str, dict[str, Any]] = {}
         for carrier in carriers:
             key = str(carrier.get("path") or carrier.get("name") or "").strip()
+            if key and self._is_label_carrier_excluded(key):
+                continue
             if key and key not in unique:
                 unique[key] = carrier
         return list(unique.values())
@@ -4632,6 +4637,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self._excluded_label_carriers.append(carrier)
 
     def _refresh_label_matching_after_source_change(self) -> None:
+        self._refresh_load_labels_static_state()
         if hasattr(self, "label_carrier_tree"):
             self.label_carrier_tree.clear()
             self._label_carrier_items.clear()
@@ -4651,6 +4657,32 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if hasattr(self, "pairing_status_label"):
             self._refresh_pairing_status()
         self._refresh_label_source_mode()
+
+    def _refresh_load_labels_static_state(self) -> None:
+        has_bids_events = self._has_bids_events()
+        if hasattr(self, "label_sources_card_title_label"):
+            self.label_sources_card_title_label.setText(
+                "BIDS events detected" if has_bids_events else "Label files"
+            )
+        if hasattr(self, "label_detection_label"):
+            self.label_detection_label.setText(self._label_detection_text())
+        if hasattr(self, "add_label_file_btn"):
+            self.add_label_file_btn.setText(
+                "Add extra label file" if has_bids_events else "Load label file"
+            )
+        if hasattr(self, "add_label_folder_btn"):
+            self.add_label_folder_btn.setText(
+                "Add extra label folder" if has_bids_events else "Load label folder"
+            )
+        if hasattr(self, "skip_labels_btn"):
+            self.skip_labels_btn.setVisible(not has_bids_events)
+        if hasattr(self, "label_source_mode_combo"):
+            loaded_label = (
+                "BIDS events.tsv" if has_bids_events else "Loaded label files"
+            )
+            for index in range(self.label_source_mode_combo.count()):
+                if self.label_source_mode_combo.itemData(index) == "loaded_label_files":
+                    self.label_source_mode_combo.setItemText(index, loaded_label)
 
     def _select_loaded_label_source_if_available(self) -> None:
         if (
@@ -5115,6 +5147,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.decision_label.setText(self._decision_text())
         self._refresh_label_source_rows()
         self._refresh_label_matching_after_source_change()
+        if label_sources:
+            self._select_loaded_label_source_if_available()
         self._refresh_review_import_summary()
         self._refresh_review_step_after_rescan()
         self._sync_apply_state()
