@@ -132,6 +132,8 @@ def test_build_interpretation_candidate_recomputes_bids_scope_for_selected_files
     assert candidate.bids["selected_scope"]["eeg_files"] == [selected_file]
     assert candidate.bids["selected_scope"]["events_files"] == [selected_events]
     assert candidate.bids["selected_scope"]["runs"] == ["1"]
+    assert candidate.label_carriers == [selected_events]
+    assert [row["path"] for row in candidate.label_carrier_plan] == [selected_events]
 
 
 def test_build_interpretation_candidate_previews_tabular_label_class_values(tmp_path):

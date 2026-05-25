@@ -105,10 +105,15 @@ class DataTableCommandService:
     ) -> dict[str, tuple[str, str]]:
         normalized: dict[str, tuple[str, str]] = {}
         for path, value in results.items():
-            if isinstance(value, (tuple, list)) and len(value) >= 2:
+            if isinstance(value, dict):
+                normalized[str(path)] = (
+                    str(value.get("subject") or "-"),
+                    str(value.get("session") or "-"),
+                )
+            elif isinstance(value, (tuple, list)) and len(value) >= 2:
                 normalized[str(path)] = (str(value[0]), str(value[1]))
             else:
                 raise ValueError(
-                    "Smart parse results must map paths to (subject, session).",
+                    "Smart parse results must map paths to metadata fields.",
                 )
         return normalized

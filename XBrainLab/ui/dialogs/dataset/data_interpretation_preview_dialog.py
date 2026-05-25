@@ -5697,13 +5697,26 @@ class DataInterpretationPreviewDialog(BaseDialog):
             parsed = results.get(file_text)
             if parsed is None:
                 parsed = result_by_name.get(Path(file_text).name)
-            if not isinstance(parsed, (tuple, list)) or len(parsed) < 2:
+            parsed_fields = self._normalized_smart_parse_fields(parsed)
+            if not parsed_fields:
                 continue
-            subject, session = str(parsed[0]), str(parsed[1])
-            if subject and subject != "-":
-                tree_item.setText(1, subject)
-            if session and session != "-":
-                tree_item.setText(2, session)
+            for offset, field in enumerate(("subject", "session", "task", "run"), 1):
+                value = parsed_fields.get(field, "")
+                if value and value != "-":
+                    tree_item.setText(offset, value)
+
+    @staticmethod
+    def _normalized_smart_parse_fields(parsed: Any) -> dict[str, str]:
+        if isinstance(parsed, dict):
+            return {
+                field: str(parsed.get(field) or "").strip()
+                for field in ("subject", "session", "task", "run")
+            }
+        if not isinstance(parsed, (tuple, list)) or len(parsed) < 2:
+            return {}
+        values = [str(value or "").strip() for value in parsed[:4]]
+        values.extend([""] * (4 - len(values)))
+        return dict(zip(("subject", "session", "task", "run"), values, strict=False))
 
     def _apply_product_tree_style(self) -> None:
         self.setStyleSheet(

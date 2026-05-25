@@ -1,4 +1,4 @@
-"""Smart metadata parser dialog for extracting subject/session info from filenames.
+"""Smart metadata parser dialog for extracting file metadata from filenames.
 
 Provides multiple parsing strategies (split, regex, folder structure, fixed
 position) with a live preview table showing extracted metadata for each file.
@@ -51,7 +51,8 @@ class SmartParserDialog(BaseDialog):
 
     Attributes:
         filenames: List of file paths to parse.
-        parsed_data: Dictionary mapping filepath to ``(subject, session)`` tuples.
+        parsed_data: Dictionary mapping filepath to
+            ``(subject, session, task, run)`` tuples.
         mode_group: QButtonGroup for selecting the parsing mode.
         settings_stack: QStackedWidget holding mode-specific settings pages.
         table: QTableWidget displaying the live parsing preview.
@@ -60,10 +61,7 @@ class SmartParserDialog(BaseDialog):
 
     def __init__(self, filenames: list[str], parent=None):
         self.filenames = filenames
-        self.parsed_data: dict[
-            str,
-            tuple[str, str],
-        ] = {}  # filename -> (subject, session)
+        self.parsed_data: dict[str, tuple[str, str, str, str]] = {}
 
         # UI Elements
         # UI Elements
@@ -135,7 +133,9 @@ class SmartParserDialog(BaseDialog):
         header_layout.setSpacing(4)
         title_label = QLabel("Smart Parse Metadata")
         title_label.setObjectName("SmartParserTitle")
-        subtitle_label = QLabel("Extract subject and session from file names.")
+        subtitle_label = QLabel(
+            "Extract subject, session, task, and run from file names."
+        )
         subtitle_label.setObjectName("SmartParserSubtitle")
         header_layout.addWidget(title_label)
         header_layout.addWidget(subtitle_label)
@@ -229,7 +229,11 @@ class SmartParserDialog(BaseDialog):
 
         self.regex_preset_combo = QComboBox()
         self.regex_preset_combo.addItems(
-            ["Custom", "Subject_Session (e.g. Sub01_Ses01)", "BIDS (sub-01_ses-01)"],
+            [
+                "Custom",
+                "Subject_Session (e.g. Sub01_Ses01)",
+                "BIDS (sub-01_ses-01_task-mi_run-1)",
+            ],
         )
         self.regex_preset_combo.setMaximumWidth(340)
         self.regex_preset_combo.currentIndexChanged.connect(
@@ -347,9 +351,9 @@ class SmartParserDialog(BaseDialog):
         layout.addWidget(preview_label)
         self.table = QTableWidget()
         self.table.setObjectName("SmartParserPreviewTable")
-        self.table.setColumnCount(3)
+        self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels(
-            ["File", "Subject", "Session"],
+            ["File", "Subject", "Session", "Task", "Run"],
         )
         self.table.setMinimumHeight(260)
         header = self.table.horizontalHeader()
@@ -503,7 +507,7 @@ class SmartParserDialog(BaseDialog):
         if index == 1:  # Subject_Session
             self.regex_input.setText(r"([^_]+)_([^_]+)")
         elif index == 2:  # BIDS
-            self.regex_input.setText(r"sub-([^_]+)_ses-([^_]+)")
+            self.regex_input.setText(r"sub-([^_]+)(?:_ses-([^_]+))?")
 
     def update_preview(self):
         """Re-parse all filenames and refresh the preview table."""
@@ -529,6 +533,8 @@ class SmartParserDialog(BaseDialog):
 
             sub = "-"
             sess = "-"
+            task = "-"
+            run = "-"
 
             # Ensure widgets are valid before accessing .value() / .text()
             if self.radio_split and self.radio_split.isChecked():
@@ -568,9 +574,18 @@ class SmartParserDialog(BaseDialog):
                     self.fixed_sess_len.value(),
                 )
 
+            bids_values = self._bids_metadata_from_filename(filename)
+            if any(value != "-" for value in bids_values):
+                sub, sess, task, run = bids_values
+            else:
+                sub = self._clean_metadata_value(sub)
+                sess = self._clean_metadata_value(sess)
+
             # Update Table
             sub_item = QTableWidgetItem(sub)
             sess_item = QTableWidgetItem(sess)
+            task_item = QTableWidgetItem(task)
+            run_item = QTableWidgetItem(run)
 
             # Highlight if found
             if sub != "-":
@@ -579,21 +594,43 @@ class SmartParserDialog(BaseDialog):
             if sess != "-":
                 sess_item.setBackground(QColor("#214c7a"))
                 sess_item.setForeground(QColor("#ffffff"))
+            if task != "-":
+                task_item.setBackground(QColor("#3d4154"))
+                task_item.setForeground(QColor("#ffffff"))
+            if run != "-":
+                run_item.setBackground(QColor("#3d4154"))
+                run_item.setForeground(QColor("#ffffff"))
 
             self.table.setItem(row, 1, sub_item)
             self.table.setItem(row, 2, sess_item)
+            self.table.setItem(row, 3, task_item)
+            self.table.setItem(row, 4, run_item)
 
-            if sub != "-" or sess != "-":
-                self.parsed_data[filepath] = (sub, sess)
+            if any(value != "-" for value in (sub, sess, task, run)):
+                self.parsed_data[filepath] = (sub, sess, task, run)
 
     def get_result(self):
         """Return the parsed metadata mapping.
 
         Returns:
-            Dictionary mapping file paths to ``(subject, session)`` tuples.
+            Dictionary mapping file paths to
+            ``(subject, session, task, run)`` tuples.
 
         """
         return self.parsed_data
+
+    @staticmethod
+    def _clean_metadata_value(value: object) -> str:
+        text = str(value or "").strip()
+        return text if text and text != "None" else "-"
+
+    @staticmethod
+    def _bids_metadata_from_filename(filename: str) -> tuple[str, str, str, str]:
+        fields = []
+        for key in ("sub", "ses", "task", "run"):
+            match = re.search(rf"(?:^|_){key}-([^_]+)", filename)
+            fields.append(match.group(1) if match else "-")
+        return (fields[0], fields[1], fields[2], fields[3])
 
     @staticmethod
     def _style_sheet() -> str:

@@ -37,6 +37,7 @@ def test_smart_parser_init(dialog):
     item_sess = dialog.table.item(0, 2)
     assert item_sub.text() == "Sub01"
     assert item_sess.text() == "Ses01"
+    assert dialog.table.columnCount() == 5
 
 
 def test_smart_parser_regex_controls_are_compact(dialog):
@@ -184,7 +185,26 @@ def test_smart_parser_results(dialog):
     assert len(results) == 2
     # Key is full path (which was just filename in init)
     assert "Sub01_Ses01.gdf" in results
-    assert results["Sub01_Ses01.gdf"] == ("Sub01", "Ses01")
+    assert results["Sub01_Ses01.gdf"] == ("Sub01", "Ses01", "-", "-")
+
+
+def test_smart_parser_bids_entities_include_task_and_run(qtbot):
+    dialog = SmartParserDialog(["/data/sub-01_task-mi_run-02_raw.fif"])
+    qtbot.addWidget(dialog)
+
+    dialog.update_preview()
+    results = dialog.get_result()
+
+    assert dialog.table.item(0, 1).text() == "01"
+    assert dialog.table.item(0, 2).text() == "-"
+    assert dialog.table.item(0, 3).text() == "mi"
+    assert dialog.table.item(0, 4).text() == "02"
+    assert results["/data/sub-01_task-mi_run-02_raw.fif"] == (
+        "01",
+        "-",
+        "mi",
+        "02",
+    )
 
 
 def test_smart_parser_save_load_settings(dialog):

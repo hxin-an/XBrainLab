@@ -50,6 +50,20 @@ def test_scan_source_path_collects_bids_files_labels_and_metadata(tmp_path: Path
     assert scan.bids["participants_file"] == str(tmp_path / "participants.tsv")
 
 
+def test_scan_regular_folder_with_sub_prefixed_file_is_not_bids(tmp_path: Path):
+    eeg_file = tmp_path / "sub-01_task-mi_raw.fif"
+    eeg_file.write_bytes(b"not loaded during scan")
+
+    scan = scan_source_path(scan_id="scan-1", source_path=str(tmp_path))
+
+    assert scan.source_kind == "folder"
+    assert scan.bids["is_bids"] is False
+    assert scan.eeg_files == [str(eeg_file.resolve())]
+    assert not any(
+        "BIDS-like source has no events.tsv" in item for item in scan.warnings
+    )
+
+
 def test_scan_source_path_blocks_stream_export_without_selectable_eeg(tmp_path: Path):
     xdf_file = tmp_path / "session.xdf"
     xdf_file.write_text("", encoding="utf-8")

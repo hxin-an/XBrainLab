@@ -286,7 +286,12 @@ class DatasetController(Observable):
         for data in data_list:
             path = data.get_filepath()
             if path in results:
-                sub, sess = results[path]
+                value = results[path]
+                if isinstance(value, dict):
+                    sub = str(value.get("subject") or "-")
+                    sess = str(value.get("session") or "-")
+                else:
+                    sub, sess = value[:2]
                 if sub != "-":
                     data.set_subject_name(sub)
                 if sess != "-":

@@ -113,6 +113,12 @@ def build_interpretation_candidate(
         if use_external_label_carriers
         else []
     )
+    bids = _bids_for_selected_scope(scan.bids, selected_files)
+    active_label_carriers = _filter_bids_label_carriers_for_selected_scope(
+        active_label_carriers,
+        scan.bids,
+        bids,
+    )
     label_carrier_choices = _remapped_label_carrier_choices(
         choices.get("label_carrier_choices"),
         choices.get("label_carrier_remap"),
@@ -144,7 +150,10 @@ def build_interpretation_candidate(
             },
         )
         if not scan.bids.get("events_files"):
-            warnings.append("BIDS-like source has no events.tsv file.")
+            warnings.append(
+                "BIDS-like source has no events.tsv carrier; supervised labels "
+                "may be limited.",
+            )
     else:
         extensions = {Path(item).suffix.lower() for item in selected_files}
         internal_event_preview = _internal_events.build_internal_event_preview(
@@ -233,7 +242,6 @@ def build_interpretation_candidate(
             + "."
         )
 
-    bids = _bids_for_selected_scope(scan.bids, selected_files)
     return InterpretationCandidate(
         candidate_id=candidate_id,
         scan_id=scan.scan_id,
@@ -323,6 +331,27 @@ def _bids_for_selected_scope(
         rows = [dict(item) for item in layout if isinstance(item, dict)]
         result["selected_scope"] = bids_scope_summary(selected_files, rows)
     return result
+
+
+def _filter_bids_label_carriers_for_selected_scope(
+    label_carriers: list[str],
+    scan_bids: dict[str, Any],
+    candidate_bids: dict[str, Any],
+) -> list[str]:
+    if not scan_bids.get("is_bids"):
+        return list(label_carriers)
+    all_bids_events = {str(item) for item in scan_bids.get("events_files", []) or []}
+    selected_scope = candidate_bids.get("selected_scope")
+    if not all_bids_events or not isinstance(selected_scope, dict):
+        return list(label_carriers)
+    selected_bids_events = {
+        str(item) for item in selected_scope.get("events_files", []) or []
+    }
+    return [
+        carrier
+        for carrier in label_carriers
+        if carrier not in all_bids_events or carrier in selected_bids_events
+    ]
 
 
 def _label_carrier_plan_warnings(

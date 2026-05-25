@@ -187,6 +187,45 @@ def test_data_interpretation_choices_flow_into_recipe(tmp_path):
     assert "choices:class_map" in recipe["recipe_trace"]
 
 
+def test_safe_data_interpretation_cannot_be_applied_twice(tmp_path):
+    source_dir = tmp_path / "safe_source"
+    source_dir.mkdir()
+    eeg_path = source_dir / "subject01_run1.fif"
+    eeg_path.write_bytes(b"not loaded during scan")
+    service = ApplicationService(Study())
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "metadata_overrides": {
+                    eeg_path.name: {
+                        "subject": "subject01",
+                        "session": "session-01",
+                        "task": "rest",
+                        "run": "1",
+                    }
+                }
+            }
+        )
+    )
+    validation = service.execute(ValidateInterpretationCommand())
+    first_apply = service.execute(ApplyInterpretationCommand(confirmed=True))
+    apply_capability = service.get_capabilities().get(CommandName.APPLY_INTERPRETATION)
+    second_apply = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert validation.ok is True
+    assert validation.state.interpretation.validation_decision == "safe"
+    assert first_apply.ok is True
+    assert first_apply.state.interpretation.has_applied_interpretation is True
+    assert apply_capability.available is False
+    assert "Interpretation has already been applied." in apply_capability.reasons
+    assert second_apply.failed is True
+    assert second_apply.error_type == ErrorType.PRECONDITION
+    assert service.dataset.import_files.call_count == 1
+
+
 def test_data_interpretation_preview_exposes_internal_event_evidence(
     tmp_path,
     monkeypatch,

@@ -296,12 +296,18 @@ def _action_item(
 
 def _target_step_for_text(text: str) -> str:
     lowered = text.lower()
-    if any(token in lowered for token in ("eeg file", "source", "scan")):
-        return "Choose EEG Data"
     if any(token in lowered for token in ("label", "event", "carrier")):
-        if "no " in lowered or "missing" in lowered:
+        if (
+            "no " in lowered
+            or "missing" in lowered
+            or "did not contain" in lowered
+            or "not contain" in lowered
+            or "empty" in lowered
+        ):
             return "Load Labels"
         return "Match Labels"
+    if any(token in lowered for token in ("eeg file", "source", "scan")):
+        return "Choose EEG Data"
     if any(
         token in lowered for token in ("subject", "session", "task", "run", "metadata")
     ):

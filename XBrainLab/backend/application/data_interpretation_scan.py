@@ -264,7 +264,16 @@ def _looks_like_bids(path: Path) -> bool:
         return False
     if (path / "dataset_description.json").exists():
         return True
-    return any(item.name.startswith("sub-") for item in path.iterdir())
+    bids_datatype_dirs = {"eeg", "ieeg", "meg", "beh"}
+    return any(
+        item.is_dir()
+        and item.name.startswith("sub-")
+        and any(
+            child.is_dir() and child.name.lower() in bids_datatype_dirs
+            for child in item.rglob("*")
+        )
+        for item in path.iterdir()
+    )
 
 
 def _scan_warnings(

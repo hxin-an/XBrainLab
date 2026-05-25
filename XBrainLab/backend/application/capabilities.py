@@ -112,8 +112,7 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         apply_reasons.extend(interpretation.blocked_reasons)
     apply_reasons.extend(_raw_edit_blockers(state))
     if (
-        interpretation.validation_decision == "needs_confirmation"
-        and interpretation.has_applied_interpretation
+        interpretation.has_applied_interpretation
         and not interpretation.pending_confirmation
     ):
         apply_reasons.append("Interpretation has already been applied.")

@@ -104,6 +104,66 @@ poetry run pytest --capture=sys \
 This supports the integrated manual-test branch as a stronger automated preflight.
 It still does not replace human Windows click-through acceptance.
 
+## 2026-05-25 Subagent-Gated Data Import Closure
+
+Subagent gates for Data Import, runtime UI, backend state, and test completeness
+were treated as blockers. Several worker findings were stale on the current branch,
+but Gate A exposed three live Data Import issues:
+
+- ordinary folders containing `sub-*` EEG filenames could be misclassified as BIDS;
+- Review and Import could split one missing `events.tsv` problem into multiple
+  action items and route label-source issues to the wrong step;
+- Smart Parse metadata only applied subject/session even though Review Metadata
+  exposes subject/session/task/run.
+
+The current branch now requires a stronger BIDS folder shape before auto-classifying
+a folder as BIDS, canonicalizes missing `events.tsv` warnings into one Load Labels
+action item, and preserves Smart Parse subject/session/task/run in the Data Import
+metadata override recipe while keeping legacy subject/session consumers compatible.
+
+Focused and broad validation after the gate fixes:
+
+```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/backend/application/test_data_interpretation_scan.py \
+  tests/unit/backend/application/test_data_interpretation_candidate.py \
+  tests/unit/backend/application/test_data_interpretation_review.py \
+  tests/unit/backend/application/test_data_table_service.py \
+  tests/unit/backend/controller/test_dataset_controller.py \
+  tests/unit/ui/dataset/test_smart_parser.py \
+  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q
+# 158 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration -q
+# 200 passed, 14 skipped
+
+poetry run python scripts/dev/update_quality_dashboard.py
+# Overall status: PASS
+
+poetry run ruff check .
+# PASS
+
+poetry run basedpyright XBrainLab/backend/application/data_interpretation_scan.py \
+  XBrainLab/backend/application/data_interpretation_candidate.py \
+  XBrainLab/backend/application/data_interpretation_review.py \
+  XBrainLab/backend/application/data_table_service.py \
+  XBrainLab/backend/controller/dataset_controller.py \
+  XBrainLab/ui/dialogs/dataset/smart_parser_dialog.py \
+  XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py
+# 0 errors, 0 warnings, 0 notes
+
+poetry run mkdocs build --strict
+# PASS
+
+poetry run python tests/architecture_compliance.py
+# Architecture compliant
+```
+
+The skipped integration cases are public EEG fixtures that are not downloaded in
+this workspace. This gate supports the branch as a stronger manual-test candidate;
+it still does not prove arbitrary BIDS coverage or replace Windows human
+click-through acceptance.
+
 ## 2026-05-25 Gate E Test-Coverage Follow-Up
 
 Gate E reviewed integration-test completeness and failed the branch as originally

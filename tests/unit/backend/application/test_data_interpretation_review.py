@@ -263,3 +263,53 @@ def test_build_interpretation_preview_does_not_ask_for_external_labels_when_embe
 
     assert "No external label file or folder is attached." not in issues
     assert "Confirm internal event labels." in issues
+
+
+def test_build_interpretation_preview_dedupes_bids_no_events_action_item_to_load_labels():
+    warning = (
+        "BIDS-like source has no events.tsv carrier; supervised labels may be limited."
+    )
+    preview = build_interpretation_preview(
+        preview_id="preview-1",
+        candidate=_candidate(
+            label_carriers=[],
+            label_carrier_plan=[],
+            warnings=[warning, warning],
+            confirmation_items=[],
+        ),
+    )
+
+    matching = [item for item in preview.action_items if item["issue"] == warning]
+
+    assert len(matching) == 1
+    assert matching[0]["target_step"] == "Load Labels"
+
+
+def test_build_interpretation_preview_routes_empty_label_source_to_load_labels():
+    warning = "Label source did not contain a supported label/event file: /tmp/empty"
+    preview = build_interpretation_preview(
+        preview_id="preview-1",
+        candidate=_candidate(
+            label_carriers=[],
+            label_carrier_plan=[],
+            warnings=[warning],
+            confirmation_items=[],
+        ),
+    )
+
+    matching = [item for item in preview.action_items if item["issue"] == warning]
+
+    assert matching == [
+        {
+            "issue": warning,
+            "impact": (
+                "Import may still be usable, but downstream labels or metadata may "
+                "need review."
+            ),
+            "next_action": (
+                "Open the target step and resolve or confirm this item before import."
+            ),
+            "target_step": "Load Labels",
+            "severity": "warning",
+        }
+    ]

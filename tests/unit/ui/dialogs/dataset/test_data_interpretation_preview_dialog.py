@@ -3140,6 +3140,47 @@ def test_data_interpretation_preview_dialog_returns_review_edits(qtbot):
     }
 
 
+def test_data_interpretation_preview_dialog_applies_smart_parse_task_and_run(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={"source_path": "/tmp/source"},
+        preview={
+            "metadata_preview": [
+                {
+                    "file": "sub-01_task-mi_run-02_raw.fif",
+                    "subject": {"value": None, "decision": "needs_confirmation"},
+                    "session": {"value": None, "decision": "needs_confirmation"},
+                    "task": {"value": None, "decision": "needs_confirmation"},
+                    "run": {"value": None, "decision": "needs_confirmation"},
+                },
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+
+    dialog._apply_smart_parse_results(
+        {
+            "sub-01_task-mi_run-02_raw.fif": (
+                "01",
+                "-",
+                "mi",
+                "02",
+            )
+        }
+    )
+
+    result = dialog.get_result()
+
+    assert result["choices"]["metadata_overrides"] == {
+        "sub-01_task-mi_run-02_raw.fif": {
+            "subject": "01",
+            "task": "mi",
+            "run": "02",
+        }
+    }
+
+
 def test_data_interpretation_preview_dialog_class_map_editor_has_bci_suggestions(
     qtbot,
 ):

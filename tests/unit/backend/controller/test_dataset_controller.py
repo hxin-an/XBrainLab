@@ -171,7 +171,7 @@ def test_apply_smart_parse(controller, mock_study):
     mock_study.loaded_data_list = [d1, d2]
 
     results = {
-        "/path/sub-01.edf": ("01", "01"),
+        "/path/sub-01.edf": ("01", "01", "mi", "1"),
         "/path/sub-02.edf": ("02", "-"),  # Session unchanged
     }
 

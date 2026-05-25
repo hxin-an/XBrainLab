@@ -86,18 +86,20 @@ def test_data_table_service_normalizes_smart_parse_results() -> None:
         service.handle_apply_smart_parse(
             ApplySmartParseCommand(
                 results={
-                    "/data/a.fif": ("S01", "run-01"),
+                    "/data/a.fif": ("S01", "run-01", "mi", "1"),
                     "/data/b.fif": ["S02", "run-02"],
+                    "/data/c.fif": {"subject": "S03", "session": "run-03"},
                 },
             ),
         ),
     )
 
-    assert message == "Smart parse updated 2 file(s)."
-    assert payload == {"success_count": 2}
+    assert message == "Smart parse updated 3 file(s)."
+    assert payload == {"success_count": 3}
     assert dataset.smart_parse_payload == {
         "/data/a.fif": ("S01", "run-01"),
         "/data/b.fif": ("S02", "run-02"),
+        "/data/c.fif": ("S03", "run-03"),
     }
 
 
