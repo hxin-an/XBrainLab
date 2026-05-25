@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-05-21`
+最後更新：`2026-05-25`
 
 這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
@@ -40,6 +40,69 @@ current truth 以這些文件為準：
 - [planning/roadmap.md](../planning/roadmap.md)
 - [architecture/README.md](../architecture/README.md)
 - [validation/README.md](README.md)
+
+## 2026-05-25 Manual-Test Audit Follow-Up
+
+Manual testing exposed multiple issues that older automated evidence did not catch.
+The follow-up audit found and fixed two validation gaps:
+
+- Product walkthrough mocks and visualization capture scripts still confirmed Data
+  Interpretation without choosing the new supervised label source. They now select
+  internal EEG events when using synthetic internal labels, and visualization capture
+  starts tiny training with an explicit confirmation boundary.
+- BIDS scan had let `participants.tsv` / `*_channels.tsv` appear as label/event
+  carriers. BIDS metadata tables are now reported as metadata context, while
+  `events.tsv` remains the label/event carrier. Saved import recipes now preserve
+  the BIDS summary used by epoch handoff and recipe reload review.
+
+Focused validation from `/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`:
+
+```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/integration/ui \
+  tests/unit/scripts/test_capture_data_interpretation_replay.py \
+  tests/unit/scripts/test_capture_human_like_product_walkthrough.py \
+  tests/unit/scripts/test_capture_visualization_render_walkthrough.py \
+  tests/unit/scripts/test_capture_chatpanel_local_training_completion_walkthrough.py -q
+# 100 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/backend/application/test_data_interpretation_scan.py \
+  tests/unit/backend/application/test_data_interpretation_candidate.py \
+  tests/unit/backend/application/test_data_interpretation_label_carriers.py \
+  tests/unit/backend/application/test_data_interpretation_service.py \
+  tests/unit/backend/application/test_data_interpretation_review.py \
+  tests/unit/backend/application/test_data_interpretation_recipe.py \
+  tests/unit/backend/application/test_data_interpretation_formats.py \
+  tests/integration/backend/test_application_service_workflow.py -q
+# 80 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
+  tests/integration/ui/test_dialog_acceptance.py \
+  tests/unit/ui/test_evaluation_panel_redesign.py \
+  tests/unit/ui/test_visualization_panel_redesign.py -q
+# 106 passed
+
+QT_QPA_PLATFORM=offscreen PYVISTA_OFF_SCREEN=true poetry run python \
+  scripts/dev/capture_visualization_render_walkthrough.py \
+  --output-dir artifacts/ui/audit-visualization-render --timeout-seconds 540
+# passed; 3 rendered saliency tabs and 3D blocked-state evidence captured
+
+poetry run python scripts/dev/update_quality_dashboard.py
+# Overall status: PASS
+
+poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q
+# 21 passed, 10 skipped
+
+poetry run pytest --capture=sys \
+  tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics \
+  tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet -q
+# 2 passed
+```
+
+This supports the integrated manual-test branch as a stronger automated preflight.
+It still does not replace human Windows click-through acceptance.
 
 ## 2026-05-22 Epoch Dialog Label Transparency
 

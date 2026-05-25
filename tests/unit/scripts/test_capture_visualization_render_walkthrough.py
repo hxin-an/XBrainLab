@@ -1,12 +1,15 @@
+import time
 from types import SimpleNamespace
 
 from scripts.dev.capture_visualization_render_walkthrough import (
     BLOCKED_TAB_SPECS,
     RENDER_TAB_SPECS,
     _command_payload,
+    _prepare_tiny_trained_state,
     render_markdown,
     validate_visualization_render_payload,
 )
+from XBrainLab.backend.application import TrainCommand
 from XBrainLab.backend.application.results import ErrorType
 
 
@@ -170,3 +173,54 @@ def test_command_payload_uses_command_name_contract():
 
     assert payload["command"] == "visualize"
     assert payload["ok"] is True
+
+
+def test_visualization_training_walkthrough_confirms_training_boundary():
+    class FakeApp:
+        def processEvents(self):
+            pass
+
+    class FakeService:
+        def __init__(self):
+            self.commands = []
+
+        def execute(self, command):
+            self.commands.append(command)
+            return SimpleNamespace(
+                command_name=command.name,
+                ok=True,
+                failed=False,
+                message="ok",
+                error_type=ErrorType.NONE,
+                diagnostics={},
+            )
+
+        def get_state(self):
+            return SimpleNamespace(
+                to_dict=lambda: {
+                    "training": {
+                        "has_trainer": True,
+                        "is_running": False,
+                        "finished_run_count": 1,
+                    },
+                    "evaluation": {"metrics_available": True},
+                    "visualization": {"saliency_available": True},
+                },
+            )
+
+    service = FakeService()
+    payload = {"training": {"commands": []}}
+
+    ok = _prepare_tiny_trained_state(
+        FakeApp(),
+        service,
+        training_output_dir="/tmp/xbrainlab-viz-test",
+        timeout_seconds=1,
+        started_at=time.monotonic(),
+        payload=payload,
+    )
+
+    assert ok is True
+    assert isinstance(service.commands[-1], TrainCommand)
+    assert service.commands[-1].confirmed is True
+    assert service.commands[-1].interactive is False

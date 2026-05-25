@@ -16,6 +16,19 @@ SUPPORTED_EEG_EXTENSIONS = (
     ".vhdr",
 )
 LABEL_CARRIER_EXTENSIONS = (".mat", ".txt", ".csv", ".tsv")
+BIDS_METADATA_TABLE_NAMES = (
+    "participants.tsv",
+    "scans.tsv",
+    "sessions.tsv",
+    "channels.tsv",
+    "electrodes.tsv",
+)
+BIDS_METADATA_TABLE_SUFFIXES = (
+    "_scans.tsv",
+    "_sessions.tsv",
+    "_channels.tsv",
+    "_electrodes.tsv",
+)
 
 
 def format_capabilities(files: list[Path]) -> list[dict[str, Any]]:
@@ -39,6 +52,15 @@ def format_capability(path: Path) -> dict[str, Any]:
             "needs_review",
             "BIDS events use onset and duration with label columns such as "
             "trial_type or value; review event column and sidecar semantics.",
+        )
+    if is_bids_metadata_table(path):
+        return _capability(
+            path,
+            "BIDS metadata",
+            "metadata",
+            "context",
+            "BIDS metadata table detected; use it for dataset context, not as "
+            "a label/event carrier.",
         )
     if suffix == ".gdf":
         return _capability(
@@ -184,4 +206,12 @@ def _capability(
 def _is_bids_events_file(path: Path) -> bool:
     return path.name.lower() == "events.tsv" or path.name.lower().endswith(
         "_events.tsv"
+    )
+
+
+def is_bids_metadata_table(path: Path) -> bool:
+    """Return whether a TSV file is BIDS metadata rather than labels/events."""
+    name = path.name.lower()
+    return name in BIDS_METADATA_TABLE_NAMES or any(
+        name.endswith(suffix) for suffix in BIDS_METADATA_TABLE_SUFFIXES
     )

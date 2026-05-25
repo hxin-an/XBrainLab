@@ -15,11 +15,27 @@ def test_scan_source_path_collects_bids_files_labels_and_metadata(tmp_path: Path
         tmp_path / "sub-01" / "ses-01" / "eeg" / "sub-01_ses-01_task-mi_run-1_raw.fif"
     )
     events_file = (
-        tmp_path / "sub-01" / "ses-01" / "eeg" / "sub-01_ses-01_task-mi_events.tsv"
+        tmp_path
+        / "sub-01"
+        / "ses-01"
+        / "eeg"
+        / "sub-01_ses-01_task-mi_run-1_events.tsv"
+    )
+    channels_file = (
+        tmp_path
+        / "sub-01"
+        / "ses-01"
+        / "eeg"
+        / "sub-01_ses-01_task-mi_run-1_channels.tsv"
     )
     eeg_file.parent.mkdir(parents=True)
+    (tmp_path / "participants.tsv").write_text(
+        "participant_id\nsub-01\n",
+        encoding="utf-8",
+    )
     eeg_file.write_text("", encoding="utf-8")
     events_file.write_text("onset\tduration\ttrial_type\n", encoding="utf-8")
+    channels_file.write_text("name\tstatus\nC3\tgood\n", encoding="utf-8")
 
     scan = scan_source_path(scan_id="scan-1", source_path=str(tmp_path))
 
@@ -30,6 +46,8 @@ def test_scan_source_path_collects_bids_files_labels_and_metadata(tmp_path: Path
     assert scan.metadata[0].subject.value == "01"
     assert scan.bids["is_bids"] is True
     assert scan.bids["events_files"] == [str(events_file)]
+    assert scan.bids["channels_files"] == [str(channels_file)]
+    assert scan.bids["participants_file"] == str(tmp_path / "participants.tsv")
 
 
 def test_scan_source_path_blocks_stream_export_without_selectable_eeg(tmp_path: Path):

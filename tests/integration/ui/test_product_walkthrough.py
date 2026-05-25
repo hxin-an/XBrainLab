@@ -306,7 +306,10 @@ def test_import_command_success_refreshes_dataset_table_without_stale_controller
         ) as PreviewDialog,
     ):
         PreviewDialog.return_value.exec.return_value = True
-        PreviewDialog.return_value.get_result.return_value = {"confirmed": True}
+        PreviewDialog.return_value.get_result.return_value = {
+            "confirmed": True,
+            "choices": {"label_carrier": "embedded_events"},
+        }
         _click(qtbot, test_app.dataset_panel.sidebar.import_btn)
 
     assert _application_state(test_app.study)["raw"]["count"] == 1
@@ -325,9 +328,14 @@ def test_import_command_success_refreshes_dataset_table_without_stale_controller
 
 
 def test_pipeline_product_walkthrough_uses_user_facing_actions(
-    test_app, qtbot, tmp_path
+    test_app, qtbot, tmp_path, monkeypatch
 ):
     """Drive import -> preprocess -> epoch -> split -> configure -> dry-run train UI."""
+    monkeypatch.setattr(
+        QMessageBox,
+        "information",
+        lambda *_args, **_kwargs: QMessageBox.StandardButton.Ok,
+    )
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
     with (
@@ -340,7 +348,10 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         ) as PreviewDialog,
     ):
         PreviewDialog.return_value.exec.return_value = True
-        PreviewDialog.return_value.get_result.return_value = {"confirmed": True}
+        PreviewDialog.return_value.get_result.return_value = {
+            "confirmed": True,
+            "choices": {"label_carrier": "embedded_events"},
+        }
         assert test_app.dataset_panel.sidebar.import_btn.text() == "Import file"
         _click(qtbot, test_app.dataset_panel.sidebar.import_btn)
 
@@ -360,7 +371,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
             return (1.0, 40.0, None)
 
     class FakeEpochingDialog:
-        def __init__(self, _parent, _data_list):
+        def __init__(self, _parent, _data_list, **_dialog_context):
             pass
 
         def exec(self):

@@ -10,17 +10,24 @@ from XBrainLab.backend.application.data_interpretation_formats import (
 def test_format_capabilities_report_review_and_block_boundaries(tmp_path: Path):
     gdf = tmp_path / "subject.gdf"
     events = tmp_path / "events.tsv"
+    channels = tmp_path / "sub-01_task-mi_channels.tsv"
     xdf = tmp_path / "stream.xdf"
     gdf.write_text("", encoding="utf-8")
     events.write_text("onset\ttrial_type\n", encoding="utf-8")
+    channels.write_text("name\tstatus\nC3\tgood\n", encoding="utf-8")
     xdf.write_text("", encoding="utf-8")
 
-    by_name = {item["name"]: item for item in format_capabilities([xdf, gdf, events])}
+    by_name = {
+        item["name"]: item for item in format_capabilities([xdf, gdf, events, channels])
+    }
 
     assert by_name["subject.gdf"]["status"] == "needs_review"
     assert "external label alignment" in by_name["subject.gdf"]["message"]
     assert by_name["events.tsv"]["format"] == "BIDS events"
     assert by_name["events.tsv"]["role"] == "external_labels"
+    assert by_name["sub-01_task-mi_channels.tsv"]["format"] == "BIDS metadata"
+    assert by_name["sub-01_task-mi_channels.tsv"]["role"] == "metadata"
+    assert by_name["sub-01_task-mi_channels.tsv"]["status"] == "context"
     assert by_name["stream.xdf"]["status"] == "blocked"
 
 

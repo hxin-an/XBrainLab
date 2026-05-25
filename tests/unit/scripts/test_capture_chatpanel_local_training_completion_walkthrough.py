@@ -1,11 +1,14 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 from scripts.dev.capture_chatpanel_local_training_completion_walkthrough import (
     TURN_SPECS,
     build_prompts,
+    prepare_training_dataset_ready_state,
     render_markdown,
     validate_training_completion_payload,
 )
+from XBrainLab.backend.application import PreviewInterpretationCommand
 
 
 def _base_payload():
@@ -191,6 +194,44 @@ def test_build_prompts_includes_controlled_output_dir():
     assert str(output_dir) in prompts[1]
     assert "1 epoch" in prompts[1]
     assert "device cpu" in prompts[1]
+
+
+def test_prepare_dataset_ready_state_confirms_internal_event_labels(monkeypatch):
+    commands = []
+
+    class FakeState:
+        def to_dict(self):
+            return {"pipeline_stage": "dataset"}
+
+    class FakeService:
+        def execute(self, command):
+            commands.append(command)
+            return SimpleNamespace(
+                ok=True,
+                failed=False,
+                message="ok",
+                error_type=None,
+                diagnostics={},
+            )
+
+        def get_state(self):
+            return FakeState()
+
+    monkeypatch.setattr(
+        "scripts.dev.capture_chatpanel_local_training_completion_walkthrough."
+        "get_application_service",
+        lambda _study: FakeService(),
+    )
+
+    result = prepare_training_dataset_ready_state(object(), Path("/tmp/source.fif"))
+
+    preview = next(
+        command
+        for command in commands
+        if isinstance(command, PreviewInterpretationCommand)
+    )
+    assert result["ok"] is True
+    assert preview.choices == {"label_carrier": "embedded_events"}
 
 
 def test_validate_training_completion_payload_accepts_finished_training():

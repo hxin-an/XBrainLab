@@ -10,6 +10,7 @@ from typing import Any
 from .data_interpretation_formats import (
     LABEL_CARRIER_EXTENSIONS,
     SUPPORTED_EEG_EXTENSIONS,
+    is_bids_metadata_table,
 )
 from .data_interpretation_formats import (
     format_capabilities as _format_capabilities,
@@ -226,6 +227,8 @@ def _has_supported_suffix(path: Path, suffixes: tuple[str, ...]) -> bool:
 
 
 def _is_label_carrier(path: Path) -> bool:
+    if is_bids_metadata_table(path):
+        return False
     return _has_supported_suffix(path, LABEL_CARRIER_EXTENSIONS)
 
 

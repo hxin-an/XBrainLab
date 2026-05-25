@@ -227,7 +227,7 @@ def prepare_training_dataset_ready_state(
     service = get_application_service(study)
     commands = [
         ScanSourceCommand(source_path=str(source_path)),
-        PreviewInterpretationCommand(),
+        PreviewInterpretationCommand(choices={"label_carrier": "embedded_events"}),
         ValidateInterpretationCommand(),
         ApplyInterpretationCommand(confirmed=True),
         PreprocessCommand(

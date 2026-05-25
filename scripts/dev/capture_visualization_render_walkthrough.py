@@ -243,7 +243,7 @@ def _prepare_tiny_trained_state(
             ],
             montage_name="synthetic-4ch",
         ),
-        TrainCommand(),
+        TrainCommand(confirmed=True, interactive=False),
     ]
     for command in commands:
         result = service.execute(command)

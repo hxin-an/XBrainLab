@@ -21,6 +21,10 @@ def test_import_recipe_from_dict_rehydrates_metadata_and_mappings():
             "source_path": "/data",
             "source_kind": "bids",
             "selected_eeg_files": ["/data/sub-01.fif"],
+            "bids": {
+                "root": "/data",
+                "selected_scope": {"events_files": ["/data/events.tsv"]},
+            },
             "skip_labels": True,
             "label_carrier": "external_files",
             "excluded_label_carriers": ["/data/rejected_events.tsv"],
@@ -46,6 +50,10 @@ def test_import_recipe_from_dict_rehydrates_metadata_and_mappings():
     assert isinstance(recipe, ImportRecipe)
     assert recipe.metadata[0].subject.value == "01"
     assert recipe.skip_labels is True
+    assert recipe.bids == {
+        "root": "/data",
+        "selected_scope": {"events_files": ["/data/events.tsv"]},
+    }
     assert recipe.label_carrier == "external_files"
     assert recipe.excluded_label_carriers == ["/data/rejected_events.tsv"]
     assert recipe.event_roles == {"trial_type": "class cue"}
@@ -63,6 +71,10 @@ def test_build_import_recipe_preserves_applied_trace_and_writes_json(tmp_path):
         loaded_files=["/data/sample.fif"],
         label_sources=["/external-labels"],
         label_carriers=["/data/events.tsv"],
+        bids={
+            "root": "/data",
+            "selected_scope": {"events_files": ["/data/events.tsv"]},
+        },
         label_carrier_plan=[{"path": "/data/events.tsv"}],
         metadata=[],
         format_capabilities=[{"format": "MNE FIF"}],
@@ -91,6 +103,10 @@ def test_build_import_recipe_preserves_applied_trace_and_writes_json(tmp_path):
 
     assert target.read_bytes().endswith(b"\n")
     assert loaded.label_sources == ["/external-labels"]
+    assert loaded.bids == {
+        "root": "/data",
+        "selected_scope": {"events_files": ["/data/events.tsv"]},
+    }
     assert loaded.skip_labels is True
     assert loaded.label_carrier == "external_files"
     assert loaded.excluded_label_carriers == ["/data/rejected_events.tsv"]
