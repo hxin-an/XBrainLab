@@ -1988,6 +1988,27 @@ def test_load_labels_next_requests_rescan_for_new_label_source(qtbot, monkeypatc
     result = dialog.get_result()
     assert result["label_sources_changed"] is True
     assert result["label_sources"] == ["/tmp/external-labels"]
+    assert result["resume_step"] == "Review Metadata"
+
+
+def test_data_interpretation_preview_dialog_can_open_at_resume_step(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+        },
+        preview={"summary": "Found 1 EEG file(s)."},
+        validation_decision={"decision": "safe"},
+        initial_step="Review Metadata",
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.wait(0)
+
+    assert dialog.step_stack.currentIndex() == 2
+    assert _visible_group_titles(dialog) == ["Review Metadata"]
+    assert dialog.next_button.text() == "Next: Match Labels"
 
 
 def test_data_interpretation_preview_dialog_rejects_duplicate_label_sources(

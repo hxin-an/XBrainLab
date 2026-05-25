@@ -1009,6 +1009,7 @@ class TestDatasetActionHandler:
             "save_recipe": False,
             "label_sources_changed": True,
             "label_sources": [label_folder],
+            "resume_step": "Review Metadata",
             "choices": {},
         }
         second_dialog = MagicMock()
@@ -1096,6 +1097,8 @@ class TestDatasetActionHandler:
         assert len(scans) == 2
         assert scans[0].label_sources == []
         assert scans[1].label_sources == [label_folder]
+        second_dialog_kwargs = mock_preview_dialog.call_args_list[1].kwargs
+        assert second_dialog_kwargs["initial_step"] == "Review Metadata"
         assert len(previews) == 3
         assert previews[-1].choices["metadata_overrides"] == {
             "sub-01_task-mi_raw.fif": {"subject": "S01", "task": "mi"}

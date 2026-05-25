@@ -636,14 +636,18 @@ class DatasetActionHandler:
             validation_result,
             "validation_decision",
         )
+        resume_dialog_step = ""
 
         while True:
-            dialog = DataInterpretationPreviewDialog(
-                self.panel,
-                scan_result=scan,
-                preview=preview,
-                validation_decision=decision,
-            )
+            dialog_kwargs: dict[str, Any] = {
+                "scan_result": scan,
+                "preview": preview,
+                "validation_decision": decision,
+            }
+            if resume_dialog_step:
+                dialog_kwargs["initial_step"] = resume_dialog_step
+            dialog = DataInterpretationPreviewDialog(self.panel, **dialog_kwargs)
+            resume_dialog_step = ""
             if not dialog.exec():
                 return True
 
@@ -663,6 +667,7 @@ class DatasetActionHandler:
             )
             if next_label_sources != label_sources:
                 label_sources = next_label_sources
+                resume_dialog_step = str(dialog_result.get("resume_step") or "")
                 scan_result = execute_application_command(
                     self.panel,
                     ScanSourceCommand(

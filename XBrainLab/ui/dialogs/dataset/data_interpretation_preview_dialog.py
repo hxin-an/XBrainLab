@@ -292,10 +292,13 @@ class DataInterpretationPreviewDialog(BaseDialog):
         scan_result: dict[str, Any] | None = None,
         preview: dict[str, Any] | None = None,
         validation_decision: dict[str, Any] | None = None,
+        initial_step: str | None = None,
     ):
         self.scan_result = dict(scan_result or {})
         self.preview = dict(preview or {})
         self.validation_decision = dict(validation_decision or {})
+        self._initial_step = str(initial_step or "")
+        self._resume_step_after_accept = ""
         self.workflow_steps_label: QLabel
         self.step_labels: list[QLabel]
         self.summary_label: QLabel
@@ -847,8 +850,18 @@ class DataInterpretationPreviewDialog(BaseDialog):
         footer_layout.addWidget(self.apply_button)
         root_layout.addWidget(footer_frame)
         self._sync_apply_state()
+        self._apply_initial_step()
         self._sync_step_state()
         self._fit_all_tree_columns_to_viewport()
+
+    def _apply_initial_step(self) -> None:
+        if not self._initial_step or not hasattr(self, "step_stack"):
+            return
+        try:
+            index = self._step_titles.index(self._initial_step)
+        except ValueError:
+            return
+        self.step_stack.setCurrentIndex(index)
 
     def _panel_header(self, title: str, detail: str) -> QFrame:
         header = QFrame()
@@ -4978,6 +4991,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
     def _go_next_step(self) -> None:
         if self._label_sources_need_rescan_before_matching():
+            self._resume_step_after_accept = "Review Metadata"
             self.accept()
             return
         self._go_to_step(self.step_stack.currentIndex() + 1)
@@ -5098,6 +5112,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if self._extra_label_sources != self._initial_label_sources:
             result["label_sources"] = list(self._extra_label_sources)
             result["label_sources_changed"] = True
+            if self._resume_step_after_accept:
+                result["resume_step"] = self._resume_step_after_accept
         return result
 
     @staticmethod

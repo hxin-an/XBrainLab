@@ -332,6 +332,8 @@ Screenshot evidence:
 - Follow-up grouping now treats file-scoped review items as the same problem even when the file
   name appears in the issue/title rather than only in the impact text. The UI shows one card with
   affected files instead of one repeated card per EEG file.
+- Load Labels rescan follow-up now resumes the wizard at Review Metadata after a user loads a
+  new label source and presses Next, instead of rebuilding the dialog back at Choose EEG Data.
 
 Focused validation:
 
@@ -351,7 +353,7 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
 # 266 passed
 
 QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/run_tests.py ui
-# 1163 passed
+# 1165 passed
 
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q
@@ -362,7 +364,12 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/components/test_dialogs.py \
   tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
   tests/unit/ui/test_ui_misc.py -q
-# 267 passed
+# 268 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
+  tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_rescans_after_add_label_folder_product_flow -q
+# 73 passed
 ```
 
 ## Backend Test Hygiene Inventory
