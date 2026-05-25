@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -7614,65 +7615,159 @@ class DataInterpretationPreviewDialog(BaseDialog):
         rows: list[tuple[str, str, str, str]],
     ) -> list[tuple[str, str, str, str]]:
         grouped: dict[
-            tuple[str, str, str],
+            tuple[str, str, str, str],
             list[tuple[str, str, str, str]],
         ] = {}
-        order: list[tuple[str, str, str]] = []
+        order: list[tuple[str, str, str, str]] = []
         for row in rows:
-            target_step, issue, _impact, next_action = row
-            key = (target_step, issue, next_action)
+            target_step, issue, impact, next_action = row
+            key = (
+                target_step,
+                cls._review_text_without_file_refs(issue),
+                cls._review_text_without_file_refs(impact),
+                cls._review_text_without_file_refs(next_action),
+            )
             if key not in grouped:
                 grouped[key] = []
                 order.append(key)
             grouped[key].append(row)
 
         merged: list[tuple[str, str, str, str]] = []
-        for target_step, issue, next_action in order:
-            group_rows = grouped[(target_step, issue, next_action)]
-            impacts = cls._unique_strings([row[2].strip() for row in group_rows])
-            if len(group_rows) <= 1 or not cls._review_impacts_are_file_scoped(impacts):
+        for target_step, issue_key, impact_key, next_action_key in order:
+            group_rows = grouped[(target_step, issue_key, impact_key, next_action_key)]
+            files = cls._review_group_files(group_rows)
+            if len(group_rows) <= 1 or len(files) <= 1:
                 merged.extend(group_rows)
                 continue
+            first_target_step, first_issue, _first_impact, first_next_action = (
+                group_rows[0]
+            )
             merged.append(
                 (
-                    target_step,
-                    issue,
-                    cls._review_grouped_impact_text(impacts),
-                    next_action,
+                    first_target_step,
+                    cls._review_grouped_issue_text(first_issue),
+                    cls._review_grouped_impact_text(
+                        files,
+                        cls._review_group_shared_details(group_rows),
+                    ),
+                    cls._review_grouped_next_action_text(first_next_action),
                 )
             )
         return merged
 
+    @classmethod
+    def _review_group_files(
+        cls,
+        rows: list[tuple[str, str, str, str]],
+    ) -> list[str]:
+        files: list[str] = []
+        for row in rows:
+            for value in row[1:]:
+                for file_name in cls._review_file_refs(value):
+                    if file_name not in files:
+                        files.append(file_name)
+        return files
+
+    @classmethod
+    def _review_group_shared_details(
+        cls,
+        rows: list[tuple[str, str, str, str]],
+    ) -> list[str]:
+        details: list[str] = []
+        for _target_step, _issue, impact, _next_action in rows:
+            detail = cls._review_group_detail_text(impact)
+            if detail and detail not in details:
+                details.append(detail)
+        return details[:2]
+
+    @classmethod
+    def _review_group_detail_text(cls, text: str) -> str:
+        if not text or cls._review_file_refs(text):
+            return ""
+        stripped = text.strip()
+        if stripped.lower() in {
+            "check",
+            "confirm",
+            "fix first",
+            "no action needed.",
+        }:
+            return ""
+        return stripped
+
+    @classmethod
+    def _review_text_without_file_refs(cls, text: str) -> str:
+        normalized = cls._review_file_ref_pattern().sub("{file}", str(text).strip())
+        normalized = re.sub(r"\s+", " ", normalized).strip()
+        return normalized.lower()
+
+    @classmethod
+    def _review_file_refs(cls, text: str) -> list[str]:
+        result: list[str] = []
+        for match in cls._review_file_ref_pattern().finditer(str(text)):
+            file_name = Path(match.group(0).replace("\\", "/")).name
+            if file_name and file_name not in result:
+                result.append(file_name)
+        return result
+
     @staticmethod
-    def _review_impacts_are_file_scoped(items: list[str]) -> bool:
-        return len(items) > 1 and all(
-            DataInterpretationPreviewDialog._review_impact_is_file_scoped(item)
-            for item in items
+    def _review_file_ref_pattern() -> re.Pattern[str]:
+        extensions_pattern = "|".join(
+            re.escape(extension)
+            for extension in (
+                "gdf",
+                "edf",
+                "set",
+                "fif",
+                "vhdr",
+                "mat",
+                "csv",
+                "tsv",
+            )
+        )
+        return re.compile(
+            r"(?<![\w.-])(?:[A-Za-z]:)?(?:[\\/][^\s:;,]+)*[\\/]*"
+            rf"[^\\/\s:;,]+\.({extensions_pattern})(?![\w-])",
+            re.IGNORECASE,
         )
 
     @staticmethod
-    def _review_impact_is_file_scoped(text: str) -> bool:
-        file_extensions = (
-            ".gdf",
-            ".edf",
-            ".set",
-            ".fif",
-            ".vhdr",
-            ".mat",
-            ".csv",
-            ".tsv",
+    def _review_grouped_issue_text(issue: str) -> str:
+        text = issue.strip()
+        text = DataInterpretationPreviewDialog._review_file_ref_pattern().sub(
+            "{file}",
+            text,
         )
-        lowered = text.lower()
-        return any(extension in lowered for extension in file_extensions)
+        replacements = {
+            "{file} needs": "Files need",
+            "{file} requires": "Files require",
+            "{file} has": "Files have",
+            "{file} is": "Files are",
+            "{file} was": "Files were",
+            "{file}": "Files",
+        }
+        for old, new in replacements.items():
+            text = text.replace(old, new)
+        return text
 
     @staticmethod
-    def _review_grouped_impact_text(items: list[str]) -> str:
-        prefix = f"{len(items)} files"
-        shown = items[:4]
-        text = f"{prefix}: " + "; ".join(shown)
-        extra_count = len(items) - len(shown)
+    def _review_grouped_next_action_text(next_action: str) -> str:
+        text = next_action.strip()
+        if not text:
+            return text
+        return DataInterpretationPreviewDialog._review_file_ref_pattern().sub(
+            "these files",
+            text,
+        )
+
+    @staticmethod
+    def _review_grouped_impact_text(files: list[str], details: list[str]) -> str:
+        shown = files[:4]
+        text = f"{len(files)} files affected: " + ", ".join(shown)
+        extra_count = len(files) - len(shown)
         if extra_count > 0:
             text = f"{text}; +{extra_count} more"
+        if details:
+            text = f"{text}\n" + "\n".join(details)
         return text
 
     @staticmethod

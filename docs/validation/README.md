@@ -329,6 +329,9 @@ Screenshot evidence:
 - Data Import Review and Import now groups repeated file-scoped action items with the same target
   step, issue and next action into one review card / tree row, while preserving ordinary non-file
   review rows as separate items.
+- Follow-up grouping now treats file-scoped review items as the same problem even when the file
+  name appears in the issue/title rather than only in the impact text. The UI shows one card with
+  affected files instead of one repeated card per EEG file.
 
 Focused validation:
 
@@ -349,6 +352,17 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
 
 QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/run_tests.py ui
 # 1163 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q
+# 71 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_dialogs_extra.py \
+  tests/unit/ui/components/test_dialogs.py \
+  tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py \
+  tests/unit/ui/test_ui_misc.py -q
+# 267 passed
 ```
 
 ## Backend Test Hygiene Inventory
