@@ -18,6 +18,10 @@ from time import monotonic, sleep
 # Ensure the project root is importable when running the script directly.
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
+from XBrainLab.ui.qt_runtime import configure_qt_platform_for_runtime
+
+configure_qt_platform_for_runtime()
+
 from PyQt6.QtCore import QSettings, QSize, Qt
 from PyQt6.QtGui import QColor, QFont, QPainter, QPaintEvent, QPen, QPixmap
 from PyQt6.QtWidgets import QApplication, QWidget

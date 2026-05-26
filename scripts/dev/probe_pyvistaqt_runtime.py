@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
 DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "ui" / "visualization-render"
 JSON_ARTIFACT = "pyvistaqt-runtime-probe.json"
 MD_ARTIFACT = "pyvistaqt-runtime-probe.md"
@@ -72,7 +73,10 @@ def main() -> int:
 
 def run_probe(screenshot_path: Path, timeout_seconds: int) -> dict[str, Any]:
     """Run the PyVistaQt probe in a child process and summarize the result."""
+    from XBrainLab.ui.qt_runtime import configure_qt_platform_for_runtime
+
     env = dict(os.environ)
+    configure_qt_platform_for_runtime(env)
     completed = subprocess.run(  # noqa: S603
         [sys.executable, "-c", PROBE_CODE, str(screenshot_path)],
         check=False,
