@@ -26,6 +26,7 @@ class Saliency3D:
         self.showChannel = True
         self.showHead = True
         self.cmap = plt.cm.get_cmap("coolwarm")
+        self.init_error = ""
 
         # Initialize Backend Engine
         self.engine: Saliency3DEngine | None = None
@@ -36,9 +37,10 @@ class Saliency3D:
                 epoch_data,
                 selected_event_name,
             )
-        except Exception:
+        except Exception as exc:
             logger.exception("Failed to initialize Saliency3D engine")
             # Handle failure gracefully
+            self.init_error = str(exc)
             self.engine = None
             self.channel_count = 0
 

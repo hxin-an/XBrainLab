@@ -293,6 +293,20 @@ class TestDataSplittingPreviewDialogDeep:
         # Before preview runs, result should be the generator (or None)
         assert result is None or hasattr(result, "__iter__")
 
+    def test_info_button_is_disabled_until_a_generated_split_is_selected(self, dlg):
+        assert dlg.btn_info is not None
+        assert not dlg.btn_info.isEnabled()
+
+        dataset = MagicMock()
+        dataset.get_treeview_row_info.return_value = ["", "Split A", 8, 1, 1]
+        dlg.datasets = [dataset]
+        dlg.update_table()
+
+        item = dlg.tree.topLevelItem(0)
+        dlg.tree.setCurrentItem(item)
+
+        assert dlg.btn_info.isEnabled()
+
 
 # ============ DataSplittingPreviewDialog with splitter options ============
 

@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 
 from matplotlib.figure import Figure
+from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -163,6 +164,34 @@ def test_metrics_table_selection_uses_dark_theme(qtbot):
     assert f"selection-color: {Theme.TEXT_PRIMARY}" in stylesheet
     assert "QTableView::item:selected:!active" in stylesheet
     assert "#ffffff" not in stylesheet.lower().replace(Theme.TEXT_PRIMARY, "")
+    assert table.palette().color(QPalette.ColorRole.Highlight) == QColor(
+        Theme.BLUE_PRESSED
+    )
+
+
+def test_metrics_table_has_no_initial_selection_after_refresh(qtbot):
+    table = MetricsTableWidget()
+    qtbot.addWidget(table)
+
+    table.update_data(
+        {
+            0: {
+                "precision": 0.8,
+                "recall": 0.9,
+                "f1-score": 0.85,
+                "support": 10,
+            },
+            1: {
+                "precision": 0.7,
+                "recall": 0.6,
+                "f1-score": 0.65,
+                "support": 10,
+            },
+        }
+    )
+
+    assert table.selectedItems() == []
+    assert table.currentRow() == -1
 
 
 def test_evaluation_panel_logic(qtbot):
@@ -304,6 +333,43 @@ def test_evaluation_panel_uses_application_payload_before_stale_controller(
     assert panel.model_combo.count() == 1
     assert panel.model_combo.itemText(0) == "Fold 1: Service Plan"
     assert panel.summary_text.toPlainText() == "Service plan summary"
+
+
+def test_evaluation_panel_shows_placeholder_when_service_summary_missing(
+    qtbot, monkeypatch
+):
+    """Service-owned evaluation data should not render a blank Model Summary tab."""
+
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    service_plan = MockPlanHolder("Service Plan")
+    query_result = CommandResult.success_result(
+        command_name="evaluate",
+        message="Evaluation summary ready.",
+        state={},
+        changed_state=ChangedState(),
+        diagnostics={
+            "payload_type": "evaluation_summary",
+            "available": True,
+            "plan_objects": [service_plan],
+            "pooled_eval_results": [None],
+            "model_summaries": [{}],
+        },
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.evaluation.panel.execute_application_command",
+        lambda *_args, **_kwargs: query_result,
+    )
+
+    panel = EvaluationPanel(controller=MagicMock(), parent=RealMainWindow())
+    qtbot.addWidget(panel)
+
+    panel.update_panel()
+
+    assert "Model summary unavailable" in panel.summary_text.toPlainText()
 
 
 def test_evaluation_panel_refuses_real_study_query_none_controller_fallback(

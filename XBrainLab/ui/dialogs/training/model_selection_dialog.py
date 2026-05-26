@@ -10,6 +10,7 @@ from typing import Any
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
     QDialogButtonBox,
     QFileDialog,
@@ -27,6 +28,7 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend import model_base
 from XBrainLab.backend.training import ModelHolder
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 ARG_DICT_SKIP_SET = {"self", "n_classes", "channels", "samples", "sfreq"}
 
@@ -68,7 +70,7 @@ class ModelSelectionDialog(BaseDialog):
         self.model_list = list(self.model_map.keys())
 
         super().__init__(parent, title="Model Selection")
-        self.resize(500, 600)
+        self.resize(640, 520)
 
         # Init with first model
         if self.model_list:
@@ -77,6 +79,8 @@ class ModelSelectionDialog(BaseDialog):
     def init_ui(self):
         """Initialize the dialog UI with model combo, parameter table, and buttons."""
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 14)
+        layout.setSpacing(12)
 
         # Model Selection
         top_layout = QHBoxLayout()
@@ -93,9 +97,21 @@ class ModelSelectionDialog(BaseDialog):
         self.params_table = QTableWidget()
         self.params_table.setColumnCount(2)
         self.params_table.setHorizontalHeaderLabels(["Parameter", "Value"])
+        self.params_table.setAlternatingRowColors(True)
+        self.params_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self.params_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.params_table.setMinimumHeight(180)
+        self.params_table.setStyleSheet(Stylesheets.METRICS_TABLE)
         header = self.params_table.horizontalHeader()
         if header is not None:
             header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        vertical_header = self.params_table.verticalHeader()
+        if vertical_header is not None:
+            vertical_header.setVisible(False)
         group_layout.addWidget(self.params_table)
         layout.addWidget(self.params_group)
 
@@ -148,11 +164,25 @@ class ModelSelectionDialog(BaseDialog):
             self.params_table.setRowCount(len(rows))
             for i, (param, val) in enumerate(rows):
                 item_param = QTableWidgetItem(param)
-                item_param.setFlags(item_param.flags() ^ Qt.ItemFlag.ItemIsEditable)
+                item_param.setFlags(item_param.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.params_table.setItem(i, 0, item_param)
                 self.params_table.setItem(i, 1, QTableWidgetItem(val))
 
-            self.params_group.setVisible(len(rows) > 0)
+            if not rows:
+                self._show_no_editable_params()
+            self.params_group.setVisible(True)
+
+    def _show_no_editable_params(self) -> None:
+        """Render an explicit empty state instead of hiding the parameter table."""
+        if not self.params_table:
+            return
+        self.params_table.setRowCount(1)
+        name_item = QTableWidgetItem("No editable parameters")
+        name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        value_item = QTableWidgetItem("This model only uses data-derived settings.")
+        value_item.setFlags(value_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        self.params_table.setItem(0, 0, name_item)
+        self.params_table.setItem(0, 1, value_item)
 
     def load_pretrained_weight(self):
         """Open a file dialog to load or clear pretrained model weights."""

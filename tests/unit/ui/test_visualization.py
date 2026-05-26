@@ -57,6 +57,30 @@ class TestSaliency3DEngine:
         logger.error.assert_called_once_with("Error: connection timeout")
         init_meshes.assert_not_called()
 
+    def test_resolves_original_event_code_to_gradient_class_index(self):
+        with patch(
+            "XBrainLab.backend.visualization.saliency_3d_engine.Saliency3DEngine._load_models"
+        ):
+            from XBrainLab.backend.visualization.saliency_3d_engine import (
+                Saliency3DEngine,
+            )
+
+            eval_record = MagicMock()
+            eval_record.gradient = {
+                0: np.zeros((2, 4, 16)),
+                1: np.ones((2, 4, 16)),
+            }
+            epoch_data = MagicMock()
+            epoch_data.event_id = {"769": 769, "770": 770}
+
+            key = Saliency3DEngine._resolve_saliency_label_key(
+                eval_record,
+                epoch_data,
+                "769",
+            )
+
+        assert key == 0
+
 
 # ============ SaliencyMapWidget ============
 
@@ -346,7 +370,7 @@ class TestSaliency3DPlotWidget:
                 "interactive OpenGL desktop session" in text for text in visible_labels
             )
 
-    def test_update_plot_blocks_wayland_runtime_before_qtinteractor(
+    def test_update_plot_allows_wayland_when_runtime_probe_passes(
         self,
         qtbot,
         monkeypatch,
@@ -356,6 +380,44 @@ class TestSaliency3DPlotWidget:
         monkeypatch.setenv("DISPLAY", ":0")
         monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
         monkeypatch.delenv("XBRAINLAB_ENABLE_INTERACTIVE_3D", raising=False)
+
+        with patch(
+            "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
+        ) as pyvistaqt:
+            from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view import (
+                Saliency3DPlotWidget,
+            )
+
+            w = Saliency3DPlotWidget(parent=None)
+            qtbot.addWidget(w)
+
+            eval_record = MagicMock()
+            plan = MagicMock()
+            plan.get_eval_record.return_value = eval_record
+            epoch = MagicMock()
+            epoch.get_montage_position.return_value = [(0.0, 0.0, 0.0)]
+            epoch.event_id = {"left": 0}
+            trainer = MagicMock()
+            trainer.get_dataset.return_value.get_epoch_data.return_value = epoch
+
+            with patch.object(
+                Saliency3DPlotWidget,
+                "_probe_interactive_3d_runtime",
+                return_value=(True, ""),
+            ):
+                w.update_plot(plan, trainer, "Gradient", False, eval_record)
+
+            pyvistaqt.QtInteractor.assert_called_once()
+
+    def test_update_plot_blocks_wayland_when_runtime_probe_fails(
+        self,
+        qtbot,
+        monkeypatch,
+    ):
+        monkeypatch.setenv("QT_QPA_PLATFORM", "")
+        monkeypatch.delenv("PYVISTA_OFF_SCREEN", raising=False)
+        monkeypatch.setenv("DISPLAY", ":0")
+        monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
 
         with patch(
             "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
@@ -378,7 +440,12 @@ class TestSaliency3DPlotWidget:
             trainer = MagicMock()
             trainer.get_dataset.return_value.get_epoch_data.return_value = epoch
 
-            w.update_plot(plan, trainer, "Gradient", False, eval_record)
+            with patch.object(
+                Saliency3DPlotWidget,
+                "_probe_interactive_3d_runtime",
+                return_value=(False, "3D rendering is blocked by BadWindow."),
+            ):
+                w.update_plot(plan, trainer, "Gradient", False, eval_record)
 
             pyvistaqt.QtInteractor.assert_not_called()
             visible_labels = [
@@ -386,4 +453,41 @@ class TestSaliency3DPlotWidget:
                 for label in w.findChildren(QLabel)
                 if not label.isHidden() and label.text()
             ]
-            assert any("3D rendering is disabled" in text for text in visible_labels)
+            assert any("BadWindow" in text for text in visible_labels)
+
+    def test_do_3d_plot_surfaces_engine_initialization_error(self, qtbot):
+        with patch(
+            "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
+        ):
+            from PyQt6.QtWidgets import QLabel, QWidget
+
+            from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view import (
+                Saliency3DPlotWidget,
+            )
+
+            class FailedSaliency:
+                init_error = "Could not map EEG event 769 to saliency results."
+                engine = None
+
+                def __init__(self, *_args, **_kwargs):
+                    pass
+
+                def get_3d_head_plot(self):
+                    return None
+
+            w = Saliency3DPlotWidget(parent=None)
+            qtbot.addWidget(w)
+            cast(Any, w).plotter_widget = QWidget()
+
+            with patch(
+                "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.Saliency3D",
+                FailedSaliency,
+            ):
+                w._do_3d_plot(MagicMock(), MagicMock(), "769")
+
+            visible_labels = [
+                label.text()
+                for label in w.findChildren(QLabel)
+                if not label.isHidden() and label.text()
+            ]
+            assert any("Could not map EEG event 769" in text for text in visible_labels)

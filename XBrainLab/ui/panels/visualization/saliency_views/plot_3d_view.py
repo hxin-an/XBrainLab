@@ -1,5 +1,6 @@
 import contextlib
 import os
+import subprocess
 import sys
 
 import pyvistaqt
@@ -11,7 +12,27 @@ from XBrainLab.ui.styles.theme import Theme
 
 from .plot_3d_head import Saliency3D
 
-_INTERACTIVE_3D_OPT_IN_ENV = "XBRAINLAB_ENABLE_INTERACTIVE_3D"
+_INTERACTIVE_3D_PROBE_TIMEOUT_SECONDS = 10
+_INTERACTIVE_3D_PROBE_CODE = r"""
+import sys
+
+from PyQt6.QtWidgets import QApplication
+import pyvista as pv
+import pyvistaqt
+
+app = QApplication([])
+plotter = pyvistaqt.QtInteractor()
+plotter.add_mesh(pv.Sphere(radius=0.25), color="white")
+plotter.show()
+for _ in range(10):
+    app.processEvents()
+print(f"plotter_created={plotter is not None}")
+plotter.close()
+app.quit()
+sys.exit(0)
+"""
+
+_INTERACTIVE_3D_PROBE_CACHE: dict[tuple[str, str, str, str], tuple[bool, str]] = {}
 
 
 class Saliency3DPlotWidget(QWidget):
@@ -137,7 +158,7 @@ class Saliency3DPlotWidget(QWidget):
 
         except Exception as e:
             logger.error("Error initializing 3D plot: %s", e, exc_info=True)
-            self.show_error(f"Error: {e}")
+            self.show_error(str(e))
 
     def _do_3d_plot(self, eval_record, epoch_data, selected_event):
         try:
@@ -150,23 +171,23 @@ class Saliency3DPlotWidget(QWidget):
                 selected_event,
                 plotter=self.plotter_widget,
             )
+            init_error = getattr(saliency, "init_error", "")
+            if init_error:
+                self.show_error(init_error)
+                return
+            if getattr(saliency, "engine", None) is None:
+                self.show_error("3D saliency engine could not initialize.")
+                return
             saliency.get_3d_head_plot()
         except Exception as e:
             logger.error("Error executing 3D plot: %s", e, exc_info=True)
-            # We can't easily show error in widget if it crashes here, but we can print
-            # it
-            # or try to show error if widget is still valid
-            if self.isVisible():
-                self.show_error(f"Error during plotting: {e}")
+            self.show_error(f"Error during plotting: {e}")
 
     @staticmethod
     def _interactive_3d_runtime_available() -> tuple[bool, str]:
         """Return whether an interactive OpenGL Qt runtime is available."""
         qt_platform = os.environ.get("QT_QPA_PLATFORM", "").strip().lower()
         pyvista_offscreen = os.environ.get("PYVISTA_OFF_SCREEN", "").strip().lower()
-        wayland_display = os.environ.get("WAYLAND_DISPLAY", "").strip()
-        session_type = os.environ.get("XDG_SESSION_TYPE", "").strip().lower()
-        opt_in_3d = os.environ.get(_INTERACTIVE_3D_OPT_IN_ENV, "").strip().lower()
         if qt_platform in {"offscreen", "minimal"} or pyvista_offscreen in {
             "1",
             "true",
@@ -178,22 +199,64 @@ class Saliency3DPlotWidget(QWidget):
                 "Use the desktop launcher, or switch to Saliency Map, Spectrogram, "
                 "or Topographic Map in this headless environment.",
             )
-        if (
-            sys.platform.startswith("linux")
-            and (wayland_display or session_type == "wayland")
-            and opt_in_3d not in {"1", "true", "yes"}
-        ):
-            return (
-                False,
-                "3D rendering is disabled in this desktop session because the "
-                "OpenGL runtime is not stable enough for PyVistaQt. Use Saliency "
-                "Map, Spectrogram, or Topographic Map. Enable interactive 3D only "
-                "after the PyVistaQt runtime probe passes.",
-            )
         if sys.platform.startswith("linux") and not os.environ.get("DISPLAY"):
             return (
                 False,
                 "3D rendering requires an interactive Linux display with OpenGL. "
                 "Use WSLg or a desktop session, or switch to a 2D saliency view.",
             )
+        if sys.platform.startswith("linux"):
+            return Saliency3DPlotWidget._probe_interactive_3d_runtime()
         return True, ""
+
+    @staticmethod
+    def _probe_interactive_3d_runtime() -> tuple[bool, str]:
+        """Probe PyVistaQt in a child process before touching the live UI."""
+        env = dict(os.environ)
+        cache_key = (
+            env.get("QT_QPA_PLATFORM", ""),
+            env.get("DISPLAY", ""),
+            env.get("WAYLAND_DISPLAY", ""),
+            env.get("XDG_SESSION_TYPE", ""),
+        )
+        cached = _INTERACTIVE_3D_PROBE_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            completed = subprocess.run(  # noqa: S603
+                [sys.executable, "-c", _INTERACTIVE_3D_PROBE_CODE],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=_INTERACTIVE_3D_PROBE_TIMEOUT_SECONDS,
+                env=env,
+            )
+        except subprocess.TimeoutExpired:
+            result = (
+                False,
+                "3D rendering did not start within the runtime probe timeout. "
+                "Use a native desktop/OpenGL session or a 2D saliency view.",
+            )
+            _INTERACTIVE_3D_PROBE_CACHE[cache_key] = result
+            return result
+
+        if completed.returncode == 0 and "plotter_created=True" in completed.stdout:
+            result = (True, "")
+        else:
+            detail = (
+                completed.stderr.strip()
+                or completed.stdout.strip()
+                or f"probe exited with code {completed.returncode}"
+            )
+            first_line = detail.splitlines()[0]
+            result = (
+                False,
+                "3D rendering is blocked by the current desktop OpenGL runtime "
+                f"({first_line}). Use a native desktop/X11 session or a 2D "
+                "saliency view.",
+            )
+        _INTERACTIVE_3D_PROBE_CACHE[cache_key] = result
+        return result

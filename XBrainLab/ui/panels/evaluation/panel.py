@@ -30,6 +30,11 @@ from XBrainLab.ui.panels.evaluation.metrics_table import MetricsTableWidget
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
 
+MODEL_SUMMARY_UNAVAILABLE_TEXT = (
+    "Model summary unavailable for the selected run. "
+    "Train or refresh the model, then open this tab again."
+)
+
 
 class EvaluationPanel(BasePanel):
     """Panel for analysing trained-model performance.
@@ -354,9 +359,12 @@ class EvaluationPanel(BasePanel):
 
     def update_model_summary(self, plan, record=None):
         """Generate and display model summary."""
+        has_service_payload = self._evaluation_query_payload() is not None
         summary_str = self._summary_from_application_query(plan, record)
         if summary_str is None:
             summary_str = self._legacy_summary_for_render(plan, record)
+        if has_service_payload and not summary_str.strip():
+            summary_str = MODEL_SUMMARY_UNAVAILABLE_TEXT
         self.summary_text.setText(summary_str)
 
     def _legacy_pooled_result_for_render(self, plan):

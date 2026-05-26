@@ -143,9 +143,11 @@ class DataSplittingPreviewDialog(BaseDialog):
         left_layout = QVBoxLayout()
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["select", "name", "train", "val", "test"])
+        self.tree.currentItemChanged.connect(lambda *_: self._sync_info_button())
         left_layout.addWidget(self.tree)
 
-        self.btn_info = QPushButton("Show info")
+        self.btn_info = QPushButton("Show selected split")
+        self.btn_info.setEnabled(False)
         self.btn_info.clicked.connect(self.show_info)
         left_layout.addWidget(self.btn_info)
         layout.addLayout(left_layout, stretch=1)
@@ -372,6 +374,7 @@ class DataSplittingPreviewDialog(BaseDialog):
             item = QTreeWidgetItem(self.tree)
             item.setText(0, "...")
             item.setText(1, "calculating")
+        self._sync_info_button()
 
         # Prepare splitters
         # Assuming splitter has to_thread (which Holder does)
@@ -419,27 +422,45 @@ class DataSplittingPreviewDialog(BaseDialog):
                         info = dataset.get_treeview_row_info()
                         for col, val in enumerate(info):
                             item.setText(col, str(val))
+        self._sync_info_button()
 
     def show_info(self):
         """Display detailed information about the selected dataset."""
-        if not self.tree:
-            return
-        item = self.tree.currentItem()
-        if not item:
-            return
-        idx = self.tree.indexOfTopLevelItem(item)
-        if idx < 0 or idx >= len(self.datasets):
+        idx = self._selected_dataset_index()
+        if idx is None:
+            QMessageBox.information(
+                self,
+                "Split information",
+                "Select a generated split row first.",
+            )
             return
 
         target = self.datasets[idx]
         QMessageBox.information(
             self,
-            "Info",
+            "Split information",
             f"Dataset: {target.name}\n"
             f"Train: {sum(target.train_mask)}\n"
             f"Val: {sum(target.val_mask)}\n"
             f"Test: {sum(target.test_mask)}",
         )
+
+    def _selected_dataset_index(self) -> int | None:
+        """Return the selected generated dataset row, if one is available."""
+        if not self.tree:
+            return None
+        item = self.tree.currentItem()
+        if not item:
+            return None
+        idx = self.tree.indexOfTopLevelItem(item)
+        if idx < 0 or idx >= len(self.datasets):
+            return None
+        return idx
+
+    def _sync_info_button(self) -> None:
+        """Enable split details only when a real generated split is selected."""
+        if self.btn_info:
+            self.btn_info.setEnabled(self._selected_dataset_index() is not None)
 
     def confirm(self):
         """Finalize dataset generation and accept the dialog."""

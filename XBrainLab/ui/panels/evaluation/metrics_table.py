@@ -1,10 +1,11 @@
 """Metrics table widget for displaying per-class classification metrics."""
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import QHeaderView, QTableWidget, QTableWidgetItem
 
 from XBrainLab.ui.styles.stylesheets import Stylesheets
+from XBrainLab.ui.styles.theme import Theme
 
 
 class MetricsTableWidget(QTableWidget):
@@ -42,10 +43,17 @@ class MetricsTableWidget(QTableWidget):
         self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         # Dark mode friendly style
-        # Dark mode friendly style
         self.setStyleSheet(Stylesheets.METRICS_TABLE)
+        palette = self.palette()
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(Theme.BLUE_PRESSED))
+        palette.setColor(
+            QPalette.ColorRole.HighlightedText,
+            QColor(Theme.TEXT_PRIMARY),
+        )
+        self.setPalette(palette)
 
     def update_data(self, metrics: dict):
         """Update table with metrics data.
@@ -57,6 +65,8 @@ class MetricsTableWidget(QTableWidget):
         self.setRowCount(0)
 
         if not metrics:
+            self.clearSelection()
+            self.setCurrentCell(-1, -1)
             return
 
         # Sort keys to ensure order (integers first, then macro_avg)
@@ -69,6 +79,9 @@ class MetricsTableWidget(QTableWidget):
         # Add Macro Avg row
         if "macro_avg" in metrics:
             self._add_row("Macro Avg", metrics["macro_avg"], is_summary=True)
+
+        self.clearSelection()
+        self.setCurrentCell(-1, -1)
 
     def _add_row(self, label: str, data: dict, is_summary: bool = False):
         """Append a single row of metrics to the table.

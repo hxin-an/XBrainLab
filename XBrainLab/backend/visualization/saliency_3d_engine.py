@@ -1,5 +1,6 @@
 """3-D saliency visualisation engine using PyVista and Qt threading."""
 
+import contextlib
 import os
 
 import numpy as np
@@ -243,9 +244,14 @@ class Saliency3DEngine(QObject):
             RuntimeError: If the head or brain mesh has not been loaded.
 
         """
-        # get saliency
-        label_index = epoch_data.event_id[selected_event_name]
-        saliency_raw = eval_record.gradient[label_index]
+        # Training records usually store gradients by class index, while EEG files
+        # often keep original event codes such as 769/770. Resolve both shapes.
+        label_key = self._resolve_saliency_label_key(
+            eval_record,
+            epoch_data,
+            selected_event_name,
+        )
+        saliency_raw = eval_record.gradient[label_key]
         self.saliency = saliency_raw.mean(axis=0)
         self.scalar_bar_range = [self.saliency.min(), self.saliency.max()]
 
@@ -305,6 +311,59 @@ class Saliency3DEngine(QObject):
         self.scalar_buffer = np.zeros(self.saliency_cap.n_points)
 
         return self.saliency.shape[0]  # Number of channels
+
+    @staticmethod
+    def _resolve_saliency_label_key(eval_record, epoch_data, selected_event_name):
+        """Map an EEG event name/code to the gradient key used by training results."""
+        gradient = getattr(eval_record, "gradient", None)
+        if gradient is None:
+            raise KeyError("No saliency gradient is available for this evaluation.")
+
+        event_id = getattr(epoch_data, "event_id", {}) or {}
+        event_names = list(event_id.keys())
+        event_value = event_id.get(selected_event_name)
+        try:
+            event_order_index = event_names.index(selected_event_name)
+        except ValueError:
+            event_order_index = None
+
+        candidates = [event_value, selected_event_name]
+        with contextlib.suppress(TypeError, ValueError):
+            candidates.append(int(selected_event_name))
+        if event_order_index is not None:
+            candidates.append(event_order_index)
+
+        if isinstance(gradient, dict):
+            for candidate in candidates:
+                if candidate is None:
+                    continue
+                if candidate in gradient:
+                    return candidate
+                for key in gradient:
+                    if str(key) == str(candidate):
+                        return key
+            if len(gradient) == 1:
+                return next(iter(gradient))
+            available = ", ".join(map(str, gradient.keys()))
+        else:
+            try:
+                gradient_len = len(gradient)
+            except TypeError:
+                gradient_len = 0
+            for candidate in candidates:
+                if (
+                    isinstance(candidate, (int, np.integer))
+                    and 0 <= int(candidate) < gradient_len
+                ):
+                    return candidate
+            available = f"0..{max(gradient_len - 1, 0)}"
+
+        raise KeyError(
+            "Cannot map EEG event "
+            f"{selected_event_name!r} "
+            f"(event code {event_value!r}) to saliency results. "
+            f"Available saliency keys: {available}."
+        )
 
     def update_scalars(self, timestamp, neighbor=3):
         """Update scalar values on the saliency cap for a given time point.

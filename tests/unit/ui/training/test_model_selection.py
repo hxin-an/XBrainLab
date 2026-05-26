@@ -12,6 +12,11 @@ class DummyModel:
         pass
 
 
+class NoEditableParamModel:
+    def __init__(self, n_classes, channels, samples, sfreq):
+        pass
+
+
 class TestModelSelection:
     @pytest.fixture
     def dialog(self, qtbot):
@@ -43,6 +48,23 @@ class TestModelSelection:
         assert params["param1"] == "10"
         assert params["param2"] == "0.5"
         assert params["param3"] == "test"
+
+    def test_params_table_stays_visible_for_models_without_editable_params(self, qtbot):
+        with patch("inspect.getmembers") as mock_getmembers:
+            mock_getmembers.return_value = [
+                ("NoEditableParamModel", NoEditableParamModel)
+            ]
+
+            dialog = ModelSelectionDialog(None, MagicMock())
+            qtbot.addWidget(dialog)
+
+        assert dialog.params_group is not None
+        assert dialog.params_table is not None
+        assert not dialog.params_group.isHidden()
+        assert dialog.params_table.rowCount() == 1
+        name_item = dialog.params_table.item(0, 0)
+        assert name_item is not None
+        assert "No editable parameters" in name_item.text()
 
     def test_confirm(self, dialog):
         # Modify a parameter
