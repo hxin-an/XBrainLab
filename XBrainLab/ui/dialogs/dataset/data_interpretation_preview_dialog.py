@@ -755,16 +755,14 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.save_recipe_check.setChecked(apply_allowed)
         self.save_recipe_check.setEnabled(apply_allowed)
         self.save_recipe_check.setToolTip(
-            "Recipe records source, metadata decisions, label carriers, and "
-            "confirmations for review or replay."
+            "Save the selected source, metadata, label source, and label placement."
         )
 
         review_panel, review_panel_layout = self._step_panel()
         review_panel_layout.addWidget(
             self._panel_header(
                 "Review and Import",
-                "Confirm the import recipe and save label decisions for later "
-                "epoch setup.",
+                "Review what will be imported. Epoch settings are configured later.",
             )
         )
         import_summary_card, import_summary_layout = self._card("Import summary")
@@ -4754,7 +4752,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         rows_layout.setContentsMargins(10, 8, 10, 8)
         rows_layout.setHorizontalSpacing(12)
         rows_layout.setVerticalSpacing(4)
-        note_title = QLabel("Recipe note")
+        note_title = QLabel("Recipe")
         note_title.setObjectName("DataImportSummaryLabel")
         self.review_recipe_note_label = QLabel(self._review_recipe_note_text())
         self.review_recipe_note_label.setObjectName("DataImportSummaryValue")
@@ -4830,9 +4828,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if self.decision == "needs_confirmation":
             return (
                 "Review and Import",
-                "Confirm import choices",
-                "No blocking items were found, but this recipe needs confirmation.",
-                "Confirm and apply when the summary matches your data.",
+                "Review import choices",
+                "No blocking items were found.",
+                "Apply when the summary matches your data.",
             )
         return (
             "Review and Import",
@@ -4860,10 +4858,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             file_count = self.file_tree.topLevelItemCount()
             file_word = "file" if file_count == 1 else "files"
             return f"BIDS entities reviewed · {file_count} {file_word}"
-        return self._metadata_review_summary(
-            complete_count,
-            missing_fields,
-        ).replace("Double-click a cell to edit", "edit in Review Metadata")
+        return self._metadata_review_summary(complete_count, missing_fields)
 
     def _review_label_source_text(self) -> str:
         if self._label_source_mode() == "internal_events":
@@ -4925,30 +4920,16 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
     def _review_recipe_note_text(self) -> str:
         if self.decision == "blocked":
-            return (
-                "Fix blocking items before import. Epoch settings are configured later."
-            )
+            return "Resolve blocking items before import."
         if self._label_source_mode() == "internal_events":
             if self._class_map_items or self._event_role_items:
-                return (
-                    "Internal label choices are saved. Epoch window and baseline "
-                    "are set later."
-                )
-            return (
-                "This import has no training labels yet. Supervised epoch setup "
-                "will need labels later."
-            )
+                return "Internal label choices saved. Epoch setup comes later."
+            return "No training labels selected."
         if self._active_label_carrier_count() <= 0:
-            return (
-                "No label files are selected. Supervised epoch setup will need "
-                "labels later."
-            )
+            return "No training labels selected."
         if self._should_show_label_table_fallback():
-            return (
-                "Label files need conversion or matching before supervised epoch "
-                "setup can use them."
-            )
-        return "Label matching is saved. Epoch window and baseline are set later."
+            return "Label file needs conversion before supervised training."
+        return "Label matching saved. Epoch setup comes later."
 
     def _active_label_carrier_count(self) -> int:
         return sum(
@@ -4962,10 +4943,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
     def _populate_review_action_cards(self) -> None:
         rows = self._merged_review_rows(self._review_rows())
         if not rows:
-            if self.decision == "safe":
+            if self.decision == "blocked":
+                rows = [self._default_review_action_row()]
+            else:
                 self.review_actions_panel.setVisible(False)
                 return
-            rows = [self._default_review_action_row()]
         self.review_actions_panel.setVisible(True)
         grouped: dict[str, list[tuple[str, str, str, str]]] = {}
         for target_step, issue, impact, next_action in rows:
@@ -4980,8 +4962,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             )
         for group_title in (
             "Cannot import yet",
-            "Confirm before import",
-            "Review before import",
+            "Needs review",
         ):
             items = grouped.get(group_title)
             if not items:
@@ -5003,12 +4984,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
         lowered = " ".join((issue, impact, next_action)).lower()
         if self.decision == "blocked" or "cannot import" in lowered:
             return "Cannot import yet"
-        if "confirm" in lowered or "required choice" in lowered:
-            return "Confirm before import"
-        return "Review before import"
+        return "Needs review"
 
-    @staticmethod
     def _action_item_card(
+        self,
         target_step: str,
         issue: str,
         impact: str,
@@ -5028,16 +5007,26 @@ class DataInterpretationPreviewDialog(BaseDialog):
         is_local_review_item = target_step == "Review and Import"
         if impact:
             details.append(impact)
-        if is_local_review_item:
-            if next_action:
-                details.append(next_action)
-        else:
-            details.append(f"Go to {target_step}")
+        if is_local_review_item and next_action:
+            details.append(next_action)
         for detail in details:
             detail_label = QLabel(detail)
             detail_label.setObjectName("DataImportActionMeta")
             detail_label.setWordWrap(True)
             layout.addWidget(detail_label)
+        if not is_local_review_item and target_step in self._step_titles:
+            action_row = QHBoxLayout()
+            action_row.setContentsMargins(0, 2, 0, 0)
+            action_row.addStretch()
+            button = QPushButton(f"Open {target_step}")
+            button.setObjectName("DataImportInlineAction")
+            button.clicked.connect(
+                lambda _checked=False, step=target_step: self._go_to_step(
+                    self._step_titles.index(step)
+                )
+            )
+            action_row.addWidget(button)
+            layout.addLayout(action_row)
         return row
 
     @staticmethod
@@ -5159,6 +5148,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
     def _refresh_review_step_after_rescan(self) -> None:
         if hasattr(self, "confirmation_label"):
             self.confirmation_label.setText(self._confirmation_text())
+            final_step = self.step_stack.currentIndex() == len(self._step_titles) - 1
+            self.confirmation_label.setVisible(
+                final_step and bool(self.confirmation_label.text())
+            )
         if hasattr(self, "save_recipe_check"):
             apply_allowed = self._apply_allowed()
             self.save_recipe_check.setChecked(apply_allowed)
@@ -5212,7 +5205,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if not final_step and current + 1 < total:
             self.next_button.setText(f"Next: {self._step_titles[current + 1]}")
         self.apply_button.setVisible(final_step)
-        self.confirmation_label.setVisible(final_step)
+        self.confirmation_label.setVisible(
+            final_step and bool(self.confirmation_label.text())
+        )
         self.save_recipe_check.setVisible(final_step)
         self._fit_metadata_tree_height()
         self._fit_label_carrier_tree_height()
@@ -6636,8 +6631,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
         return complete_count, missing_fields
 
     def _metadata_required_missing_fields(self, missing_fields: set[str]) -> set[str]:
-        if not self._is_bids_like_source():
-            return set(missing_fields)
         required = set(missing_fields)
         required.discard("session")
         required.discard("run")
@@ -6673,7 +6666,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if file_count > 1:
             parts.append(f"{complete_count} complete")
         parts.append(f"Missing {missing_text}")
-        parts.append("Double-click a cell to edit")
         return " · ".join(parts)
 
     @staticmethod
@@ -6728,7 +6720,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 return "Choose the replacement label/event carrier before applying."
             return "This source cannot be applied yet. Review the blocked items below."
         if self.decision == "needs_confirmation":
-            return "Review and confirm these choices before applying."
+            return "Review these choices before applying."
         if self.decision == "safe":
             return "Ready to apply."
         return "Review status is unavailable."
@@ -7718,7 +7710,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             or self.validation_decision.get("action_items")
         )
         if action_items:
-            return action_items
+            return self._compact_review_rows(action_items)
 
         rows: list[tuple[str, str, str, str]] = []
         warnings = self._unique_strings(self.preview.get("warnings"))
@@ -7767,27 +7759,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 )
                 for item in values
             )
-        impacts = self.preview.get(
-            "downstream_impacts"
-        ) or self.validation_decision.get("downstream_impacts")
-        if impacts:
-            rows.extend(
-                (
-                    "Review and Import",
-                    "After import",
-                    str(item),
-                    "No action needed.",
-                )
-                for item in impacts
-            )
-        trace = self.preview.get("recipe_trace") or self.scan_result.get("recipe_trace")
-        if trace:
-            rows.extend(self._recipe_trace_rows(trace))
         format_capabilities = self.preview.get(
             "format_capabilities",
         ) or self.scan_result.get("format_capabilities")
         rows.extend(self._format_capability_rows(format_capabilities))
-        return rows
+        return self._compact_review_rows(rows)
 
     @staticmethod
     def _unique_strings(values: Any) -> list[str]:
@@ -7825,6 +7801,82 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 )
             )
         return sorted(rows, key=lambda row: (step_order.get(row[0], 99), row[1]))
+
+    @classmethod
+    def _compact_review_rows(
+        cls,
+        rows: list[tuple[str, str, str, str]],
+    ) -> list[tuple[str, str, str, str]]:
+        metadata_rows: list[tuple[str, str, str, str]] = []
+        compacted: list[tuple[str, str, str, str]] = []
+        metadata_insert_index: int | None = None
+        for row in rows:
+            if cls._is_optional_metadata_review_row(row):
+                continue
+            if cls._is_metadata_review_row(row):
+                if metadata_insert_index is None:
+                    metadata_insert_index = len(compacted)
+                metadata_rows.append(row)
+                continue
+            compacted.append(row)
+        if not metadata_rows:
+            return compacted
+        insert_at = (
+            metadata_insert_index
+            if metadata_insert_index is not None
+            else len(compacted)
+        )
+        compacted.insert(insert_at, cls._metadata_review_action_row(metadata_rows))
+        return compacted
+
+    @classmethod
+    def _is_metadata_review_row(cls, row: tuple[str, str, str, str]) -> bool:
+        target_step, issue, impact, next_action = row
+        del impact
+        text = " ".join((target_step, issue, next_action)).lower()
+        return target_step == "Review Metadata" or "metadata" in text
+
+    @classmethod
+    def _is_optional_metadata_review_row(cls, row: tuple[str, str, str, str]) -> bool:
+        if not cls._is_metadata_review_row(row):
+            return False
+        fields = cls._metadata_fields_in_review_rows([row])
+        return bool(fields) and fields <= {"session", "run"}
+
+    @classmethod
+    def _metadata_review_action_row(
+        cls,
+        rows: list[tuple[str, str, str, str]],
+    ) -> tuple[str, str, str, str]:
+        fields = [
+            field
+            for field in ("subject", "task")
+            if field in cls._metadata_fields_in_review_rows(rows)
+        ]
+        if fields:
+            impact = "Required fields need review: " + ", ".join(fields) + "."
+        else:
+            impact = "Metadata choices need review."
+        files = cls._review_group_files(rows)
+        if files:
+            impact = f"{impact}\n{cls._review_grouped_impact_text(files, [])}"
+        return (
+            "Review Metadata",
+            "Review metadata",
+            impact,
+            "Review the metadata table.",
+        )
+
+    @staticmethod
+    def _metadata_fields_in_review_rows(
+        rows: list[tuple[str, str, str, str]],
+    ) -> set[str]:
+        text = " ".join(" ".join(row) for row in rows).lower()
+        return {
+            field
+            for field in ("subject", "session", "task", "run")
+            if re.search(rf"\b{re.escape(field)}\b", text)
+        }
 
     @classmethod
     def _merged_review_rows(
@@ -8096,9 +8148,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 )
             return "This interpretation is blocked and cannot be applied."
         if self.decision == "needs_confirmation":
-            return "Confirm this import recipe before applying."
+            return ""
         if self.decision == "safe":
-            return "This import recipe can be applied."
+            return ""
         return "Review this interpretation before applying."
 
     @staticmethod

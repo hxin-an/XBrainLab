@@ -219,8 +219,8 @@ def test_tree_state_records_rows_and_fit_geometry(qtbot) -> None:
     assert state["text_elide_mode"] == "ElideRight"
     assert state["alternating_row_colors"] is True
     flat_rows = " ".join(" ".join(row) for row in state["rows"])
-    assert "Source scan" in flat_rows
-    assert "Interpretation candidate" in flat_rows
+    assert "Source scan" not in flat_rows
+    assert "Interpretation candidate" not in flat_rows
     assert "scan:scan-1" not in flat_rows
     assert "candidate:candidate-1" not in flat_rows
 

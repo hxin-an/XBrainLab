@@ -24,7 +24,8 @@ WINDOW_SIZE = QSize(1220, 1320)
 
 
 def main() -> int:
-    app = QApplication.instance() or QApplication(sys.argv)
+    instance = QApplication.instance()
+    app = instance if isinstance(instance, QApplication) else QApplication(sys.argv)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     REVIEW_STATES_DIR.mkdir(parents=True, exist_ok=True)
     BIDS_PRESET_DIR.mkdir(parents=True, exist_ok=True)
@@ -416,7 +417,7 @@ def _review_import_dialog() -> DataInterpretationPreviewDialog:
             "source_selection": "3 selected file(s)",
             "metadata_preview": _metadata_rows(),
             "label_carrier_preview": _label_carriers(),
-            "review_action_items": [
+            "action_items": [
                 {
                     "target_step": "Choose EEG Data",
                     "issue": (
@@ -431,7 +432,7 @@ def _review_import_dialog() -> DataInterpretationPreviewDialog:
                 },
                 {
                     "target_step": "Review Metadata",
-                    "issue": "Confirm session metadata for A01T.gdf.",
+                    "issue": "Confirm subject metadata for A01T.gdf.",
                     "impact": (
                         "This choice affects imported metadata, labels, and "
                         "downstream training readiness."
@@ -462,9 +463,9 @@ def _review_import_state_dialog(state: str) -> DataInterpretationPreviewDialog:
         preview["action_items"] = [
             {
                 "target_step": "Review Metadata",
-                "issue": "Confirm session metadata.",
-                "impact": "Session was inferred from filenames for 3 files.",
-                "next_action": "Go to Review Metadata if the session is wrong.",
+                "issue": "Confirm subject metadata.",
+                "impact": "Subject was inferred from filenames for 3 files.",
+                "next_action": "Open Review Metadata if the subject is wrong.",
             }
         ]
         validation_decision = {"decision": "needs_confirmation"}
@@ -481,9 +482,9 @@ def _review_import_state_dialog(state: str) -> DataInterpretationPreviewDialog:
         preview["action_items"] = [
             {
                 "target_step": "Review Metadata",
-                "issue": "Confirm session metadata.",
-                "impact": "Session was inferred from filenames for 3 files.",
-                "next_action": "Go to Review Metadata if the session is wrong.",
+                "issue": "Confirm subject metadata.",
+                "impact": "Subject was inferred from filenames for 3 files.",
+                "next_action": "Open Review Metadata if the subject is wrong.",
             },
             {
                 "target_step": "Match Labels",

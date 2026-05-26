@@ -77,7 +77,7 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
     )
     assert "Labels inside EEG files" in event_group_text
     assert "Found 1 EEG file" in dialog.summary_label.text()
-    assert "Review and confirm" in dialog.decision_label.text()
+    assert "Review these choices" in dialog.decision_label.text()
     review_text = _tree_text(dialog.review_tree)
     scope_text = _group_text(dialog, "Choose EEG Data")
     assert "Selected scope" in scope_text
@@ -88,12 +88,11 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
         dialog.review_tree.headerItem().text(index)
         for index in range(dialog.review_tree.columnCount())
     ] == ["Target step", "Issue", "Impact", "Next action"]
-    assert dialog.confirmation_label.text() == (
-        "Confirm this import recipe before applying."
-    )
-    assert "Confirm session metadata." in review_text
-    assert "After import" in review_text
-    assert "Training uses this recipe trace." in review_text
+    assert dialog.confirmation_label.text() == ""
+    assert "Review metadata" in review_text
+    assert "Confirm session metadata." not in review_text
+    assert "After import" not in review_text
+    assert "Training uses this recipe trace." not in review_text
     assert not dialog.findChildren(QPlainTextEdit)
     assert dialog.apply_button.text() == "Confirm and Apply"
     assert dialog.get_result() == {
@@ -184,7 +183,7 @@ def test_data_interpretation_preview_dialog_uses_one_panel_per_step(qtbot):
     assert not dialog.next_button.isVisible()
     assert ok_button.isVisible()
     assert ok_button.text() == "Apply Interpretation"
-    assert dialog.confirmation_label.isVisible()
+    assert not dialog.confirmation_label.isVisible()
     assert dialog.save_recipe_check.isVisible()
 
 
@@ -2733,14 +2732,17 @@ def test_bids_preset_surfaces_scope_labels_metadata_and_review(qtbot):
     assert "BIDS events.tsv" in review_text
     assert "Trial type" in review_text
     assert "Label interval" in review_text
-    assert "Recipe note" in review_text
+    assert "Recipe" in review_text
     action_text = "\n".join(
         label.text()
         for label in dialog.review_actions_panel.findChildren(QLabel)
         if label.text().strip()
     )
-    assert "Confirm before import" in action_text
-    assert "Go to Match Labels" in action_text
+    assert "Needs review" in action_text
+    assert any(
+        button.text() == "Open Match Labels"
+        for button in dialog.review_actions_panel.findChildren(QPushButton)
+    )
 
 
 def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot):
@@ -2794,7 +2796,7 @@ def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot
         _show_step(dialog, step_title)
         qtbot.wait(0)
         if tree is dialog.review_tree and not tree.isVisible():
-            assert dialog.review_actions_panel.isVisible()
+            assert not dialog.review_actions_panel.isVisible()
             continue
         dialog._fit_all_tree_columns_to_viewport()
         qtbot.wait(0)
@@ -2882,7 +2884,7 @@ def test_data_interpretation_preview_dialog_review_summary_shows_whole_rows(qtbo
     qtbot.wait(0)
 
     review_tree = dialog.review_tree
-    assert review_tree.topLevelItemCount() == 7
+    assert review_tree.topLevelItemCount() == 4
     viewport = review_tree.viewport()
     assert viewport is not None
     viewport_rect = viewport.rect()
@@ -2955,9 +2957,9 @@ def test_review_and_import_saves_label_choices_for_later_epoch_setup(qtbot):
     assert "Label placement" in review_text
     assert "Classlabel" in review_text
     assert "target EEG events 768" in review_text
-    assert "Recipe note" in review_text
-    assert "Label matching is saved" in review_text
-    assert "Epoch window and baseline are set later" in review_text
+    assert "Recipe" in review_text
+    assert "Label matching saved" in review_text
+    assert "Epoch setup comes later" in review_text
     assert dialog.save_recipe_check.text() == "Save reusable import recipe"
     assert dialog.save_recipe_check.isVisibleTo(dialog)
     assert "Ready to import" not in review_text
@@ -3043,7 +3045,8 @@ def test_review_and_import_groups_repeated_file_action_items(qtbot):
     )
 
     assert len(action_cards) == 1
-    assert action_text.count("Confirm subject metadata.") == 1
+    assert "Review metadata" in action_text
+    assert "Required fields need review: subject." in action_text
     assert "3 files" in action_text
     assert "A01T.gdf" in action_text
     assert "A02T.gdf" in action_text
@@ -3385,7 +3388,7 @@ def test_data_interpretation_preview_dialog_uses_user_facing_decision_copy(qtbot
     qtbot.addWidget(blocked)
 
     assert needs_review.decision_label.text() == (
-        "Review and confirm these choices before applying."
+        "Review these choices before applying."
     )
     assert ready.decision_label.text() == "Ready to apply."
     assert blocked.decision_label.text() == (
@@ -3702,7 +3705,9 @@ def test_data_interpretation_preview_dialog_shows_recipe_reload_summary(qtbot):
     assert "Saved recipe choices were reapplied before validation" in details
 
 
-def test_data_interpretation_preview_dialog_humanizes_recipe_trace(qtbot):
+def test_data_interpretation_preview_dialog_keeps_recipe_trace_out_of_review_actions(
+    qtbot,
+):
     dialog = DataInterpretationPreviewDialog(
         parent=None,
         scan_result={"source_path": "/tmp/source"},
@@ -3723,14 +3728,14 @@ def test_data_interpretation_preview_dialog_humanizes_recipe_trace(qtbot):
 
     details = _tree_text(dialog.review_tree)
 
-    assert "Source scan" in details
-    assert "Interpretation candidate" in details
-    assert "Metadata decision" in details
-    assert "Metadata override" in details
-    assert "Metadata choices" in details
-    assert "Event use choices" in details
-    assert "Label carrier choices" in details
-    assert "saved in the import recipe" in details
+    assert "Source scan" not in details
+    assert "Interpretation candidate" not in details
+    assert "Metadata decision" not in details
+    assert "Metadata override" not in details
+    assert "Metadata choices" not in details
+    assert "Event use choices" not in details
+    assert "Label carrier choices" not in details
+    assert "saved in the import recipe" not in details
     assert "scan:scan-1" not in details
     assert "candidate:candidate-1" not in details
     assert "metadata:subject" not in details
