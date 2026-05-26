@@ -65,7 +65,12 @@ def scan_source_path(
     resolved = path.resolve()
     source_kind = _source_kind(resolved, source_hint)
     scan_root = resolved.parent if resolved.is_file() else resolved
-    files = _candidate_files(resolved)
+    skipped_nested_bids_roots: list[Path] = []
+    files = _candidate_files(
+        resolved,
+        skip_nested_bids_roots=source_kind != "bids",
+        skipped_bids_roots=skipped_nested_bids_roots,
+    )
     eeg_files = sorted(
         str(item)
         for item in files
@@ -99,6 +104,7 @@ def scan_source_path(
         bids,
         format_capabilities,
     )
+    warnings.extend(_nested_bids_warnings(skipped_nested_bids_roots))
     warnings.extend(source_warnings)
     blocked_reasons = _scan_blocked_reasons(eeg_files, format_capabilities)
 
@@ -132,10 +138,33 @@ def _source_kind(path: Path, source_hint: str) -> str:
     return "folder"
 
 
-def _candidate_files(path: Path) -> list[Path]:
+def _candidate_files(
+    path: Path,
+    *,
+    skip_nested_bids_roots: bool = False,
+    skipped_bids_roots: list[Path] | None = None,
+) -> list[Path]:
     if path.is_file():
         return [path.resolve()]
-    return [item.resolve() for item in path.rglob("*") if item.is_file()]
+    result: list[Path] = []
+    for item in path.iterdir():
+        if item.is_file():
+            result.append(item.resolve())
+            continue
+        if not item.is_dir():
+            continue
+        if skip_nested_bids_roots and _looks_like_bids(item):
+            if skipped_bids_roots is not None:
+                skipped_bids_roots.append(item.resolve())
+            continue
+        result.extend(
+            _candidate_files(
+                item,
+                skip_nested_bids_roots=skip_nested_bids_roots,
+                skipped_bids_roots=skipped_bids_roots,
+            )
+        )
+    return result
 
 
 def _auto_label_carriers_for_source(source_path: Path, files: list[Path]) -> list[Path]:
@@ -308,6 +337,14 @@ def _scan_warnings(
             + ".",
         )
     return warnings
+
+
+def _nested_bids_warnings(skipped_roots: list[Path]) -> list[str]:
+    return [
+        "Nested BIDS folder was skipped during regular folder import: "
+        f"{root}. Use Import BIDS folder to import that dataset."
+        for root in skipped_roots
+    ]
 
 
 def _scan_blocked_reasons(

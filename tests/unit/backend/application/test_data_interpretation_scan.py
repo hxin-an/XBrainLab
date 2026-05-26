@@ -64,6 +64,36 @@ def test_scan_regular_folder_with_sub_prefixed_file_is_not_bids(tmp_path: Path):
     )
 
 
+def test_scan_regular_folder_skips_nested_bids_dataset(tmp_path: Path):
+    first_gdf = tmp_path / "A01T.gdf"
+    second_gdf = tmp_path / "A02T.gdf"
+    nested_bids = tmp_path / "bids"
+    nested_eeg = (
+        nested_bids / "sub-01" / "ses-01" / "eeg" / "sub-01_ses-01_task-rest_eeg.vhdr"
+    )
+    nested_events = (
+        nested_bids / "sub-01" / "ses-01" / "eeg" / "sub-01_ses-01_task-rest_events.tsv"
+    )
+    first_gdf.write_bytes(b"not loaded during scan")
+    second_gdf.write_bytes(b"not loaded during scan")
+    nested_eeg.parent.mkdir(parents=True)
+    (nested_bids / "dataset_description.json").write_text("{}", encoding="utf-8")
+    nested_eeg.write_text("", encoding="utf-8")
+    nested_events.write_text("onset\tduration\ttrial_type\n", encoding="utf-8")
+
+    scan = scan_source_path(
+        scan_id="scan-1",
+        source_path=str(tmp_path),
+        source_hint="folder",
+    )
+
+    assert scan.source_kind == "folder"
+    assert scan.eeg_files == [str(first_gdf.resolve()), str(second_gdf.resolve())]
+    assert str(nested_eeg.resolve()) not in scan.eeg_files
+    assert str(nested_events.resolve()) not in scan.label_carriers
+    assert any("Nested BIDS folder was skipped" in warning for warning in scan.warnings)
+
+
 def test_scan_source_path_blocks_stream_export_without_selectable_eeg(tmp_path: Path):
     xdf_file = tmp_path / "session.xdf"
     xdf_file.write_text("", encoding="utf-8")
