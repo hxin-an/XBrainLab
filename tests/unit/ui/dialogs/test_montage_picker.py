@@ -5,7 +5,11 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+from PyQt6.QtCore import QSettings
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QComboBox, QTableWidget
+
+from XBrainLab.ui.styles.theme import Theme
 
 
 @pytest.fixture
@@ -31,7 +35,13 @@ def montage_positions():
 
 
 @pytest.fixture
-def dialog(qtbot, channel_names, montage_positions):
+def dialog(qtbot, channel_names, montage_positions, monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
+    QSettings.setPath(
+        QSettings.Format.NativeFormat,
+        QSettings.Scope.UserScope,
+        str(tmp_path / "qt-settings"),
+    )
     with (
         patch(
             "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_builtin_montages",
@@ -69,6 +79,32 @@ class TestPickMontageInit:
     def test_has_table(self, dialog):
         assert isinstance(dialog.table, QTableWidget)
         assert dialog.table.rowCount() == 10
+
+    def test_mapping_table_uses_integrated_dark_table_style(self, dialog):
+        assert dialog.table.objectName() == "MontageMappingTable"
+        assert dialog.table.alternatingRowColors() is True
+        assert dialog.table.showGrid() is True
+
+        stylesheet = dialog.table.styleSheet()
+        assert "QTableWidget#MontageMappingTable" in stylesheet
+        assert f"alternate-background-color: {Theme.METRICS_TABLE_ALT_BG}" in stylesheet
+
+        first_item = dialog.table.item(0, 0)
+        second_item = dialog.table.item(1, 0)
+        assert first_item is not None
+        assert second_item is not None
+        assert first_item.background().color() == QColor(Theme.METRICS_TABLE_BG)
+        assert second_item.background().color() == QColor(Theme.METRICS_TABLE_ALT_BG)
+        assert first_item.foreground().color() == QColor(Theme.TEXT_PRIMARY)
+
+    def test_montage_channel_combo_is_flat_inside_table_cell(self, dialog):
+        combo = dialog.table.cellWidget(0, 1)
+        assert isinstance(combo, QComboBox)
+        assert combo.objectName() == "MontageChannelCombo"
+        stylesheet = combo.styleSheet()
+        assert "border: none" in stylesheet
+        assert f"background-color: {Theme.METRICS_TABLE_BG}" in stylesheet
+        assert "QAbstractItemView" in stylesheet
 
 
 class TestMontageSelection:

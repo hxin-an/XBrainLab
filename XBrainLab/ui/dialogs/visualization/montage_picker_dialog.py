@@ -5,6 +5,7 @@ fill to streamline the channel-to-montage mapping workflow.
 """
 
 from PyQt6.QtCore import QSettings, Qt
+from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -26,6 +27,58 @@ from XBrainLab.backend.utils.mne_helper import (
     get_montage_positions,
 )
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.styles.theme import Theme
+
+
+def _mapping_table_stylesheet() -> str:
+    return f"""
+        QTableWidget#MontageMappingTable {{
+            background-color: {Theme.METRICS_TABLE_BG};
+            alternate-background-color: {Theme.METRICS_TABLE_ALT_BG};
+            color: {Theme.TEXT_PRIMARY};
+            gridline-color: {Theme.METRICS_TABLE_GRID};
+            border: 1px solid {Theme.METRICS_TABLE_BORDER};
+            selection-background-color: {Theme.BLUE_PRESSED};
+            selection-color: {Theme.TEXT_PRIMARY};
+        }}
+        QTableWidget#MontageMappingTable::item {{
+            padding: 4px 8px;
+            color: {Theme.TEXT_PRIMARY};
+        }}
+        QHeaderView::section {{
+            background-color: {Theme.METRICS_TABLE_HEADER_BG};
+            color: {Theme.TEXT_PRIMARY};
+            border: 1px solid {Theme.METRICS_TABLE_GRID};
+            padding: 5px 8px;
+            font-weight: bold;
+        }}
+    """
+
+
+def _mapping_combo_stylesheet(row_color: str) -> str:
+    return f"""
+        QComboBox#MontageChannelCombo {{
+            background-color: {row_color};
+            color: {Theme.TEXT_PRIMARY};
+            border: none;
+            padding: 2px 24px 2px 8px;
+            min-height: 24px;
+        }}
+        QComboBox#MontageChannelCombo:hover {{
+            background-color: {Theme.BACKGROUND_MID};
+        }}
+        QComboBox#MontageChannelCombo::drop-down {{
+            border: none;
+            width: 22px;
+        }}
+        QComboBox#MontageChannelCombo QAbstractItemView {{
+            background-color: {Theme.METRICS_TABLE_BG};
+            color: {Theme.TEXT_PRIMARY};
+            border: 1px solid {Theme.METRICS_TABLE_BORDER};
+            selection-background-color: {Theme.BLUE_PRESSED};
+            selection-color: {Theme.TEXT_PRIMARY};
+        }}
+    """
 
 
 class PickMontageDialog(BaseDialog):
@@ -85,6 +138,8 @@ class PickMontageDialog(BaseDialog):
             return
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(12)
 
         # Top: Montage Selection
         top_layout = QHBoxLayout()
@@ -128,13 +183,35 @@ class PickMontageDialog(BaseDialog):
 
         # Center: Mapping Table
         self.table = QTableWidget()
+        self.table.setObjectName("MontageMappingTable")
         self.table.setColumnCount(2)
         self.table.setHorizontalHeaderLabels(["Dataset Channel", "Montage Channel"])
         header = self.table.horizontalHeader()
         if header is not None:
-            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            header.setMinimumSectionSize(160)
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
             header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+            self.table.setColumnWidth(0, 240)
+        v_header = self.table.verticalHeader()
+        if v_header is not None:
+            v_header.setVisible(False)
+            v_header.setDefaultSectionSize(34)
+            v_header.setMinimumSectionSize(32)
+        self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(True)
+        self.table.setWordWrap(False)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.table.setStyleSheet(_mapping_table_stylesheet())
+        palette = self.table.palette()
+        palette.setColor(QPalette.ColorRole.Base, QColor(Theme.METRICS_TABLE_BG))
+        palette.setColor(
+            QPalette.ColorRole.AlternateBase,
+            QColor(Theme.METRICS_TABLE_ALT_BG),
+        )
+        palette.setColor(QPalette.ColorRole.Text, QColor(Theme.TEXT_PRIMARY))
+        self.table.setPalette(palette)
 
         layout.addWidget(self.table)
 
@@ -157,7 +234,9 @@ class PickMontageDialog(BaseDialog):
         for i, ch_name in enumerate(self.channel_names):
             # Column 0: Dataset Channel (Read-only)
             item = QTableWidgetItem(ch_name)
-            item.setFlags(item.flags() ^ Qt.ItemFlag.ItemIsEditable)  # Make read-only
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            item.setForeground(QColor(Theme.TEXT_PRIMARY))
+            item.setBackground(QColor(self._row_color(i)))
             self.table.setItem(i, 0, item)
 
     def on_montage_select(self, montage_name):
@@ -189,8 +268,10 @@ class PickMontageDialog(BaseDialog):
 
                 # Create Searchable ComboBox
                 combo = QComboBox()
+                combo.setObjectName("MontageChannelCombo")
                 combo.setEditable(True)
                 combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+                combo.setStyleSheet(_mapping_combo_stylesheet(self._row_color(row)))
 
                 # Add empty option at top
                 combo.addItem("")
@@ -421,6 +502,10 @@ class PickMontageDialog(BaseDialog):
             f"Saved settings for '{montage_name}' have been cleared.\n"
             f"Smart Match has been re-applied.",
         )
+
+    @staticmethod
+    def _row_color(row: int) -> str:
+        return Theme.METRICS_TABLE_ALT_BG if row % 2 else Theme.METRICS_TABLE_BG
 
     def accept(self):
         """Build the channel mapping, save settings, and accept the dialog.
