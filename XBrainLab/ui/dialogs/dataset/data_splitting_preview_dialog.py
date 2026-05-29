@@ -35,6 +35,7 @@ from .manual_split_dialog import ManualSplitDialog
 DEFAULT_SPLIT_ENTRY_VALUE = "0.2"
 PREVIEW_WORKER_RESTART_JOIN_TIMEOUT_SEC = 0.2
 PREVIEW_WORKER_CLOSE_JOIN_TIMEOUT_SEC = 1.0
+PREVIEW_DEBOUNCE_MS = 250
 
 
 class DataSplitterHolder(DataSplitter):
@@ -112,6 +113,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         self._datasets_lock = threading.Lock()
         self.dataset_generator: DatasetGenerator | None = None
         self.preview_worker = None
+        self.preview_debounce_timer: QTimer | None = None
 
         # UI
         self.tree = None
@@ -132,6 +134,10 @@ class DataSplittingPreviewDialog(BaseDialog):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_table)
         self.timer.start(500)
+
+        self.preview_debounce_timer = QTimer(self)
+        self.preview_debounce_timer.setSingleShot(True)
+        self.preview_debounce_timer.timeout.connect(self.preview)
 
         self.preview()
 
@@ -303,7 +309,7 @@ class DataSplittingPreviewDialog(BaseDialog):
             splitter.set_split_unit_var(text)
         if text == SplitUnit.MANUAL.value:
             self.handle_manual_split(splitter)
-        self.preview()
+        self.schedule_preview()
 
     def on_entry_change(self, splitter, text):
         """Handle changes to the split value text entry.
@@ -315,7 +321,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         """
         if hasattr(splitter, "set_entry_var"):
             splitter.set_entry_var(text)
-        self.preview()
+        self.schedule_preview()
 
     def handle_manual_split(self, splitter):
         """Open a manual split dialog for the given splitter.
@@ -362,6 +368,8 @@ class DataSplittingPreviewDialog(BaseDialog):
 
     def preview(self):
         """Start background dataset generation and update the tree view."""
+        if self.preview_debounce_timer:
+            self.preview_debounce_timer.stop()
         self._interrupt_preview_worker(PREVIEW_WORKER_RESTART_JOIN_TIMEOUT_SEC)
         self.datasets = []
         if self.tree:
@@ -432,10 +440,19 @@ class DataSplittingPreviewDialog(BaseDialog):
 
     def closeEvent(self, event):  # noqa: N802
         """Stop the polling timer and interrupt background workers on close."""
+        if self.preview_debounce_timer:
+            self.preview_debounce_timer.stop()
         if self.timer:
             self.timer.stop()
         self._interrupt_preview_worker(PREVIEW_WORKER_CLOSE_JOIN_TIMEOUT_SEC)
         super().closeEvent(event)
+
+    def schedule_preview(self) -> None:
+        """Debounce expensive dataset preview regeneration while editing fields."""
+        if self.preview_debounce_timer:
+            self.preview_debounce_timer.start(PREVIEW_DEBOUNCE_MS)
+        else:
+            self.preview()
 
     def _interrupt_preview_worker(self, join_timeout: float) -> None:
         """Interrupt and briefly wait for the active preview worker."""

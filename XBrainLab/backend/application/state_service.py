@@ -585,8 +585,8 @@ class QueryStateCommandService:
             raise TypeError("Invalid command for query_state")
 
         query = str(command.query or "state").lower()
-        state = self.get_state()
         if query == "state":
+            state = self.get_state()
             return (
                 "Application state snapshot ready.",
                 {
@@ -595,6 +595,7 @@ class QueryStateCommandService:
                 },
             )
         if query == "data_lists":
+            state = self.get_state()
             loaded = list(getattr(self.study, "loaded_data_list", []) or [])
             preprocessed = list(
                 getattr(self.study, "preprocessed_data_list", []) or [],
@@ -622,10 +623,12 @@ class QueryStateCommandService:
                 diagnostics["dataset_generator"] = dataset_generator
             return "Dataset generation context ready.", diagnostics
         if query == "data_summary":
+            state = self.get_state()
             return "Dataset summary ready.", self.state_builder.data_summary_from_state(
                 state,
             )
         if query == "preprocess_diagnostics":
+            state = self.get_state()
             return (
                 "Preprocess diagnostics ready.",
                 dict(state.preprocessed.diagnostics),

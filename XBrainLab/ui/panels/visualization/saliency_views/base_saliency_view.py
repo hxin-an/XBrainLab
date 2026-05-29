@@ -61,7 +61,7 @@ class BaseSaliencyView(QWidget):
         if self.fig is None or self.canvas is None:
             return
         self.fig.clear()
-        self.canvas.draw()
+        self.canvas.draw_idle()
 
     def update_view(self, result, params):
         """Update the view with calculation results.

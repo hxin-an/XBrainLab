@@ -35,6 +35,16 @@ _OBSERVER_EVENT_REFRESH_ROUTES = {
         ChangedState(visualization_changed=True),
     ),
 }
+_OBSERVER_EVENT_PANEL_OVERRIDES = {
+    # The training panel already handles live ticks with update_loop(). Routing the
+    # one-second progress event through the full training_changed fan-out makes
+    # evaluation, visualization, and agent status rebuild while the model is still
+    # running, which is visible as UI lag.
+    "training_updated": (),
+}
+_OBSERVER_EVENT_REFRESH_SHARED_STATUS = {
+    "training_updated": False,
+}
 
 
 def refresh_after_command(context: Any, result: CommandResult | None) -> bool:
@@ -101,15 +111,20 @@ def refresh_after_observer(context: Any, *, event_name: str | None = None) -> bo
             source_panel = getattr(main_window, source_panel_name, None)
             if source_panel is None:
                 refreshed = refresh_panel(context)
-                return _refresh_shared_status(main_window) or refreshed
+                if _should_refresh_shared_status(event_name):
+                    return _refresh_shared_status(main_window) or refreshed
+                return refreshed
             if not _is_source_context(context, source_panel):
                 return False
-            for panel_name in _panel_names_for(changed_state):
+            panel_names = _panel_names_for_observer_event(event_name, changed_state)
+            for panel_name in panel_names:
                 panel = getattr(main_window, panel_name, None)
                 refreshed = refresh_panel(panel) or refreshed
         else:
             refreshed = refresh_panel(context)
-        return _refresh_shared_status(main_window) or refreshed
+        if _should_refresh_shared_status(event_name):
+            return _refresh_shared_status(main_window) or refreshed
+        return refreshed
     finally:
         _REFRESHING_MAIN_WINDOWS.discard(main_window_id)
 
@@ -221,6 +236,19 @@ def _panel_names_for(changed: ChangedState) -> tuple[str, ...]:
     ):
         panel_names.append("visualization_panel")
     return tuple(dict.fromkeys(panel_names))
+
+
+def _panel_names_for_observer_event(
+    event_name: str | None,
+    changed: ChangedState,
+) -> tuple[str, ...]:
+    if str(event_name) in _OBSERVER_EVENT_PANEL_OVERRIDES:
+        return _OBSERVER_EVENT_PANEL_OVERRIDES[str(event_name)]
+    return _panel_names_for(changed)
+
+
+def _should_refresh_shared_status(event_name: str | None) -> bool:
+    return _OBSERVER_EVENT_REFRESH_SHARED_STATUS.get(str(event_name), True)
 
 
 def _call_noarg(target: Any, method_name: str) -> bool:

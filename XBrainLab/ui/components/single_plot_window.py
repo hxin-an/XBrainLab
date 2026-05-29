@@ -197,7 +197,7 @@ class SinglePlotWindow(BaseDialog):
         """Apply tight layout and redraw the figure canvas."""
         if self.figure_canvas:
             self.fig_param["fig"].tight_layout()
-            self.figure_canvas.draw()
+            self.figure_canvas.draw_idle()
 
     def closeEvent(self, event):  # noqa: N802
         """Close the Matplotlib figure and release Qt canvas widgets."""

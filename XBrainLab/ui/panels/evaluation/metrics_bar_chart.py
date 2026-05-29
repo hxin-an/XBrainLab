@@ -91,7 +91,7 @@ class MetricsBarChartWidget(QWidget):
                     va="center",
                 )
                 self.ax.axis("off")
-                self.canvas.draw()
+                self.canvas.draw_idle()
                 return
 
             # Extract data
@@ -108,7 +108,7 @@ class MetricsBarChartWidget(QWidget):
                     va="center",
                 )
                 self.ax.axis("off")
-                self.canvas.draw()
+                self.canvas.draw_idle()
                 return
 
             precision = [metrics[c]["precision"] for c in classes]
@@ -174,7 +174,7 @@ class MetricsBarChartWidget(QWidget):
                     "Skipping metrics bar chart tight_layout: %s",
                     layout_error,
                 )
-            self.canvas.draw()
+            self.canvas.draw_idle()
 
         except Exception as e:
             logger.error("Error plotting bar chart: %s", e, exc_info=True)

@@ -305,3 +305,28 @@ def test_query_state_service_returns_summary_and_capabilities() -> None:
         split_context_objects["dataset_generator"]
         is state_builder.study.dataset_generator
     )
+
+
+def test_training_history_query_does_not_build_full_state_snapshot() -> None:
+    state_builder = _snapshot_service()
+
+    def fail_get_state() -> ApplicationStateSnapshot:
+        raise AssertionError("training_history should not build the full state")
+
+    query = QueryStateCommandService(
+        study=state_builder.study,
+        dataset=state_builder.dataset,
+        state_builder=state_builder,
+        get_state=fail_get_state,
+        get_capabilities=lambda: CapabilityPolicy({}),
+    )
+
+    message, payload = _expect_payload(
+        query.handle_query_state(
+            QueryStateCommand(query="training_history", include_objects=True),
+        ),
+    )
+
+    assert message == "Training history query ready."
+    assert payload["row_count"] == 1
+    assert "record" in payload["rows"][0]

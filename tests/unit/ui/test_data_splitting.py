@@ -375,6 +375,16 @@ class TestDataSplittingPreviewDialogSplitters:
         splitter = dlg.val_splitter_list[0]
         dlg.on_entry_change(splitter, "0.3")
 
+    def test_on_entry_change_debounces_preview_worker_restart(self, dlg):
+        splitter = dlg.val_splitter_list[0]
+        with patch.object(dlg, "preview") as preview:
+            dlg.on_entry_change(splitter, "0.4")
+
+        preview.assert_not_called()
+        assert dlg.preview_debounce_timer is not None
+        assert dlg.preview_debounce_timer.isActive()
+        dlg.preview_debounce_timer.stop()
+
     def test_on_split_type_manual(self, dlg):
         splitter = dlg.val_splitter_list[0]
         with patch(

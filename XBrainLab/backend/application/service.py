@@ -150,8 +150,16 @@ class ApplicationService:
             message, diagnostics = self._normalize_handler_result(
                 self._execute_allowed(command, name),
             )
-            if not self._is_read_only_command(command, name):
-                self._last_error = None
+            is_read_only = self._is_read_only_command(command, name)
+            if is_read_only:
+                return CommandResult.success_result(
+                    command_name=name.value,
+                    message=message,
+                    state=before,
+                    changed_state=ChangedState(),
+                    diagnostics=diagnostics,
+                )
+            self._last_error = None
             after = self.get_state()
             return CommandResult.success_result(
                 command_name=name.value,

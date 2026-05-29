@@ -13,6 +13,7 @@ from XBrainLab.backend.application import (
     ApplyMontageCommand,
     ApplySmartParseCommand,
     AttachLabelsCommand,
+    ChangedState,
     ClearDatasetsCommand,
     ClearTrainingHistoryCommand,
     CommandName,
@@ -90,6 +91,25 @@ def test_capability_policy_covers_all_declared_commands():
     assert policy.get(CommandName.RELOAD_INTERPRETATION_RECIPE).available is True
     assert policy.get(CommandName.QUERY_STATE).available is True
     assert policy.get(CommandName.NEW_SESSION).available is True
+
+
+def test_read_only_training_history_query_reuses_initial_state_snapshot(monkeypatch):
+    service = ApplicationService(Study())
+    original_get_state = service.get_state
+    calls = 0
+
+    def counted_get_state():
+        nonlocal calls
+        calls += 1
+        return original_get_state()
+
+    monkeypatch.setattr(service, "get_state", counted_get_state)
+
+    result = service.execute(QueryStateCommand(query="training_history"))
+
+    assert result.failed is False
+    assert result.changed_state == ChangedState()
+    assert calls == 1
 
 
 def test_data_interpretation_scan_preview_validate_requires_confirmation(tmp_path):
