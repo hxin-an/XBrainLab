@@ -260,9 +260,6 @@ class VisualizationPanel(BasePanel):
             self.friendly_map[friendly_name] = trainer
             self.plan_combo.addItem(friendly_name, trainer)
 
-        self.plan_combo.blockSignals(False)
-        self.run_combo.blockSignals(False)
-
         # If items exist, select first real plan
         if self.plan_combo.count() > 1:
             selected_index = 1
@@ -277,12 +274,17 @@ class VisualizationPanel(BasePanel):
                     selected_index = i
                     break
             self.plan_combo.setCurrentIndex(selected_index)
+            self.plan_combo.blockSignals(False)
+            self.run_combo.blockSignals(False)
             # Explicitly call on_plan_changed to ensure run_combo is populated
             self.on_plan_changed(
                 self.plan_combo.currentText(),
                 preferred_run=previous_run,
                 preferred_run_text=previous_run_text,
             )
+        else:
+            self.plan_combo.blockSignals(False)
+            self.run_combo.blockSignals(False)
 
     def on_plan_changed(self, text, preferred_run=None, preferred_run_text=""):
         """Update Run combo when Plan changes."""
@@ -300,8 +302,6 @@ class VisualizationPanel(BasePanel):
             if plans:
                 self.run_combo.addItem("Average", "average")
 
-        self.run_combo.blockSignals(False)
-
         if self.run_combo.count() > 0:
             selected_index = 0
             for i in range(self.run_combo.count()):
@@ -315,7 +315,10 @@ class VisualizationPanel(BasePanel):
                     selected_index = i
                     break
             self.run_combo.setCurrentIndex(selected_index)
+            self.run_combo.blockSignals(False)
+            self.on_update()
         else:
+            self.run_combo.blockSignals(False)
             self.on_update()  # Trigger update to clear if empty
 
     def on_tab_changed(self, index):

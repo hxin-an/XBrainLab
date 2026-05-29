@@ -107,6 +107,29 @@ def test_visualization_panel_populates_controls_for_multiple_trainers(qtbot):
     assert panel.run_combo.itemText(2) == "Average"
 
 
+def test_visualization_panel_dispatches_default_run_when_fold_changes(qtbot):
+    panel, ctrl = _make_panel(qtbot)
+    first_trainer = _make_trainer("EEGNet", repeats=2)
+    second_trainer = _make_trainer("SCCNet", repeats=2)
+    second_plan = second_trainer.get_plans.return_value[0]
+    second_eval_record = MagicMock()
+    second_plan.get_eval_record.return_value = second_eval_record
+    ctrl.get_trainers.return_value = [first_trainer, second_trainer]
+
+    panel.refresh_combos()
+    panel.tabs.setCurrentIndex(0)
+    current_widget = _current_mock_widget(panel)
+    current_widget.update_plot.reset_mock()
+
+    panel.plan_combo.setCurrentIndex(2)
+
+    current_widget.update_plot.assert_called()
+    args, _kwargs = current_widget.update_plot.call_args
+    assert args[0] is second_plan
+    assert args[1] is second_trainer
+    assert args[4] is second_eval_record
+
+
 def test_visualization_panel_dispatches_plot_update_to_active_tab(qtbot):
     panel, ctrl = _make_panel(qtbot)
     trainer = _make_trainer("EEGNet", repeats=2)
@@ -119,6 +142,7 @@ def test_visualization_panel_dispatches_plot_update_to_active_tab(qtbot):
     panel.plan_combo.setCurrentIndex(1)
     panel.run_combo.setCurrentIndex(0)
     current_widget = _current_mock_widget(panel)
+    current_widget.update_plot.reset_mock()
 
     panel.on_update()
 
