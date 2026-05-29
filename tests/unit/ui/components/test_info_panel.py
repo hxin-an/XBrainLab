@@ -77,6 +77,32 @@ def test_update_info_loaded_data(panel, mock_main_window):
     assert panel.table.item(panel.row_map["Sample rate"], 1).text() == "250.0"
 
 
+def test_update_info_uses_cached_event_summary(panel, mock_main_window):
+    d1 = MagicMock()
+    d1.get_subject_name.return_value = "Sub1"
+    d1.get_session_name.return_value = "Ses1"
+    d1.get_epochs_length.return_value = 0
+    d1.is_raw.return_value = True
+    d1.get_nchan.return_value = 32
+    d1.get_sfreq.return_value = 250.0
+    d1.get_filter_range.return_value = (0.5, 40.0)
+    d1.get_event_summary.return_value = {
+        "available": True,
+        "count": 7,
+        "labels": ["EventA", "EventB"],
+        "source": "detected_events",
+        "scanned": True,
+    }
+    d1.get_event_list.side_effect = AssertionError(
+        "aggregate info should not scan raw events during render"
+    )
+
+    panel.update_info(loaded_data_list=[d1])
+
+    assert panel.table.item(panel.row_map["Total Events"], 1).text() == "7"
+    assert panel.table.item(panel.row_map["Classes"], 1).text() == "2"
+
+
 def test_update_info_preprocessed_priority(panel, mock_main_window):
     # Loaded data exists but we should use preprocessed
     d_load = MagicMock()

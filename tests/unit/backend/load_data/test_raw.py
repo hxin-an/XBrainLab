@@ -234,6 +234,67 @@ def test_raw_stim_event(stim_raw):
     assert len(event_id) == 3
 
 
+def test_get_event_list_caches_detected_raw_events(stim_raw, monkeypatch):
+    calls = 0
+    original = stim_raw.get_raw_event_list
+
+    def counted_get_raw_event_list():
+        nonlocal calls
+        calls += 1
+        return original()
+
+    monkeypatch.setattr(stim_raw, "get_raw_event_list", counted_get_raw_event_list)
+
+    events_1, event_id_1 = stim_raw.get_event_list()
+    events_2, event_id_2 = stim_raw.get_event_list()
+
+    assert calls == 1
+    assert events_2 is events_1
+    assert event_id_2 is event_id_1
+
+
+def test_event_summary_can_skip_expensive_raw_event_scan(stim_raw, monkeypatch):
+    monkeypatch.setattr(
+        stim_raw,
+        "get_raw_event_list",
+        lambda: pytest.fail("event summary should not scan raw events"),
+    )
+
+    summary = stim_raw.get_event_summary(allow_scan=False)
+
+    assert summary == {
+        "available": False,
+        "count": None,
+        "labels": [],
+        "source": "not_scanned",
+        "scanned": False,
+    }
+
+
+def test_event_summary_uses_cached_raw_events(stim_raw):
+    stim_raw.get_event_list()
+
+    summary = stim_raw.get_event_summary(allow_scan=False)
+
+    assert summary["available"] is True
+    assert summary["count"] == 3
+    assert summary["labels"] == ["1", "2", "3"]
+    assert summary["source"] == "detected_events"
+
+
+def test_set_event_invalidates_detected_event_cache(stim_raw):
+    detected_events, _detected_event_id = stim_raw.get_event_list()
+    imported_events = np.array([[1, 0, 9]])
+    imported_event_id = {"external": 9}
+
+    stim_raw.set_event(imported_events, imported_event_id)
+
+    events, event_id = stim_raw.get_event_list()
+    assert events is imported_events
+    assert event_id is imported_event_id
+    assert events is not detected_events
+
+
 def test_raw_set_event_on_stim_event(stim_raw):
     test_set_event(stim_raw)
     events, event_id = stim_raw.get_raw_event_list()

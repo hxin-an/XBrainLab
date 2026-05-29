@@ -398,6 +398,36 @@ def test_dataset_panel_events_column_uses_semantic_text_and_muted_color(
     )
 
 
+def test_update_panel_uses_cached_event_summary_without_scanning(
+    mock_main_window,
+    mock_controller,
+    qtbot,
+):
+    data = loaded_data_stub("cached_events.set")
+    data.get_event_summary.return_value = {
+        "available": True,
+        "count": 5,
+        "labels": ["left", "right"],
+        "source": "detected_events",
+        "scanned": True,
+    }
+    data.get_event_list.side_effect = AssertionError(
+        "dataset table should not scan raw events during render"
+    )
+    data.has_event.side_effect = AssertionError(
+        "dataset table should use cached event summary first"
+    )
+    mock_controller.get_loaded_data_list.return_value = [data]
+
+    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
+    qtbot.addWidget(panel)
+    panel.update_panel()
+
+    event_item = panel.table.item(0, 6)
+    assert event_item is not None
+    assert event_item.text() == "Events (5)"
+
+
 def test_dataset_panel_on_item_changed(mock_main_window, mock_controller, qtbot):
     """Test editing subject/session in table updates metadata via controller."""
     mock_data = MagicMock()

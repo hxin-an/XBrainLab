@@ -305,20 +305,10 @@ class DatasetPanel(BasePanel):
                 item_ep.setFlags(item_ep.flags() ^ Qt.ItemFlag.ItemIsEditable)
                 self.table.setItem(row, 5, item_ep)
 
-                # Events (Read-only)
-                has_event = data.has_event()
-                if has_event:
-                    try:
-                        if data.is_raw():
-                            events, _ = data.get_event_list()
-                            count = len(events)
-                        else:
-                            count = data.get_epochs_length()
-                    except Exception:
-                        logger.exception("Failed to get event count")
-                        count = -1
-
-                    count_str = "?" if count == -1 else str(count)
+                event_summary = self._event_summary_for_render(data)
+                if event_summary.get("available"):
+                    count = event_summary.get("count")
+                    count_str = "?" if count is None else str(count)
                     if data.is_labels_imported():
                         item_ev = QTableWidgetItem(f"Labels ({count_str})")
                         item_ev.setForeground(QBrush(QColor(Theme.TEXT_MUTED)))
@@ -328,6 +318,12 @@ class DatasetPanel(BasePanel):
                     else:
                         item_ev = QTableWidgetItem(f"Events ({count_str})")
                         item_ev.setToolTip("Events detected in the recording.")
+                elif event_summary.get("scanned") is False:
+                    item_ev = QTableWidgetItem("Events not scanned")
+                    item_ev.setForeground(QBrush(QColor(Theme.TEXT_SECONDARY)))
+                    item_ev.setToolTip(
+                        "Event count is deferred to keep the dataset table responsive."
+                    )
                 else:
                     item_ev = QTableWidgetItem("No events")
                     item_ev.setForeground(QBrush(QColor(Theme.TEXT_SECONDARY)))
@@ -342,6 +338,55 @@ class DatasetPanel(BasePanel):
         self.table.blockSignals(False)
         self._fit_table_columns_to_viewport()
         self._schedule_table_column_fit()
+
+    @staticmethod
+    def _event_summary_for_render(data) -> dict[str, Any]:
+        summary_method = getattr(data, "get_event_summary", None)
+        if callable(summary_method):
+            try:
+                summary = summary_method(allow_scan=False)
+                if isinstance(summary, dict):
+                    return summary
+            except Exception:
+                logger.debug("Failed to read cached event summary", exc_info=True)
+        try:
+            has_event = bool(data.has_event())
+        except Exception:
+            logger.exception("Failed to read event availability")
+            return {
+                "available": False,
+                "count": None,
+                "labels": [],
+                "source": "error",
+                "scanned": True,
+            }
+        if not has_event:
+            return {
+                "available": False,
+                "count": 0,
+                "labels": [],
+                "source": "none",
+                "scanned": True,
+            }
+        try:
+            if data.is_raw():
+                events, event_id = data.get_event_list()
+                count = len(events)
+                labels = sorted(str(label) for label in event_id)
+            else:
+                count = data.get_epochs_length()
+                labels = []
+        except Exception:
+            logger.exception("Failed to get event count")
+            count = None
+            labels = []
+        return {
+            "available": True,
+            "count": count,
+            "labels": labels,
+            "source": "legacy",
+            "scanned": True,
+        }
 
     def _query_loaded_data_list_for_render(self) -> list[Any] | None:
         result = execute_application_command(

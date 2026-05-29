@@ -49,6 +49,7 @@ class Raw:
         self.runtime_details: dict[str, Any] = {}
         self.raw_events: np.ndarray | None = None
         self.raw_event_id: dict[str, int] | None = None
+        self._detected_events_cache: tuple[np.ndarray, dict[str, int]] | None = None
         self.subject = "0"
         self.session = "0"
         self.labels_imported = False
@@ -190,6 +191,7 @@ class Raw:
                 )
             self.mne_data.events = events
             self.mne_data.event_id = event_id
+        self._detected_events_cache = None
         self.raw_events = events
         self.raw_event_id = event_id
 
@@ -221,6 +223,7 @@ class Raw:
             self.raw_events = None
             self.raw_event_id = None
         self.mne_data = data
+        self._detected_events_cache = None
 
     def set_mne_and_wipe_events(self, data: mne.io.BaseRaw | mne.BaseEpochs) -> None:
         """Set new MNE data and discard all imported events.
@@ -232,6 +235,7 @@ class Raw:
         self.raw_events = None
         self.raw_event_id = None
         self.mne_data = data
+        self._detected_events_cache = None
 
     # mne related functions
     def get_mne(self) -> mne.io.BaseRaw | mne.BaseEpochs:
@@ -315,7 +319,80 @@ class Raw:
         """
         if self.raw_event_id is not None and self.raw_events is not None:
             return self.raw_events, self.raw_event_id
-        return self.get_raw_event_list()
+        if self._detected_events_cache is None:
+            self._detected_events_cache = self.get_raw_event_list()
+        return self._detected_events_cache
+
+    def get_event_summary(self, *, allow_scan: bool = True) -> dict[str, Any]:
+        """Return event counts for UI summaries without forcing a scan by default."""
+        if self.raw_event_id is not None and self.raw_events is not None:
+            return self._event_summary_from_values(
+                self.raw_events,
+                self.raw_event_id,
+                source="attached_labels" if self.labels_imported else "stored_events",
+                scanned=True,
+            )
+        if self._detected_events_cache is not None:
+            events, event_id = self._detected_events_cache
+            return self._event_summary_from_values(
+                events,
+                event_id,
+                source="detected_events",
+                scanned=True,
+            )
+        if not self.is_raw():
+            events = getattr(self.mne_data, "events", np.array([]))
+            event_id = getattr(self.mne_data, "event_id", {})
+            return self._event_summary_from_values(
+                events,
+                event_id,
+                source="epochs",
+                scanned=True,
+            )
+
+        annotations = getattr(self.mne_data, "annotations", None)
+        if annotations is not None and len(annotations) > 0:
+            labels = sorted({str(item) for item in annotations.description})
+            return {
+                "available": True,
+                "count": len(annotations),
+                "labels": labels,
+                "source": "annotations",
+                "scanned": True,
+            }
+
+        if not allow_scan:
+            return {
+                "available": False,
+                "count": None,
+                "labels": [],
+                "source": "not_scanned",
+                "scanned": False,
+            }
+
+        events, event_id = self.get_event_list()
+        return self._event_summary_from_values(
+            events,
+            event_id,
+            source="detected_events",
+            scanned=True,
+        )
+
+    @staticmethod
+    def _event_summary_from_values(
+        events: np.ndarray,
+        event_id: dict[str, int],
+        *,
+        source: str,
+        scanned: bool,
+    ) -> dict[str, Any]:
+        return {
+            "available": bool(event_id),
+            "count": len(events) if events is not None else 0,
+            "labels": sorted(str(label) for label in event_id),
+            "source": source,
+            "scanned": scanned,
+        }
 
     def has_event(self) -> bool:
         """Return whether the data has event."""

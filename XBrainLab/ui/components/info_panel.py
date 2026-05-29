@@ -184,24 +184,14 @@ class AggregateInfoPanel(QGroupBox):
         for data in data_list:
             subject_set.add(data.get_subject_name())
             session_set.add(data.get_session_name())
-            try:
-                _, event_id = data.get_event_list()
-                if event_id:
-                    classes_set.update(event_id)
-            except Exception as e:
-                logger.warning("Failed to get event list for data: %s", e)
+            event_summary = self._event_summary_for_render(data)
+            classes_set.update(event_summary.get("labels", []))
 
             total_epochs += data.get_epochs_length()
 
-            try:
-                if data.is_raw():
-                    events, _ = data.get_event_list()
-                    if events is not None:
-                        total_events += len(events)
-                else:
-                    total_events += data.get_epochs_length()
-            except Exception as e:
-                logger.warning("Failed to count events: %s", e)
+            count = event_summary.get("count")
+            if isinstance(count, int):
+                total_events += count
 
         tmin = "None"
         duration = "None"
@@ -234,6 +224,33 @@ class AggregateInfoPanel(QGroupBox):
         self.set_val("Highpass", f"{highpass:.2f}" if highpass is not None else "N/A")
         self.set_val("Lowpass", f"{lowpass:.2f}" if lowpass is not None else "N/A")
         self.set_val("Classes", str(len(classes_set)))
+
+    @staticmethod
+    def _event_summary_for_render(data) -> dict:
+        summary_method = getattr(data, "get_event_summary", None)
+        if callable(summary_method):
+            try:
+                summary = summary_method(allow_scan=False)
+                if isinstance(summary, dict):
+                    return summary
+            except Exception as e:
+                logger.warning("Failed to get cached event summary for data: %s", e)
+        try:
+            events, event_id = data.get_event_list()
+            labels = sorted(str(label) for label in event_id)
+            count = len(events) if data.is_raw() and events is not None else None
+            if count is None:
+                count = data.get_epochs_length()
+        except Exception as e:
+            logger.warning("Failed to count events: %s", e)
+            return {"available": False, "count": 0, "labels": []}
+        return {
+            "available": bool(event_id),
+            "count": count,
+            "labels": labels,
+            "source": "legacy",
+            "scanned": True,
+        }
 
     def set_val(self, key, value):
         """Set the display value for a specific metric row.
