@@ -99,6 +99,24 @@ def test_metric_tab_methods_exist():
     assert callable(tab.clear)
 
 
+def test_training_panel_update_panel_refreshes_training_history(
+    mock_main_window,
+    mock_controller,
+    qtbot,
+):
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=mock_controller,
+        dataset_controller=mock_controller,
+    )
+    qtbot.addWidget(panel)
+    panel.update_loop = MagicMock()
+
+    panel.update_panel()
+
+    panel.update_loop.assert_called_once_with()
+
+
 def test_training_panel_split_data_success(mock_main_window, mock_controller, qtbot):
     """
     Test that 'Dataset Splitting' blocks instead of mutating the legacy controller.

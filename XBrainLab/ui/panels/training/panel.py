@@ -375,6 +375,7 @@ class TrainingPanel(BasePanel):
         self.update_info()
         if hasattr(self, "sidebar"):
             self.sidebar.check_ready_to_train()
+        self.update_loop()
 
     def update_loop(self, force_active=False):
         """Handle real-time training updates."""

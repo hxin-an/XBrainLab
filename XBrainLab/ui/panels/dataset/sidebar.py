@@ -197,7 +197,7 @@ class DatasetSidebar(QWidget):
 
         self.clear_btn = QPushButton("Clear Dataset")
         self.clear_btn.setStyleSheet(Stylesheets.BTN_DANGER)
-        self.clear_btn.setToolTip("Create epochs before clearing the dataset.")
+        self.clear_btn.setToolTip("No loaded data to clear.")
         self.clear_btn.clicked.connect(self.clear_dataset)
         exec_layout.addWidget(self.clear_btn)
 
@@ -458,23 +458,33 @@ class DatasetSidebar(QWidget):
             refresh=False,
         )
         if result is None:
-            available, has_epoch = self._legacy_controller_value(
-                self._legacy_has_epoch_data,
+            available, has_data = self._legacy_controller_value(
+                self._legacy_has_clearable_data,
             )
             if not available:
                 return False, "Dataset state is unavailable right now."
             return (
-                bool(has_epoch),
-                "Clear epoched dataset and downstream results."
-                if has_epoch
-                else "Create epochs before clearing the dataset.",
+                bool(has_data),
+                "Clear loaded data and downstream results."
+                if has_data
+                else "No loaded data to clear.",
             )
         if result.failed:
             return False, "Dataset state is unavailable right now."
         state = result.diagnostics.get("state")
-        if isinstance(state, dict) and self._state_has_clearable_epoch(state):
-            return True, "Clear epoched dataset and downstream results."
-        return False, "Create epochs before clearing the dataset."
+        if isinstance(state, dict) and self._state_has_clearable_session(state):
+            return True, "Clear loaded data and downstream results."
+        return False, "No loaded data to clear."
+
+    def _legacy_has_clearable_data(self) -> bool:
+        if self.controller is None:
+            return False
+        has_data = getattr(self.controller, "has_data", None)
+        if callable(has_data):
+            result = has_data()
+            if not isinstance(result, Mock) and bool(result):
+                return True
+        return self._legacy_has_epoch_data()
 
     def _legacy_has_epoch_data(self) -> bool:
         if self.controller is None:
@@ -495,9 +505,24 @@ class DatasetSidebar(QWidget):
         return list(data_list or [])
 
     @staticmethod
-    def _state_has_clearable_epoch(state: dict[str, Any]) -> bool:
+    def _state_has_clearable_session(state: dict[str, Any]) -> bool:
+        raw = DatasetSidebar._state_section(state, "raw")
+        if bool(raw.get("loaded")) or int(raw.get("count") or 0) > 0:
+            return True
+        preprocessed = DatasetSidebar._state_section(state, "preprocessed")
+        if bool(preprocessed.get("available")) or int(preprocessed.get("count") or 0):
+            return True
         epoch = DatasetSidebar._state_section(state, "epoch")
-        return bool(epoch.get("exists")) or bool(epoch.get("available"))
+        if bool(epoch.get("exists")) or bool(epoch.get("available")):
+            return True
+        dataset = DatasetSidebar._state_section(state, "dataset")
+        if bool(dataset.get("available")) or int(dataset.get("count") or 0) > 0:
+            return True
+        training = DatasetSidebar._state_section(state, "training")
+        return any(
+            bool(training.get(key))
+            for key in ("has_model", "has_training_option", "has_trainer")
+        )
 
     @staticmethod
     def _state_section(state: dict[str, Any], key: str) -> dict[str, Any]:

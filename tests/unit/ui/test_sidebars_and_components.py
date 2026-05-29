@@ -2453,8 +2453,8 @@ class TestDatasetSidebar:
         assert sb.reload_recipe_btn.toolTip() == (
             "Review a saved import recipe before applying it"
         )
-        assert sb.clear_btn.isEnabled() is False
-        assert "Create epochs" in sb.clear_btn.toolTip()
+        assert sb.clear_btn.isEnabled() is True
+        assert "Clear loaded data" in sb.clear_btn.toolTip()
         assert sb.smart_parse_btn.isEnabled()
         assert sb.smart_parse_btn.toolTip() == (
             "Auto-extract Subject/Session from filenames"
