@@ -1,5 +1,7 @@
 """Base visualizer module for generating matplotlib figures from evaluation records."""
 
+import contextlib
+
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
@@ -67,10 +69,17 @@ class Visualizer:
             matplotlib.figure.Figure: The rendered figure.
 
         """
+        created_figure = self.fig is None
         if self.fig is None:
             self.fig = plt.figure(figsize=self.figsize, dpi=self.dpi)
-        self.fig.clf()
-        return self._get_plt(*args, **kwargs)
+        try:
+            self.fig.clf()
+            return self._get_plt(*args, **kwargs)
+        except Exception:
+            if created_figure and self.fig is not None:
+                plt.close(self.fig)
+                self.fig = None
+            raise
 
     def get_saliency(self, saliency_name: str, label_index: int) -> np.ndarray:
         """Return the saliency (gradient-based) array for a given class.
@@ -89,16 +98,155 @@ class Visualizer:
             ValueError: If *saliency_name* is ``None``.
 
         """
-        if saliency_name is not None:
-            if saliency_name == "Gradient":
-                return self.eval_record.get_gradient(label_index)
-            if saliency_name == "Gradient * Input":
-                return self.eval_record.get_gradient_input(label_index)
-            if saliency_name == "SmoothGrad":
-                return self.eval_record.get_smoothgrad(label_index)
-            if saliency_name == "SmoothGrad_Squared":
-                return self.eval_record.get_smoothgrad_sq(label_index)
-            if saliency_name == "VarGrad":
-                return self.eval_record.get_vargrad(label_index)
-            raise NotImplementedError
-        raise ValueError("Saliency name not provided")
+        saliency_store = self._saliency_store(saliency_name)
+        resolved_key = self._resolve_saliency_key(
+            saliency_store,
+            label_index,
+            label_index,
+            label_index,
+        )
+        if resolved_key is None:
+            available = self._available_saliency_keys(saliency_store)
+            raise KeyError(
+                f"Cannot map label {label_index!r} to saliency results. "
+                f"Available saliency keys: {available}.",
+            )
+        return saliency_store[resolved_key]
+
+    def iter_saliency_by_label(
+        self,
+        saliency_name: str,
+    ) -> list[tuple[object, str, np.ndarray]]:
+        """Return available saliency arrays paired with display labels.
+
+        Training results may be keyed by model class indices (``0..n-1``),
+        original event codes (for example ``769``), or stringified keys after
+        loading older records.  The visualizers should display what exists
+        instead of assuming a zero-based range from the epoch label count.
+        """
+        saliency_store = self._saliency_store(saliency_name)
+        label_map = getattr(self.epoch_data, "label_map", {}) or {}
+        mapped: list[tuple[object, str, np.ndarray]] = []
+        seen: set[object] = set()
+
+        label_items = list(label_map.items()) if isinstance(label_map, dict) else []
+
+        for order_index, (label_key, label_name) in enumerate(label_items):
+            resolved_key = self._resolve_saliency_key(
+                saliency_store,
+                label_key,
+                label_name,
+                order_index,
+            )
+            if resolved_key is None or resolved_key in seen:
+                continue
+            saliency = saliency_store[resolved_key]
+            if not self._has_saliency_data(saliency):
+                continue
+            seen.add(resolved_key)
+            mapped.append((label_key, str(label_name), saliency))
+
+        if mapped:
+            return mapped
+
+        saliency_keys = self._iter_saliency_keys(saliency_store)
+        for order_index, resolved_key in enumerate(saliency_keys):
+            if resolved_key in seen:
+                continue
+            saliency = saliency_store[resolved_key]
+            if not self._has_saliency_data(saliency):
+                continue
+            label_name = self._label_name_for_key(resolved_key, order_index, label_map)
+            mapped.append((resolved_key, label_name, saliency))
+        return mapped
+
+    def _saliency_store(self, saliency_name: str):
+        if saliency_name is None:
+            raise ValueError("Saliency name not provided")
+        if saliency_name == "Gradient":
+            return self.eval_record.gradient
+        if saliency_name == "Gradient * Input":
+            return self.eval_record.gradient_input
+        if saliency_name == "SmoothGrad":
+            return self.eval_record.smoothgrad
+        if saliency_name == "SmoothGrad_Squared":
+            return self.eval_record.smoothgrad_sq
+        if saliency_name == "VarGrad":
+            return self.eval_record.vargrad
+        raise NotImplementedError
+
+    @staticmethod
+    def _resolve_saliency_key(
+        saliency_store,
+        label_key: object,
+        label_name: object,
+        order_index: int,
+    ) -> object | None:
+        candidates: list[object] = [label_key, label_name]
+        for value in (label_key, label_name):
+            if not isinstance(value, (str, bytes, int, np.integer)):
+                continue
+            with contextlib.suppress(TypeError, ValueError):
+                candidates.append(int(value))
+        candidates.append(order_index)
+
+        if isinstance(saliency_store, dict):
+            for candidate in candidates:
+                if candidate in saliency_store:
+                    return candidate
+                for available_key in saliency_store:
+                    if str(available_key) == str(candidate):
+                        return available_key
+            return None
+
+        try:
+            store_len = len(saliency_store)
+        except TypeError:
+            return None
+        for candidate in candidates:
+            if (
+                isinstance(candidate, (int, np.integer))
+                and 0 <= int(candidate) < store_len
+            ):
+                return int(candidate)
+        return None
+
+    @staticmethod
+    def _has_saliency_data(saliency) -> bool:
+        try:
+            return len(saliency) > 0
+        except TypeError:
+            return False
+
+    @staticmethod
+    def _iter_saliency_keys(saliency_store) -> list[object]:
+        if isinstance(saliency_store, dict):
+            return list(saliency_store.keys())
+        try:
+            return list(range(len(saliency_store)))
+        except TypeError:
+            return []
+
+    @staticmethod
+    def _available_saliency_keys(saliency_store) -> str:
+        keys = Visualizer._iter_saliency_keys(saliency_store)
+        if not keys:
+            return "none"
+        return ", ".join(map(str, keys))
+
+    @staticmethod
+    def _label_name_for_key(
+        saliency_key: object,
+        order_index: int,
+        label_map: object,
+    ) -> str:
+        if isinstance(label_map, dict):
+            if saliency_key in label_map:
+                return str(label_map[saliency_key])
+            for label_key, label_name in label_map.items():
+                if str(label_key) == str(saliency_key):
+                    return str(label_name)
+            label_names = list(label_map.values())
+            if 0 <= order_index < len(label_names):
+                return str(label_names[order_index])
+        return str(saliency_key)

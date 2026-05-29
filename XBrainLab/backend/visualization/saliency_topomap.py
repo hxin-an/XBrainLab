@@ -47,16 +47,7 @@ class SaliencyTopoMapViz(Visualizer):
             pos_array = pos_array.reshape(1, -1)
 
         chs = self.epoch_data.get_channel_names()
-        label_number = self.epoch_data.get_label_number()
-        saliency_by_label = [
-            (label_index, self.get_saliency(method, label_index))
-            for label_index in range(label_number)
-        ]
-        saliency_by_label = [
-            (label_index, saliency)
-            for label_index, saliency in saliency_by_label
-            if len(saliency) > 0
-        ]
+        saliency_by_label = self.iter_saliency_by_label(method)
         if not saliency_by_label:
             ax = plt.gca()
             ax.text(0.5, 0.5, "No saliency data for selected labels.", ha="center")
@@ -67,7 +58,9 @@ class SaliencyTopoMapViz(Visualizer):
         rows = 1 if visible_label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
         cols = int(np.ceil(visible_label_number / rows))
 
-        for plot_index, (label_index, raw_saliency) in enumerate(saliency_by_label):
+        for plot_index, (_label_key, label_name, raw_saliency) in enumerate(
+            saliency_by_label,
+        ):
             ax = plt.subplot(rows, cols, plot_index + 1)
             kwargs = {
                 "pos": pos_array[:, 0:2],
@@ -98,9 +91,6 @@ class SaliencyTopoMapViz(Visualizer):
             im, _ = mne.viz.plot_topomap(data=data, cmap=cmap, **kwargs)
             cbar = plt.colorbar(im, orientation="vertical")
             cbar.ax.get_yaxis().set_ticks([])
-            plt.title(
-                f"Saliency Map of class {self.epoch_data.label_map[label_index]}",
-                color="white",
-            )
+            plt.title(f"Saliency Map of class {label_name}", color="white")
         plt.tight_layout()
         return plt.gcf()

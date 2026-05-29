@@ -29,16 +29,7 @@ class SaliencySpectrogramMapViz(Visualizer):
 
         """
         sfreq = self.epoch_data.get_model_args()["sfreq"]
-        label_number = self.epoch_data.get_label_number()
-        saliency_by_label = [
-            (label_index, self.get_saliency(method, label_index))
-            for label_index in range(label_number)
-        ]
-        saliency_by_label = [
-            (label_index, saliency)
-            for label_index, saliency in saliency_by_label
-            if len(saliency) > 0
-        ]
+        saliency_by_label = self.iter_saliency_by_label(method)
         if not saliency_by_label:
             ax = plt.gca()
             ax.text(0.5, 0.5, "No saliency data for selected labels.", ha="center")
@@ -47,7 +38,9 @@ class SaliencySpectrogramMapViz(Visualizer):
         visible_label_number = len(saliency_by_label)
         rows = 1 if visible_label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
         cols = int(np.ceil(visible_label_number / rows))
-        for plot_index, (label_index, raw_saliency) in enumerate(saliency_by_label):
+        for plot_index, (_label_key, label_name, raw_saliency) in enumerate(
+            saliency_by_label,
+        ):
             plt.subplot(rows, cols, plot_index + 1)
 
             freqs, timestamps, stft_saliency = signal.stft(
@@ -82,9 +75,6 @@ class SaliencySpectrogramMapViz(Visualizer):
             plt.yticks(ticks=freqs[np.where(freqs % 10 == 0)])
 
             plt.colorbar(im, orientation="vertical")
-            plt.title(
-                f"Saliency spectrogram of class "
-                f"{self.epoch_data.label_map[label_index]}",
-            )
+            plt.title(f"Saliency spectrogram of class {label_name}")
         plt.tight_layout()
         return plt.gcf()
