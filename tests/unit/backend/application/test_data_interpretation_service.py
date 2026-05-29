@@ -380,6 +380,34 @@ def test_apply_interpretation_rolls_back_partial_import_failure(
     assert service.state.snapshot().has_applied_interpretation is False
 
 
+def test_apply_interpretation_rolls_back_when_label_placement_not_ready(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    eeg_path = source_dir / "selected.fif"
+    label_path = source_dir / "labels.csv"
+    eeg_path.write_bytes(b"not loaded during scan")
+    label_path.write_text("label\n1\n2\n", encoding="utf-8")
+    service, dataset = _service()
+    old_path = str(tmp_path / "old_raw.fif")
+    dataset.loaded = [_LoadedData(old_path)]
+    dataset.imported_paths = [old_path]
+
+    service.handle_scan_source(ScanSourceCommand(source_path=str(source_dir)))
+    service.handle_preview_interpretation(PreviewInterpretationCommand())
+    service.handle_validate_interpretation(ValidateInterpretationCommand())
+
+    with pytest.raises(ApplicationError, match="Label placement is not ready"):
+        service.handle_apply_interpretation(
+            ApplyInterpretationCommand(confirmed=True),
+        )
+
+    assert [item.filepath for item in dataset.loaded] == [old_path]
+    assert dataset.imported_paths == [old_path]
+    assert service.state.snapshot().has_applied_interpretation is False
+
+
 def test_apply_interpretation_requires_target_candidate_confirmation(
     tmp_path: Path,
 ) -> None:

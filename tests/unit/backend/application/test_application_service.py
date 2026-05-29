@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, cast
 from unittest.mock import MagicMock
 
@@ -148,16 +149,11 @@ def test_data_interpretation_scan_preview_validate_requires_confirmation(tmp_pat
     assert unconfirmed_apply.failed is True
     assert unconfirmed_apply.error_type == ErrorType.CONFIRMATION_REQUIRED
     assert service.dataset.import_files.call_count == 1
-    assert confirmed_apply.ok is True
-    assert confirmed_apply.diagnostics["applied_interpretation"]["loaded_files"] == [
-        str(eeg_path),
-    ]
-    assert confirmed_apply.state.interpretation.has_applied_interpretation is True
-    assert confirmed_apply.state.interpretation.pending_confirmation is False
-    apply_capability = service.get_capabilities().get(CommandName.APPLY_INTERPRETATION)
-    assert apply_capability.available is False
-    assert apply_capability.requires_confirmation is False
-    assert "Interpretation has already been applied." in apply_capability.reasons
+    assert confirmed_apply.failed is True
+    assert confirmed_apply.error_type == ErrorType.VALIDATION
+    assert confirmed_apply.diagnostics["label_apply"]["status"] == "failed"
+    assert "Label placement is not ready" in confirmed_apply.message
+    assert confirmed_apply.state.interpretation.has_applied_interpretation is False
 
 
 def test_data_interpretation_choices_flow_into_recipe(tmp_path):
@@ -380,7 +376,12 @@ def test_data_interpretation_label_carrier_choices_flow_into_recipe(tmp_path):
     )
     recipe_path = tmp_path / "mat_label_recipe.json"
     service = ApplicationService(Study())
+    raw = _raw_mock()
+    raw.get_filepath.return_value = str(eeg_path)
+    raw.get_filename.return_value = eeg_path.name
     service.dataset.import_files = MagicMock(return_value=(1, []))
+    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    service.dataset.apply_labels_batch = MagicMock(return_value=1)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     initial_preview = service.execute(PreviewInterpretationCommand())
@@ -706,7 +707,8 @@ def test_apply_interpretation_skips_ambiguous_multi_file_timestamp_labels(tmp_pa
     service.execute(ValidateInterpretationCommand())
     apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
 
-    assert apply_result.ok is True
+    assert apply_result.failed is True
+    assert apply_result.error_type == ErrorType.VALIDATION
     assert apply_result.diagnostics["label_apply"]["status"] == "skipped"
     assert (
         "No reviewed label carrier uniquely matches"
@@ -768,7 +770,10 @@ def test_apply_interpretation_applies_manually_mapped_generic_timestamp_label(
     ]
 
 
-def test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier(tmp_path):
+def test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier(
+    tmp_path,
+    monkeypatch,
+):
     from scipy.io import savemat
 
     source_dir = tmp_path / "reviewed_mat_sequence"
@@ -777,6 +782,10 @@ def test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier(tmp_pa
     label_path = source_dir / "A01T.mat"
     eeg_path.write_bytes(b"not loaded during scan")
     savemat(label_path, {"classlabel": np.array([1, 2, 1, 2])})
+    _patch_internal_events(
+        monkeypatch,
+        {"A01T.gdf": {"768": {"count": 4, "description": "768"}}},
+    )
     service = ApplicationService(Study())
     raw = _raw_mock()
     raw.get_filepath.return_value = str(eeg_path)
@@ -792,7 +801,8 @@ def test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier(tmp_pa
                 "label_carrier_choices": {
                     str(label_path): {
                         "label_field": "classlabel",
-                        "anchor": "trial order",
+                        "target_event_codes": ["768"],
+                        "placement_method": "eeg_event",
                         "time_model": "trial_order",
                         "granularity": "trial",
                     }
@@ -816,6 +826,77 @@ def test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier(tmp_pa
         "label_import:legacy:1"
         in apply_result.diagnostics["applied_interpretation"]["recipe_trace"]
     )
+
+
+def test_apply_interpretation_blocks_mixed_label_placement_modes(
+    tmp_path,
+    monkeypatch,
+):
+    from scipy.io import savemat
+
+    source_dir = tmp_path / "mixed_label_placement"
+    source_dir.mkdir()
+    eeg_path = source_dir / "A01T.gdf"
+    sequence_labels = source_dir / "A01T.mat"
+    timed_labels = source_dir / "A01T_events.tsv"
+    eeg_path.write_bytes(b"not loaded during scan")
+    savemat(sequence_labels, {"classlabel": np.array([1, 2])})
+    timed_labels.write_text(
+        "onset\ttrial_type\n0.5\tleft\n1.5\tright\n",
+        encoding="utf-8",
+    )
+    _patch_internal_events(
+        monkeypatch,
+        {"A01T.gdf": {"768": {"count": 2, "description": "768"}}},
+    )
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    raw.get_filepath.return_value = str(eeg_path)
+    raw.get_filename.return_value = eeg_path.name
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    service.dataset.apply_labels_batch = MagicMock(return_value=1)
+    service.dataset.apply_labels_legacy = MagicMock(return_value=1)
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "label_carrier_choices": {
+                    str(sequence_labels): {
+                        "label_field": "classlabel",
+                        "target_event_codes": ["768"],
+                        "placement_method": "eeg_event",
+                        "time_model": "trial_order",
+                        "granularity": "trial",
+                    },
+                    str(timed_labels): {
+                        "label_field": "trial_type",
+                        "anchor": "onset",
+                        "placement_method": "time_field",
+                        "time_model": "seconds",
+                        "granularity": "trial",
+                    },
+                },
+                "class_map": {
+                    "1": "Left hand",
+                    "2": "Right hand",
+                    "left": "Left hand",
+                    "right": "Right hand",
+                },
+            },
+        ),
+    )
+    service.execute(ValidateInterpretationCommand())
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert apply_result.failed is True
+    assert apply_result.error_type == ErrorType.VALIDATION
+    assert apply_result.diagnostics["label_apply"]["status"] == "failed"
+    assert "mixed placement modes" in apply_result.diagnostics["label_apply"]["reason"]
+    assert apply_result.state.interpretation.has_applied_interpretation is False
+    service.dataset.apply_labels_batch.assert_not_called()
+    service.dataset.apply_labels_legacy.assert_not_called()
 
 
 def test_apply_interpretation_filters_sequence_labels_to_selected_event_codes(
@@ -1129,6 +1210,7 @@ def test_apply_interpretation_records_internal_event_epoch_hint(
 
 def test_apply_interpretation_applies_reviewed_sequence_label_carriers_by_stem(
     tmp_path,
+    monkeypatch,
 ):
     from scipy.io import savemat
 
@@ -1142,6 +1224,13 @@ def test_apply_interpretation_applies_reviewed_sequence_label_carriers_by_stem(
     eeg_2.write_bytes(b"not loaded during scan")
     savemat(label_1, {"classlabel": np.array([1, 2])})
     savemat(label_2, {"classlabel": np.array([2, 1])})
+    _patch_internal_events(
+        monkeypatch,
+        {
+            "A01T.gdf": {"768": {"count": 2, "description": "768"}},
+            "B01T.gdf": {"768": {"count": 2, "description": "768"}},
+        },
+    )
     service = ApplicationService(Study())
     raw_1 = _raw_mock()
     raw_1.get_filepath.return_value = str(eeg_1)
@@ -1160,13 +1249,15 @@ def test_apply_interpretation_applies_reviewed_sequence_label_carriers_by_stem(
                 "label_carrier_choices": {
                     str(label_1): {
                         "label_field": "classlabel",
-                        "anchor": "trial order",
+                        "target_event_codes": ["768"],
+                        "placement_method": "eeg_event",
                         "time_model": "trial_order",
                         "granularity": "trial",
                     },
                     str(label_2): {
                         "label_field": "classlabel",
-                        "anchor": "trial order",
+                        "target_event_codes": ["768"],
+                        "placement_method": "eeg_event",
                         "time_model": "trial_order",
                         "granularity": "trial",
                     },
@@ -1193,7 +1284,10 @@ def test_apply_interpretation_applies_reviewed_sequence_label_carriers_by_stem(
     }
 
 
-def test_apply_interpretation_skips_ambiguous_multi_file_sequence_labels(tmp_path):
+def test_apply_interpretation_blocks_ambiguous_multi_file_sequence_labels(
+    tmp_path,
+    monkeypatch,
+):
     from scipy.io import savemat
 
     source_dir = tmp_path / "ambiguous_sequence_multi"
@@ -1204,6 +1298,13 @@ def test_apply_interpretation_skips_ambiguous_multi_file_sequence_labels(tmp_pat
     eeg_1.write_bytes(b"not loaded during scan")
     eeg_2.write_bytes(b"not loaded during scan")
     savemat(labels, {"classlabel": np.array([1, 2, 1, 2])})
+    _patch_internal_events(
+        monkeypatch,
+        {
+            "A01T.gdf": {"768": {"count": 2, "description": "768"}},
+            "B01T.gdf": {"768": {"count": 2, "description": "768"}},
+        },
+    )
     service = ApplicationService(Study())
     raw_1 = _raw_mock()
     raw_1.get_filepath.return_value = str(eeg_1)
@@ -1220,7 +1321,8 @@ def test_apply_interpretation_skips_ambiguous_multi_file_sequence_labels(tmp_pat
                 "label_carrier_choices": {
                     str(labels): {
                         "label_field": "classlabel",
-                        "anchor": "trial order",
+                        "target_event_codes": ["768"],
+                        "placement_method": "eeg_event",
                         "time_model": "trial_order",
                         "granularity": "trial",
                     },
@@ -1232,7 +1334,8 @@ def test_apply_interpretation_skips_ambiguous_multi_file_sequence_labels(tmp_pat
     service.execute(ValidateInterpretationCommand())
     apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
 
-    assert apply_result.ok is True
+    assert apply_result.failed is True
+    assert apply_result.error_type == ErrorType.VALIDATION
     assert apply_result.diagnostics["label_apply"]["status"] == "skipped"
     assert (
         "No reviewed label carrier uniquely matches"
@@ -1243,6 +1346,7 @@ def test_apply_interpretation_skips_ambiguous_multi_file_sequence_labels(tmp_pat
 
 def test_apply_interpretation_applies_manually_mapped_generic_sequence_label(
     tmp_path,
+    monkeypatch,
 ):
     from scipy.io import savemat
 
@@ -1254,6 +1358,13 @@ def test_apply_interpretation_applies_manually_mapped_generic_sequence_label(
     eeg_1.write_bytes(b"not loaded during scan")
     eeg_2.write_bytes(b"not loaded during scan")
     savemat(labels, {"classlabel": np.array([1, 2])})
+    _patch_internal_events(
+        monkeypatch,
+        {
+            "A01T.gdf": {"768": {"count": 2, "description": "768"}},
+            "B01T.gdf": {"768": {"count": 2, "description": "768"}},
+        },
+    )
     service = ApplicationService(Study())
     raw_1 = _raw_mock()
     raw_1.get_filepath.return_value = str(eeg_1)
@@ -1273,7 +1384,8 @@ def test_apply_interpretation_applies_manually_mapped_generic_sequence_label(
                     str(labels): {
                         "target_file": str(eeg_1),
                         "label_field": "classlabel",
-                        "anchor": "trial order",
+                        "target_event_codes": ["768"],
+                        "placement_method": "eeg_event",
                         "time_model": "trial_order",
                         "granularity": "trial",
                     },
@@ -2044,6 +2156,21 @@ def test_set_montage_preprocess_operation_requires_ui_confirmation():
     assert result.failed is True
     assert result.error_type == ErrorType.CONFIRMATION_REQUIRED
     assert "app confirmation path" in result.message
+
+
+def _patch_internal_events(
+    monkeypatch: Any,
+    events_by_file: dict[str, dict[str, dict[str, Any]]],
+) -> None:
+    def read_events(path: str) -> dict[str, Any]:
+        name = Path(str(path)).name
+        return {"events": events_by_file.get(name, events_by_file.get("*", {}))}
+
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        read_events,
+    )
 
 
 def _raw_mock():

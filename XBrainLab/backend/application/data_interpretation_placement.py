@@ -80,7 +80,11 @@ def _eeg_event_order_review(
             }
         )
         return review
-    event_counts = [_event_count(event) for _code, event in events if event is not None]
+    event_counts = [
+        _event_count_for_carrier(event, carrier)
+        for _code, event in events
+        if event is not None
+    ]
     event_count = (
         sum(value for value in event_counts if value is not None)
         if all(value is not None for value in event_counts)
@@ -469,6 +473,42 @@ def _event_count(row: dict[str, Any]) -> int | None:
         if value is not None:
             return value
     return None
+
+
+def _event_count_for_carrier(
+    row: dict[str, Any],
+    carrier: dict[str, Any],
+) -> int | None:
+    """Use per-file counts when a label carrier maps to one EEG file."""
+    file_counts = _dict(row.get("file_counts"))
+    if not file_counts:
+        return _event_count(row)
+    target_name = _target_file_name_for_carrier(carrier, file_counts)
+    if target_name:
+        value = _positive_int(file_counts.get(target_name))
+        if value is not None:
+            return value
+    return _event_count(row)
+
+
+def _target_file_name_for_carrier(
+    carrier: dict[str, Any],
+    file_counts: dict[str, Any],
+) -> str:
+    explicit = str(carrier.get("selected_target_file") or "").strip()
+    if explicit:
+        name = Path(explicit).name
+        if name in file_counts:
+            return name
+    label_stem = Path(
+        str(carrier.get("path") or carrier.get("name") or ""),
+    ).stem.casefold()
+    if not label_stem:
+        return ""
+    matches = [
+        name for name in file_counts if Path(str(name)).stem.casefold() == label_stem
+    ]
+    return matches[0] if len(matches) == 1 else ""
 
 
 def _excluded_event_count(rows: list[dict[str, Any]]) -> int:

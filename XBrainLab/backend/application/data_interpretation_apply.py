@@ -92,6 +92,18 @@ class DataInterpretationApplyService:
         if not candidate.label_carrier_plan:
             return {"status": "not_applicable", "reason": "No label carrier plan."}
 
+        not_ready = self._not_ready_label_plans(candidate.label_carrier_plan)
+        if not_ready:
+            return {
+                "status": "failed",
+                "reason": (
+                    "Label placement is not ready: "
+                    + "; ".join(self._label_plan_name(item) for item in not_ready)
+                    + "."
+                ),
+                "success_count": 0,
+            }
+
         timestamp_applicable = [
             item
             for item in candidate.label_carrier_plan
@@ -119,8 +131,29 @@ class DataInterpretationApplyService:
             and not event_code_applicable
         ):
             return {
-                "status": "skipped",
+                "status": "failed",
                 "reason": ("No reviewed label carrier is safe to apply automatically."),
+                "success_count": 0,
+            }
+
+        applicable_groups = [
+            group
+            for group in (
+                timestamp_applicable,
+                anchored_applicable,
+                event_code_applicable,
+                sequence_applicable,
+            )
+            if group
+        ]
+        if len(applicable_groups) > 1:
+            return {
+                "status": "failed",
+                "reason": (
+                    "Reviewed label carriers use mixed placement modes. "
+                    "Import one placement mode at a time or remap labels first."
+                ),
+                "success_count": 0,
             }
 
         applicable = (
@@ -251,6 +284,30 @@ class DataInterpretationApplyService:
             "label_carrier": label_carriers[0],
             "label_carriers": label_carriers,
         }
+
+    @staticmethod
+    def _not_ready_label_plans(
+        label_plans: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        result: list[dict[str, Any]] = []
+        for plan in label_plans:
+            review = plan.get("placement_review")
+            status = (
+                str(review.get("status") or "").strip()
+                if isinstance(review, dict)
+                else ""
+            )
+            if status != "ready":
+                result.append(plan)
+        return result
+
+    @staticmethod
+    def _label_plan_name(plan: dict[str, Any]) -> str:
+        name = str(plan.get("name") or "").strip()
+        if name:
+            return name
+        path = str(plan.get("path") or "").strip()
+        return Path(path).name if path else "unnamed label carrier"
 
     def _apply_reviewed_event_code_label_map(
         self,

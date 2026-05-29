@@ -136,7 +136,11 @@ class DataInterpretationCommandService:
         if decision is None:
             raise PreconditionError("Validate an interpretation before applying it.")
         self._ensure_candidate_can_apply(command, decision)
-        count, errors = self._replace_active_raw_data(candidate.selected_eeg_files)
+        snapshot = self._snapshot_raw_state()
+        count, errors = self._replace_active_raw_data(
+            candidate.selected_eeg_files,
+            snapshot=snapshot,
+        )
         loaded_files = self._loaded_filepaths() or list(candidate.selected_eeg_files)
         interpretation_id = self.state.next_id("interpretation")
         applied = self._build_applied_interpretation(
@@ -153,6 +157,19 @@ class DataInterpretationCommandService:
         internal_epoch_hints = self.apply_service.record_internal_epoch_hints(
             candidate,
         )
+        if self._label_apply_blocks_interpretation(candidate, label_apply):
+            self._restore_raw_state(snapshot)
+            self.state.discard_applied(interpretation_id)
+            raise ApplicationError(
+                message=(
+                    "Failed to apply interpretation without changing the active "
+                    "dataset: "
+                    + str(label_apply.get("reason") or "label application failed")
+                ),
+                error_type=ErrorType.VALIDATION,
+                recoverable=True,
+                diagnostics={"label_apply": dict(label_apply)},
+            )
         applied_payload = self.state.resolve_applied_interpretation().to_dict()
         label_message = ""
         if label_apply.get("status") == "applied":
@@ -207,10 +224,14 @@ class DataInterpretationCommandService:
                 "Confirm this interpretation before applying it.",
             )
 
-    def _replace_active_raw_data(self, paths: list[str]) -> tuple[int, list[str]]:
+    def _replace_active_raw_data(
+        self,
+        paths: list[str],
+        *,
+        snapshot: dict[str, Any],
+    ) -> tuple[int, list[str]]:
         """Replace active raw data before importing reviewed interpretation files."""
         expected_count = len(paths)
-        snapshot = self._snapshot_raw_state()
         loaded_files = list(self.dataset.get_loaded_data_list() or [])
         clean_dataset = getattr(self.dataset, "clean_dataset", None)
         if loaded_files and callable(clean_dataset):
@@ -234,6 +255,17 @@ class DataInterpretationCommandService:
                 diagnostics=diagnostics,
             )
         return count, errors
+
+    @staticmethod
+    def _label_apply_blocks_interpretation(
+        candidate: InterpretationCandidate,
+        label_apply: dict[str, Any],
+    ) -> bool:
+        if not candidate.label_carrier_plan:
+            return False
+        if bool(candidate.choices.get("skip_labels")):
+            return False
+        return str(label_apply.get("status") or "") != "applied"
 
     def _has_active_raw_data(self) -> bool:
         return bool(list(self.dataset.get_loaded_data_list() or []))
