@@ -930,40 +930,42 @@ class TestDatasetActionHandler:
             "confirmed": False,
             "save_recipe": False,
         }
-        async_applies: list[ApplyInterpretationCommand] = []
-
-        def fake_execute(_panel, command):
-            if isinstance(command, ScanSourceCommand):
-                return _command_result(scan_result={})
-            if isinstance(command, PreviewInterpretationCommand):
-                return _command_result(
-                    preview={},
-                    candidate={"candidate_id": "candidate-1"},
-                )
-            if isinstance(command, ValidateInterpretationCommand):
-                return _command_result(
-                    validation_decision={
-                        "candidate_id": "candidate-1",
-                        "decision": "safe",
-                        "required_confirmations": [],
-                        "blocked_reasons": [],
-                    },
-                )
-            if isinstance(command, ApplyInterpretationCommand):
-                raise AssertionError("apply should run through async command boundary")
-            raise AssertionError(f"unexpected command: {command!r}")
+        async_commands = []
 
         def fake_async(_panel, command, *, on_result, **_kwargs):
-            assert isinstance(command, ApplyInterpretationCommand)
-            async_applies.append(command)
-            on_result(_command_result(applied_interpretation={}))
-            return True
+            async_commands.append(command)
+            if isinstance(command, ScanSourceCommand):
+                on_result(_command_result(scan_result={}))
+                return True
+            if isinstance(command, PreviewInterpretationCommand):
+                on_result(
+                    _command_result(
+                        preview={},
+                        candidate={"candidate_id": "candidate-1"},
+                    )
+                )
+                return True
+            if isinstance(command, ValidateInterpretationCommand):
+                on_result(
+                    _command_result(
+                        validation_decision={
+                            "candidate_id": "candidate-1",
+                            "decision": "safe",
+                            "required_confirmations": [],
+                            "blocked_reasons": [],
+                        },
+                    )
+                )
+                return True
+            if isinstance(command, ApplyInterpretationCommand):
+                on_result(_command_result(applied_interpretation={}))
+                return True
+            raise AssertionError(f"unexpected command: {command!r}")
 
         with (
             patch(
                 "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-                side_effect=fake_execute,
-            ),
+            ) as mock_execute,
             patch(
                 "XBrainLab.ui.panels.dataset.actions.execute_application_command_async",
                 side_effect=fake_async,
@@ -971,9 +973,16 @@ class TestDatasetActionHandler:
         ):
             handler.import_data()
 
-        assert async_applies
-        assert async_applies[0].candidate_id == "candidate-1"
-        assert async_applies[0].confirmed is False
+        mock_execute.assert_not_called()
+        assert [type(command) for command in async_commands] == [
+            ScanSourceCommand,
+            PreviewInterpretationCommand,
+            ValidateInterpretationCommand,
+            ApplyInterpretationCommand,
+        ]
+        apply_command = async_commands[-1]
+        assert apply_command.candidate_id == "candidate-1"
+        assert apply_command.confirmed is False
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
