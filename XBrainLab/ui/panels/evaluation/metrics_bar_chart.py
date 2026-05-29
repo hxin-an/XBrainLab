@@ -137,20 +137,26 @@ class MetricsBarChartWidget(QWidget):
                 color=Theme.CHART_TERTIARY,
             )
 
-            # Apply Theme
-            Theme.apply_matplotlib_dark_theme(self.fig, ax=self.ax)
-
             # Styling
             self.ax.set_ylabel("Score")
             self.ax.set_title("Per-Class Metrics")
             self.ax.set_xticks(x)
             self.ax.set_xticklabels([f"Class {c}" for c in classes])
-            self.ax.tick_params(axis="x", colors=Theme.TEXT_PRIMARY)
-            self.ax.tick_params(axis="y", colors=Theme.TEXT_PRIMARY)
             self.ax.set_ylim(0, 1.1)
 
             # Legend
-            self.ax.legend(facecolor=Theme.BACKGROUND_MID, edgecolor=Theme.TEXT_MUTED)
+            legend = self.ax.legend(
+                facecolor=Theme.BACKGROUND_MID,
+                edgecolor=Theme.TEXT_MUTED,
+            )
+
+            # Apply theme after labels and legend are created. Matplotlib creates
+            # those text objects with black defaults if the theme is applied first.
+            Theme.apply_matplotlib_dark_theme(self.fig, ax=self.ax)
+            self.ax.tick_params(axis="x", colors=Theme.TEXT_PRIMARY)
+            self.ax.tick_params(axis="y", colors=Theme.TEXT_PRIMARY)
+            for text in legend.get_texts():
+                text.set_color(Theme.TEXT_PRIMARY)
 
             # Grid
             self.ax.grid(

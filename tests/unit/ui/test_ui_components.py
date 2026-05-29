@@ -190,6 +190,31 @@ class TestMetricsBarChart:
 
         error_logger.assert_not_called()
 
+    def test_update_plot_styles_per_class_metric_text_for_dark_theme(self, qtbot):
+        from XBrainLab.ui.panels.evaluation.metrics_bar_chart import (
+            MetricsBarChartWidget,
+        )
+        from XBrainLab.ui.styles.theme import Theme
+
+        w = MetricsBarChartWidget()
+        qtbot.addWidget(w)
+
+        w.update_plot(
+            {
+                0: {"precision": 0.8, "recall": 0.7, "f1-score": 0.75},
+                1: {"precision": 0.6, "recall": 0.5, "f1-score": 0.55},
+            },
+        )
+
+        legend = w.ax.legend_
+        assert legend is not None
+        assert {text.get_color() for text in legend.get_texts()} == {Theme.TEXT_PRIMARY}
+        assert w.ax.title.get_color() == Theme.TEXT_MUTED
+        assert w.ax.yaxis.label.get_color() == Theme.TEXT_MUTED
+        assert all(
+            label.get_color() == Theme.TEXT_PRIMARY for label in w.ax.get_xticklabels()
+        )
+
 
 # ============ History Table ============
 
