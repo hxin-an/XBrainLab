@@ -225,6 +225,10 @@ Study.train(interact=False/True)
 - training plan queue
 - progress text
 
+Training completion now writes metric-only evaluation by default. Saliency maps
+are computed only after `saliency` parameters are explicitly configured, so a
+normal training run does not silently run SmoothGrad / VarGrad work at the end.
+
 目前 tiny smoke 和 checked-in real-data smoke 都會 patch file outputs，例如 `torch.save`、`numpy.savetxt`、`matplotlib.pyplot.savefig`，避免測試污染 workspace。
 
 ## Evidence Matrix

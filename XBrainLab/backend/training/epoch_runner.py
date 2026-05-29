@@ -141,16 +141,21 @@ class EpochRunner:
         for inputs, labels in train_loader:
             if self._interrupt.is_set():
                 break
+            batch_inputs, batch_labels = Evaluator._move_batch_to_model_device(
+                model,
+                inputs,
+                labels,
+            )
             optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
+            outputs = model(batch_inputs)
+            loss = criterion(outputs, batch_labels)
             loss.backward()
             optimizer.step()
 
-            correct += (outputs.argmax(axis=1) == labels).float().sum().item()
-            y_true_parts.append(labels.detach().cpu())
+            correct += (outputs.argmax(axis=1) == batch_labels).float().sum().item()
+            y_true_parts.append(batch_labels.detach().cpu())
             y_pred_parts.append(outputs.detach().cpu())
-            total_count += len(labels)
+            total_count += len(batch_labels)
             running_loss += loss.item()
 
         y_true = torch.cat(y_true_parts) if y_true_parts else None

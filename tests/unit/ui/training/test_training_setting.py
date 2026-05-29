@@ -24,9 +24,15 @@ class TestTrainingSetting:
         mock_controller.get_training_option.return_value = None
 
         # Use actual torch.optim.Adam
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes"
-        ) as mock_get_classes:
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes"
+            ) as mock_get_classes,
+            patch(
+                "XBrainLab.ui.dialogs.training.training_setting_dialog.get_device_count",
+                return_value=0,
+            ),
+        ):
             mock_get_classes.return_value = {"Adam": torch.optim.Adam}
 
             window = TrainingSettingDialog(None, mock_controller)
@@ -39,7 +45,7 @@ class TestTrainingSetting:
         assert window.epoch_entry.text() == "10"
         assert window.bs_entry.text() == "32"
         assert window.lr_entry.text() == "0.001"
-        assert window.checkpoint_entry.text() == "1"
+        assert window.checkpoint_entry.text() == "0"
         assert window.repeat_entry.text() == "1"
         assert window.output_dir == "./output"
         assert window.optim == torch.optim.Adam  # Real Adam class
@@ -159,9 +165,15 @@ class TestTrainingSetting:
         )
         monkeypatch.setattr(controller, "get_training_option", get_training_option)
 
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
-            return_value={"Adam": torch.optim.Adam},
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
+                return_value={"Adam": torch.optim.Adam},
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.training.training_setting_dialog.get_device_count",
+                return_value=0,
+            ),
         ):
             window = TrainingSettingDialog(parent, controller)
             qtbot.addWidget(window)
@@ -173,6 +185,28 @@ class TestTrainingSetting:
         assert window.epoch_entry.text() == "10"
         assert window.bs_entry.text() == "32"
         assert window.lr_entry.text() == "0.001"
+
+    def test_defaults_to_gpu_when_cuda_device_exists(self, qtbot):
+        mock_controller = MagicMock()
+        mock_controller.get_training_option.return_value = None
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
+                return_value={"Adam": torch.optim.Adam},
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.training.training_setting_dialog.get_device_count",
+                return_value=1,
+            ),
+            patch("torch.cuda.get_device_name", return_value="Test GPU"),
+        ):
+            window = TrainingSettingDialog(None, mock_controller)
+            qtbot.addWidget(window)
+
+        assert window.use_cpu is False
+        assert window.gpu_idx == 0
+        assert window.dev_label is not None
+        assert "0 - Test GPU" in window.dev_label.text()
 
 
 class TestSetOptimizer:

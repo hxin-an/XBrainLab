@@ -3,7 +3,6 @@
 from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
-    QMessageBox,
     QTabWidget,
     QTextEdit,
     QVBoxLayout,
@@ -363,7 +362,7 @@ class TrainingPanel(BasePanel):
 
         if not self.training_completed_shown:
             self.training_completed_shown = True
-            QMessageBox.information(self, "Done", "All training jobs finished.")
+            self.log_text.append("All training jobs finished.")
 
     def update_info(self):
         """Delegate info-panel updates to the sidebar."""

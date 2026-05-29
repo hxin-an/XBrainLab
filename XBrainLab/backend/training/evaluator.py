@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any, ClassVar
 
 import numpy as np
 import torch
@@ -15,6 +16,44 @@ from .record import EvalRecord, RecordKey
 
 class Evaluator:
     """Helper class for model evaluation, testing, and metric computation."""
+
+    _DEFAULT_NOISE_TUNNEL_PARAMS: ClassVar[dict[str, Any]] = {
+        "nt_samples": 5,
+        "nt_samples_batch_size": None,
+        "stdevs": 1.0,
+    }
+
+    @staticmethod
+    def _model_device(model: torch.nn.Module) -> Any | None:
+        try:
+            return next(model.parameters()).device
+        except (AttributeError, StopIteration, TypeError):
+            return None
+
+    @staticmethod
+    def _move_batch_to_model_device(
+        model: torch.nn.Module,
+        inputs: torch.Tensor,
+        labels: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        device = Evaluator._model_device(model)
+        if device is None:
+            return inputs, labels
+        return (
+            inputs.to(device, non_blocking=True),
+            labels.to(device, non_blocking=True),
+        )
+
+    @staticmethod
+    def _noise_tunnel_params(
+        saliency_params: dict,
+        method: str,
+    ) -> dict[str, Any]:
+        params = dict(Evaluator._DEFAULT_NOISE_TUNNEL_PARAMS)
+        value = saliency_params.get(method)
+        if isinstance(value, dict):
+            params.update(value)
+        return params
 
     @staticmethod
     def compute_auc(y_true, y_pred, multi_class="ovr") -> float:
@@ -112,14 +151,19 @@ class Evaluator:
 
         with torch.no_grad():
             for inputs, labels in data_loader:
-                outputs = model(inputs)
-                loss = criterion(outputs, labels)
+                batch_inputs, batch_labels = Evaluator._move_batch_to_model_device(
+                    model,
+                    inputs,
+                    labels,
+                )
+                outputs = model(batch_inputs)
+                loss = criterion(outputs, batch_labels)
                 running_loss += loss.item()
 
-                correct += (outputs.argmax(axis=1) == labels).float().sum().item()
-                total_count += len(labels)
+                correct += (outputs.argmax(axis=1) == batch_labels).float().sum().item()
+                total_count += len(batch_labels)
 
-                y_true_parts.append(labels.detach().cpu())
+                y_true_parts.append(batch_labels.detach().cpu())
                 y_pred_parts.append(outputs.detach().cpu())
 
         y_true = torch.cat(y_true_parts) if y_true_parts else None
@@ -135,6 +179,53 @@ class Evaluator:
         auc = Evaluator.compute_auc(y_true, y_pred)
 
         return {RecordKey.ACC: acc, RecordKey.AUC: auc, RecordKey.LOSS: running_loss}
+
+    @staticmethod
+    def evaluate(
+        model: torch.nn.Module,
+        data_loader: torch_data.DataLoader,
+    ) -> EvalRecord:
+        """Evaluate model outputs without saliency attribution.
+
+        This is the default training-completion path. Saliency maps are
+        computed only after the user explicitly configures saliency analysis.
+        """
+        model.eval()
+
+        output_list = []
+        label_list = []
+
+        with torch.no_grad():
+            for inputs, labels in data_loader:
+                batch_inputs, batch_labels = Evaluator._move_batch_to_model_device(
+                    model,
+                    inputs,
+                    labels,
+                )
+                outputs = model(batch_inputs)
+                output_list.append(outputs.detach().cpu().numpy())
+                label_list.append(batch_labels.detach().cpu().numpy())
+
+        if not output_list or not label_list:
+            return EvalRecord(
+                np.array([], dtype=int),
+                np.empty((0, 0)),
+                {},
+                {},
+                {},
+                {},
+                {},
+            )
+
+        return EvalRecord(
+            np.concatenate(label_list),
+            np.concatenate(output_list),
+            {},
+            {},
+            {},
+            {},
+            {},
+        )
 
     @staticmethod
     def evaluate_with_saliency(
@@ -174,16 +265,22 @@ class Evaluator:
         noise_tunnel_inst = NoiseTunnel(saliency_inst)
 
         for inputs, labels in data_loader:
-            outputs = model(inputs)
+            batch_inputs, batch_labels = Evaluator._move_batch_to_model_device(
+                model,
+                inputs,
+                labels,
+            )
+            outputs = model(batch_inputs)
 
             output_list.append(outputs.detach().cpu().numpy())
-            label_list.append(labels.detach().cpu().numpy())
+            label_list.append(batch_labels.detach().cpu().numpy())
 
-            inputs.requires_grad = True
+            batch_inputs.requires_grad_(True)
+            target_labels = label_list[-1].tolist()
             batch_gradient = (
                 saliency_inst.attribute(
-                    inputs,
-                    target=label_list[-1].tolist(),
+                    batch_inputs,
+                    target=target_labels,
                     abs=False,
                 )
                 .detach()
@@ -193,14 +290,14 @@ class Evaluator:
 
             gradient_list.append(batch_gradient)
             gradient_input_list.append(
-                np.multiply(inputs.detach().cpu().numpy(), batch_gradient),
+                np.multiply(batch_inputs.detach().cpu().numpy(), batch_gradient),
             )
             smoothgrad_list.append(
                 noise_tunnel_inst.attribute(
-                    inputs,
-                    target=label_list[-1].tolist(),
+                    batch_inputs,
+                    target=target_labels,
                     nt_type="smoothgrad",
-                    **saliency_params["SmoothGrad"],
+                    **Evaluator._noise_tunnel_params(saliency_params, "SmoothGrad"),
                 )
                 .detach()
                 .cpu()
@@ -208,10 +305,13 @@ class Evaluator:
             )
             smoothgrad_sq_list.append(
                 noise_tunnel_inst.attribute(
-                    inputs,
-                    target=label_list[-1].tolist(),
+                    batch_inputs,
+                    target=target_labels,
                     nt_type="smoothgrad_sq",
-                    **saliency_params["SmoothGrad_Squared"],
+                    **Evaluator._noise_tunnel_params(
+                        saliency_params,
+                        "SmoothGrad_Squared",
+                    ),
                 )
                 .detach()
                 .cpu()
@@ -219,10 +319,10 @@ class Evaluator:
             )
             vargrad_list.append(
                 noise_tunnel_inst.attribute(
-                    inputs,
-                    target=label_list[-1].tolist(),
+                    batch_inputs,
+                    target=target_labels,
                     nt_type="vargrad",
-                    **saliency_params["VarGrad"],
+                    **Evaluator._noise_tunnel_params(saliency_params, "VarGrad"),
                 )
                 .detach()
                 .cpu()

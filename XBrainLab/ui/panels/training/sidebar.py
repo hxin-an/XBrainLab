@@ -738,22 +738,9 @@ class TrainingSidebar(QWidget):
                 )
                 return
             if self._should_start_training(train_capability):
-                if train_capability is not None and (
-                    train_capability.requires_confirmation
-                    or train_capability.confirmation_required
-                ):
-                    reply = QMessageBox.question(
-                        self,
-                        "Start Training",
-                        (
-                            "Training can take time and use CPU/GPU resources. "
-                            "Start training now?"
-                        ),
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                        QMessageBox.StandardButton.No,
-                    )
-                    if reply == QMessageBox.StandardButton.No:
-                        return
+                # A direct button click is the user's confirmation for the
+                # desktop UI. The backend command remains confirmed so agent
+                # and headless paths still honor the command policy boundary.
                 result = execute_application_command(self, TrainCommand(confirmed=True))
                 if result is None:
                     if not self._legacy_start_training():

@@ -2031,11 +2031,13 @@ class TestTrainingSidebar:
 
         sidebar.panel.controller.start_training.assert_called_once()
 
-    def test_start_training_requires_confirmation_for_long_running_command(
+    def test_start_training_button_click_confirms_long_running_command(
         self,
         sidebar,
     ):
         from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.application import TrainCommand
 
         capability = SimpleNamespace(
             enabled=True,
@@ -2056,12 +2058,14 @@ class TestTrainingSidebar:
             ) as mock_question,
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=_command_result(),
             ) as mock_execute,
         ):
             sidebar.start_training_ui_action()
 
-        mock_question.assert_called_once()
-        mock_execute.assert_not_called()
+        mock_question.assert_not_called()
+        assert isinstance(mock_execute.call_args.args[1], TrainCommand)
+        assert mock_execute.call_args.args[1].confirmed is True
         sidebar.panel.controller.start_training.assert_not_called()
 
     def test_start_training_service_success_does_not_fallback_to_controller(

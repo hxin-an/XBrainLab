@@ -16,7 +16,6 @@ from XBrainLab.backend.utils.logger import logger
 # Actually, maintain clean imports:
 from ..dataset import Dataset
 from ..utils import set_seed, validate_type
-from ..visualization import supported_saliency_methods
 from .evaluator import Evaluator
 from .model_holder import ModelHolder
 from .option import TrainingEvaluation, TrainingOption
@@ -33,7 +32,8 @@ class SharedMemoryDataset(torch_data.Dataset):
         data: Full data array shared across all splits.
         labels: Full label array shared across all splits.
         indices: Array of indices into ``data`` and ``labels`` for this split.
-        device: Target PyTorch device string (e.g., ``'cpu'`` or ``'cuda:0'``).
+        device: Preferred training device string. Samples stay on CPU here;
+            full batches are moved by the trainer to avoid many tiny GPU copies.
 
     """
 
@@ -78,9 +78,8 @@ class SharedMemoryDataset(torch_data.Dataset):
 
         """
         real_idx = self.indices[idx]
-        # Data is transferred to device only when accessed (saves VRAM)
-        x = torch.from_numpy(self.data[real_idx]).float().to(self.device)
-        y = torch.tensor(self.labels[real_idx]).long().to(self.device)
+        x = torch.from_numpy(self.data[real_idx]).float()
+        y = torch.tensor(self.labels[real_idx]).long()
         return x, y
 
 
@@ -114,7 +113,12 @@ def to_holder(
     # and to load to GPU on-the-fly (saves VRAM).
     dataset = SharedMemoryDataset(data, labels, indices, dev)
 
-    dataloader = torch_data.DataLoader(dataset, batch_size=bs, shuffle=shuffle)
+    dataloader = torch_data.DataLoader(
+        dataset,
+        batch_size=bs,
+        shuffle=shuffle,
+        pin_memory=dev.startswith("cuda"),
+    )
     return dataloader
 
 
@@ -179,7 +183,7 @@ class TrainingPlanHolder:
             dataset: Dataset providing training, validation, and test splits.
             option: Training configuration options.
             saliency_params: Parameters for saliency computation methods.
-                If ``None`` or empty, default parameters are used.
+                If ``None`` or empty, training performs metric evaluation only.
 
         Raises:
             ValueError: If the dataset, option, or model holder is invalid,
@@ -190,11 +194,7 @@ class TrainingPlanHolder:
         self.dataset = dataset
         self.option = option
 
-        if not saliency_params:
-            logger.warning("No saliency parameter is set, using default parameters.")
-            params = {"nt_samples": 5, "nt_samples_batch_size": None, "stdevs": 1.0}
-            saliency_params = dict.fromkeys(supported_saliency_methods, params)
-        self.saliency_params: dict = saliency_params
+        self.saliency_params: dict = dict(saliency_params or {})
 
         self.check_data()
 
@@ -444,11 +444,14 @@ class TrainingPlanHolder:
                     target.eval()
 
             if target and target_loader:
-                eval_record = Evaluator.evaluate_with_saliency(
-                    target,
-                    target_loader,
-                    self.saliency_params,
-                )
+                if self.saliency_params:
+                    eval_record = Evaluator.evaluate_with_saliency(
+                        target,
+                        target_loader,
+                        self.saliency_params,
+                    )
+                else:
+                    eval_record = Evaluator.evaluate(target, target_loader)
                 train_record.set_eval_record(eval_record)
 
         train_record.export_checkpoint()
@@ -547,14 +550,15 @@ class TrainingPlanHolder:
         return self.saliency_params
 
     # setter
-    def set_saliency_params(self, saliency_params: dict) -> None:
+    def set_saliency_params(self, saliency_params: dict | None) -> None:
         """Set new saliency parameters and re-evaluate all finished repeats.
 
         Args:
-            saliency_params: New dictionary of saliency method parameters.
+            saliency_params: New dictionary of saliency method parameters. Empty
+                values keep finished records on metric-only evaluation.
 
         """
-        self.saliency_params = saliency_params
+        self.saliency_params = dict(saliency_params or {})
         _, val_loader, test_loader = self.get_loader()
         for i in range(self.option.repeat_num):
             train_record = self.train_record_list[i]
@@ -564,11 +568,14 @@ class TrainingPlanHolder:
                 test_loader,
             )
             if target is not None and target_loader is not None:  # model is trained
-                eval_record = Evaluator.evaluate_with_saliency(
-                    target,
-                    target_loader,
-                    self.saliency_params,
-                )
+                if self.saliency_params:
+                    eval_record = Evaluator.evaluate_with_saliency(
+                        target,
+                        target_loader,
+                        self.saliency_params,
+                    )
+                else:
+                    eval_record = Evaluator.evaluate(target, target_loader)
                 self.train_record_list[i].set_eval_record(eval_record)
 
     # status

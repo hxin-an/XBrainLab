@@ -204,6 +204,22 @@ def test_training_plan_holder_get_loader(base_holder):
         torch.testing.assert_close(test_data[1], train_data[1])
 
 
+def test_training_plan_holder_keeps_saliency_empty_until_configured(
+    export_mocker,
+    model_holder,
+    dataset,
+    training_option,
+):
+    holder = TrainingPlanHolder(
+        model_holder=model_holder,
+        dataset=dataset,
+        option=training_option,
+        saliency_params=None,
+    )
+
+    assert holder.get_saliency_params() == {}
+
+
 @pytest.mark.parametrize(
     "val_loader, test_loader, expected_loader",
     [
@@ -644,6 +660,55 @@ def test_test_model_metrics():
     assert result[RecordKey.ACC] == 75.0
     assert RecordKey.AUC in result
     assert RecordKey.LOSS in result
+
+
+def test_train_one_repeat_uses_basic_evaluation_without_saliency(base_holder):
+    base_holder.option.evaluation_option = TrainingEvaluation.LAST_EPOCH
+    record = base_holder.get_plans()[0]
+    record.epoch = base_holder.option.epoch
+    record.eval_record = None
+
+    sentinel = object()
+    with (
+        patch.object(Evaluator, "evaluate", return_value=sentinel) as mock_evaluate,
+        patch.object(Evaluator, "evaluate_with_saliency") as mock_saliency,
+        patch.object(record, "export_checkpoint"),
+    ):
+        base_holder.train_one_repeat(record)
+
+    mock_evaluate.assert_called_once()
+    mock_saliency.assert_not_called()
+    assert record.eval_record is sentinel
+
+
+def test_train_one_repeat_uses_saliency_only_when_configured(base_holder):
+    base_holder.option.evaluation_option = TrainingEvaluation.LAST_EPOCH
+    base_holder.set_saliency_params(
+        {
+            "SmoothGrad": {"nt_samples": 1},
+            "SmoothGrad_Squared": {"nt_samples": 1},
+            "VarGrad": {"nt_samples": 1},
+        }
+    )
+    record = base_holder.get_plans()[0]
+    record.epoch = base_holder.option.epoch
+    record.eval_record = None
+
+    sentinel = object()
+    with (
+        patch.object(Evaluator, "evaluate") as mock_evaluate,
+        patch.object(
+            Evaluator,
+            "evaluate_with_saliency",
+            return_value=sentinel,
+        ) as mock_saliency,
+        patch.object(record, "export_checkpoint"),
+    ):
+        base_holder.train_one_repeat(record)
+
+    mock_evaluate.assert_not_called()
+    mock_saliency.assert_called_once()
+    assert record.eval_record is sentinel
 
 
 def test_training_plan_holder_init_error(

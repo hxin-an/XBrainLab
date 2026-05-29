@@ -26,6 +26,7 @@ from XBrainLab.backend.training import (
     parse_optim_name,
 )
 from XBrainLab.backend.training.utils import (
+    get_device_count,
     get_optimizer_classes,
 )
 from XBrainLab.ui.application_capabilities import (
@@ -70,8 +71,7 @@ class TrainingSettingDialog(BaseDialog):
         self.optim_classes = get_optimizer_classes()
         self.optim = self.optim_classes.get("Adam")
         self.optim_params: dict[str, Any] = {}
-        self.use_cpu = True
-        self.gpu_idx = None
+        self.use_cpu, self.gpu_idx = self._default_device()
 
         # UI Elements (Init them to None)
         self.epoch_entry = None
@@ -207,6 +207,16 @@ class TrainingSettingDialog(BaseDialog):
         except ValueError:
             return 0
 
+    @staticmethod
+    def _default_device() -> tuple[bool, int | None]:
+        try:
+            count = get_device_count()
+        except Exception:
+            return True, None
+        if count > 0:
+            return False, count - 1
+        return True, None
+
     def init_ui(self):
         """Initialize the dialog UI with training parameter controls."""
         layout = QVBoxLayout(self)
@@ -249,7 +259,7 @@ class TrainingSettingDialog(BaseDialog):
         out_layout.addWidget(self.out_btn)
         form_layout.addRow("Output Directory", out_layout)
 
-        self.checkpoint_entry = QLineEdit("1")
+        self.checkpoint_entry = QLineEdit("0")
         form_layout.addRow("CheckPoint epoch", self.checkpoint_entry)
 
         # Evaluation

@@ -161,7 +161,7 @@ blocked reason copy、command execution、post-command refresh，以及 mock / l
 | Dataset edit actions | `update_metadata`、`apply_smart_parse`、`remove_files`、`import_labels`、`reset_session` | confirmed mutation 走 command；table render 和 channel dialog 在 real `Study` 讀 `QueryStateCommand(data_lists)`。 |
 | Preprocess / epoch | `preprocess`、`create_epoch` | filter / resample / rereference / normalize / epoch 走 command；epoch dialog 和 preview data 走 query-backed lists。 |
 | Dataset generation / training config | `generate_dataset`、`clear_datasets`、`configure_training` | split replacement、model selection、training settings defaults 不再以 stale controller echo 判定 service success。 |
-| Training | `train`、`stop_training` | enabled capability 直接 dispatch command；long-running training 先顯示 confirmation；controller running checks 只在 no-capability fallback。 |
+| Training | `train`、`stop_training` | enabled capability 直接 dispatch confirmed command；desktop button click is the user confirmation, while agent/headless paths still obey backend confirmation policy。controller running checks 只在 no-capability fallback。 |
 | Evaluation / visualization / saliency | `evaluate`、`visualize`、`saliency` | typed readonly command 先決定 display gate；blocked/unavailable 會清空 stale controller display。 |
 | Montage | `QueryStateCommand(state)`、`apply_montage` | dialog channel defaults 走 state query；confirmed positions 走 `ApplyMontageCommand`；picker/matching 仍是 UI request。 |
 | Chat diagnostics | `get_state()`、`get_capabilities()` | assistant status 使用 backend state/capability snapshot，不把 missing capability 顯示成 debug error。 |
