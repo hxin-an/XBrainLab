@@ -1082,7 +1082,7 @@ def test_apply_interpretation_applies_reviewed_event_code_label_carrier(
     label_path = source_dir / "events.tsv"
     eeg_path.write_bytes(b"not loaded during scan")
     label_path.write_text(
-        "event_code\tcondition\n11\tleft\n12\tright\n11\tleft\n",
+        "event_code\tcondition\n11\tleft\n12\tright\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(

@@ -293,6 +293,15 @@ def _event_code_review(
         for row in code_mappings
         if row.get("status") == "needs_review" and row.get("conflict")
     ]
+    duplicate_codes = [
+        str(row.get("event_code") or "")
+        for row in code_mappings
+        if (
+            row.get("status") == "needs_review"
+            and row.get("duplicate_rows")
+            and not row.get("conflict")
+        )
+    ]
     unlabeled_eeg_events = _unlabeled_eeg_event_rows(event_rows, value_counts)
     review.update(
         {
@@ -303,6 +312,7 @@ def _event_code_review(
             "matched_codes": matched_codes,
             "missing_codes": missing_codes,
             "conflict_codes": conflict_codes,
+            "duplicate_codes": duplicate_codes,
             "code_mappings": code_mappings,
             "unlabeled_eeg_events": unlabeled_eeg_events,
         }
@@ -334,19 +344,22 @@ def _event_code_review(
             }
         )
         return review
-    if missing_codes or conflict_codes:
+    if missing_codes or conflict_codes or duplicate_codes:
         parts = [
             f"{len(matched_codes)}/{len(value_counts)} label event codes "
             "were found in EEG events"
         ]
         if conflict_codes:
             parts.append(f"{len(conflict_codes)} code(s) map to multiple label values")
+        if duplicate_codes:
+            parts.append(f"{len(duplicate_codes)} code(s) have repeated mapping rows")
         review.update(
             {
                 "status": "needs_review",
                 "summary": "; ".join(parts) + ".",
                 "next_action": (
-                    "Map missing codes or fix code rows with conflicting labels."
+                    "Use one row per code for codebook matching, or choose "
+                    "EEG event order/time if rows represent trials."
                 ),
             }
         )
@@ -376,11 +389,15 @@ def _event_code_mapping_rows(
         }
         label_values = sorted(label_counts, key=lambda item: (item.casefold(), item))
         conflict = len(label_values) > 1
+        duplicate_rows = int(value_counts.get(code) or 0) > 1
         eeg_count = event_counts.get(code)
         missing = code not in event_counts
         if conflict:
             status = "needs_review"
             review = "Same code maps to multiple label values."
+        elif duplicate_rows:
+            status = "needs_review"
+            review = "Repeated rows; event-code placement expects one row per code."
         elif missing:
             status = "needs_review"
             review = "Not found in EEG events."
@@ -395,6 +412,7 @@ def _event_code_mapping_rows(
                 "eeg_event_count": eeg_count,
                 "status": status,
                 "conflict": conflict,
+                "duplicate_rows": duplicate_rows,
                 "review": review,
             }
         )

@@ -928,7 +928,7 @@ def test_build_interpretation_candidate_reviews_event_code_placement(
 ):
     labels = tmp_path / "labels.tsv"
     labels.write_text(
-        "event_code\tcondition\n11\tleft\n12\tright\n11\tleft\n",
+        "event_code\tcondition\n11\tleft\n12\tright\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(
@@ -970,10 +970,11 @@ def test_build_interpretation_candidate_reviews_event_code_placement(
         {
             "event_code": "11",
             "label_values": ["left"],
-            "label_rows": 2,
+            "label_rows": 1,
             "eeg_event_count": 2,
             "status": "ready",
             "conflict": False,
+            "duplicate_rows": False,
             "review": "Ready.",
         },
         {
@@ -983,10 +984,59 @@ def test_build_interpretation_candidate_reviews_event_code_placement(
             "eeg_event_count": 1,
             "status": "ready",
             "conflict": False,
+            "duplicate_rows": False,
             "review": "Ready.",
         },
     ]
     assert review["summary"] == "All 2 label event codes match EEG events."
+
+
+def test_build_interpretation_candidate_flags_repeated_event_code_rows(
+    tmp_path,
+    monkeypatch,
+):
+    labels = tmp_path / "labels.tsv"
+    labels.write_text(
+        "event_code\tcondition\n11\tleft\n12\tright\n11\tleft\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "11": {"count": 2, "description": "11"},
+                "12": {"count": 1, "description": "12"},
+            }
+        },
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            eeg_files=["/data/session.edf"],
+            label_carriers=[str(labels)],
+            bids={"is_bids": False, "events_files": []},
+        ),
+        choices={
+            "label_carrier_choices": {
+                str(labels): {
+                    "label_field": "condition",
+                    "anchor": "event_code",
+                    "placement_method": "event_code",
+                }
+            }
+        },
+    )
+
+    review = candidate.label_carrier_plan[0]["placement_review"]
+
+    assert review["status"] == "needs_review"
+    assert review["duplicate_codes"] == ["11"]
+    assert review["code_mappings"][0]["duplicate_rows"] is True
+    assert review["code_mappings"][0]["review"] == (
+        "Repeated rows; event-code placement expects one row per code."
+    )
 
 
 def test_build_interpretation_candidate_flags_conflicting_event_code_labels(
@@ -1026,6 +1076,7 @@ def test_build_interpretation_candidate_flags_conflicting_event_code_labels(
 
     assert review["status"] == "needs_review"
     assert review["conflict_codes"] == ["11"]
+    assert review["duplicate_codes"] == []
     assert review["code_mappings"][0]["label_values"] == ["left", "right"]
     assert review["code_mappings"][0]["review"] == (
         "Same code maps to multiple label values."
@@ -1070,7 +1121,8 @@ def test_build_interpretation_candidate_defaults_marker_table_to_event_code_plac
     assert plan["placement_method"] == "event_code"
     assert plan["selected_anchor"] == "event_code"
     assert review["method"] == "event_code"
-    assert review["status"] == "ready"
+    assert review["status"] == "needs_review"
+    assert review["duplicate_codes"] == ["31"]
     assert review["matched_codes"] == ["31", "32"]
 
 
