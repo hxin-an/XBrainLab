@@ -1,9 +1,11 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import QTableWidgetItem
 
 from XBrainLab.ui.dialogs.training import ModelSelectionDialog
+from XBrainLab.ui.styles.theme import Theme
 
 
 # Dummy model for testing
@@ -48,6 +50,14 @@ class TestModelSelection:
         assert params["param1"] == "10"
         assert params["param2"] == "0.5"
         assert params["param3"] == "test"
+
+    def test_params_table_has_no_initial_white_selection(self, dialog):
+        assert dialog.params_table is not None
+        assert dialog.params_table.selectedItems() == []
+        assert dialog.params_table.currentRow() == -1
+        assert dialog.params_table.palette().color(QPalette.ColorRole.Highlight) == (
+            QColor(Theme.BLUE_PRESSED)
+        )
 
     def test_params_table_stays_visible_for_models_without_editable_params(self, qtbot):
         with patch("inspect.getmembers") as mock_getmembers:

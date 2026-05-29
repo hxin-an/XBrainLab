@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from PyQt6.QtWidgets import QComboBox, QDialog, QWidget
+from PyQt6.QtWidgets import QComboBox, QDialog, QPushButton, QWidget
 
 # ============ DrawRegion (pure logic, no Qt) ============
 
@@ -293,19 +293,16 @@ class TestDataSplittingPreviewDialogDeep:
         # Before preview runs, result should be the generator (or None)
         assert result is None or hasattr(result, "__iter__")
 
-    def test_info_button_is_disabled_until_a_generated_split_is_selected(self, dlg):
-        assert dlg.btn_info is not None
-        assert not dlg.btn_info.isEnabled()
+    def test_obsolete_show_split_button_is_not_rendered(self, dlg):
+        assert dlg.btn_info is None
 
         dataset = MagicMock()
         dataset.get_treeview_row_info.return_value = ["", "Split A", 8, 1, 1]
         dlg.datasets = [dataset]
         dlg.update_table()
 
-        item = dlg.tree.topLevelItem(0)
-        dlg.tree.setCurrentItem(item)
-
-        assert dlg.btn_info.isEnabled()
+        button_texts = [button.text() for button in dlg.findChildren(QPushButton)]
+        assert not any("show" in text.lower() for text in button_texts)
 
 
 # ============ DataSplittingPreviewDialog with splitter options ============
@@ -416,25 +413,8 @@ class TestDataSplittingPreviewDialogSplitters:
         dlg.dataset_generator.preview_failed = True
         dlg.update_table()
 
-    def test_show_info_no_selection(self, dlg):
-        dlg.show_info()
-
-    def test_show_info_with_dataset(self, dlg):
-        from PyQt6.QtWidgets import QTreeWidgetItem
-
-        mock_ds = MagicMock()
-        mock_ds.name = "test"
-        mock_ds.train_mask = [True] * 80
-        mock_ds.val_mask = [True] * 10
-        mock_ds.test_mask = [True] * 10
-        dlg.datasets.append(mock_ds)
-        item = QTreeWidgetItem(dlg.tree)
-        item.setText(0, "test")
-        dlg.tree.setCurrentItem(item)
-        with patch(
-            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.QMessageBox"
-        ):
-            dlg.show_info()
+    def test_obsolete_show_info_action_is_removed(self, dlg):
+        assert not hasattr(dlg, "show_info")
 
     def test_confirm_worker_alive(self, dlg):
         dlg.preview_worker = MagicMock()

@@ -9,6 +9,7 @@ import os
 from typing import Any
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -29,6 +30,7 @@ from XBrainLab.backend import model_base
 from XBrainLab.backend.training import ModelHolder
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.styles.stylesheets import Stylesheets
+from XBrainLab.ui.styles.theme import Theme
 
 ARG_DICT_SKIP_SET = {"self", "n_classes", "channels", "samples", "sfreq"}
 
@@ -104,8 +106,16 @@ class ModelSelectionDialog(BaseDialog):
         self.params_table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
         )
+        self.params_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.params_table.setMinimumHeight(180)
         self.params_table.setStyleSheet(Stylesheets.METRICS_TABLE)
+        palette = self.params_table.palette()
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(Theme.BLUE_PRESSED))
+        palette.setColor(
+            QPalette.ColorRole.HighlightedText,
+            QColor(Theme.TEXT_PRIMARY),
+        )
+        self.params_table.setPalette(palette)
         header = self.params_table.horizontalHeader()
         if header is not None:
             header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -170,6 +180,7 @@ class ModelSelectionDialog(BaseDialog):
 
             if not rows:
                 self._show_no_editable_params()
+            self._clear_params_table_selection()
             self.params_group.setVisible(True)
 
     def _show_no_editable_params(self) -> None:
@@ -183,6 +194,14 @@ class ModelSelectionDialog(BaseDialog):
         value_item.setFlags(value_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         self.params_table.setItem(0, 0, name_item)
         self.params_table.setItem(0, 1, value_item)
+        self._clear_params_table_selection()
+
+    def _clear_params_table_selection(self) -> None:
+        """Avoid a misleading initial selected row in the parameter table."""
+        if not self.params_table:
+            return
+        self.params_table.clearSelection()
+        self.params_table.setCurrentCell(-1, -1)
 
     def load_pretrained_weight(self):
         """Open a file dialog to load or clear pretrained model weights."""
