@@ -91,7 +91,7 @@ def _create_splash_pixmap() -> QPixmap:
     painter.drawText(
         pixmap.rect().adjusted(0, 118, 0, 0),
         Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
-        "Preparing Dataset workspace...",
+        "Loading...",
     )
     painter.end()
     return pixmap

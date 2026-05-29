@@ -38,7 +38,7 @@ Verification notes:
   service stacks just to answer state or capability queries.
 - Real `MainWindow(Study()).switch_page(0)` no longer imports `mne`, `backend.load_data`, or
   `backend.preprocessor` on first Dataset open.
-- The startup splash now says `Preparing Dataset workspace...`.
+- The startup splash uses the neutral `Loading...` text while Dataset is prepared.
 - MainWindow materializes the Dataset panel before it is shown, while the splash is still visible.
 - The main window no longer presents an extra `Open Dataset` step.
 
@@ -59,8 +59,8 @@ Do not block the entire app until every Dataset tool is fully loaded. That would
 
 If a fallback loading state is needed inside the main window, it should look intentional:
 
-- Title: `Preparing Dataset workspace`
-- One-line status: `Loading import tools and dataset summary...`
+- Title: `Loading Dataset`
+- One-line status: `Please wait.`
 - Stable layout matching the final Dataset panel footprint.
 - No empty black area.
 - No fake table rows.
