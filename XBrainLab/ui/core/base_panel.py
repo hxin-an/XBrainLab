@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from PyQt6 import sip
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QWidget
 
@@ -132,12 +133,17 @@ class BasePanel(QWidget):
             busy: If ``True``, shows a wait cursor and disables the widget.
 
         """
-        if busy:
-            self.setCursor(Qt.CursorShape.WaitCursor)
-            self.setEnabled(False)
-        else:
-            self.setCursor(Qt.CursorShape.ArrowCursor)
-            self.setEnabled(True)
+        if sip.isdeleted(self):
+            return
+        try:
+            if busy:
+                self.setCursor(Qt.CursorShape.WaitCursor)
+                self.setEnabled(False)
+            else:
+                self.setCursor(Qt.CursorShape.ArrowCursor)
+                self.setEnabled(True)
+        except RuntimeError:
+            return
 
     def cleanup(self) -> None:
         """Clean up resources, bridges, or threads on close.

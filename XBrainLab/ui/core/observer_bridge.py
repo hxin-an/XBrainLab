@@ -4,6 +4,7 @@ import contextlib
 from collections.abc import Callable
 from typing import Any
 
+from PyQt6 import sip
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from XBrainLab.backend.utils.observer import Observable
@@ -37,6 +38,7 @@ class QtObserverBridge(QObject):
         self.observable = observable
         self.event_name = event_name
         self._wrapper: Callable[[tuple[Any, ...], dict[str, Any]], Any] | None = None
+        self._active = True
 
         # Subscribe to the backend event
         self.observable.subscribe(self.event_name, self._on_event)
@@ -54,7 +56,10 @@ class QtObserverBridge(QObject):
         """
         # Wrap args/kwargs to send via signal
         # Note: Qt signals need pickle-able types usually, but tuple/dict are fine.
-        self.triggered.emit(args, kwargs)
+        if not self._active or sip.isdeleted(self):
+            return
+        with contextlib.suppress(RuntimeError):
+            self.triggered.emit(args, kwargs)
 
     def connect_to(self, slot: Callable[..., Any]) -> None:
         """Connect the bridge's triggered signal to a UI slot.
@@ -79,6 +84,8 @@ class QtObserverBridge(QObject):
 
     def cleanup(self):
         """Unsubscribe from the backend observable event and disconnect signals."""
-        self.observable.unsubscribe(self.event_name, self._on_event)
-        with contextlib.suppress(TypeError):
+        self._active = False
+        with contextlib.suppress(TypeError, RuntimeError):
+            self.observable.unsubscribe(self.event_name, self._on_event)
+        with contextlib.suppress(TypeError, RuntimeError):
             self.triggered.disconnect()

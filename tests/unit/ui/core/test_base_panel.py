@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from PyQt6 import sip
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QWidget
 
@@ -66,6 +67,15 @@ def test_set_busy(panel, qtbot):
     panel.set_busy(False)
     assert panel.cursor().shape() == Qt.CursorShape.ArrowCursor
     assert panel.isEnabled() is True
+
+
+def test_set_busy_ignores_deleted_panel(qtbot):
+    panel = ConcretePanel()
+    qtbot.addWidget(panel)
+    panel.deleteLater()
+    qtbot.waitUntil(lambda: sip.isdeleted(panel), timeout=1_000)
+
+    panel.set_busy(False)
 
 
 def test_methods_exist(panel):

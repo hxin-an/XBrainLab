@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock
 
+from PyQt6 import sip
+
 from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 
@@ -64,3 +66,30 @@ def test_observer_bridge_cleanup():
     bridge.cleanup()
 
     assert len(observable._observers["test_event"]) == 0
+
+
+def test_observer_bridge_cleanup_ignores_late_backend_events(qtbot):
+    observable = MockObservable()
+    bridge = QtObserverBridge(observable, "test_event")
+    slot = MagicMock()
+    bridge.connect_to(slot)
+
+    bridge.cleanup()
+    bridge._on_event("late")
+    qtbot.wait(50)
+
+    slot.assert_not_called()
+
+
+def test_observer_bridge_deleted_object_ignores_late_backend_events(qtbot):
+    observable = MockObservable()
+    bridge = QtObserverBridge(observable, "test_event")
+    slot = MagicMock()
+    bridge.connect_to(slot)
+
+    bridge.deleteLater()
+    qtbot.waitUntil(lambda: sip.isdeleted(bridge), timeout=1_000)
+    bridge._on_event("late")
+    qtbot.wait(50)
+
+    slot.assert_not_called()

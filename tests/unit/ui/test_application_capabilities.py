@@ -7,6 +7,7 @@ from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
+from PyQt6 import sip
 from PyQt6.QtWidgets import QWidget
 
 from XBrainLab.backend.application import (
@@ -285,6 +286,69 @@ def test_execute_application_command_async_runs_service_off_gui_call_stack(
     assert callbacks == [result]
     assert refresh_calls == [(widget, result)]
     assert busy_states == [True, False]
+    assert cast(Any, widget)._xbrainlab_active_application_workers == []
+
+
+def test_execute_application_command_async_ignores_result_after_widget_deleted(
+    qtbot,
+    monkeypatch,
+):
+    study = Study()
+    widget = QWidget()
+    cast(Any, widget).main_window = SimpleNamespace(study=study)
+    busy_states: list[bool] = []
+    cast(Any, widget).set_busy = lambda busy: busy_states.append(bool(busy))
+    result = CommandResult.success_result(
+        command_name="query_state",
+        message="ok",
+        state=None,
+        changed_state=ChangedState(raw_changed=True),
+    )
+    callbacks: list[CommandResult] = []
+    refresh_calls: list[tuple[Any, CommandResult]] = []
+    started_workers = []
+
+    class _Service:
+        def execute(self, command):
+            assert isinstance(command, QueryStateCommand)
+            return result
+
+    class _ThreadPool:
+        def start(self, worker):
+            started_workers.append(worker)
+
+    monkeypatch.setattr(
+        application_capabilities,
+        "get_application_service",
+        lambda provided_study: _Service(),
+    )
+    monkeypatch.setattr(
+        application_capabilities.QThreadPool,
+        "globalInstance",
+        lambda: _ThreadPool(),
+    )
+    monkeypatch.setattr(
+        application_capabilities,
+        "refresh_after_command",
+        lambda context, command_result: refresh_calls.append(
+            (context, command_result),
+        ),
+    )
+
+    started = execute_application_command_async(
+        widget,
+        QueryStateCommand(),
+        on_result=callbacks.append,
+    )
+    assert started is True
+
+    widget.deleteLater()
+    qtbot.waitUntil(lambda: sip.isdeleted(widget), timeout=1_000)
+    started_workers[0].run()
+
+    assert busy_states == [True]
+    assert callbacks == []
+    assert refresh_calls == []
     assert cast(Any, widget)._xbrainlab_active_application_workers == []
 
 

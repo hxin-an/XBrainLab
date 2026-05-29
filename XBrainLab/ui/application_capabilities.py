@@ -7,6 +7,7 @@ from contextlib import suppress
 from typing import Any, TypeVar
 from unittest.mock import Mock
 
+from PyQt6 import sip
 from PyQt6.QtCore import QThreadPool
 
 from XBrainLab.backend.application.capabilities import CommandCapability
@@ -153,13 +154,15 @@ def execute_application_command_async(
         worker_finished = True
         with suppress(Exception):
             suppression.__exit__(None, None, None)
-        if callable(set_busy):
+        if callable(set_busy) and not _qt_object_deleted(target):
             set_busy(False)
         with suppress(ValueError):
             active_workers.remove(worker)
 
     def _handle_result(result: CommandResult) -> None:
         _finish_worker()
+        if _qt_object_deleted(context):
+            return
         if refresh:
             refresh_after_command(context, result)
         on_result(result)
@@ -178,7 +181,7 @@ def execute_application_command_async(
                 "Async application command traceback:\n%s",
                 formatted_traceback,
             )
-        if on_error is not None:
+        if on_error is not None and not _qt_object_deleted(context):
             on_error(error)
 
     def _handle_finished() -> None:
@@ -208,6 +211,16 @@ def _active_application_workers(context: Any) -> list[Worker]:
     workers = []
     context._xbrainlab_active_application_workers = workers
     return workers
+
+
+def _qt_object_deleted(obj: Any) -> bool:
+    """Return ``True`` when a Qt wrapper was deleted before async callbacks."""
+    if obj is None:
+        return False
+    try:
+        return bool(sip.isdeleted(obj))
+    except (AttributeError, TypeError, RuntimeError):
+        return False
 
 
 def _application_service_for(study: Study):
