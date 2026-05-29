@@ -49,8 +49,8 @@
     dict。
   - 避免 Dataset info panel import `backend.load_data` / MNE，只用 local string state 判斷 raw /
     epochs 顯示。
-  - 移除 startup timer / prewarm-result 觸發的自動 Dataset panel materialization；啟動時保留
-    lightweight placeholder，使用者按 `Open Dataset` 或切換 Dataset 時才建立真正 panel。
+  - 把 Dataset panel materialization 移到 startup splash 階段；主畫面出來時 Dataset 已經打開，
+    不再要求使用者多按一次 `Open Dataset`。
   - 補 import-boundary tests、timing probe、`.gitignore` generated `import_recipe.json`，並新增
     `docs/records/lab_meeting_2026-05-31.md` 記錄 Dataset startup 決策。
 - 結果：
@@ -58,8 +58,6 @@
   - DatasetPanel creation after import median / max：`0.0325s` / `0.0366s`。
   - Cold materialize median / max：`0.4223s` / `0.4502s`。
   - MainWindow first Dataset open without prewarm median / max：`0.3119s` / `0.3269s`。
-  - Default startup heartbeat max gap：`0.212s` / `0.013s` / `0.011s`，低於 `0.250s`
-    performance gate。
   - Real `MainWindow(Study()).switch_page(0)` no longer imports `mne`, `backend.load_data`, or
     `backend.preprocessor` on first Dataset open.
 - 證據：
@@ -67,7 +65,7 @@
   - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`。
   - `poetry run python tests/architecture_compliance.py` -> architecture compliant。
   - `env QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/backend/application/test_import_boundaries.py tests/unit/ui/dataset/test_import_latency.py tests/unit/ui/dataset/test_panel.py tests/unit/ui/test_main_window_sync.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/test_sidebars_and_components.py -q` -> `218 passed`。
-  - `env QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/backend/application/test_import_boundaries.py tests/unit/ui/dataset/test_import_latency.py tests/unit/ui/test_main_window_sync.py -q` -> `25 passed`，包含 default startup 不自動載入 Dataset、prewarm 完成不載入 Dataset、`Open Dataset` 按鈕會載入 panel。
+  - `env QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/test_main_window_sync.py tests/unit/ui/dataset/test_import_latency.py -q` -> `22 passed`，包含 MainWindow 顯示前已 materialize Dataset、prewarm 完成不重載 Dataset，並確認預設 startup 不載入重依賴。
   - `env MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/backend/application -q`
     -> `211 passed`。
   - `env QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_data_splitting.py tests/unit/ui/test_evaluation_panel_redesign.py tests/unit/ui/test_visualization.py tests/unit/ui/test_dialogs_extra.py tests/unit/ui/training/test_model_selection.py -q`

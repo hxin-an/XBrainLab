@@ -169,21 +169,19 @@ def _prewarm_startup_modules(
 class _LazyPanelPlaceholder(QWidget):
     """Lightweight stand-in for workflow panels that are not opened yet."""
 
-    def __init__(self, panel_label: str, parent=None, load_requested=None) -> None:
+    def __init__(self, panel_label: str, parent=None) -> None:
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
-        label = QLabel(f"{panel_label} is ready to open.")
+        label = QLabel(f"Preparing {panel_label} workspace...")
         label.setObjectName("LazyPanelPlaceholder")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        open_button = QPushButton(f"Open {panel_label}")
-        open_button.setObjectName("ActionBtn")
-        open_button.setFixedWidth(160)
-        if callable(load_requested):
-            open_button.clicked.connect(load_requested)
+        detail = QLabel("Loading tools and summary...")
+        detail.setObjectName("LazyPanelPlaceholderDetail")
+        detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addStretch()
         layout.addWidget(label)
-        layout.addWidget(open_button, alignment=Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(detail)
         layout.addStretch()
 
 
@@ -651,28 +649,16 @@ class MainWindow(QMainWindow):
             get_legacy_workflow_controllers_for_panel_bootstrap(self.study)
         )
 
-        for index, spec in enumerate(_PANEL_SPECS):
-
-            def load_panel(
-                _checked: bool = False,
-                *,
-                panel_index: int = index,
-            ) -> None:
-                self.switch_page(panel_index)
-
-            placeholder = _LazyPanelPlaceholder(
-                spec.label,
-                self,
-                load_requested=load_panel,
-            )
+        for spec in _PANEL_SPECS:
+            placeholder = _LazyPanelPlaceholder(spec.label, self)
             setattr(self, spec.attr, placeholder)
             self.stack.addWidget(placeholder)
 
         self.stack.setCurrentIndex(0)
 
     def _schedule_initial_panel_load(self) -> None:
-        """Keep initial panel loading user-triggered to avoid startup UI stalls."""
-        return None
+        """Materialize the initial panel while the startup splash is still visible."""
+        self._load_initial_panel_if_alive()
 
     def _load_initial_panel_if_alive(self) -> None:
         """Materialize the initial panel unless the window was already destroyed."""
@@ -816,7 +802,7 @@ class MainWindow(QMainWindow):
 
     def _schedule_startup_prewarm(self) -> None:
         """Schedule safe background imports after the first UI frame."""
-        QTimer.singleShot(120, self._start_startup_prewarm)
+        QTimer.singleShot(1400, self._start_startup_prewarm)
 
     def _start_startup_prewarm(self) -> None:
         """Start non-UI background import prewarm without blocking startup."""

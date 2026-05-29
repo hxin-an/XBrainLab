@@ -208,3 +208,66 @@ def test_main_window_dataset_first_open_does_not_load_training_or_dialog_stack()
         """,
     )
     assert "PASS" in output
+
+
+def test_main_window_default_startup_prepares_dataset_without_heavy_stacks() -> None:
+    """Default startup should prepare Dataset before show without broad imports."""
+    output = _run_import_probe(
+        """
+        import sys
+
+        from PyQt6.QtWidgets import QApplication
+
+        bad_roots = (
+            "torch",
+            "sklearn",
+            "mne",
+            "matplotlib",
+            "numpy",
+            "pandas",
+            "pyvista",
+            "pyvistaqt",
+            "vtk",
+            "scipy",
+            "XBrainLab.backend.load_data",
+            "XBrainLab.backend.preprocessor",
+            "XBrainLab.backend.application.training_service",
+            "XBrainLab.backend.application.analysis_service",
+            "XBrainLab.backend.application.dataset_generation_service",
+            "XBrainLab.backend.application.data_interpretation_service",
+            "XBrainLab.backend.training",
+            "XBrainLab.backend.model_base",
+            "XBrainLab.backend.visualization",
+            "XBrainLab.backend.dataset",
+            "XBrainLab.backend.controller.evaluation_controller",
+            "XBrainLab.backend.controller.visualization_controller",
+            "XBrainLab.ui.dialogs.dataset",
+        )
+
+        def loaded_bad_modules():
+            return sorted(
+                module
+                for module in sys.modules
+                if any(
+                    module == root or module.startswith(root + ".")
+                    for root in bad_roots
+                )
+            )
+
+        from XBrainLab.backend.study import Study
+        from XBrainLab.ui.main_window import MainWindow
+
+        MainWindow._schedule_startup_prewarm = lambda self: None
+        app = QApplication.instance() or QApplication([])
+        window = MainWindow(Study())
+        assert window._loaded_panel_indices == {0}
+        assert not loaded_bad_modules(), ("after MainWindow construction", loaded_bad_modules())
+
+        window.show()
+        app.processEvents()
+        assert window._loaded_panel_indices == {0}
+        assert not loaded_bad_modules(), ("after MainWindow show", loaded_bad_modules())
+        print("PASS")
+        """,
+    )
+    assert "PASS" in output

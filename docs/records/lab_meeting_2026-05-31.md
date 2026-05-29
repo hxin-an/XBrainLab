@@ -8,12 +8,13 @@ Should XBrainLab wait until the Dataset panel is fully loaded before showing the
 
 ## Recommendation
 
-No. Show the main window quickly, then materialize the Dataset workspace only after an explicit user
-action.
+No. Show the startup splash quickly, use that splash phase to prepare the Dataset workspace, then
+show the main window with Dataset already open.
 
 The product problem is not only total startup time. It is also first visible feedback. A black
-screen or frozen splash makes the app feel broken. A fast shell plus a stable Dataset entry state
-feels responsive while still allowing heavier workflow tools to load only when needed.
+screen or frozen splash makes the app feel broken. But adding another `Open Dataset` step after
+startup also makes the product feel harder to use. The right split is: the splash owns initial
+Dataset preparation; the main window owns the real workflow.
 
 ## Current Data
 
@@ -26,8 +27,7 @@ prewarm.
 | Dataset panel import, cold subprocess median / max | `0.360s` / `0.502s` | Import no longer pulls training, torch, sklearn, MNE, Data Import dialogs, or visualization stacks. |
 | DatasetPanel creation after import median / max | `0.033s` / `0.037s` | Empty panel construction is light. |
 | Cold materialize median / max | `0.422s` / `0.450s` | Dataset panel can be built without a multi-second block. |
-| MainWindow product first-open without prewarm median / max | `0.312s` / `0.327s` | First Dataset view is under the product threshold without counting prewarm as the fix. |
-| Default startup heartbeat max gap | `0.212s`, `0.013s`, `0.011s` | Startup remains below the `0.250s` UI-thread blocking gate when Dataset is user-triggered. |
+| MainWindow product first-open without prewarm median / max | `0.312s` / `0.327s` | Dataset materialization is short enough to happen during splash instead of forcing a second user action. |
 
 Verification notes:
 
@@ -38,27 +38,26 @@ Verification notes:
   service stacks just to answer state or capability queries.
 - Real `MainWindow(Study()).switch_page(0)` no longer imports `mne`, `backend.load_data`, or
   `backend.preprocessor` on first Dataset open.
-- Default startup no longer schedules Dataset panel materialization on a timer or after prewarm
-  completion.
-- The startup placeholder says `Dataset is ready to open.` and provides `Open Dataset`.
+- The startup splash now says `Preparing Dataset workspace...`.
+- MainWindow materializes the Dataset panel before it is shown, while the splash is still visible.
+- The main window no longer presents an extra `Open Dataset` step.
 
 ## Decision
 
 Use this behavior for the MVP line:
 
 1. Show the main window shell as soon as it is ready.
-2. Keep Dataset selected by default, but show the lightweight `Open Dataset` entry state first.
-3. Build Dataset lazily and avoid importing heavy workflow stacks until the user invokes them.
-4. If a future machine or packaging path makes Dataset materialization visible again, show a
-   Dataset-specific loading state after the explicit `Open Dataset` action instead of blocking the
-   whole app.
+2. Use the startup splash for initial Dataset preparation.
+3. Keep Dataset selected and ready when the main window appears.
+4. Continue lazy-loading Data Import dialogs, training, visualization, and other heavier workflow
+   tools until the user invokes them.
 
 Do not block the entire app until every Dataset tool is fully loaded. That would reintroduce the old
 "nothing is happening" startup feeling.
 
 ## Dataset Loading UX Target
 
-If a loading state is needed, it should look intentional:
+If a fallback loading state is needed inside the main window, it should look intentional:
 
 - Title: `Preparing Dataset workspace`
 - One-line status: `Loading import tools and dataset summary...`
@@ -71,7 +70,7 @@ If a loading state is needed, it should look intentional:
 
 The target startup model is:
 
-`fast shell -> Open Dataset entry state -> user-triggered Dataset materialization -> workflow-specific tools load on demand`
+`splash -> prepare Dataset workspace -> main window with Dataset ready -> workflow-specific tools load on demand`
 
 This keeps startup responsive and fixes the original Dataset delay at the import boundary instead
 of relying on background loading as a cosmetic workaround.
