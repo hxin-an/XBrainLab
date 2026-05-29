@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from XBrainLab.backend.application import CommandName
+from XBrainLab.backend.application.commands import CommandName
 
 COMMAND_LABELS: dict[str, str] = {
     CommandName.SCAN_SOURCE.value: "Scan data source",

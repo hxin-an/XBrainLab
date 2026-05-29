@@ -1,16 +1,25 @@
+# pyright: reportUnsupportedDunderAll=false
 """Dataset dialog components for EEG data management.
 
-Provides dialogs for channel selection, data splitting, event filtering,
-label import/mapping, and metadata parsing.
+Dialog modules are intentionally lazy. Dataset panel startup imports this
+package for compatibility in a few call sites, but the full Data Import wizard,
+split dialogs, and label tools should load only when the user opens them.
 """
 
-from .channel_selection_dialog import ChannelSelectionDialog
-from .data_interpretation_preview_dialog import DataInterpretationPreviewDialog
-from .data_splitting_dialog import DataSplittingDialog
-from .event_filter_dialog import EventFilterDialog
-from .import_label_dialog import ImportLabelDialog
-from .label_mapping_dialog import LabelMappingDialog
-from .smart_parser_dialog import SmartParserDialog
+from __future__ import annotations
+
+from importlib import import_module
+from typing import Any
+
+_EXPORT_MODULES = {
+    "ChannelSelectionDialog": ".channel_selection_dialog",
+    "DataInterpretationPreviewDialog": ".data_interpretation_preview_dialog",
+    "DataSplittingDialog": ".data_splitting_dialog",
+    "EventFilterDialog": ".event_filter_dialog",
+    "ImportLabelDialog": ".import_label_dialog",
+    "LabelMappingDialog": ".label_mapping_dialog",
+    "SmartParserDialog": ".smart_parser_dialog",
+}
 
 __all__ = [
     "ChannelSelectionDialog",
@@ -21,3 +30,13 @@ __all__ = [
     "LabelMappingDialog",
     "SmartParserDialog",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    module_name = _EXPORT_MODULES.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module = import_module(module_name, __name__)
+    value = getattr(module, name)
+    globals()[name] = value
+    return value

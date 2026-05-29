@@ -1,89 +1,100 @@
-"""Application service API for command-driven backend orchestration."""
+# pyright: reportUnsupportedDunderAll=false
+"""Lightweight Application Service public contract.
 
-from .automation import (
-    AutomationCommandSpec,
-    AutomationExecution,
-    AutomationPayloadError,
-    build_command_from_payload,
-    command_specs,
-    execute_automation_payload,
-    mcp_tool_specs,
-)
-from .capabilities import (
-    CapabilityPolicy,
-    CommandCapability,
-    build_capability_policy,
-)
-from .commands import (
-    ApplyInterpretationCommand,
-    ApplyMontageCommand,
-    ApplySmartParseCommand,
-    AttachLabelsCommand,
-    ClearDatasetsCommand,
-    ClearTrainingHistoryCommand,
-    Command,
-    CommandName,
-    ConfigureTrainingCommand,
-    CreateEpochCommand,
-    EvaluateCommand,
-    GenerateDatasetCommand,
-    ImportLabelsCommand,
-    LabelImportPlan,
-    LoadDataCommand,
-    MetadataUpdate,
-    NewSessionCommand,
-    PreprocessCommand,
-    PreprocessOperation,
-    PreviewInterpretationCommand,
-    QueryStateCommand,
-    ReloadInterpretationRecipeCommand,
-    RemoveFilesCommand,
-    ResetPreprocessCommand,
-    ResetSessionCommand,
-    SaliencyCommand,
-    SaveInterpretationRecipeCommand,
-    ScanSourceCommand,
-    StopTrainingCommand,
-    TrainCommand,
-    UpdateMetadataCommand,
-    ValidateInterpretationCommand,
-    VisualizeCommand,
-    command_name,
-)
-from .data_interpretation import (
-    AppliedInterpretation,
-    FileMetadataResolution,
-    ImportRecipe,
-    InterpretationCandidate,
-    InterpretationDecision,
-    InterpretationPreview,
-    MetadataFieldResolution,
-    ScanResult,
-    ValidationDecision,
-)
-from .errors import (
-    ApplicationError,
-    ConfirmationRequiredError,
-    PreconditionError,
-    map_exception,
-)
-from .results import ChangedState, CommandResult, CommandStatus, ErrorType
-from .runtime import get_application_service
-from .service import ApplicationService
-from .state import (
-    ActiveDatasetSnapshot,
-    ActiveTrainingSnapshot,
-    ApplicationStateSnapshot,
-    DatasetStateSnapshot,
-    EpochStateSnapshot,
-    ErrorSnapshot,
-    EvaluationStateSnapshot,
-    InterpretationStateSnapshot,
-    PreprocessedStateSnapshot,
-    RawStateSnapshot,
-    TrainingStateSnapshot,
-    VisualizationStateSnapshot,
-)
+The package root is imported by UI modules that only need command dataclasses
+or result envelopes. Keep this initializer free of runtime services so opening
+the Dataset panel does not import training, torch, sklearn, or visualization.
+"""
+
+from __future__ import annotations
+
+from importlib import import_module
+from typing import Any
+
+_EXPORT_MODULES: dict[str, str] = {
+    # commands
+    "ApplyInterpretationCommand": ".commands",
+    "ApplyMontageCommand": ".commands",
+    "ApplySmartParseCommand": ".commands",
+    "AttachLabelsCommand": ".commands",
+    "ClearDatasetsCommand": ".commands",
+    "ClearTrainingHistoryCommand": ".commands",
+    "Command": ".commands",
+    "CommandName": ".commands",
+    "ConfigureTrainingCommand": ".commands",
+    "CreateEpochCommand": ".commands",
+    "EvaluateCommand": ".commands",
+    "GenerateDatasetCommand": ".commands",
+    "ImportLabelsCommand": ".commands",
+    "LabelImportPlan": ".commands",
+    "LoadDataCommand": ".commands",
+    "MetadataUpdate": ".commands",
+    "NewSessionCommand": ".commands",
+    "PreprocessCommand": ".commands",
+    "PreprocessOperation": ".commands",
+    "PreviewInterpretationCommand": ".commands",
+    "QueryStateCommand": ".commands",
+    "ReloadInterpretationRecipeCommand": ".commands",
+    "RemoveFilesCommand": ".commands",
+    "ResetPreprocessCommand": ".commands",
+    "ResetSessionCommand": ".commands",
+    "SaliencyCommand": ".commands",
+    "SaveInterpretationRecipeCommand": ".commands",
+    "ScanSourceCommand": ".commands",
+    "StopTrainingCommand": ".commands",
+    "TrainCommand": ".commands",
+    "UpdateMetadataCommand": ".commands",
+    "ValidateInterpretationCommand": ".commands",
+    "VisualizeCommand": ".commands",
+    "command_name": ".commands",
+    # results
+    "ChangedState": ".results",
+    "CommandResult": ".results",
+    "CommandStatus": ".results",
+    "ErrorType": ".results",
+    # capabilities
+    "CapabilityPolicy": ".capabilities",
+    "CommandCapability": ".capabilities",
+    "build_capability_policy": ".capabilities",
+    # errors
+    "ApplicationError": ".errors",
+    "ConfirmationRequiredError": ".errors",
+    "PreconditionError": ".errors",
+    "map_exception": ".errors",
+    # state snapshots
+    "ActiveDatasetSnapshot": ".state",
+    "ActiveTrainingSnapshot": ".state",
+    "ApplicationStateSnapshot": ".state",
+    "DatasetStateSnapshot": ".state",
+    "EpochStateSnapshot": ".state",
+    "ErrorSnapshot": ".state",
+    "EvaluationStateSnapshot": ".state",
+    "InterpretationStateSnapshot": ".state",
+    "PreprocessedStateSnapshot": ".state",
+    "RawStateSnapshot": ".state",
+    "TrainingStateSnapshot": ".state",
+    "VisualizationStateSnapshot": ".state",
+    # data interpretation value objects
+    "AppliedInterpretation": ".data_interpretation",
+    "FileMetadataResolution": ".data_interpretation",
+    "ImportRecipe": ".data_interpretation",
+    "InterpretationCandidate": ".data_interpretation",
+    "InterpretationDecision": ".data_interpretation",
+    "InterpretationPreview": ".data_interpretation",
+    "MetadataFieldResolution": ".data_interpretation",
+    "ScanResult": ".data_interpretation",
+    "ValidationDecision": ".data_interpretation",
+    # heavier runtime/automation exports kept lazy for compatibility
+    "ApplicationService": ".service",
+    "get_application_service": ".runtime",
+    "AutomationCommandSpec": ".automation",
+    "AutomationExecution": ".automation",
+    "AutomationPayloadError": ".automation",
+    "build_command_from_payload": ".automation",
+    "command_specs": ".automation",
+    "execute_automation_payload": ".automation",
+    "mcp_tool_specs": ".automation",
+}
 
 __all__ = [
     "ActiveDatasetSnapshot",
@@ -162,3 +173,14 @@ __all__ = [
     "map_exception",
     "mcp_tool_specs",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    """Load compatibility exports on demand without broad startup imports."""
+    module_name = _EXPORT_MODULES.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module = import_module(module_name, __name__)
+    value = getattr(module, name)
+    globals()[name] = value
+    return value

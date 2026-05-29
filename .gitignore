@@ -167,3 +167,4 @@ logs/
 XBrainLab/llm/core/models/
 XBrainLab/llm/rag/storage/
 coverage.json
+import_recipe.json

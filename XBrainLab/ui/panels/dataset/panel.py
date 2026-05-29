@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem,
 )
 
-from XBrainLab.backend.application import (
+from XBrainLab.backend.application.commands import (
     CommandName,
     QueryStateCommand,
     UpdateMetadataCommand,

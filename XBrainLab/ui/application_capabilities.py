@@ -9,13 +9,9 @@ from unittest.mock import Mock
 
 from PyQt6.QtCore import QThreadPool
 
-from XBrainLab.backend.application import (
-    Command,
-    CommandName,
-    CommandResult,
-    get_application_service,
-)
 from XBrainLab.backend.application.capabilities import CommandCapability
+from XBrainLab.backend.application.commands import Command, CommandName
+from XBrainLab.backend.application.results import CommandResult
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.core.worker import Worker
@@ -29,6 +25,7 @@ LEGACY_FALLBACK_UNAVAILABLE_MESSAGE = (
     "XBrainLab could not safely complete this action from the current window "
     "state. Refresh the workflow and try again."
 )
+get_application_service: Callable[[Study], Any] | None = None
 
 
 class LegacyControllerFallbackUnavailableError(RuntimeError):
@@ -78,7 +75,7 @@ def get_command_capability(
     study = find_study(context)
     if study is None or not isinstance(study, Study) or isinstance(study, Mock):
         return None
-    return get_application_service(study).get_capabilities().get(command_name)
+    return _application_service_for(study).get_capabilities().get(command_name)
 
 
 def blocked_reason(capability: CommandCapability | None, fallback: str) -> str:
@@ -106,7 +103,7 @@ def execute_application_command(
     if study is None or not isinstance(study, Study) or isinstance(study, Mock):
         return None
     with suppress_observer_refresh_during_command(context):
-        result = get_application_service(study).execute(command)
+        result = _application_service_for(study).execute(command)
     if refresh:
         refresh_after_command(context, result)
     return result
@@ -135,7 +132,7 @@ def execute_application_command_async(
     if study is None or not isinstance(study, Study) or isinstance(study, Mock):
         return False
 
-    service = get_application_service(study)
+    service = _application_service_for(study)
     target = busy_target if busy_target is not None else context
     set_busy = getattr(target, "set_busy", None)
     if callable(set_busy):
@@ -211,6 +208,18 @@ def _active_application_workers(context: Any) -> list[Worker]:
     workers = []
     context._xbrainlab_active_application_workers = workers
     return workers
+
+
+def _application_service_for(study: Study):
+    """Load the ApplicationService runtime only when a real command needs it."""
+    patched = globals()["get_application_service"]
+    if patched is not None:
+        return patched(study)
+    from XBrainLab.backend.application.runtime import (  # noqa: PLC0415
+        get_application_service as runtime_get_application_service,
+    )
+
+    return runtime_get_application_service(study)
 
 
 def run_legacy_controller_fallback(

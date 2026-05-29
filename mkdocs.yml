@@ -66,6 +66,7 @@ nav:
       - 驗證策略: validation/README.md
   - 產品回饋:
       - UI/UX 觀察: records/product_feedback.md
+      - 2026-05-31 Lab Meeting: records/lab_meeting_2026-05-31.md
 plugins:
   - search
   - mkdocstrings:

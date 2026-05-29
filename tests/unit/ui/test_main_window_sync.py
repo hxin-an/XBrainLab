@@ -3,7 +3,7 @@ from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QLabel, QPushButton, QWidget
 
 from XBrainLab.ui.main_window import MainWindow
 
@@ -204,6 +204,108 @@ def test_initial_panel_lazy_load_preserves_current_page(mock_study, qtbot):
     qtbot.addWidget(window)
     assert window.stack.currentIndex() == 0
     assert window.nav_btns[0].isChecked()
+
+
+def test_default_startup_keeps_dataset_placeholder_until_user_opens(
+    mock_study,
+    qtbot,
+):
+    """Default startup should not materialize Dataset on a timer."""
+    controllers = SimpleNamespace(
+        dataset=object(),
+        preprocess=object(),
+        training=object(),
+        evaluation=object(),
+        visualization=object(),
+    )
+
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+        patch(
+            "XBrainLab.ui.main_window.get_legacy_workflow_controllers_for_panel_bootstrap",
+            return_value=controllers,
+        ),
+    ):
+        window = MainWindow(mock_study)
+
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.wait(1500)
+
+    assert window._loaded_panel_indices == set()
+    assert window.dataset_panel.__class__.__name__ == "_LazyPanelPlaceholder"
+    current_widget = window.stack.currentWidget()
+    labels = [label.text() for label in current_widget.findChildren(QLabel)]
+    buttons = [button.text() for button in current_widget.findChildren(QPushButton)]
+    assert "Dataset is ready to open." in labels
+    assert "Open Dataset" in buttons
+
+
+def test_startup_prewarm_result_does_not_materialize_dataset(mock_study, qtbot):
+    """Background prewarm completion should not trigger UI-thread panel creation."""
+    controllers = SimpleNamespace(
+        dataset=object(),
+        preprocess=object(),
+        training=object(),
+        evaluation=object(),
+        visualization=object(),
+    )
+
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+        patch(
+            "XBrainLab.ui.main_window.get_legacy_workflow_controllers_for_panel_bootstrap",
+            return_value=controllers,
+        ),
+    ):
+        window = MainWindow(mock_study)
+
+    qtbot.addWidget(window)
+    window._on_startup_prewarm_result({"loaded": [], "failed": []})
+
+    assert window._loaded_panel_indices == set()
+    assert window.dataset_panel.__class__.__name__ == "_LazyPanelPlaceholder"
+
+
+def test_open_dataset_placeholder_button_materializes_panel(mock_study, qtbot):
+    """The visible placeholder still gives users an explicit path into Dataset."""
+    controllers = SimpleNamespace(
+        dataset=object(),
+        preprocess=object(),
+        training=object(),
+        evaluation=object(),
+        visualization=object(),
+    )
+
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+        patch(
+            "XBrainLab.ui.main_window.get_legacy_workflow_controllers_for_panel_bootstrap",
+            return_value=controllers,
+        ),
+        patch(
+            "XBrainLab.ui.main_window._load_panel_class",
+            return_value=lambda *args: QWidget(),
+        ),
+    ):
+        window = MainWindow(mock_study)
+        qtbot.addWidget(window)
+        open_button = next(
+            button
+            for button in window.stack.currentWidget().findChildren(QPushButton)
+            if button.text() == "Open Dataset"
+        )
+
+        open_button.click()
+        qtbot.wait(0)
+
+        assert window._loaded_panel_indices == {0}
+        assert window.dataset_panel.__class__.__name__ != "_LazyPanelPlaceholder"
+        assert window.stack.currentIndex() == 0
+        assert window.nav_btns[0].isChecked()
 
 
 def test_agent_manager_is_lazy_until_ai_toggle(mock_study, qtbot):

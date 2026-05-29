@@ -4,17 +4,68 @@ Provides a high-level interface for importing, removing, and preprocessing
 EEG data files, as well as label management and channel selection.
 """
 
-# Ensure loaders are registered
+from importlib import import_module
 from typing import Any
 
-from XBrainLab.backend import preprocessor
 from XBrainLab.backend.exceptions import FileCorruptedError, UnsupportedFormatError
-from XBrainLab.backend.load_data import EventLoader, RawDataLoader
-from XBrainLab.backend.load_data.factory import RawDataLoaderFactory
-from XBrainLab.backend.services.label_import_service import LabelImportService
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.backend.utils.runtime_diagnostics import collect_runtime_diagnostics
+
+
+class _LazyPreprocessorProxy:
+    """Patch-friendly lazy proxy for the heavy preprocessor package."""
+
+    def __getattr__(self, name: str) -> Any:
+        preprocessor_module = import_module("XBrainLab.backend.preprocessor")
+        return getattr(preprocessor_module, name)
+
+
+preprocessor: Any = _LazyPreprocessorProxy()
+EventLoader: Any | None = None
+LabelImportService: Any | None = None
+RawDataLoader: Any | None = None
+RawDataLoaderFactory: Any | None = None
+
+
+def _label_import_service_class() -> Any:
+    patched = globals()["LabelImportService"]
+    if patched is not None:
+        return patched
+    from XBrainLab.backend.services.label_import_service import (  # noqa: PLC0415
+        LabelImportService,
+    )
+
+    return LabelImportService
+
+
+def _raw_data_loader_class() -> Any:
+    patched = globals()["RawDataLoader"]
+    if patched is not None:
+        return patched
+    from XBrainLab.backend.load_data.data_loader import RawDataLoader  # noqa: PLC0415
+
+    return RawDataLoader
+
+
+def _raw_data_loader_factory() -> Any:
+    patched = globals()["RawDataLoaderFactory"]
+    if patched is not None:
+        return patched
+    from XBrainLab.backend.load_data.factory import (  # noqa: PLC0415
+        RawDataLoaderFactory,
+    )
+
+    return RawDataLoaderFactory
+
+
+def _event_loader_class() -> Any:
+    patched = globals()["EventLoader"]
+    if patched is not None:
+        return patched
+    from XBrainLab.backend.load_data.event_loader import EventLoader  # noqa: PLC0415
+
+    return EventLoader
 
 
 class DatasetController(Observable):
@@ -41,7 +92,18 @@ class DatasetController(Observable):
     def __init__(self, study):
         super().__init__()
         self.study = study
-        self.label_service = LabelImportService()
+        self._label_service: Any | None = None
+
+    @property
+    def label_service(self) -> Any:
+        """Label import service, materialized only when label import is used."""
+        if self._label_service is None:
+            self._label_service = _label_import_service_class()()
+        return self._label_service
+
+    @label_service.setter
+    def label_service(self, value: Any) -> None:
+        self._label_service = value
 
     def get_loaded_data_list(self):
         """Return the list of currently loaded raw data objects.
@@ -99,7 +161,7 @@ class DatasetController(Observable):
             existing_data = list(self.study.loaded_data_list)
 
         try:
-            loader = RawDataLoader(existing_data)
+            loader = _raw_data_loader_class()(existing_data)
         except Exception as e:
             # If existing dataset inconsistent
             raise ValueError(f"Existing dataset inconsistent: {e}") from e
@@ -115,7 +177,7 @@ class DatasetController(Observable):
 
             try:
                 logger.info("Loading file: %s", path)
-                raw = RawDataLoaderFactory.load(path)
+                raw = _raw_data_loader_factory().load(path)
 
                 if raw:
                     loader.append(raw)
@@ -457,5 +519,5 @@ class DatasetController(Observable):
             Suggested event IDs suitable for reaching *target_count*.
 
         """
-        loader = EventLoader(data)
+        loader = _event_loader_class()(data)
         return loader.smart_filter(target_count)

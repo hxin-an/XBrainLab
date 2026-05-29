@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from XBrainLab.backend.application import (
+from XBrainLab.backend.application.commands import (
     CommandName,
     PreprocessCommand,
     PreprocessOperation,
@@ -30,8 +30,20 @@ from XBrainLab.ui.application_capabilities import (
     run_legacy_controller_fallback,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
-from XBrainLab.ui.dialogs.dataset import ChannelSelectionDialog
 from XBrainLab.ui.styles.stylesheets import Stylesheets
+
+ChannelSelectionDialog: Any | None = None
+
+
+def _channel_selection_dialog_class():
+    patched = globals()["ChannelSelectionDialog"]
+    if patched is not None:
+        return patched
+    from XBrainLab.ui.dialogs.dataset.channel_selection_dialog import (  # noqa: PLC0415
+        ChannelSelectionDialog,
+    )
+
+    return ChannelSelectionDialog
 
 
 class DatasetSidebar(QWidget):
@@ -555,7 +567,8 @@ class DatasetSidebar(QWidget):
         data_list = self._loaded_data_list_for_channel_selection(preprocess_capability)
         if data_list is None:
             return
-        dialog = ChannelSelectionDialog(self, data_list)
+        dialog_class = _channel_selection_dialog_class()
+        dialog = dialog_class(self, data_list)
         if dialog.exec():
             result = dialog.get_result()
             if result:

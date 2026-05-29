@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-05-11`
+最後更新：`2026-05-29`
 
 ## 這份文件的用途
 
@@ -34,6 +34,50 @@
 - 證據：
 - 接續 / 本輪剩餘：
 ```
+
+## 2026-05-29
+
+### 20:56 Dataset panel import-boundary cleanup
+
+- 做了什麼：
+  - 把 `backend.application` package root 改成 lazy public contract，避免 UI startup 因 package
+    import 直接拖入 service / runtime / training / analysis stacks。
+  - 讓 Dataset panel / sidebar / actions 保留 test-patch seam，但 Data Import dialogs、label
+    dialogs、Smart Parser、Channel Selection 都改為按 action lazy import。
+  - 讓 `ApplicationService` 的 training / interpretation / dataset-generation / analysis
+    command services 延遲建立；`_execute_allowed()` 不再為了一個 command 先建立整張 handler
+    dict。
+  - 避免 Dataset info panel import `backend.load_data` / MNE，只用 local string state 判斷 raw /
+    epochs 顯示。
+  - 移除 startup timer / prewarm-result 觸發的自動 Dataset panel materialization；啟動時保留
+    lightweight placeholder，使用者按 `Open Dataset` 或切換 Dataset 時才建立真正 panel。
+  - 補 import-boundary tests、timing probe、`.gitignore` generated `import_recipe.json`，並新增
+    `docs/records/lab_meeting_2026-05-31.md` 記錄 Dataset startup 決策。
+- 結果：
+  - Dataset panel cold import median / max：`0.3602s` / `0.5017s`。
+  - DatasetPanel creation after import median / max：`0.0325s` / `0.0366s`。
+  - Cold materialize median / max：`0.4223s` / `0.4502s`。
+  - MainWindow first Dataset open without prewarm median / max：`0.3119s` / `0.3269s`。
+  - Default startup heartbeat max gap：`0.212s` / `0.013s` / `0.011s`，低於 `0.250s`
+    performance gate。
+  - Real `MainWindow(Study()).switch_page(0)` no longer imports `mne`, `backend.load_data`, or
+    `backend.preprocessor` on first Dataset open.
+- 證據：
+  - `poetry run ruff check .` -> pass。
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+  - `poetry run python tests/architecture_compliance.py` -> architecture compliant。
+  - `env QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/backend/application/test_import_boundaries.py tests/unit/ui/dataset/test_import_latency.py tests/unit/ui/dataset/test_panel.py tests/unit/ui/test_main_window_sync.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/test_sidebars_and_components.py -q` -> `218 passed`。
+  - `env QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/backend/application/test_import_boundaries.py tests/unit/ui/dataset/test_import_latency.py tests/unit/ui/test_main_window_sync.py -q` -> `25 passed`，包含 default startup 不自動載入 Dataset、prewarm 完成不載入 Dataset、`Open Dataset` 按鈕會載入 panel。
+  - `env MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `211 passed`。
+  - `env QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_data_splitting.py tests/unit/ui/test_evaluation_panel_redesign.py tests/unit/ui/test_visualization.py tests/unit/ui/test_dialogs_extra.py tests/unit/ui/training/test_model_selection.py -q`
+    -> `222 passed`。
+  - `poetry run mkdocs build --strict` -> pass。
+  - `env QT_QPA_PLATFORM=offscreen MNE_DONTWRITE_HOME=true poetry run python scripts/dev/update_quality_dashboard.py`
+    -> `Overall status: PASS` in `artifacts/quality/latest.md`。
+- 接續 / 本輪剩餘：
+  - Dirty `wip/data-import-controller-dirty-checkpoint` changes were archived as local checkpoint
+    commit `c87798e9`; the branch is clean and the integration branch remains the hand-test line.
 
 ## 2026-05-11
 

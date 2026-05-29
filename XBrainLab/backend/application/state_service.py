@@ -68,11 +68,19 @@ class StateSnapshotService:
         model_holder = getattr(self.study, "model_holder", None)
         training_option = getattr(self.study, "training_option", None)
 
-        raw_diagnostics = self._safe_call_dict(self.dataset.get_runtime_diagnostics)
-        preprocess_diagnostics = self._safe_call_dict(
-            self.preprocess.get_runtime_diagnostics,
+        raw_diagnostics = (
+            self._safe_call_dict(self.dataset.get_runtime_diagnostics)
+            if raw_data
+            else {}
         )
-        event_info = self._safe_call_dict(self.dataset.get_event_info)
+        preprocess_diagnostics = (
+            self._safe_call_dict(self.preprocess.get_runtime_diagnostics)
+            if preprocessed
+            else {}
+        )
+        event_info = (
+            self._safe_call_dict(self.dataset.get_event_info) if raw_data else {}
+        )
         evaluation = self._evaluation_snapshot()
 
         raw = RawStateSnapshot(
@@ -86,15 +94,24 @@ class StateSnapshotService:
             unique_events=[
                 str(item) for item in event_info.get("unique_labels", []) or []
             ],
-            locked=self._safe_bool(self.dataset.is_locked),
+            locked=self._safe_bool(getattr(self.study, "is_locked", lambda: False)),
             diagnostics=raw_diagnostics,
         )
+        has_preprocess_context = bool(preprocessed) or epoch_data is not None
         preprocessed_state = PreprocessedStateSnapshot(
             available=bool(preprocessed),
             count=len(preprocessed),
             files=[self.data_filename(item) for item in preprocessed],
-            is_epoched=self._safe_bool(self.preprocess.is_epoched),
-            channel_names=self._safe_list(self.preprocess.get_channel_names),
+            is_epoched=(
+                self._safe_bool(self.preprocess.is_epoched)
+                if has_preprocess_context
+                else False
+            ),
+            channel_names=(
+                self._safe_list(self.preprocess.get_channel_names)
+                if has_preprocess_context
+                else []
+            ),
             operations=self._preprocess_history(preprocessed),
             diagnostics=preprocess_diagnostics,
         )

@@ -10,7 +10,6 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from XBrainLab.backend.load_data import DataType
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
@@ -220,7 +219,7 @@ class AggregateInfoPanel(QGroupBox):
                 duration = "?"
 
         highpass, lowpass = first_data.get_filter_range()
-        text_type = DataType.RAW.value if first_data.is_raw() else DataType.EPOCH.value
+        text_type = "raw" if first_data.is_raw() else "epochs"
 
         self.set_val("Type", str(text_type))
         self.set_val("Total Files", str(len(data_list)))

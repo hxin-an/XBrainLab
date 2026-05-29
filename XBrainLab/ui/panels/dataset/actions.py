@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem,
 )
 
-from XBrainLab.backend.application import (
+from XBrainLab.backend.application.commands import (
     ApplyInterpretationCommand,
     ApplySmartParseCommand,
     CommandName,
@@ -44,13 +44,67 @@ from XBrainLab.ui.application_capabilities import (
     get_command_capability,
     run_legacy_controller_fallback,
 )
-from XBrainLab.ui.dialogs.dataset import (
-    DataInterpretationPreviewDialog,
-    EventFilterDialog,
-    ImportLabelDialog,
-    LabelMappingDialog,
-    SmartParserDialog,
-)
+
+DataInterpretationPreviewDialog: Any | None = None
+EventFilterDialog: Any | None = None
+ImportLabelDialog: Any | None = None
+LabelMappingDialog: Any | None = None
+SmartParserDialog: Any | None = None
+
+
+def _data_interpretation_preview_dialog_class():
+    patched = globals()["DataInterpretationPreviewDialog"]
+    if patched is not None:
+        return patched
+    from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (  # noqa: PLC0415
+        DataInterpretationPreviewDialog,
+    )
+
+    return DataInterpretationPreviewDialog
+
+
+def _event_filter_dialog_class():
+    patched = globals()["EventFilterDialog"]
+    if patched is not None:
+        return patched
+    from XBrainLab.ui.dialogs.dataset.event_filter_dialog import (  # noqa: PLC0415
+        EventFilterDialog,
+    )
+
+    return EventFilterDialog
+
+
+def _import_label_dialog_class():
+    patched = globals()["ImportLabelDialog"]
+    if patched is not None:
+        return patched
+    from XBrainLab.ui.dialogs.dataset.import_label_dialog import (  # noqa: PLC0415
+        ImportLabelDialog,
+    )
+
+    return ImportLabelDialog
+
+
+def _label_mapping_dialog_class():
+    patched = globals()["LabelMappingDialog"]
+    if patched is not None:
+        return patched
+    from XBrainLab.ui.dialogs.dataset.label_mapping_dialog import (  # noqa: PLC0415
+        LabelMappingDialog,
+    )
+
+    return LabelMappingDialog
+
+
+def _smart_parser_dialog_class():
+    patched = globals()["SmartParserDialog"]
+    if patched is not None:
+        return patched
+    from XBrainLab.ui.dialogs.dataset.smart_parser_dialog import (  # noqa: PLC0415
+        SmartParserDialog,
+    )
+
+    return SmartParserDialog
 
 
 class DatasetActionHandler:
@@ -345,7 +399,8 @@ class DatasetActionHandler:
             reload_result,
             "validation_decision",
         )
-        dialog = DataInterpretationPreviewDialog(
+        dialog_class = _data_interpretation_preview_dialog_class()
+        dialog = dialog_class(
             self.panel,
             scan_result=scan,
             preview=preview,
@@ -645,7 +700,8 @@ class DatasetActionHandler:
             }
             if resume_dialog_step:
                 dialog_kwargs["initial_step"] = resume_dialog_step
-            dialog = DataInterpretationPreviewDialog(self.panel, **dialog_kwargs)
+            dialog_class = _data_interpretation_preview_dialog_class()
+            dialog = dialog_class(self.panel, **dialog_kwargs)
             resume_dialog_step = ""
             if not dialog.exec():
                 return True
@@ -1017,7 +1073,8 @@ class DatasetActionHandler:
         if not filepaths:
             QMessageBox.warning(self.panel, "Warning", "No data loaded.")
             return
-        dialog = SmartParserDialog(filepaths, self.panel)
+        dialog_class = _smart_parser_dialog_class()
+        dialog = dialog_class(filepaths, self.panel)
         if dialog.exec():
             results = dialog.get_result()
             result = execute_application_command(
@@ -1088,7 +1145,8 @@ class DatasetActionHandler:
         if not target_files:
             return
 
-        dialog = ImportLabelDialog(self.panel, target_files=target_files)
+        dialog_class = _import_label_dialog_class()
+        dialog = dialog_class(self.panel, target_files=target_files)
         if not dialog.exec():
             return
         label_map, mapping = dialog.get_result()
@@ -1113,7 +1171,8 @@ class DatasetActionHandler:
             plan = None
             if len(label_map) > 1:  # Batch
                 data_paths = [d.get_filepath() for d in target_files]
-                map_dlg = LabelMappingDialog(
+                dialog_class = _label_mapping_dialog_class()
+                map_dlg = dialog_class(
                     self.panel,
                     data_paths,
                     list(label_map.keys()),
@@ -1361,7 +1420,8 @@ class DatasetActionHandler:
                 suggested_names.update(id_map[i] for i in s_ids if i in id_map)
             suggested = sorted(suggested_names)
 
-        dlg = EventFilterDialog(self.panel, sorted_names)
+        dialog_class = _event_filter_dialog_class()
+        dlg = dialog_class(self.panel, sorted_names)
         if suggested:
             dlg.set_selection(suggested)
 

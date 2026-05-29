@@ -4,6 +4,7 @@ Provides the top-level QMainWindow that manages navigation, panel switching,
 AI assistant integration, and debug tool execution.
 """
 
+import contextlib
 import sys
 import weakref
 from dataclasses import dataclass
@@ -168,15 +169,21 @@ def _prewarm_startup_modules(
 class _LazyPanelPlaceholder(QWidget):
     """Lightweight stand-in for workflow panels that are not opened yet."""
 
-    def __init__(self, panel_label: str, parent=None) -> None:
+    def __init__(self, panel_label: str, parent=None, load_requested=None) -> None:
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
-        label = QLabel(f"Loading {panel_label}...")
+        label = QLabel(f"{panel_label} is ready to open.")
         label.setObjectName("LazyPanelPlaceholder")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        open_button = QPushButton(f"Open {panel_label}")
+        open_button.setObjectName("ActionBtn")
+        open_button.setFixedWidth(160)
+        if callable(load_requested):
+            open_button.clicked.connect(load_requested)
         layout.addStretch()
         layout.addWidget(label)
+        layout.addWidget(open_button, alignment=Qt.AlignmentFlag.AlignCenter)
         layout.addStretch()
 
 
@@ -218,13 +225,47 @@ class _StartupInfoPanelService:
             self._real_service.unregister(panel)
 
     def notify_all(self, *args, **kwargs) -> None:
-        self._service().notify_all(*args, **kwargs)
+        if self._real_service is not None:
+            self._real_service.notify_all(*args, **kwargs)
+            return
+        loaded, preprocessed = self._query_data_lists()
+        for panel in list(self._listeners):
+            with contextlib.suppress(RuntimeError):
+                panel.update_info(
+                    loaded_data_list=loaded,
+                    preprocessed_data_list=preprocessed,
+                )
 
     def update_single(self, panel) -> None:
         if self._real_service is not None:
             self._real_service.update_single(panel)
             return
-        panel.update_info(loaded_data_list=[], preprocessed_data_list=[])
+        loaded, preprocessed = self._query_data_lists()
+        panel.update_info(loaded_data_list=loaded, preprocessed_data_list=preprocessed)
+
+    def _query_data_lists(self) -> tuple[list[Any], list[Any]]:
+        try:
+            from XBrainLab.backend.application.commands import (  # noqa: PLC0415
+                QueryStateCommand,
+            )
+            from XBrainLab.ui.application_capabilities import (  # noqa: PLC0415
+                execute_application_command,
+            )
+
+            result = execute_application_command(
+                self,
+                QueryStateCommand(query="data_lists", include_objects=True),
+                refresh=False,
+            )
+        except Exception:
+            logger.debug("Startup info state query failed", exc_info=True)
+            return [], []
+        if result is None or result.failed:
+            return [], []
+        return (
+            list(result.diagnostics.get("loaded_data_list", [])),
+            list(result.diagnostics.get("preprocessed_data_list", [])),
+        )
 
 
 class MainWindow(QMainWindow):
@@ -610,16 +651,28 @@ class MainWindow(QMainWindow):
             get_legacy_workflow_controllers_for_panel_bootstrap(self.study)
         )
 
-        for spec in _PANEL_SPECS:
-            placeholder = _LazyPanelPlaceholder(spec.label, self)
+        for index, spec in enumerate(_PANEL_SPECS):
+
+            def load_panel(
+                _checked: bool = False,
+                *,
+                panel_index: int = index,
+            ) -> None:
+                self.switch_page(panel_index)
+
+            placeholder = _LazyPanelPlaceholder(
+                spec.label,
+                self,
+                load_requested=load_panel,
+            )
             setattr(self, spec.attr, placeholder)
             self.stack.addWidget(placeholder)
 
         self.stack.setCurrentIndex(0)
 
     def _schedule_initial_panel_load(self) -> None:
-        """Load the first visible panel after the shell has had a chance to paint."""
-        QTimer.singleShot(1400, self._load_initial_panel_if_alive)
+        """Keep initial panel loading user-triggered to avoid startup UI stalls."""
+        return None
 
     def _load_initial_panel_if_alive(self) -> None:
         """Materialize the initial panel unless the window was already destroyed."""
@@ -786,7 +839,6 @@ class MainWindow(QMainWindow):
             len(loaded),
             failed,
         )
-        self._load_initial_panel_if_alive()
 
     def _clear_startup_prewarm_worker(self) -> None:
         """Release the worker reference after the background task completes."""
