@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Any
 
-from XBrainLab.backend.application import ChangedState, CommandResult
 from XBrainLab.backend.utils.logger import logger
 
 _REFRESHING_MAIN_WINDOWS: set[int] = set()
@@ -18,21 +18,41 @@ _PANEL_NAMES_BY_INDEX = (
     "evaluation_panel",
     "visualization_panel",
 )
+
+
+@dataclass(frozen=True)
+class _ChangedState:
+    """Local route descriptor matching ApplicationService changed-state fields."""
+
+    raw_changed: bool = False
+    preprocessed_changed: bool = False
+    epoch_changed: bool = False
+    datasets_changed: bool = False
+    training_changed: bool = False
+    evaluation_changed: bool = False
+    visualization_changed: bool = False
+    interpretation_changed: bool = False
+    error_changed: bool = False
+
+
 _OBSERVER_EVENT_REFRESH_ROUTES = {
-    "data_changed": ("dataset_panel", ChangedState(raw_changed=True)),
-    "preprocess_changed": ("preprocess_panel", ChangedState(preprocessed_changed=True)),
-    "training_started": ("training_panel", ChangedState(training_changed=True)),
-    "training_stopped": ("training_panel", ChangedState(training_changed=True)),
-    "training_updated": ("training_panel", ChangedState(training_changed=True)),
-    "config_changed": ("training_panel", ChangedState(training_changed=True)),
-    "history_cleared": ("training_panel", ChangedState(training_changed=True)),
+    "data_changed": ("dataset_panel", _ChangedState(raw_changed=True)),
+    "preprocess_changed": (
+        "preprocess_panel",
+        _ChangedState(preprocessed_changed=True),
+    ),
+    "training_started": ("training_panel", _ChangedState(training_changed=True)),
+    "training_stopped": ("training_panel", _ChangedState(training_changed=True)),
+    "training_updated": ("training_panel", _ChangedState(training_changed=True)),
+    "config_changed": ("training_panel", _ChangedState(training_changed=True)),
+    "history_cleared": ("training_panel", _ChangedState(training_changed=True)),
     "montage_changed": (
         "visualization_panel",
-        ChangedState(visualization_changed=True),
+        _ChangedState(visualization_changed=True),
     ),
     "saliency_changed": (
         "visualization_panel",
-        ChangedState(visualization_changed=True),
+        _ChangedState(visualization_changed=True),
     ),
 }
 _OBSERVER_EVENT_PANEL_OVERRIDES = {
@@ -47,7 +67,7 @@ _OBSERVER_EVENT_REFRESH_SHARED_STATUS = {
 }
 
 
-def refresh_after_command(context: Any, result: CommandResult | None) -> bool:
+def refresh_after_command(context: Any, result: Any | None) -> bool:
     """Refresh UI surfaces affected by an ApplicationService command result."""
     if result is None or not result.changed_state.any_changed():
         return False
@@ -213,7 +233,7 @@ def find_main_window(context: Any) -> Any | None:
     return None
 
 
-def _panel_names_for(changed: ChangedState) -> tuple[str, ...]:
+def _panel_names_for(changed: Any) -> tuple[str, ...]:
     panel_names: list[str] = []
     if changed.raw_changed or changed.interpretation_changed:
         panel_names.append("dataset_panel")
@@ -242,7 +262,7 @@ def _panel_names_for(changed: ChangedState) -> tuple[str, ...]:
 
 def _panel_names_for_observer_event(
     event_name: str | None,
-    changed: ChangedState,
+    changed: Any,
 ) -> tuple[str, ...]:
     if str(event_name) in _OBSERVER_EVENT_PANEL_OVERRIDES:
         return _OBSERVER_EVENT_PANEL_OVERRIDES[str(event_name)]

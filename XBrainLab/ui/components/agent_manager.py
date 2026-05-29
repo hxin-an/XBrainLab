@@ -150,10 +150,19 @@ class AgentManager(QObject):
             self.main_window,
             lambda: self.agent_controller,
         )
-        if hasattr(self.main_window, "visualization_panel"):
-            self.main_window.visualization_panel.tabs.currentChanged.connect(
-                self.vram_checker.on_viz_tab_changed,
-            )
+        self._visualization_monitor_connected = False
+        self.connect_visualization_monitor()
+
+    def connect_visualization_monitor(self) -> None:
+        """Connect visualization-tab VRAM checks when the panel has been loaded."""
+        if self._visualization_monitor_connected:
+            return
+        visualization_panel = getattr(self.main_window, "visualization_panel", None)
+        tabs = getattr(visualization_panel, "tabs", None)
+        if tabs is None:
+            return
+        tabs.currentChanged.connect(self.vram_checker.on_viz_tab_changed)
+        self._visualization_monitor_connected = True
 
     def init_ui(self):
         """Initialize the chat dock widget and panel UI components.

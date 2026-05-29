@@ -96,6 +96,7 @@ def _write_synthetic_raw_fif(tmp_path):
 
 def test_assistant_product_click_through_layout(test_app, qtbot):
     """Open assistant, verify product language, bubbles, composer, and nav."""
+    test_app.init_agent()
     manager = test_app.agent_manager
     with (
         patch.object(manager, "_load_runtime_config", return_value=SimpleNamespace()),
@@ -265,6 +266,7 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
 
 def test_assistant_first_open_preserves_local_runtime_confirmation(test_app, qtbot):
     """Opening the dock still reaches the local runtime first-run confirmation."""
+    test_app.init_agent()
     manager = test_app.agent_manager
     with (
         patch.object(manager, "_load_runtime_config", return_value=SimpleNamespace()),
@@ -292,6 +294,7 @@ def test_import_command_success_refreshes_dataset_table_without_stale_controller
 ):
     """A backend import command success must refresh UI from command/query truth."""
     fif_path = _write_synthetic_raw_fif(tmp_path)
+    test_app.switch_page(0)
 
     with (
         patch.object(
@@ -344,6 +347,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         lambda *_args, **_kwargs: QMessageBox.StandardButton.Ok,
     )
     fif_path = _write_synthetic_raw_fif(tmp_path)
+    test_app.switch_page(0)
 
     with (
         patch(
@@ -393,12 +397,20 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
     ):
         _click(qtbot, test_app.preprocess_panel.sidebar.btn_filter)
     assert _application_state(test_app.study)["preprocessed"]["count"] == 1
+    qtbot.waitUntil(
+        lambda: test_app.preprocess_panel.sidebar.btn_epoch.isEnabled(),
+        timeout=5000,
+    )
 
     with patch(
         "XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog",
         FakeEpochingDialog,
     ):
         _click(qtbot, test_app.preprocess_panel.sidebar.btn_epoch)
+    qtbot.waitUntil(
+        lambda: bool(_application_state(test_app.study)["epoch"]["exists"]),
+        timeout=5000,
+    )
     epoch_state = _application_state(test_app.study)["epoch"]
     assert epoch_state["exists"] is True
     assert epoch_state["epoch_count"] == 6

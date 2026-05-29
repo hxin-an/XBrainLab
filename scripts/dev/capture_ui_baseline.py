@@ -18,7 +18,12 @@ import sys
 from pathlib import Path
 
 from PIL import Image
-from PyQt6.QtCore import QPoint, QSettings, QSize, QTimer
+
+from XBrainLab.ui.qt_runtime import configure_qt_platform_for_runtime
+
+configure_qt_platform_for_runtime()
+
+from PyQt6.QtCore import QPoint, QSettings, QSize, Qt, QTimer
 from PyQt6.QtWidgets import QApplication
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -46,6 +51,7 @@ def _clear_saved_main_window_geometry() -> None:
 
 def _set_baseline_window_geometry(window) -> None:
     """Force the screenshot window to the approved capture dimensions."""
+    window.setWindowState(Qt.WindowState.WindowNoState)
     screen = window.screen() or QApplication.primaryScreen()
     target = BASELINE_WINDOW_SIZE
     if screen is not None:
@@ -98,11 +104,16 @@ def _prepare_capture_step(window, step_target) -> None:
 
     if step_target == AI_DOCK_STEP:
         window.switch_page(0)
-        window.agent_manager.agent_initialized = True
-        if window.agent_manager.chat_dock is not None:
-            window.agent_manager.chat_dock.show()
-        if hasattr(window.agent_manager, "update_ai_btn_state"):
-            window.agent_manager.update_ai_btn_state(True)
+        if window.agent_manager is None:
+            window.init_agent()
+        manager = window.agent_manager
+        if manager is None:
+            return
+        manager.agent_initialized = True
+        if manager.chat_dock is not None:
+            manager.chat_dock.show()
+        if hasattr(manager, "update_ai_btn_state"):
+            manager.update_ai_btn_state(True)
         elif hasattr(window, "ai_btn"):
             window.ai_btn.setChecked(True)
         return

@@ -12,11 +12,21 @@ class _StudyWithControllers:
         return f"{name}-controller"
 
 
-def test_legacy_workflow_controller_bootstrap_reads_expected_controllers():
+def test_legacy_workflow_controller_bootstrap_reads_controllers_lazily():
     study = _StudyWithControllers()
 
     controllers = get_legacy_workflow_controllers_for_panel_bootstrap(study)
 
+    assert study.calls == []
+    assert controllers.dataset == "dataset-controller"
+    assert study.calls == ["dataset"]
+    assert controllers.dataset == "dataset-controller"
+    assert study.calls == ["dataset"]
+    assert controllers.preprocess == "preprocess-controller"
+    assert study.calls == ["dataset", "preprocess"]
+    assert controllers.training == "training-controller"
+    assert controllers.evaluation == "evaluation-controller"
+    assert controllers.visualization == "visualization-controller"
     assert study.calls == [
         "dataset",
         "preprocess",
@@ -24,11 +34,6 @@ def test_legacy_workflow_controller_bootstrap_reads_expected_controllers():
         "evaluation",
         "visualization",
     ]
-    assert controllers.dataset == "dataset-controller"
-    assert controllers.preprocess == "preprocess-controller"
-    assert controllers.training == "training-controller"
-    assert controllers.evaluation == "evaluation-controller"
-    assert controllers.visualization == "visualization-controller"
 
 
 def test_legacy_workflow_controller_bootstrap_handles_missing_getter():

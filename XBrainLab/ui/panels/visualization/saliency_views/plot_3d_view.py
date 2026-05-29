@@ -5,7 +5,7 @@ import sys
 
 import pyvistaqt
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.styles.theme import Theme
@@ -187,12 +187,13 @@ class Saliency3DPlotWidget(QWidget):
     def _interactive_3d_runtime_available() -> tuple[bool, str]:
         """Return whether an interactive OpenGL Qt runtime is available."""
         qt_platform = os.environ.get("QT_QPA_PLATFORM", "").strip().lower()
+        active_qt_platform = Saliency3DPlotWidget._active_qt_platform_name()
         pyvista_offscreen = os.environ.get("PYVISTA_OFF_SCREEN", "").strip().lower()
-        if qt_platform in {"offscreen", "minimal"} or pyvista_offscreen in {
-            "1",
-            "true",
-            "yes",
-        }:
+        if (
+            qt_platform in {"offscreen", "minimal"}
+            or active_qt_platform in {"offscreen", "minimal"}
+            or pyvista_offscreen in {"1", "true", "yes"}
+        ):
             return (
                 False,
                 "3D rendering requires an interactive OpenGL desktop session. "
@@ -208,6 +209,17 @@ class Saliency3DPlotWidget(QWidget):
         if sys.platform.startswith("linux"):
             return Saliency3DPlotWidget._probe_interactive_3d_runtime()
         return True, ""
+
+    @staticmethod
+    def _active_qt_platform_name() -> str:
+        """Return the actual QApplication platform if a Qt app exists."""
+        app = QApplication.instance()
+        if app is None:
+            return ""
+        platform_name = getattr(app, "platformName", None)
+        if not callable(platform_name):
+            return ""
+        return str(platform_name()).strip().lower()
 
     @staticmethod
     def _probe_interactive_3d_runtime() -> tuple[bool, str]:

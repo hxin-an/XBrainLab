@@ -19,6 +19,8 @@ def main_window(mock_study, qtbot):
     with (
         patch("XBrainLab.ui.main_window.MainWindow.init_panels"),
         patch("XBrainLab.ui.main_window.MainWindow.init_agent"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
     ):
         window = MainWindow(mock_study)
@@ -121,20 +123,59 @@ def test_main_window_delegates_info_refresh_to_coordinator(mock_study, qtbot):
     with (
         patch("XBrainLab.ui.main_window.MainWindow.init_panels"),
         patch("XBrainLab.ui.main_window.MainWindow.init_agent"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
-        patch("XBrainLab.ui.main_window.InfoPanelService") as service_cls,
     ):
         window = MainWindow(mock_study)
 
     qtbot.addWidget(window)
-    service_cls.assert_called_once_with(
-        mock_study,
-        observe_controller_events=False,
-    )
+    assert window.info_service.study is mock_study
+    assert window.info_service._observes_controller_events is False
 
 
 def test_init_panels_uses_legacy_bootstrap_helper(mock_study, qtbot):
-    """MainWindow should not directly look up workflow controllers."""
+    """MainWindow should lazy-create workflow panels from the bootstrap bundle."""
+    controllers = SimpleNamespace(
+        dataset=object(),
+        preprocess=object(),
+        training=object(),
+        evaluation=object(),
+        visualization=object(),
+    )
+    loaded_classes = []
+
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+        patch("XBrainLab.ui.main_window.InfoPanelService"),
+        patch(
+            "XBrainLab.ui.main_window.get_legacy_workflow_controllers_for_panel_bootstrap",
+            return_value=controllers,
+        ) as bootstrap,
+        patch(
+            "XBrainLab.ui.main_window._load_panel_class",
+            side_effect=lambda _module, class_name: (
+                loaded_classes.append(class_name) or (lambda *args: QWidget())
+            ),
+        ) as load_panel_class,
+    ):
+        window = MainWindow(mock_study)
+        assert loaded_classes == []
+        window.switch_page(0)
+        window.switch_page(2)
+
+    qtbot.addWidget(window)
+    bootstrap.assert_called_once_with(mock_study)
+    mock_study.get_controller.assert_not_called()
+    assert loaded_classes == ["DatasetPanel", "TrainingPanel"]
+    assert window.stack.count() == 5
+    assert load_panel_class.call_count == 2
+
+
+def test_initial_panel_lazy_load_preserves_current_page(mock_study, qtbot):
+    """Replacing the visible placeholder must not jump to the next panel."""
     controllers = SimpleNamespace(
         dataset=object(),
         preprocess=object(),
@@ -144,61 +185,70 @@ def test_init_panels_uses_legacy_bootstrap_helper(mock_study, qtbot):
     )
 
     with (
-        patch("XBrainLab.ui.main_window.MainWindow.init_agent"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
-        patch("XBrainLab.ui.main_window.ToolExecutor"),
-        patch("XBrainLab.ui.main_window.InfoPanelService"),
         patch(
             "XBrainLab.ui.main_window.get_legacy_workflow_controllers_for_panel_bootstrap",
             return_value=controllers,
-        ) as bootstrap,
+        ),
         patch(
-            "XBrainLab.ui.main_window.DatasetPanel",
-            side_effect=lambda *args: QWidget(),
-        ) as dataset_panel,
-        patch(
-            "XBrainLab.ui.main_window.PreprocessPanel",
-            side_effect=lambda *args: QWidget(),
-        ) as preprocess_panel,
-        patch(
-            "XBrainLab.ui.main_window.TrainingPanel",
-            side_effect=lambda *args: QWidget(),
-        ) as training_panel,
-        patch(
-            "XBrainLab.ui.main_window.EvaluationPanel",
-            side_effect=lambda *args: QWidget(),
-        ) as evaluation_panel,
-        patch(
-            "XBrainLab.ui.main_window.VisualizationPanel",
-            side_effect=lambda *args: QWidget(),
-        ) as visualization_panel,
+            "XBrainLab.ui.main_window._load_panel_class",
+            return_value=lambda *args: QWidget(),
+        ),
     ):
         window = MainWindow(mock_study)
+        assert window.stack.currentIndex() == 0
+        window._load_initial_panel_if_alive()
 
     qtbot.addWidget(window)
-    bootstrap.assert_called_once_with(mock_study)
-    mock_study.get_controller.assert_not_called()
-    dataset_panel.assert_called_once_with(controllers.dataset, window)
-    preprocess_panel.assert_called_once_with(
-        controllers.preprocess,
-        controllers.dataset,
-        window,
-    )
-    training_panel.assert_called_once_with(
-        controllers.training,
-        controllers.dataset,
-        window,
-    )
-    evaluation_panel.assert_called_once_with(
-        controllers.evaluation,
-        controllers.training,
-        window,
-    )
-    visualization_panel.assert_called_once_with(
-        controllers.visualization,
-        controllers.training,
-        window,
-    )
+    assert window.stack.currentIndex() == 0
+    assert window.nav_btns[0].isChecked()
+
+
+def test_agent_manager_is_lazy_until_ai_toggle(mock_study, qtbot):
+    """The AI assistant stack should not import/init during MainWindow startup."""
+
+    class _Signal:
+        def connect(self, _callback):
+            return None
+
+    class _AgentManager:
+        status_message_received = _Signal()
+
+        def __init__(self, *args):
+            self.chat_panel = None
+            self.toggled = False
+            self.closed = False
+
+        def init_ui(self):
+            return None
+
+        def toggle(self):
+            self.toggled = True
+
+        def close(self):
+            self.closed = True
+
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow.init_panels"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+        patch(
+            "XBrainLab.ui.main_window._load_agent_manager_class",
+            return_value=_AgentManager,
+        ) as load_agent_manager,
+    ):
+        window = MainWindow(mock_study)
+        assert window.agent_manager is None
+        load_agent_manager.assert_not_called()
+        window.toggle_ai_dock()
+
+    qtbot.addWidget(window)
+    load_agent_manager.assert_called_once()
+    assert window.agent_manager is not None
+    assert window.agent_manager.toggled is True
 
 
 def test_update_info_panel_keeps_legacy_direct_panel_fallback(main_window):
@@ -216,6 +266,8 @@ def test_switch_page_skips_panel_without_update_panel(mock_study, qtbot):
     with (
         patch("XBrainLab.ui.main_window.MainWindow.init_panels"),
         patch("XBrainLab.ui.main_window.MainWindow.init_agent"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
     ):
         window = MainWindow(mock_study)

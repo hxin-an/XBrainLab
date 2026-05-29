@@ -5,13 +5,18 @@ AI assistant integration, and debug tool execution.
 """
 
 import sys
+import weakref
+from dataclasses import dataclass
+from importlib import import_module
+from typing import Any
 
 from PyQt6 import sip
-from PyQt6.QtCore import QRect, QSettings, QSize, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QRect, QSettings, QSize, Qt, QThreadPool, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication,
     QFrame,
     QHBoxLayout,
+    QLabel,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -21,21 +26,10 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.utils.logger import logger
-
-# M3.1: Debug Executor
-from XBrainLab.debug.tool_executor import ToolExecutor
-from XBrainLab.ui.components.agent_manager import AgentManager
-from XBrainLab.ui.components.info_panel_service import InfoPanelService
-
-# LLMController, ChatPanel, PickMontageDialog moved to AgentManager
+from XBrainLab.ui.core.worker import Worker
 from XBrainLab.ui.legacy_controller_bootstrap import (
     get_legacy_workflow_controllers_for_panel_bootstrap,
 )
-from XBrainLab.ui.panels.dataset.panel import DatasetPanel
-from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
-from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
-from XBrainLab.ui.panels.training.panel import TrainingPanel
-from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
 from XBrainLab.ui.refresh_coordinator import refresh_after_navigation
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.window_placement import (
@@ -50,6 +44,187 @@ from XBrainLab.ui.window_placement import (
     usable_window_position_bounds,
     widget_geometry_diagnostic_line,
 )
+
+# Compatibility hooks for older tests and debug fixtures that patch these names
+# directly. Runtime loading still happens through the lazy loader helpers below.
+ToolExecutor = None
+AgentManager = None
+InfoPanelService = None
+DatasetPanel = None
+PreprocessPanel = None
+TrainingPanel = None
+EvaluationPanel = None
+VisualizationPanel = None
+
+
+@dataclass(frozen=True)
+class _PanelSpec:
+    attr: str
+    label: str
+    module: str
+    class_name: str
+    controller_names: tuple[str, ...]
+
+
+_PANEL_SPECS: tuple[_PanelSpec, ...] = (
+    _PanelSpec(
+        "dataset_panel",
+        "Dataset",
+        "XBrainLab.ui.panels.dataset.panel",
+        "DatasetPanel",
+        ("dataset",),
+    ),
+    _PanelSpec(
+        "preprocess_panel",
+        "Preprocess",
+        "XBrainLab.ui.panels.preprocess.panel",
+        "PreprocessPanel",
+        ("preprocess", "dataset"),
+    ),
+    _PanelSpec(
+        "training_panel",
+        "Training",
+        "XBrainLab.ui.panels.training.panel",
+        "TrainingPanel",
+        ("training", "dataset"),
+    ),
+    _PanelSpec(
+        "evaluation_panel",
+        "Evaluation",
+        "XBrainLab.ui.panels.evaluation.panel",
+        "EvaluationPanel",
+        ("evaluation", "training"),
+    ),
+    _PanelSpec(
+        "visualization_panel",
+        "Visualization",
+        "XBrainLab.ui.panels.visualization.panel",
+        "VisualizationPanel",
+        ("visualization", "training"),
+    ),
+)
+
+_STARTUP_PREWARM_MODULES: tuple[str, ...] = (
+    "XBrainLab.backend.application.service",
+    "XBrainLab.backend.load_data.raw_data_loader",
+    "XBrainLab.backend.training",
+    "XBrainLab.backend.training.evaluator",
+)
+
+
+def _load_panel_class(module_name: str, class_name: str) -> Any:
+    """Load a workflow panel class only when the panel is first opened."""
+    patched = globals().get(class_name)
+    if patched is not None:
+        return patched
+    module = import_module(module_name)
+    return getattr(module, class_name)
+
+
+def _load_agent_manager_class():
+    """Load the AI assistant stack only when the user opens it."""
+    patched = globals().get("AgentManager")
+    if patched is not None:
+        return patched
+    module = import_module("XBrainLab.ui.components.agent_manager")
+    return module.AgentManager
+
+
+def _load_tool_executor_class():
+    """Load debug tool execution only when a debug request is emitted."""
+    patched = globals().get("ToolExecutor")
+    if patched is not None:
+        return patched
+    module = import_module("XBrainLab.debug.tool_executor")
+    return module.ToolExecutor
+
+
+def _load_info_panel_service_class():
+    """Load the full aggregate info service only after the UI is visible."""
+    patched = globals().get("InfoPanelService")
+    if patched is not None:
+        return patched
+    module = import_module("XBrainLab.ui.components.info_panel_service")
+    return module.InfoPanelService
+
+
+def _prewarm_startup_modules(
+    modules: tuple[str, ...] = _STARTUP_PREWARM_MODULES,
+) -> dict[str, list[str]]:
+    """Import non-UI heavy modules after startup so first use is less abrupt."""
+    loaded: list[str] = []
+    failed: list[str] = []
+    for module_name in modules:
+        try:
+            import_module(module_name)
+        except Exception:  # noqa: PERF203
+            logger.debug("Startup prewarm failed for %s", module_name, exc_info=True)
+            failed.append(module_name)
+        else:
+            loaded.append(module_name)
+    return {"loaded": loaded, "failed": failed}
+
+
+class _LazyPanelPlaceholder(QWidget):
+    """Lightweight stand-in for workflow panels that are not opened yet."""
+
+    def __init__(self, panel_label: str, parent=None) -> None:
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        label = QLabel(f"Loading {panel_label}...")
+        label.setObjectName("LazyPanelPlaceholder")
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addStretch()
+        layout.addWidget(label)
+        layout.addStretch()
+
+
+class _StartupInfoPanelService:
+    """Lightweight proxy that defers full info-service imports until needed."""
+
+    def __init__(
+        self,
+        study,
+        *,
+        observe_controller_events: bool = True,
+    ) -> None:
+        self.study = study
+        self._observes_controller_events = observe_controller_events
+        self._listeners: weakref.WeakSet = weakref.WeakSet()
+        self._real_service = None
+
+    def _service(self):
+        if self._real_service is None:
+            service_class = _load_info_panel_service_class()
+            self._real_service = service_class(
+                self.study,
+                observe_controller_events=self._observes_controller_events,
+            )
+            for panel in list(self._listeners):
+                self._real_service.register(panel)
+        return self._real_service
+
+    def register(self, panel) -> None:
+        self._listeners.add(panel)
+        if self._real_service is not None:
+            self._real_service.register(panel)
+            return
+        panel.update_info(loaded_data_list=[], preprocessed_data_list=[])
+
+    def unregister(self, panel) -> None:
+        self._listeners.discard(panel)
+        if self._real_service is not None:
+            self._real_service.unregister(panel)
+
+    def notify_all(self, *args, **kwargs) -> None:
+        self._service().notify_all(*args, **kwargs)
+
+    def update_single(self, panel) -> None:
+        if self._real_service is not None:
+            self._real_service.update_single(panel)
+            return
+        panel.update_info(loaded_data_list=[], preprocessed_data_list=[])
 
 
 class MainWindow(QMainWindow):
@@ -100,9 +275,11 @@ class MainWindow(QMainWindow):
         self._restore_or_place_window()
 
         self.agent_initialized = False  # Flag for lazy loading
-
-        # M3.1: Tool Executor for Debug Mode
-        self.debug_executor = ToolExecutor(self.study)
+        self.agent_manager = None
+        self.debug_executor = None
+        self._workflow_controllers = None
+        self._loaded_panel_indices: set[int] = set()
+        self._startup_prewarm_worker = None
 
         # Apply VS Code Dark Theme (Adjusted for Top Bar)
         self.apply_vscode_theme()
@@ -145,7 +322,7 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.top_bar)
 
         # 2. Services (Must be before panels to allow registration)
-        self.info_service = InfoPanelService(
+        self.info_service = _StartupInfoPanelService(
             self.study,
             observe_controller_events=False,
         )
@@ -157,8 +334,8 @@ class MainWindow(QMainWindow):
         # Initialize Panels
         self.init_panels()
 
-        # Initialize Agent System
-        self.init_agent()
+        self._schedule_initial_panel_load()
+        self._schedule_startup_prewarm()
 
         logger.info("MainWindow initialized")
 
@@ -414,53 +591,84 @@ class MainWindow(QMainWindow):
             index: Zero-based index of the panel to display.
 
         """
+        self._ensure_panel_loaded(index)
         self.stack.setCurrentIndex(index)
         for i, btn in enumerate(self.nav_btns):
             btn.setChecked(i == index)
 
         refresh_after_navigation(self, index)
+        if self.agent_manager is None:
+            status_bar = self.statusBar()
+            if status_bar is not None:
+                status_bar.showMessage(
+                    "No EEG data open · Scan a data source to begin",
+                )
 
     def init_panels(self):
-        """Initializes and adds all main functional panels to the stacked widget.
-        The order of addition corresponds to the index used in navigation.
-        """
-        controllers = get_legacy_workflow_controllers_for_panel_bootstrap(self.study)
-
-        # 0. Dataset
-        self.dataset_panel = DatasetPanel(controllers.dataset, self)
-        self.stack.addWidget(self.dataset_panel)
-
-        # 1. Preprocess
-        self.preprocess_panel = PreprocessPanel(
-            controllers.preprocess,
-            controllers.dataset,
-            self,
+        """Create the first panel now and defer hidden panels until first use."""
+        self._workflow_controllers = (
+            get_legacy_workflow_controllers_for_panel_bootstrap(self.study)
         )
-        self.stack.addWidget(self.preprocess_panel)
 
-        # 2. Training
-        self.training_panel = TrainingPanel(
-            controllers.training,
-            controllers.dataset,
-            self,
-        )
-        self.stack.addWidget(self.training_panel)
+        for spec in _PANEL_SPECS:
+            placeholder = _LazyPanelPlaceholder(spec.label, self)
+            setattr(self, spec.attr, placeholder)
+            self.stack.addWidget(placeholder)
 
-        # 3. Evaluation
-        self.evaluation_panel = EvaluationPanel(
-            controllers.evaluation,
-            controllers.training,
-            self,
-        )
-        self.stack.addWidget(self.evaluation_panel)
+        self.stack.setCurrentIndex(0)
 
-        # 4. Visualization
-        self.visualization_panel = VisualizationPanel(
-            controllers.visualization,
-            controllers.training,
-            self,
-        )
-        self.stack.addWidget(self.visualization_panel)
+    def _schedule_initial_panel_load(self) -> None:
+        """Load the first visible panel after the shell has had a chance to paint."""
+        QTimer.singleShot(1400, self._load_initial_panel_if_alive)
+
+    def _load_initial_panel_if_alive(self) -> None:
+        """Materialize the initial panel unless the window was already destroyed."""
+        if sip.isdeleted(self):
+            return
+        if self.stack.currentIndex() == 0 and 0 not in self._loaded_panel_indices:
+            self._ensure_panel_loaded(0)
+            refresh_after_navigation(self, 0)
+
+    def _ensure_panel_loaded(self, index: int) -> QWidget | None:
+        """Instantiate a workflow panel on first navigation to that panel."""
+        if index < 0 or index >= len(_PANEL_SPECS):
+            return None
+
+        spec = _PANEL_SPECS[index]
+        existing = getattr(self, spec.attr, None)
+        if index in self._loaded_panel_indices:
+            return existing
+        if existing is not None and not isinstance(existing, _LazyPanelPlaceholder):
+            self._loaded_panel_indices.add(index)
+            return existing
+        if self.stack.count() <= index:
+            return existing
+
+        controllers = self._workflow_controllers
+        if controllers is None:
+            controllers = get_legacy_workflow_controllers_for_panel_bootstrap(
+                self.study,
+            )
+            self._workflow_controllers = controllers
+
+        panel_class = _load_panel_class(spec.module, spec.class_name)
+        controller_args = [getattr(controllers, name) for name in spec.controller_names]
+        panel = panel_class(*controller_args, self)
+
+        old_widget = self.stack.widget(index)
+        was_current = self.stack.currentIndex() == index
+        if old_widget is not None:
+            self.stack.removeWidget(old_widget)
+            old_widget.setParent(None)
+        self.stack.insertWidget(index, panel)
+        if was_current:
+            self.stack.setCurrentIndex(index)
+        setattr(self, spec.attr, panel)
+        self._loaded_panel_indices.add(index)
+
+        if spec.attr == "visualization_panel":
+            self._connect_agent_visualization_monitor()
+        return panel
 
     def init_agent(self):
         """Initialize the AI agent system via AgentManager.
@@ -468,8 +676,11 @@ class MainWindow(QMainWindow):
         Creates the ``AgentManager``, sets up its UI, and connects
         the debug tool execution signal.
         """
-        # Delegate to AgentManager
-        self.agent_manager = AgentManager(self, self.study)
+        if self.agent_manager is not None:
+            return
+
+        agent_manager_class = _load_agent_manager_class()
+        self.agent_manager = agent_manager_class(self, self.study)
         self.agent_manager.init_ui()
 
         # M3.1: Debug tool execution handled by MainWindow for offline support
@@ -482,6 +693,23 @@ class MainWindow(QMainWindow):
         self.agent_manager.status_message_received.connect(
             self._on_agent_status_message,
         )
+        self._connect_agent_visualization_monitor()
+
+    def _connect_agent_visualization_monitor(self) -> None:
+        """Connect VRAM monitoring once both agent and visualization panel exist."""
+        agent_manager = getattr(self, "agent_manager", None)
+        if agent_manager is None:
+            return
+        connect = getattr(agent_manager, "connect_visualization_monitor", None)
+        if callable(connect):
+            connect()
+
+    def _debug_executor_for_request(self):
+        """Create the debug executor only when a debug request is made."""
+        if self.debug_executor is None:
+            tool_executor_class = _load_tool_executor_class()
+            self.debug_executor = tool_executor_class(self.study)
+        return self.debug_executor
 
     def _on_agent_status_message(self, msg: str):
         """Update status bar safely."""
@@ -502,10 +730,10 @@ class MainWindow(QMainWindow):
 
         """
         logger.info("Debug Mode: Requesting %s", tool_name)
-        result = self.debug_executor.execute(tool_name, params)
+        result = self._debug_executor_for_request().execute(tool_name, params)
 
         # Feedback to Chat
-        if self.agent_manager.chat_panel:
+        if self.agent_manager and self.agent_manager.chat_panel:
             # We use the legacy or proper method to append message
             # Ideally via chat_controller but for Direct UI debug feedback:
             self.agent_manager.chat_panel.append_message(
@@ -522,12 +750,47 @@ class MainWindow(QMainWindow):
             # Map 'panel_name' (Tool param) to 'panel' (AgentManager param)
             panel = params.get("panel_name")
             view = params.get("view_mode")
-            if panel:
+            if panel and self.agent_manager:
                 self.agent_manager.switch_panel({"panel": panel, "view_mode": view})
 
     def toggle_ai_dock(self):
         """Toggle the AI assistant dock widget visibility."""
+        if self.agent_manager is None:
+            self.init_agent()
+        if self.agent_manager is None:
+            return
         self.agent_manager.toggle()
+
+    def _schedule_startup_prewarm(self) -> None:
+        """Schedule safe background imports after the first UI frame."""
+        QTimer.singleShot(120, self._start_startup_prewarm)
+
+    def _start_startup_prewarm(self) -> None:
+        """Start non-UI background import prewarm without blocking startup."""
+        if self._startup_prewarm_worker is not None:
+            return
+        worker = Worker(_prewarm_startup_modules)
+        worker.signals.result.connect(self._on_startup_prewarm_result)
+        worker.signals.finished.connect(self._clear_startup_prewarm_worker)
+        self._startup_prewarm_worker = worker
+        thread_pool = QThreadPool.globalInstance()
+        if thread_pool is not None:
+            thread_pool.start(worker)
+
+    def _on_startup_prewarm_result(self, result: dict[str, list[str]]) -> None:
+        """Log prewarm outcome for profiling without surfacing UI noise."""
+        loaded = result.get("loaded", [])
+        failed = result.get("failed", [])
+        logger.debug(
+            "Startup prewarm finished: loaded=%s failed=%s",
+            len(loaded),
+            failed,
+        )
+        self._load_initial_panel_if_alive()
+
+    def _clear_startup_prewarm_worker(self) -> None:
+        """Release the worker reference after the background task completes."""
+        self._startup_prewarm_worker = None
 
     def update_info_panel(self):
         """Refresh the aggregate info panel if it exists."""
@@ -599,7 +862,7 @@ class MainWindow(QMainWindow):
             else:
                 logger.info("Discarding unusable main-window geometry on close")
                 settings.remove("main_window/geometry")
-        if hasattr(self, "agent_manager"):
+        if self.agent_manager is not None:
             self.agent_manager.close()
         super().closeEvent(event)
 

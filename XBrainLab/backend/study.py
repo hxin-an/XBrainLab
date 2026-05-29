@@ -4,22 +4,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from .controller.dataset_controller import DatasetController
-from .controller.evaluation_controller import EvaluationController
-from .controller.preprocess_controller import PreprocessController
-from .controller.training_controller import TrainingController
-from .controller.visualization_controller import VisualizationController
 from .data_manager import DataManager
-from .dataset import Dataset, DatasetGenerator, DataSplittingConfig, Epochs
-from .load_data import Raw, RawDataLoader
-from .preprocessor import PreprocessBase
-from .training import ModelHolder, Trainer, TrainingOption
 from .training_manager import TrainingManager
-from .utils import validate_type
+from .utils.check import validate_type
 from .utils.logger import logger
 
 if TYPE_CHECKING:
     from XBrainLab.llm.pipeline_state import PipelineStage
+
+    from .dataset import Dataset, DatasetGenerator, DataSplittingConfig, Epochs
+    from .load_data import Raw, RawDataLoader
+    from .preprocessor import PreprocessBase
+    from .training import ModelHolder, Trainer, TrainingOption
 
 
 class Study:
@@ -176,14 +172,34 @@ class Study:
         """
         if controller_type not in self._controllers:
             if controller_type == "dataset":
+                from .controller.dataset_controller import (  # noqa: PLC0415
+                    DatasetController,
+                )
+
                 self._controllers[controller_type] = DatasetController(self)
             elif controller_type == "preprocess":
+                from .controller.preprocess_controller import (  # noqa: PLC0415
+                    PreprocessController,
+                )
+
                 self._controllers[controller_type] = PreprocessController(self)
             elif controller_type == "training":
+                from .controller.training_controller import (  # noqa: PLC0415
+                    TrainingController,
+                )
+
                 self._controllers[controller_type] = TrainingController(self)
             elif controller_type == "evaluation":
+                from .controller.evaluation_controller import (  # noqa: PLC0415
+                    EvaluationController,
+                )
+
                 self._controllers[controller_type] = EvaluationController(self)
             elif controller_type == "visualization":
+                from .controller.visualization_controller import (  # noqa: PLC0415
+                    VisualizationController,
+                )
+
                 self._controllers[controller_type] = VisualizationController(self)
             else:
                 raise ValueError(f"Unknown controller type: {controller_type}")
@@ -250,6 +266,8 @@ class Study:
             ValueError: If no epoch data is available.
 
         """
+        from .dataset import DatasetGenerator, DataSplittingConfig  # noqa: PLC0415
+
         if not self.epoch_data:
             raise ValueError("No valid epoch data is generated")
         validate_type(config, DataSplittingConfig, "config")

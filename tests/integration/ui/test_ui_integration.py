@@ -52,7 +52,7 @@ def test_mainwindow_launches_with_product_shell_contract(qtbot, study):
     assert window.ai_btn.isChecked() is False
     assert window.info_service.study is study
     assert window.info_service._observes_controller_events is False
-    assert window.agent_manager.preprocess_controller is None
+    assert window.agent_manager is None
 
     window.show()
     assert window.isVisible()

@@ -399,7 +399,8 @@ class TestSaliency3DPlotWidget:
             assert plotter.deleted is True
             assert w.plotter_widget is None
 
-    def test_update_plot_blocks_offscreen_before_qtinteractor(self, qtbot):
+    def test_update_plot_blocks_offscreen_before_qtinteractor(self, qtbot, monkeypatch):
+        monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
         with patch(
             "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
         ) as pyvistaqt:
@@ -463,10 +464,17 @@ class TestSaliency3DPlotWidget:
             trainer = MagicMock()
             trainer.get_dataset.return_value.get_epoch_data.return_value = epoch
 
-            with patch.object(
-                Saliency3DPlotWidget,
-                "_probe_interactive_3d_runtime",
-                return_value=(True, ""),
+            with (
+                patch.object(
+                    Saliency3DPlotWidget,
+                    "_probe_interactive_3d_runtime",
+                    return_value=(True, ""),
+                ),
+                patch.object(
+                    Saliency3DPlotWidget,
+                    "_active_qt_platform_name",
+                    return_value="",
+                ),
             ):
                 w.update_plot(plan, trainer, "Gradient", False, eval_record)
 
@@ -503,10 +511,17 @@ class TestSaliency3DPlotWidget:
             trainer = MagicMock()
             trainer.get_dataset.return_value.get_epoch_data.return_value = epoch
 
-            with patch.object(
-                Saliency3DPlotWidget,
-                "_probe_interactive_3d_runtime",
-                return_value=(False, "3D rendering is blocked by BadWindow."),
+            with (
+                patch.object(
+                    Saliency3DPlotWidget,
+                    "_probe_interactive_3d_runtime",
+                    return_value=(False, "3D rendering is blocked by BadWindow."),
+                ),
+                patch.object(
+                    Saliency3DPlotWidget,
+                    "_active_qt_platform_name",
+                    return_value="",
+                ),
             ):
                 w.update_plot(plan, trainer, "Gradient", False, eval_record)
 

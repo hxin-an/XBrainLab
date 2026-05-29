@@ -1,8 +1,14 @@
 """Training lifecycle management for model config, plan generation, and execution."""
 
-from .training import ModelHolder, Trainer, TrainingOption, TrainingPlanHolder
-from .utils import validate_type
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from .utils.check import validate_type
 from .utils.logger import logger
+
+if TYPE_CHECKING:
+    from .training import ModelHolder, Trainer, TrainingOption
 
 
 class TrainingManager:
@@ -39,6 +45,8 @@ class TrainingManager:
             force_update: Whether to force update.
 
         """
+        from .training import TrainingOption  # noqa: PLC0415
+
         validate_type(training_option, TrainingOption, "training_option")
         # Do not clean trainer here to allow multi-experiment history
         self.training_option = training_option
@@ -55,6 +63,8 @@ class TrainingManager:
             force_update: Whether to force update.
 
         """
+        from .training import ModelHolder  # noqa: PLC0415
+
         validate_type(model_holder, ModelHolder, "model_holder")
         # Do not clean trainer here to allow multi-experiment history
         self.model_holder = model_holder
@@ -87,6 +97,8 @@ class TrainingManager:
 
         option = self.training_option
         model_holder = self.model_holder
+        from .training import Trainer, TrainingPlanHolder  # noqa: PLC0415
+
         training_plan_holders = [
             TrainingPlanHolder(model_holder, dataset, option, self.saliency_params)
             for dataset in datasets

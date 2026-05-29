@@ -1,12 +1,17 @@
 """Data lifecycle management for loading, preprocessing, epoching, and datasets."""
 
-from copy import deepcopy
+from __future__ import annotations
 
-from .dataset import Dataset, DatasetGenerator, Epochs
-from .load_data import Raw, RawDataLoader
-from .preprocessor import PreprocessBase
-from .utils import validate_issubclass, validate_list_type
+from copy import deepcopy
+from typing import TYPE_CHECKING
+
+from .utils.check import validate_issubclass, validate_list_type
 from .utils.logger import logger
+
+if TYPE_CHECKING:
+    from .dataset import Dataset, DatasetGenerator, Epochs
+    from .load_data import Raw, RawDataLoader
+    from .preprocessor import PreprocessBase
 
 
 class DataManager:
@@ -47,6 +52,8 @@ class DataManager:
             RawDataLoader: An instance of the raw data loader.
 
         """
+        from .load_data import RawDataLoader  # noqa: PLC0415
+
         return RawDataLoader()
 
     def set_loaded_data_list(
@@ -62,6 +69,8 @@ class DataManager:
                 downstream data. Defaults to False.
 
         """
+        from .load_data import Raw  # noqa: PLC0415
+
         validate_list_type(loaded_data_list, Raw, "loaded_data_list")
         # Note: clean_raw_data is internal or called by Study facade if needed.
         # Here we assume manager logic.
@@ -97,6 +106,8 @@ class DataManager:
                 downstream data. Defaults to False.
 
         """
+        from .load_data import Raw  # noqa: PLC0415
+
         validate_list_type(preprocessed_data_list, Raw, "preprocessed_data_list")
         self.clean_datasets(force_update=force_update)
 
@@ -110,6 +121,8 @@ class DataManager:
             if pp_data.is_raw():
                 self.epoch_data = None
                 return
+        from .dataset import Epochs  # noqa: PLC0415
+
         self.epoch_data = Epochs(preprocessed_data_list)
 
     def reset_preprocess(self, force_update=False) -> None:
@@ -141,6 +154,8 @@ class DataManager:
             **kwargs: Keyword arguments for the preprocessor's data_preprocess method.
 
         """
+        from .preprocessor import PreprocessBase  # noqa: PLC0415
+
         validate_issubclass(preprocessor, PreprocessBase, "preprocessor")
         pp_instance = preprocessor(self.preprocessed_data_list)
         pp_instance.check_data()
@@ -157,6 +172,8 @@ class DataManager:
             force_update (bool, optional): Whether to force update. Defaults to False.
 
         """
+        from .dataset import Dataset  # noqa: PLC0415
+
         validate_list_type(datasets, Dataset, "datasets")
         self.clean_datasets(force_update=force_update)
         self.datasets = datasets

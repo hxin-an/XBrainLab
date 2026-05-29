@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -131,9 +132,11 @@ def test_debug_mode_execution_integration(qtbot, debug_script_file):
         study = MagicMock()
         window = MainWindow(study)
         qtbot.addWidget(window)
+        window.init_agent()
 
         # Mock the ToolExecutor to verify call
-        window.debug_executor.execute = MagicMock(return_value="Success")
+        execute = MagicMock(return_value="Success")
+        window.debug_executor = SimpleNamespace(execute=execute)
 
         # 3. Trigger Debug Step
         # Provide the script execution manually if needed, or rely on Signal?
@@ -154,9 +157,7 @@ def test_debug_mode_execution_integration(qtbot, debug_script_file):
 
         # 4. Verify Execution
         # Script has switch_panel to training
-        window.debug_executor.execute.assert_called_once_with(
-            "switch_panel", {"panel_name": "training"}
-        )
+        execute.assert_called_once_with("switch_panel", {"panel_name": "training"})
 
         # 5. Verify Feedback
         # DebugExecutor returns "Success"

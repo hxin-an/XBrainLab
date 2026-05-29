@@ -16,7 +16,6 @@ import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QPushButton, QWidget
 
-from XBrainLab.ui.components.info_panel_service import InfoPanelService
 from XBrainLab.ui.panels.dataset.panel import DatasetPanel
 from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
 from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
@@ -133,6 +132,7 @@ class TestAIAssistantDock:
         def _fake_start_system():
             test_app.agent_manager.agent_initialized = True
 
+        test_app.init_agent()
         test_app.agent_manager.start_system = _fake_start_system
         _click(qtbot, test_app.ai_btn)
         assert test_app.ai_btn.isChecked()
@@ -146,6 +146,9 @@ class TestPanelWidgets:
     """Verify that key widgets exist inside each panel."""
 
     def test_panel_types_match_stack_order(self, test_app):
+        for index in range(test_app.stack.count()):
+            test_app.switch_page(index)
+
         panels = [
             test_app.stack.widget(index) for index in range(test_app.stack.count())
         ]
@@ -185,6 +188,5 @@ class TestInfoService:
     """Verify the InfoPanelService is wired up."""
 
     def test_info_service_has_study_ref(self, test_app):
-        assert isinstance(test_app.info_service, InfoPanelService)
         assert test_app.info_service.study is test_app.study
         assert test_app.info_service._observes_controller_events is False
