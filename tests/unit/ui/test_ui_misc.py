@@ -984,6 +984,38 @@ class TestDatasetActionHandler:
         assert apply_command.candidate_id == "candidate-1"
         assert apply_command.confirmed is False
 
+    def test_interpretation_rescan_helper_uses_async_command_when_available(
+        self,
+        handler,
+    ):
+        from XBrainLab.backend.application import ScanSourceCommand
+
+        commands = []
+        expected_result = _command_result(scan_result={"scan_id": "scan-1"})
+
+        def fake_async(_panel, command, *, on_result, **_kwargs):
+            commands.append(command)
+            on_result(expected_result)
+            return True
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command_async",
+                side_effect=fake_async,
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            ) as mock_sync,
+        ):
+            result = handler._execute_interpretation_command_responsive(
+                ScanSourceCommand(source_path="/tmp/eeg"),
+                error_title="Source scan failed",
+            )
+
+        assert result is expected_result
+        assert isinstance(commands[0], ScanSourceCommand)
+        mock_sync.assert_not_called()
+
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
