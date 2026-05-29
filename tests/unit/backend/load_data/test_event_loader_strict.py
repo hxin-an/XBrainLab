@@ -31,8 +31,8 @@ def test_event_loader_raw_no_events_raises_error():
         loader.create_event(mapping)
 
 
-def test_event_loader_raw_mismatch_truncates():
-    """Test that loading labels with count mismatch truncates to minimum."""
+def test_event_loader_raw_mismatch_raises():
+    """Label rows must not be silently truncated against EEG events."""
     raw_mne = _generate_mne_raw()
     raw = Raw("test.fif", raw_mne)
 
@@ -45,12 +45,8 @@ def test_event_loader_raw_mismatch_truncates():
     loader.label_list = [1, 2, 3]  # 3 labels vs 2 events
     mapping = {1: "A", 2: "B", 3: "C"}
 
-    new_events, _ = loader.create_event(mapping)
-
-    assert new_events is not None
-    assert len(new_events) == 2
-    assert new_events[0, -1] == 1
-    assert new_events[1, -1] == 2
+    with pytest.raises(ValueError, match="Label count does not match"):
+        loader.create_event(mapping)
 
 
 def test_event_loader_empty_labels_raises():

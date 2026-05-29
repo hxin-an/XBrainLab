@@ -76,6 +76,7 @@ def test_sequence_alignment_perfect(mock_raw):
     mapping = {1: "A", 2: "B", 3: "C"}
     events_out, _event_id_out = loader.create_event(mapping)
 
+    assert events_out is not None
     assert len(events_out) == 3
     assert np.array_equal(events_out[:, 2], [1, 2, 3])
     assert events_out[0, 0] == 10
@@ -95,10 +96,5 @@ def test_sequence_alignment_mismatch(mock_raw):
 
     mapping = {1: "A", 2: "B"}
 
-    # Should truncate to 2
-    events_out, _event_id_out = loader.create_event(mapping)
-
-    assert len(events_out) == 2
-    assert np.array_equal(events_out[:, 2], [1, 2])
-    assert events_out[0, 0] == 10  # First timestamp
-    assert events_out[1, 0] == 20  # Second timestamp
+    with pytest.raises(ValueError, match="Label count does not match"):
+        loader.create_event(mapping)

@@ -76,8 +76,5 @@ def test_create_event_inconsistent(epoch):  # noqa: F811
     event_loader = EventLoader(epoch)
     event_loader.label_list = [1]
 
-    events, event_id = event_loader.create_event({1: "new 1"})
-
-    assert events is not None
-    assert event_id == {"new 1": 1}
-    assert len(events) == 1
+    with pytest.raises(ValueError, match="Label count does not match"):
+        event_loader.create_event({1: "new 1"})

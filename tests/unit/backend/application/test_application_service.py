@@ -899,6 +899,57 @@ def test_apply_interpretation_blocks_mixed_label_placement_modes(
     service.dataset.apply_labels_legacy.assert_not_called()
 
 
+def test_apply_interpretation_blocks_sequence_label_apply_count_mismatch(
+    tmp_path,
+    monkeypatch,
+):
+    from scipy.io import savemat
+
+    source_dir = tmp_path / "sequence_apply_count_mismatch"
+    source_dir.mkdir()
+    eeg_path = source_dir / "A01T.gdf"
+    label_path = source_dir / "A01T.mat"
+    eeg_path.write_bytes(b"not loaded during scan")
+    savemat(label_path, {"classlabel": np.array([1, 2])})
+    _patch_internal_events(
+        monkeypatch,
+        {"A01T.gdf": {"768": {"count": 2, "description": "768"}}},
+    )
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    raw.get_filepath.return_value = str(eeg_path)
+    raw.get_filename.return_value = eeg_path.name
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    service.dataset.apply_labels_legacy = MagicMock(return_value=0)
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "label_carrier_choices": {
+                    str(label_path): {
+                        "label_field": "classlabel",
+                        "target_event_codes": ["768"],
+                        "placement_method": "eeg_event",
+                        "time_model": "trial_order",
+                        "granularity": "trial",
+                    }
+                },
+                "class_map": {"1": "Left hand", "2": "Right hand"},
+            },
+        ),
+    )
+    service.execute(ValidateInterpretationCommand())
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert apply_result.failed is True
+    assert apply_result.error_type == ErrorType.VALIDATION
+    assert apply_result.diagnostics["label_apply"]["status"] == "failed"
+    assert "Applied labels to 0/1" in apply_result.diagnostics["label_apply"]["reason"]
+    assert apply_result.state.interpretation.has_applied_interpretation is False
+
+
 def test_apply_interpretation_filters_sequence_labels_to_selected_event_codes(
     tmp_path,
     monkeypatch,

@@ -237,6 +237,7 @@ class DataInterpretationApplyService:
                     mapping,
                     selected_event_names,
                 )
+            self._ensure_all_mapped_labels_applied(count, len(mapped_target_files))
             plan = LabelImportPlan(
                 target_indices=list(range(len(mapped_target_files))),
                 label_map=label_map,
@@ -308,6 +309,14 @@ class DataInterpretationApplyService:
             return name
         path = str(plan.get("path") or "").strip()
         return Path(path).name if path else "unnamed label carrier"
+
+    @staticmethod
+    def _ensure_all_mapped_labels_applied(count: int, expected: int) -> None:
+        if count == expected:
+            return
+        raise ValueError(
+            f"Applied labels to {count}/{expected} mapped EEG file(s).",
+        )
 
     def _apply_reviewed_event_code_label_map(
         self,

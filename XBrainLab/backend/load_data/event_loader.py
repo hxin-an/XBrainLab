@@ -306,6 +306,13 @@ class EventLoader:
         if len(filtered_eeg_events) == 0:
             raise ValueError("No EEG events matched the selected event filter.")
 
+        if len(filtered_eeg_events) != len(labels):
+            raise ValueError(
+                "Label count does not match selected EEG event count: "
+                f"{len(labels)} label row(s), "
+                f"{len(filtered_eeg_events)} selected EEG event(s).",
+            )
+
         # Align
         # We pass indices to align_sequence (dummy for now as we don't use content)
         eeg_indices, label_indices = self.align_sequence(
