@@ -81,6 +81,69 @@ class TestSaliency3DEngine:
 
         assert key == 0
 
+    def test_translated_channel_position_accepts_tuple_and_list(self):
+        with patch(
+            "XBrainLab.backend.visualization.saliency_3d_engine.Saliency3DEngine._load_models"
+        ):
+            from XBrainLab.backend.visualization.saliency_3d_engine import (
+                Saliency3DEngine,
+            )
+
+            translated = Saliency3DEngine._translated_channel_position(
+                (0.1, 0.2, 0.3),
+                [-0.01, 0.02, 0.03],
+            )
+
+        assert np.allclose(translated, np.array([0.09, 0.22, 0.33]))
+
+    def test_process_data_maps_tuple_montage_positions_without_type_error(self):
+        class MeshStub:
+            bounds = (0.0, 0.0, 0.0, 0.0, 0.0, 0.2)
+            n_points = 3
+            points = np.zeros((3, 3))
+
+            def copy(self):
+                return self
+
+            def scale(self, *_args, **_kwargs):
+                return self
+
+            def triangulate(self):
+                return self
+
+        with (
+            patch(
+                "XBrainLab.backend.visualization.saliency_3d_engine.Saliency3DEngine._load_models"
+            ),
+            patch(
+                "XBrainLab.backend.visualization.saliency_3d_engine.channel_convex_hull",
+                return_value=MeshStub(),
+            ),
+        ):
+            from XBrainLab.backend.visualization.saliency_3d_engine import (
+                Saliency3DEngine,
+            )
+
+            engine = Saliency3DEngine()
+            engine.head_mesh = MeshStub()
+            engine.brain_mesh = MeshStub()
+            eval_record = MagicMock()
+            eval_record.gradient = {0: np.ones((2, 3, 5))}
+            epoch_data = MagicMock()
+            epoch_data.event_id = {"769": 769}
+            epoch_data.get_montage_position.return_value = [
+                (0.0, 0.0, 0.0),
+                (0.01, 0.02, 0.03),
+                (0.02, 0.03, 0.04),
+            ]
+            epoch_data.get_channel_names.return_value = ["Cz", "C3", "C4"]
+
+            channel_count = engine.process_data(eval_record, epoch_data, "769")
+
+        assert channel_count == 3
+        assert engine.pos_on_3d is not None
+        assert engine.pos_on_3d.shape == (3, 3)
+
 
 # ============ SaliencyMapWidget ============
 

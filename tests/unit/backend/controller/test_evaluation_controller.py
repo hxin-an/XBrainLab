@@ -125,8 +125,18 @@ def test_get_model_summary_error(controller):
     assert "Shape error" in s
 
 
-def test_get_model_summary_missing_torchinfo_returns_guidance(controller):
+def test_get_model_summary_missing_torchinfo_uses_fallback(controller):
+    from torch import nn
+
     plan = MagicMock()
+    plan.dataset.get_epoch_data().get_model_args.return_value = {}
+    plan.dataset.get_training_data.return_value = (np.zeros((10, 1, 100)), None)
+    plan.option.bs = 32
+    plan.option.get_device.return_value = "cpu"
+    plan.model_holder.get_model.return_value = nn.Sequential(
+        nn.Flatten(),
+        nn.Linear(100, 2),
+    )
 
     with (
         patch.dict(sys.modules, {"torchinfo": None}),
@@ -136,6 +146,8 @@ def test_get_model_summary_missing_torchinfo_returns_guidance(controller):
     ):
         summary = controller.get_model_summary_str(plan)
 
-    assert "Model summary unavailable" in summary
-    assert "torchinfo" in summary
+    assert "Model: Sequential" in summary
+    assert "Input shape: (32, 1, 1, 100)" in summary
+    assert "Total parameters:" in summary
+    assert "Detailed layer shapes require optional dependency 'torchinfo'." in summary
     error_logger.assert_not_called()

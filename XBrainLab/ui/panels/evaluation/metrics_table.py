@@ -48,6 +48,12 @@ class MetricsTableWidget(QTableWidget):
         # Dark mode friendly style
         self.setStyleSheet(Stylesheets.METRICS_TABLE)
         palette = self.palette()
+        palette.setColor(QPalette.ColorRole.Base, QColor(Theme.METRICS_TABLE_BG))
+        palette.setColor(
+            QPalette.ColorRole.AlternateBase,
+            QColor(Theme.METRICS_TABLE_ALT_BG),
+        )
+        palette.setColor(QPalette.ColorRole.Text, QColor(Theme.TEXT_PRIMARY))
         palette.setColor(QPalette.ColorRole.Highlight, QColor(Theme.BLUE_PRESSED))
         palette.setColor(
             QPalette.ColorRole.HighlightedText,
@@ -99,6 +105,12 @@ class MetricsTableWidget(QTableWidget):
         self.insertRow(row)
 
         # Helper to create item
+        row_color = (
+            Theme.METRICS_TABLE_SELECTION
+            if is_summary
+            else (Theme.METRICS_TABLE_ALT_BG if row % 2 else Theme.METRICS_TABLE_BG)
+        )
+
         def create_item(text, is_bold=False):
             item = QTableWidgetItem(text)
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -106,8 +118,8 @@ class MetricsTableWidget(QTableWidget):
                 font = item.font()
                 font.setBold(True)
                 item.setFont(font)
-            if is_summary:
-                item.setBackground(QColor("#3e3e42"))
+            item.setForeground(QColor(Theme.TEXT_PRIMARY))
+            item.setBackground(QColor(row_color))
             return item
 
         self.setItem(row, 0, create_item(label, is_bold=is_summary))

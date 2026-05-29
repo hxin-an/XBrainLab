@@ -269,17 +269,20 @@ class Saliency3DEngine(QObject):
         if self.head_mesh is None:
             raise RuntimeError("Head mesh not loaded")
 
-        trans = [
-            -0.0004,
-            0.00917,
-            self.head_mesh.bounds[5] - 0.10024,
-        ]
+        trans = np.asarray(
+            [
+                -0.0004,
+                0.00917,
+                self.head_mesh.bounds[5] - 0.10024,
+            ],
+            dtype=float,
+        )
 
         for idx, _ele in enumerate(electrode):
             if idx >= len(ch_pos):
                 continue
 
-            center = ch_pos[idx] + trans
+            center = self._translated_channel_position(ch_pos[idx], trans)
             if center[1] > 0:
                 center[2] += 0.007
             pos_on_3d.append(center)
@@ -311,6 +314,11 @@ class Saliency3DEngine(QObject):
         self.scalar_buffer = np.zeros(self.saliency_cap.n_points)
 
         return self.saliency.shape[0]  # Number of channels
+
+    @staticmethod
+    def _translated_channel_position(position, translation):
+        """Return a numeric channel position after applying 3-D translation."""
+        return np.asarray(position, dtype=float) + np.asarray(translation, dtype=float)
 
     @staticmethod
     def _resolve_saliency_label_key(eval_record, epoch_data, selected_event_name):

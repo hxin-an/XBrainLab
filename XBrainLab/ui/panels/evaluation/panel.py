@@ -277,7 +277,6 @@ class EvaluationPanel(BasePanel):
 
         self.run_combo.blockSignals(False)
         self.update_views()
-        self.update_model_summary(plan)
 
     def update_views(self):
         """Update Matrix and Table based on current selection."""
@@ -335,6 +334,7 @@ class EvaluationPanel(BasePanel):
 
             self.metrics_table.update_data(metrics)
             self.bar_chart.update_plot(metrics)
+            self.update_model_summary(plan)
             return
 
         # Handle Single Record

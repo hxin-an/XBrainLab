@@ -113,6 +113,7 @@ class Theme:
 
     # Metrics Table
     METRICS_TABLE_BG = "#252526"
+    METRICS_TABLE_ALT_BG = "#2d2d30"
     METRICS_TABLE_GRID = "#3e3e42"
     METRICS_TABLE_HEADER_BG = "#094771"
     METRICS_TABLE_BORDER = "#3e3e42"

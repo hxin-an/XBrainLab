@@ -19,6 +19,58 @@ if TYPE_CHECKING:
     from XBrainLab.backend.study import Study
 
 
+def build_fallback_model_summary(model_instance, input_shape: tuple[int, ...]) -> str:
+    """Build a useful model summary when optional ``torchinfo`` is unavailable."""
+    model_name = model_instance.__class__.__name__
+    lines = [
+        f"Model: {model_name}",
+        f"Input shape: {input_shape}",
+    ]
+
+    try:
+        parameters = list(model_instance.parameters())
+    except Exception:
+        parameters = []
+
+    if parameters:
+        total_params = sum(int(param.numel()) for param in parameters)
+        trainable_params = sum(
+            int(param.numel())
+            for param in parameters
+            if getattr(param, "requires_grad", False)
+        )
+        lines.extend(
+            [
+                f"Total parameters: {total_params:,}",
+                f"Trainable parameters: {trainable_params:,}",
+            ],
+        )
+    else:
+        lines.append("Parameters: unavailable")
+
+    try:
+        children = list(model_instance.named_children())
+    except Exception:
+        children = []
+
+    if children:
+        lines.append("")
+        lines.append("Top-level modules:")
+        for name, module in children[:20]:
+            lines.append(f"  {name}: {module.__class__.__name__}")
+        if len(children) > 20:
+            lines.append(f"  ... {len(children) - 20} more module(s)")
+    else:
+        lines.append("")
+        lines.append(str(model_instance))
+
+    lines.append("")
+    lines.append(
+        "Detailed layer shapes require optional dependency 'torchinfo'.",
+    )
+    return "\n".join(lines)
+
+
 class EvaluationController(Observable):
     """Controller for evaluation data retrieval and processing.
 
@@ -152,14 +204,6 @@ class EvaluationController(Observable):
 
         """
         try:
-            try:
-                from torchinfo import summary  # noqa: PLC0415 — lazy optional dep
-            except ModuleNotFoundError:
-                return (
-                    "Model summary unavailable: optional dependency "
-                    "'torchinfo' is not installed."
-                )
-
             # Get model instance
             # If record is provided, use its trained model
             if record and hasattr(record, "model"):
@@ -179,9 +223,17 @@ class EvaluationController(Observable):
             # Assuming X is [N, C, T]
             train_shape = (plan.option.bs, 1, *X.shape[-2:])
 
-            summary_str = str(
-                summary(model_instance, input_size=train_shape, verbose=0),
-            )
+            try:
+                from torchinfo import summary  # noqa: PLC0415 — lazy optional dep
+            except ModuleNotFoundError:
+                summary_str = build_fallback_model_summary(
+                    model_instance,
+                    train_shape,
+                )
+            else:
+                summary_str = str(
+                    summary(model_instance, input_size=train_shape, verbose=0),
+                )
 
             if record:
                 summary_str = f"=== Run: {record.get_name()} ===\n" + summary_str

@@ -9,6 +9,9 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from XBrainLab.backend.controller.evaluation_controller import (
+    build_fallback_model_summary,
+)
 from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
@@ -101,11 +104,17 @@ class ModelSummaryWindow(BaseDialog):
 
             train_shape = (trainer.option.bs, 1, *X.shape[-2:])
 
-            from torchinfo import summary  # noqa: PLC0415 — lazy: optional dep
-
-            summary_str = str(
-                summary(model_instance, input_size=train_shape, verbose=0),
-            )
+            try:
+                from torchinfo import summary  # noqa: PLC0415 — lazy: optional dep
+            except ModuleNotFoundError:
+                summary_str = build_fallback_model_summary(
+                    model_instance,
+                    train_shape,
+                )
+            else:
+                summary_str = str(
+                    summary(model_instance, input_size=train_shape, verbose=0),
+                )
 
             self.summary_text.setText(summary_str)
 

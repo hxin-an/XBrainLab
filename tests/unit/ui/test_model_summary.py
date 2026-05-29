@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import sys
 from types import ModuleType
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -47,10 +49,36 @@ class TestModelSummaryWindow:
         trainer.option.get_device.return_value = "cpu"
         mock_summary = MagicMock(return_value="Model Summary Text")
         mock_torchinfo = ModuleType("torchinfo")
-        mock_torchinfo.summary = mock_summary
+        cast(Any, mock_torchinfo).summary = mock_summary
         with patch.dict("sys.modules", {"torchinfo": mock_torchinfo}):
             window.on_plan_select("Plan-0")
         assert "Model Summary Text" in window.summary_text.toPlainText()
+
+    def test_on_plan_select_without_torchinfo_uses_fallback(self, window, monkeypatch):
+        from torch import nn
+
+        trainer = window.trainer_map["Plan-0"]
+        trainer.model_holder.get_model.return_value = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(100, 2),
+        )
+        import numpy as np
+
+        trainer.dataset.get_training_data.return_value = (
+            np.zeros((10, 1, 100)),
+            np.zeros(10),
+        )
+        trainer.dataset.get_epoch_data.return_value.get_model_args.return_value = {}
+        trainer.option.bs = 32
+        trainer.option.get_device.return_value = "cpu"
+        monkeypatch.setitem(sys.modules, "torchinfo", None)
+
+        window.on_plan_select("Plan-0")
+
+        text = window.summary_text.toPlainText()
+        assert "Model: Sequential" in text
+        assert "Total parameters:" in text
+        assert "Detailed layer shapes require optional dependency 'torchinfo'." in text
 
     def test_on_plan_select_error(self, window):
         trainer = window.trainer_map["Plan-0"]

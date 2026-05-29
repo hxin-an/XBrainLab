@@ -161,9 +161,17 @@ def test_metrics_table_selection_uses_dark_theme(qtbot):
 
     assert "selection-background-color" in stylesheet
     assert f"selection-background-color: {Theme.BLUE_PRESSED}" in stylesheet
+    assert f"alternate-background-color: {Theme.METRICS_TABLE_ALT_BG}" in stylesheet
     assert f"selection-color: {Theme.TEXT_PRIMARY}" in stylesheet
     assert "QTableView::item:selected:!active" in stylesheet
     assert "#ffffff" not in stylesheet.lower().replace(Theme.TEXT_PRIMARY, "")
+    assert table.palette().color(QPalette.ColorRole.Base) == QColor(
+        Theme.METRICS_TABLE_BG
+    )
+    assert table.palette().color(QPalette.ColorRole.AlternateBase) == QColor(
+        Theme.METRICS_TABLE_ALT_BG
+    )
+    assert table.palette().color(QPalette.ColorRole.Text) == QColor(Theme.TEXT_PRIMARY)
     assert table.palette().color(QPalette.ColorRole.Highlight) == QColor(
         Theme.BLUE_PRESSED
     )
@@ -192,6 +200,46 @@ def test_metrics_table_has_no_initial_selection_after_refresh(qtbot):
 
     assert table.selectedItems() == []
     assert table.currentRow() == -1
+
+
+def test_metrics_table_sets_dark_background_on_every_metric_cell(qtbot):
+    table = MetricsTableWidget()
+    qtbot.addWidget(table)
+
+    table.update_data(
+        {
+            0: {
+                "precision": 0.8,
+                "recall": 0.9,
+                "f1-score": 0.85,
+                "support": 10,
+            },
+            1: {
+                "precision": 0.7,
+                "recall": 0.6,
+                "f1-score": 0.65,
+                "support": 10,
+            },
+            "macro_avg": {
+                "precision": 0.75,
+                "recall": 0.75,
+                "f1-score": 0.75,
+                "support": 20,
+            },
+        }
+    )
+
+    expected_row_colors = [
+        QColor(Theme.METRICS_TABLE_BG),
+        QColor(Theme.METRICS_TABLE_ALT_BG),
+        QColor(Theme.METRICS_TABLE_SELECTION),
+    ]
+    for row, expected_color in enumerate(expected_row_colors):
+        for column in range(table.columnCount()):
+            item = table.item(row, column)
+            assert item is not None
+            assert item.background().color() == expected_color
+            assert item.foreground().color() == QColor(Theme.TEXT_PRIMARY)
 
 
 def test_evaluation_panel_logic(qtbot):
@@ -332,7 +380,7 @@ def test_evaluation_panel_uses_application_payload_before_stale_controller(
     stale_controller.get_model_summary_str.assert_not_called()
     assert panel.model_combo.count() == 1
     assert panel.model_combo.itemText(0) == "Fold 1: Service Plan"
-    assert panel.summary_text.toPlainText() == "Service plan summary"
+    assert panel.summary_text.toPlainText() == "Service run 1 summary"
 
 
 def test_evaluation_panel_shows_placeholder_when_service_summary_missing(
