@@ -4,6 +4,7 @@ import subprocess
 import sys
 
 import pyvistaqt
+from PyQt6 import sip
 from PyQt6.QtCore import Qt, QThreadPool, QTimer
 from PyQt6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 
@@ -166,7 +167,7 @@ class Saliency3DPlotWidget(QWidget):
             # initialized
             QTimer.singleShot(
                 100,
-                lambda: self._do_3d_plot(
+                lambda: self._do_3d_plot_if_alive(
                     eval_record,
                     epoch_data,
                     selected_event,
@@ -177,7 +178,30 @@ class Saliency3DPlotWidget(QWidget):
 
         except Exception as e:
             logger.error("Error initializing 3D plot: %s", e, exc_info=True)
-            self.show_error(str(e))
+            if not self._qt_object_deleted(self):
+                self.show_error(str(e))
+
+    def _do_3d_plot_if_alive(
+        self,
+        eval_record,
+        epoch_data,
+        selected_event,
+        *,
+        method="Gradient",
+        absolute=False,
+    ) -> None:
+        """Run delayed 3D plotting only while the Qt widget still exists."""
+        if self._qt_object_deleted(self) or self._qt_object_deleted(
+            self.plotter_widget,
+        ):
+            return
+        self._do_3d_plot(
+            eval_record,
+            epoch_data,
+            selected_event,
+            method=method,
+            absolute=absolute,
+        )
 
     def _do_3d_plot(
         self,
@@ -189,6 +213,10 @@ class Saliency3DPlotWidget(QWidget):
         absolute=False,
     ):
         try:
+            if self._qt_object_deleted(self) or self._qt_object_deleted(
+                self.plotter_widget,
+            ):
+                return
             if not self.plotter_widget:
                 return
 
@@ -210,7 +238,17 @@ class Saliency3DPlotWidget(QWidget):
             saliency.get_3d_head_plot()
         except Exception as e:
             logger.error("Error executing 3D plot: %s", e, exc_info=True)
-            self.show_error(f"Error during plotting: {e}")
+            if not self._qt_object_deleted(self):
+                self.show_error(f"Error during plotting: {e}")
+
+    @staticmethod
+    def _qt_object_deleted(obj) -> bool:
+        if obj is None:
+            return False
+        try:
+            return bool(sip.isdeleted(obj))
+        except (AttributeError, TypeError, RuntimeError):
+            return False
 
     @staticmethod
     def _interactive_3d_runtime_available() -> tuple[bool | None, str]:
@@ -269,6 +307,8 @@ class Saliency3DPlotWidget(QWidget):
         thread_pool.start(worker)
 
     def _on_interactive_3d_runtime_probe_result(self, result) -> None:
+        if self._qt_object_deleted(self):
+            return
         self._runtime_probe_worker = None
         available, reason = result
         pending = self._pending_3d_request
@@ -280,6 +320,8 @@ class Saliency3DPlotWidget(QWidget):
             self.update_plot(*pending)
 
     def _on_interactive_3d_runtime_probe_error(self, error: tuple) -> None:
+        if self._qt_object_deleted(self):
+            return
         self._runtime_probe_worker = None
         self._pending_3d_request = None
         message = error[1] if len(error) > 1 else error

@@ -420,7 +420,7 @@ class Saliency3DEngine(QObject):
                 cap-mesh vertex, or ``None`` if data is not yet available.
 
         """
-        if self.saliency is None or self.saliency_cap is None:
+        if self.saliency is None or self.saliency_cap is None or self.pos_on_3d is None:
             return None
 
         t_idx = int(timestamp)
@@ -434,25 +434,19 @@ class Saliency3DEngine(QObject):
         # For each point on the cap mesh, find k-nearest channels and interpolate.
         # Uses a simple distance matrix approach for vectorized computation.
 
-        scalars = np.zeros(points.shape[0])
-
-        # Simple distance matrix: Points(N,3) vs Channels(M,3)
-        # d[i, j] = dist between point i and channel j
-        # Memory heavy if N is huge.
-
-        for i, point in enumerate(points):
-            diff = self.pos_on_3d * self.mesh_scale_scalar - point
-            # pos_on_3d needs scaling to match mesh?
-            # Yes, s.chs uses pos_on_3d * mesh_scale_scalar
-
-            dist_sq = np.sum(diff**2, axis=1)
-            dist = np.sqrt(dist_sq)
-
-            # Get k nearest
-            idx_sorted = np.argsort(dist)[:neighbor]
-            nearest_dist = dist[idx_sorted]
-            nearest_vals = current_saliency[idx_sorted]
-
-            scalars[i] = inverse_dist_weighted_sum(nearest_dist, nearest_vals)
-
-        return scalars
+        scaled_channels = self.pos_on_3d * self.mesh_scale_scalar
+        neighbor_count = min(max(int(neighbor), 1), scaled_channels.shape[0])
+        distances = np.linalg.norm(
+            points[:, None, :] - scaled_channels[None, :, :],
+            axis=2,
+        )
+        nearest_indices = np.argpartition(
+            distances,
+            neighbor_count - 1,
+            axis=1,
+        )[:, :neighbor_count]
+        nearest_distances = np.take_along_axis(distances, nearest_indices, axis=1)
+        nearest_values = current_saliency[nearest_indices]
+        weights = 1 / (nearest_distances + 1e-8)
+        weights = weights / weights.sum(axis=1, keepdims=True)
+        return (weights * nearest_values).sum(axis=1)

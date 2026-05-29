@@ -4,11 +4,12 @@ agent_manager, preprocess_plotter, saliency views, and remaining gaps."""
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QDialog, QMainWindow, QWidget
 
 
@@ -1014,6 +1015,39 @@ class TestDatasetActionHandler:
 
         assert result is expected_result
         assert isinstance(commands[0], ScanSourceCommand)
+        mock_sync.assert_not_called()
+
+    def test_interpretation_rescan_helper_returns_when_panel_is_deleted(
+        self,
+        qtbot,
+    ):
+        from XBrainLab.backend.application import ScanSourceCommand
+        from XBrainLab.ui.panels.dataset.actions import DatasetActionHandler
+
+        panel = QWidget()
+        panel_with_attrs = cast(Any, panel)
+        panel_with_attrs.table = MagicMock()
+        handler = DatasetActionHandler(panel)
+
+        def fake_async(_panel, _command, **_kwargs):
+            QTimer.singleShot(0, panel.deleteLater)
+            return True
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command_async",
+                side_effect=fake_async,
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            ) as mock_sync,
+        ):
+            result = handler._execute_interpretation_command_responsive(
+                ScanSourceCommand(source_path="/tmp/eeg"),
+                error_title="Source scan failed",
+            )
+
+        assert result is None
         mock_sync.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")

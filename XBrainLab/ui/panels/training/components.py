@@ -123,7 +123,7 @@ class MetricTab(QWidget):
         Theme.apply_matplotlib_dark_theme(self.fig, ax=self.ax)
         self._fit_axes()
 
-        self.canvas.draw()
+        self.canvas.draw_idle()
 
     def _fit_axes(self):
         """Keep dark themed axis labels visible in compact panel captures."""
@@ -146,7 +146,7 @@ class MetricTab(QWidget):
         Theme.apply_matplotlib_dark_theme(self.fig, ax=self.ax)
         self._fit_axes()
         if redraw:
-            self.canvas.draw()
+            self.canvas.draw_idle()
 
         # Clear history data
         if hasattr(self, "epochs"):

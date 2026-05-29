@@ -461,6 +461,74 @@ def test_visualization_panel_uses_application_payload_before_stale_controller(
     assert args[4] is average_record
 
 
+def test_visualization_panel_loads_average_record_only_on_average_selection(
+    qtbot,
+    monkeypatch,
+):
+    from XBrainLab.backend.application import VisualizeCommand
+
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    service_trainer = _make_trainer("ServiceNet", repeats=1)
+    average_record = MagicMock()
+    commands = []
+
+    def fake_execute(_panel, command, **_kwargs):
+        commands.append(command)
+        if not isinstance(command, VisualizeCommand):
+            raise AssertionError(f"unexpected command: {command!r}")
+        diagnostics = {
+            "payload_type": "visualization_summary",
+            "available": True,
+            "trainer_objects": [service_trainer],
+        }
+        if command.include_averaged_records:
+            diagnostics["averaged_records"] = [average_record]
+        return CommandResult.success_result(
+            command_name="visualize",
+            message="Visualization summary ready.",
+            state={},
+            changed_state=ChangedState(),
+            diagnostics=diagnostics,
+        )
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command",
+        fake_execute,
+    )
+
+    def fake_execute_async(_panel, command, *, on_result, **_kwargs):
+        on_result(fake_execute(_panel, command))
+        return True
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
+        fake_execute_async,
+    )
+    panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
+    ctrl.get_averaged_record.side_effect = AssertionError(
+        "stale averaged records should not be read",
+    )
+
+    panel.refresh_combos()
+
+    assert commands
+    assert all(not command.include_averaged_records for command in commands)
+
+    current_widget = _current_mock_widget(panel)
+    current_widget.update_plot.reset_mock()
+    panel.run_combo.setCurrentText("Average")
+
+    assert any(command.include_averaged_records for command in commands)
+    current_widget.update_plot.assert_called()
+    args, _kwargs = current_widget.update_plot.call_args
+    assert args[4] is average_record
+    ctrl.get_averaged_record.assert_not_called()
+
+
 def test_visualization_panel_refuses_real_study_query_none_average_fallback(
     qtbot,
     monkeypatch,

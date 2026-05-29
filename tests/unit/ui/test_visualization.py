@@ -6,6 +6,7 @@ from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+from PyQt6 import sip
 
 # ============ Saliency3DEngine ============
 
@@ -635,6 +636,28 @@ class TestSaliency3DPlotWidget:
                 if not label.isHidden() and label.text()
             ]
             assert any("Could not map EEG event 769" in text for text in visible_labels)
+
+    def test_deferred_3d_plot_ignores_deleted_widget(self, qtbot):
+        with patch(
+            "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
+        ):
+            from PyQt6.QtWidgets import QWidget
+
+            from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view import (
+                Saliency3DPlotWidget,
+            )
+
+            w = Saliency3DPlotWidget(parent=None)
+            qtbot.addWidget(w)
+            cast(Any, w).plotter_widget = QWidget()
+            w.deleteLater()
+            qtbot.waitUntil(lambda: sip.isdeleted(w), timeout=1000)
+
+            with patch(
+                "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.Saliency3D",
+                side_effect=AssertionError("deleted widgets must not render"),
+            ):
+                w._do_3d_plot_if_alive(MagicMock(), MagicMock(), "769")
 
     def test_do_3d_plot_passes_method_and_absolute_to_renderer(self, qtbot):
         with patch(

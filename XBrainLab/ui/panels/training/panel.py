@@ -263,8 +263,8 @@ class TrainingPanel(BasePanel):
 
     def _clear_training_display(self):
         """Clear plot selection state when no valid training history remains."""
-        self.tab_acc.clear()
-        self.tab_loss.clear()
+        self.tab_acc.clear(redraw=False)
+        self.tab_loss.clear(redraw=False)
         self.current_plotting_record = None
         self._last_epoch_count = -1
         self._selection_pinned_by_user = False

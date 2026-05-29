@@ -77,11 +77,13 @@ class _EvaluationController:
 class _VisualizationController:
     def __init__(self) -> None:
         self.params: dict[str, Any] | None = None
+        self.averaged_record_calls = 0
 
     def get_trainers(self) -> list[str]:
         return ["trainer-a"]
 
     def get_averaged_record(self, trainer: Any) -> str:
+        self.averaged_record_calls += 1
         return f"{trainer}-average"
 
     def set_saliency_params(self, params: dict[str, Any]) -> None:
@@ -368,9 +370,11 @@ def test_analysis_service_requires_channel_positions_for_3d_plot() -> None:
     ]
 
 
-def test_analysis_service_can_return_ui_visualization_objects() -> None:
+def test_analysis_service_can_return_ui_visualization_objects_without_averaging() -> (
+    None
+):
     state = _state(saliency_available=True, saliency_configured=True, finished_runs=1)
-    service, _visualization, _preprocess = _service(state=state)
+    service, visualization, _preprocess = _service(state=state)
 
     _message, diagnostics = _expect_payload(
         service.handle_visualize(
@@ -379,4 +383,23 @@ def test_analysis_service_can_return_ui_visualization_objects() -> None:
     )
 
     assert diagnostics["trainer_objects"] == ["trainer-a"]
+    assert "averaged_records" not in diagnostics
+    assert visualization.averaged_record_calls == 0
+
+
+def test_analysis_service_returns_averaged_records_only_when_requested() -> None:
+    state = _state(saliency_available=True, saliency_configured=True, finished_runs=1)
+    service, visualization, _preprocess = _service(state=state)
+
+    _message, diagnostics = _expect_payload(
+        service.handle_visualize(
+            VisualizeCommand(
+                view="summary",
+                include_objects=True,
+                include_averaged_records=True,
+            )
+        ),
+    )
+
     assert diagnostics["averaged_records"] == ["trainer-a-average"]
+    assert visualization.averaged_record_calls == 1

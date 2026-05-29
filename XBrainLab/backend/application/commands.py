@@ -353,6 +353,7 @@ class VisualizeCommand:
 
     view: str | None = None
     include_objects: bool = False
+    include_averaged_records: bool = False
 
     @property
     def name(self) -> CommandName:

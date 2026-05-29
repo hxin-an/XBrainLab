@@ -381,14 +381,16 @@ def _ui_only_command_fields(command_name: CommandName) -> frozenset[str]:
             }
         )
     if command_name == CommandName.VISUALIZE:
-        return frozenset({"include_objects"})
+        return frozenset({"include_objects", "include_averaged_records"})
     return frozenset()
 
 
 def _field_hidden_from_automation(command_type: type[Any], field_name: str) -> bool:
     if command_type is EvaluateCommand:
         return field_name in _ui_only_command_fields(CommandName.EVALUATE)
-    return command_type is VisualizeCommand and field_name == "include_objects"
+    return command_type is VisualizeCommand and field_name in _ui_only_command_fields(
+        CommandName.VISUALIZE,
+    )
 
 
 def _command_field_schema(

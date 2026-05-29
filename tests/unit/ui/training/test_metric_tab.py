@@ -33,7 +33,7 @@ def test_update_plot(metric_tab):
 
 def test_set_series_draws_full_history_once(metric_tab, monkeypatch):
     draw_calls = []
-    monkeypatch.setattr(metric_tab.canvas, "draw", lambda: draw_calls.append(True))
+    monkeypatch.setattr(metric_tab.canvas, "draw_idle", lambda: draw_calls.append(True))
 
     metric_tab.set_series([1, 2, 3], [0.4, 0.5, 0.6], [0.3, 0.4, 0.5])
 

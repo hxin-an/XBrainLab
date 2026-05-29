@@ -152,6 +152,7 @@ class AnalysisCommandService:
         }
         if command.include_objects:
             diagnostics["trainer_objects"] = trainers
+        if command.include_averaged_records:
             diagnostics["averaged_records"] = [
                 self._safe_averaged_record(trainer) for trainer in trainers
             ]

@@ -19,6 +19,7 @@ from XBrainLab.backend.training.record.wrappers import PooledRecordWrapper
 from XBrainLab.ui.application_capabilities import (
     LegacyControllerFallbackUnavailableError,
     execute_application_command,
+    execute_application_command_async,
     get_legacy_controller_from_study,
     run_legacy_controller_fallback,
 )
@@ -242,6 +243,48 @@ class EvaluationPanel(BasePanel):
         self.last_application_query = result
         return not result.failed
 
+    def _refresh_application_query_async(
+        self,
+        *,
+        include_pooled_results: bool = False,
+        include_model_summaries: bool = False,
+        on_ready=None,
+    ) -> bool:
+        """Load heavy evaluation payloads off the UI thread when possible."""
+        payload = self._evaluation_query_payload()
+        if payload is not None:
+            include_pooled_results = include_pooled_results or (
+                "pooled_eval_results" in payload
+            )
+            include_model_summaries = include_model_summaries or (
+                "model_summaries" in payload
+            )
+
+        def _handle_result(result) -> None:
+            self.last_application_query = result
+            if result.failed:
+                self._clear_metric_views()
+                return
+            if callable(on_ready):
+                on_ready()
+
+        def _handle_error(_error: tuple) -> None:
+            self._clear_metric_views()
+
+        return execute_application_command_async(
+            self,
+            EvaluateCommand(
+                include_objects=True,
+                include_metrics=False,
+                include_pooled_results=include_pooled_results,
+                include_model_summaries=include_model_summaries,
+            ),
+            on_result=_handle_result,
+            on_error=_handle_error,
+            refresh=False,
+            busy_target=self,
+        )
+
     def _plans_from_application_query(self):
         payload = self._evaluation_query_payload()
         if payload is None:
@@ -329,8 +372,16 @@ class EvaluationPanel(BasePanel):
 
             pooled_result = self._pooled_result_from_application_query(plan)
             if pooled_result is None:
-                if self._evaluation_query_payload() is not None:
-                    self._refresh_application_query(include_pooled_results=True)
+                payload = self._evaluation_query_payload()
+                if payload is not None:
+                    if "pooled_eval_results" not in payload:
+                        self._clear_metric_views()
+                        if self._refresh_application_query_async(
+                            include_pooled_results=True,
+                            on_ready=self.update_views,
+                        ):
+                            return
+                        self._refresh_application_query(include_pooled_results=True)
                     pooled_result = self._pooled_result_from_application_query(plan)
                     if pooled_result is None:
                         self._clear_metric_views()
@@ -399,7 +450,15 @@ class EvaluationPanel(BasePanel):
         """Generate and display model summary."""
         has_service_payload = self._evaluation_query_payload() is not None
         if has_service_payload:
-            self._refresh_application_query(include_model_summaries=True)
+            payload = self._evaluation_query_payload() or {}
+            if "model_summaries" not in payload:
+                self.summary_text.setText("Loading model details...")
+                if self._refresh_application_query_async(
+                    include_model_summaries=True,
+                    on_ready=lambda: self.update_model_summary(plan, record=record),
+                ):
+                    return
+                self._refresh_application_query(include_model_summaries=True)
         summary_str = self._summary_from_application_query(plan, record)
         if summary_str is None:
             summary_str = self._legacy_summary_for_render(plan, record)

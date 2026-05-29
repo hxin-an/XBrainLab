@@ -5,11 +5,13 @@ running smart parse, and managing event filtering.
 """
 
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QEventLoop, Qt
+from PyQt6 import sip
+from PyQt6.QtCore import QEventLoop, Qt, QTimer
 from PyQt6.QtWidgets import (
     QFileDialog,
     QInputDialog,
@@ -905,6 +907,17 @@ class DatasetActionHandler:
             result_holder["result"] = None
             event_loop.quit()
 
+        def _panel_deleted() -> bool:
+            try:
+                return bool(sip.isdeleted(self.panel))
+            except (AttributeError, TypeError, RuntimeError):
+                return False
+
+        def _cancel_wait_if_panel_deleted(*_args) -> None:
+            if "result" not in result_holder:
+                result_holder["result"] = None
+            event_loop.quit()
+
         started = execute_application_command_async(
             self.panel,
             command,
@@ -915,8 +928,24 @@ class DatasetActionHandler:
         )
         if not started:
             return execute_application_command(self.panel, command)
+        destroyed_signal = getattr(self.panel, "destroyed", None)
+        if destroyed_signal is not None:
+            destroyed_signal.connect(_cancel_wait_if_panel_deleted)
+        watchdog = QTimer()
+        watchdog.setInterval(50)
+        watchdog.timeout.connect(
+            lambda: _cancel_wait_if_panel_deleted() if _panel_deleted() else None,
+        )
+        watchdog.start()
         if "result" not in result_holder:
-            event_loop.exec()
+            if _panel_deleted():
+                result_holder["result"] = None
+            else:
+                event_loop.exec()
+        watchdog.stop()
+        if destroyed_signal is not None and not _panel_deleted():
+            with suppress(TypeError, RuntimeError):
+                destroyed_signal.disconnect(_cancel_wait_if_panel_deleted)
         return result_holder.get("result")
 
     def _start_interpretation_review_async(

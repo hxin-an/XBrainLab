@@ -426,6 +426,15 @@ def test_evaluation_panel_uses_application_payload_before_stale_controller(
         "XBrainLab.ui.panels.evaluation.panel.execute_application_command",
         fake_execute,
     )
+
+    def fake_execute_async(_panel, command, *, on_result, **_kwargs):
+        on_result(fake_execute(_panel, command))
+        return True
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.evaluation.panel.execute_application_command_async",
+        fake_execute_async,
+    )
     stale_controller = MagicMock()
     stale_controller.get_plans.return_value = [MockPlanHolder("Stale Plan")]
     stale_controller.get_model_summary_str.return_value = "Stale Summary"

@@ -19,6 +19,7 @@ from XBrainLab.backend.visualization import supported_saliency_methods
 from XBrainLab.ui.application_capabilities import (
     LegacyControllerFallbackUnavailableError,
     execute_application_command,
+    execute_application_command_async,
     get_legacy_controller_from_study,
     run_legacy_controller_fallback,
 )
@@ -228,11 +229,7 @@ class VisualizationPanel(BasePanel):
     def refresh_combos(self):
         """Refresh Plan ComboBox based on current trainers."""
         if self._application_summary_dirty or self.last_application_query is None:
-            self.last_application_query = execute_application_command(
-                self,
-                VisualizeCommand(view="summary", include_objects=True),
-                refresh=False,
-            )
+            self._refresh_application_query(view="summary")
             self._application_summary_dirty = False
 
         if self._application_query_blocks_display(self.last_application_query):
@@ -336,13 +333,8 @@ class VisualizationPanel(BasePanel):
         """Gather settings and call update_plot on current tab."""
         current_widget = self.tabs.currentWidget()
         if self._application_summary_dirty or self.last_application_query is None:
-            self.last_application_query = execute_application_command(
-                self,
-                VisualizeCommand(
-                    view=self.tabs.tabText(self.tabs.currentIndex()),
-                    include_objects=True,
-                ),
-                refresh=False,
+            self._refresh_application_query(
+                view=self.tabs.tabText(self.tabs.currentIndex()),
             )
             self._application_summary_dirty = False
 
@@ -375,7 +367,26 @@ class VisualizationPanel(BasePanel):
             averaged_record = self._averaged_record_from_application_query(trainer)
             if averaged_record is _MISSING:
                 if self._visualization_query_payload() is not None:
-                    eval_record = None
+                    self._show_widget_message(
+                        current_widget,
+                        "Loading averaged saliency...",
+                    )
+                    if self._refresh_application_query_async(
+                        view=self.tabs.tabText(self.tabs.currentIndex()),
+                        include_averaged_records=True,
+                        on_ready=self.on_update,
+                    ):
+                        return
+                    self._refresh_application_query(
+                        view=self.tabs.tabText(self.tabs.currentIndex()),
+                        include_averaged_records=True,
+                    )
+                    averaged_record = self._averaged_record_from_application_query(
+                        trainer,
+                    )
+                    eval_record = (
+                        None if averaged_record is _MISSING else averaged_record
+                    )
                 else:
                     eval_record = self._legacy_averaged_record_for_render(trainer)
             else:
@@ -477,6 +488,66 @@ class VisualizationPanel(BasePanel):
         if diagnostics.get("payload_type") != "visualization_summary":
             return None
         return diagnostics
+
+    def _refresh_application_query(
+        self,
+        *,
+        view: str | None = None,
+        include_averaged_records: bool = False,
+    ) -> bool:
+        """Refresh visualization readiness without eager saliency averaging."""
+        payload = self._visualization_query_payload()
+        if payload is not None:
+            include_averaged_records = include_averaged_records or (
+                "averaged_records" in payload
+            )
+        result = execute_application_command(
+            self,
+            VisualizeCommand(
+                view=view,
+                include_objects=True,
+                include_averaged_records=include_averaged_records,
+            ),
+            refresh=False,
+        )
+        if result is None:
+            return False
+        self.last_application_query = result
+        return not result.failed
+
+    def _refresh_application_query_async(
+        self,
+        *,
+        view: str | None = None,
+        include_averaged_records: bool = False,
+        on_ready=None,
+    ) -> bool:
+        """Load heavy visualization payloads off the UI thread when possible."""
+        payload = self._visualization_query_payload()
+        if payload is not None:
+            include_averaged_records = include_averaged_records or (
+                "averaged_records" in payload
+            )
+
+        def _handle_result(result) -> None:
+            self.last_application_query = result
+            if result.failed:
+                return
+            if callable(on_ready):
+                on_ready()
+
+        return execute_application_command_async(
+            self,
+            VisualizeCommand(
+                view=view,
+                include_objects=True,
+                include_averaged_records=include_averaged_records,
+            ),
+            on_result=_handle_result,
+            on_error=lambda _error: None,
+            refresh=False,
+            busy_target=self,
+        )
 
     def _trainers_from_application_query(self):
         payload = self._visualization_query_payload()

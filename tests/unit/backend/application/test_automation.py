@@ -91,6 +91,7 @@ def test_mcp_tool_specs_use_same_command_schema():
     assert "include_model_summaries" not in evaluate_schema["properties"]
     visualize_schema = tools[CommandName.VISUALIZE.value]["inputSchema"]
     assert "include_objects" not in visualize_schema["properties"]
+    assert "include_averaged_records" not in visualize_schema["properties"]
 
 
 def test_mcp_tool_specs_expose_execution_boundary_metadata():
@@ -124,6 +125,7 @@ def test_mcp_tool_specs_expose_execution_boundary_metadata():
         (CommandName.EVALUATE, "include_pooled_results"),
         (CommandName.EVALUATE, "include_model_summaries"),
         (CommandName.VISUALIZE, "include_objects"),
+        (CommandName.VISUALIZE, "include_averaged_records"),
     ],
 )
 def test_automation_rejects_ui_only_payload_flags(command_name, field_name):

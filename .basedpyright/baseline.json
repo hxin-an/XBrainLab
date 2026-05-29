@@ -476,14 +476,6 @@
                     "endColumn": 69,
                     "lineCount": 1
                 }
-            },
-            {
-                "code": "reportOptionalOperand",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 33,
-                    "lineCount": 1
-                }
             }
         ],
         "./XBrainLab/backend/visualization/saliency_map.py": [
