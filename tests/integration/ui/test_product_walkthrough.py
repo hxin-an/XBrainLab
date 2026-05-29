@@ -321,8 +321,8 @@ def test_import_command_success_refreshes_dataset_table_without_stale_controller
             "choices": {"label_carrier": "embedded_events"},
         }
         _click(qtbot, test_app.dataset_panel.sidebar.import_btn)
+        _wait_for_raw_count(qtbot, test_app.study, 1)
 
-    _wait_for_raw_count(qtbot, test_app.study, 1)
     loaded_objects = _query_diagnostics(
         test_app.study,
         "data_lists",
@@ -365,8 +365,8 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         }
         assert test_app.dataset_panel.sidebar.import_btn.text() == "Import file"
         _click(qtbot, test_app.dataset_panel.sidebar.import_btn)
+        _wait_for_raw_count(qtbot, test_app.study, 1)
 
-    _wait_for_raw_count(qtbot, test_app.study, 1)
     assert test_app.dataset_panel.table.rowCount() == 1
 
     _click(qtbot, test_app.nav_btns[1])
