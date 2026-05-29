@@ -386,10 +386,11 @@ class EvaluationPanel(BasePanel):
                     if pooled_result is None:
                         self._clear_metric_views()
                         return
-                pooled_result = self._legacy_pooled_result_for_render(plan)
-                if pooled_result is None:
-                    self._clear_metric_views()
-                    return
+                else:
+                    pooled_result = self._legacy_pooled_result_for_render(plan)
+                    if pooled_result is None:
+                        self._clear_metric_views()
+                        return
             pooled_labels, pooled_outputs, metrics = pooled_result
 
             if pooled_labels is None:
