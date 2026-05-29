@@ -107,6 +107,8 @@ class DataSplittingPreviewDialog(BaseDialog):
     """
 
     def __init__(self, parent, title, epoch_data, config):
+        if epoch_data is None:
+            raise ValueError("Create epochs before previewing data splitting.")
         self.epoch_data = epoch_data
         self.config = config
         self.datasets = []

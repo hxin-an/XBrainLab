@@ -19,7 +19,16 @@ CHECKBOX_TEXT_KWARGS = {"color": Theme.TEXT_PRIMARY, "shadow": True, "font_size"
 
 
 class Saliency3D:
-    def __init__(self, eval_record, epoch_data, selected_event_name, plotter=None):
+    def __init__(
+        self,
+        eval_record,
+        epoch_data,
+        selected_event_name,
+        *,
+        method="Gradient",
+        absolute=False,
+        plotter=None,
+    ):
         # set parameters
         self.selected_event_name = selected_event_name
         self.save = False
@@ -36,6 +45,8 @@ class Saliency3D:
                 eval_record,
                 epoch_data,
                 selected_event_name,
+                method=method,
+                absolute=absolute,
             )
         except Exception as exc:
             logger.exception("Failed to initialize Saliency3D engine")

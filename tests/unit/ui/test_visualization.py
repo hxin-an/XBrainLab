@@ -74,7 +74,7 @@ class TestSaliency3DEngine:
             epoch_data.event_id = {"769": 769, "770": 770}
 
             key = Saliency3DEngine._resolve_saliency_label_key(
-                eval_record,
+                eval_record.gradient,
                 epoch_data,
                 "769",
             )
@@ -143,6 +143,72 @@ class TestSaliency3DEngine:
         assert channel_count == 3
         assert engine.pos_on_3d is not None
         assert engine.pos_on_3d.shape == (3, 3)
+
+    def test_process_data_uses_selected_method_and_absolute_value(self):
+        class MeshStub:
+            bounds = (0.0, 0.0, 0.0, 0.0, 0.0, 0.2)
+            n_points = 3
+            points = np.zeros((3, 3))
+
+            def __setitem__(self, _key, _value):
+                pass
+
+            def copy(self):
+                return self
+
+            def scale(self, *_args, **_kwargs):
+                return self
+
+            def triangulate(self):
+                return self
+
+        with (
+            patch(
+                "XBrainLab.backend.visualization.saliency_3d_engine.Saliency3DEngine._load_models"
+            ),
+            patch(
+                "XBrainLab.backend.visualization.saliency_3d_engine.channel_convex_hull",
+                return_value=MeshStub(),
+            ),
+        ):
+            from XBrainLab.backend.visualization.saliency_3d_engine import (
+                Saliency3DEngine,
+            )
+
+            engine = Saliency3DEngine()
+            engine.head_mesh = MeshStub()
+            engine.brain_mesh = MeshStub()
+            eval_record = MagicMock()
+            eval_record.gradient = {0: np.full((2, 3, 5), 99.0)}
+            eval_record.vargrad = {
+                0: np.array(
+                    [
+                        [[-1, -2, -3, -4, -5]] * 3,
+                        [[2, 3, 4, 5, 6]] * 3,
+                    ],
+                    dtype=float,
+                )
+            }
+            epoch_data = MagicMock()
+            epoch_data.event_id = {"769": 769}
+            epoch_data.get_montage_position.return_value = [
+                (0.0, 0.0, 0.0),
+                (0.01, 0.02, 0.03),
+                (0.02, 0.03, 0.04),
+            ]
+            epoch_data.get_channel_names.return_value = ["Cz", "C3", "C4"]
+
+            engine.process_data(
+                eval_record,
+                epoch_data,
+                "769",
+                method="VarGrad",
+                absolute=True,
+            )
+
+        assert engine.saliency is not None
+        assert np.allclose(engine.saliency[0], np.array([1.5, 2.5, 3.5, 4.5, 5.5]))
+        assert engine.scalar_bar_range == [1.5, 5.5]
 
 
 # ============ SaliencyMapWidget ============
@@ -569,3 +635,44 @@ class TestSaliency3DPlotWidget:
                 if not label.isHidden() and label.text()
             ]
             assert any("Could not map EEG event 769" in text for text in visible_labels)
+
+    def test_do_3d_plot_passes_method_and_absolute_to_renderer(self, qtbot):
+        with patch(
+            "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
+        ):
+            from PyQt6.QtWidgets import QWidget
+
+            from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view import (
+                Saliency3DPlotWidget,
+            )
+
+            captured_kwargs = {}
+
+            class SuccessfulSaliency:
+                init_error = ""
+                engine = object()
+
+                def __init__(self, *_args, **kwargs):
+                    captured_kwargs.update(kwargs)
+
+                def get_3d_head_plot(self):
+                    return None
+
+            w = Saliency3DPlotWidget(parent=None)
+            qtbot.addWidget(w)
+            cast(Any, w).plotter_widget = QWidget()
+
+            with patch(
+                "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.Saliency3D",
+                SuccessfulSaliency,
+            ):
+                w._do_3d_plot(
+                    MagicMock(),
+                    MagicMock(),
+                    "769",
+                    method="VarGrad",
+                    absolute=True,
+                )
+
+        assert captured_kwargs["method"] == "VarGrad"
+        assert captured_kwargs["absolute"] is True

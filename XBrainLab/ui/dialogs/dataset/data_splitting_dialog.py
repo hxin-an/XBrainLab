@@ -403,10 +403,12 @@ class DataSplittingDialog(BaseDialog):
         self.val_combo = None
         self.cv_check = None
         self.btn_confirm = None
+        self.blocked_label = None
 
         super().__init__(parent, title="Data Splitting Setting")
         self.resize(800, 600)
 
+        self._sync_availability()
         self.update_preview()
 
     def init_ui(self):
@@ -462,6 +464,11 @@ class DataSplittingDialog(BaseDialog):
         right_layout.addWidget(self.val_combo)
 
         right_layout.addStretch()
+
+        self.blocked_label = QLabel("")
+        self.blocked_label.setWordWrap(True)
+        self.blocked_label.setStyleSheet("color: #f59e0b;")
+        right_layout.addWidget(self.blocked_label)
 
         self.btn_confirm = QPushButton("Confirm")
         self.btn_confirm.clicked.connect(self.confirm)
@@ -581,6 +588,9 @@ class DataSplittingDialog(BaseDialog):
             or not self.cv_check
         ):
             return
+        if self.epoch_data is None:
+            self._sync_availability()
+            return
 
         # Get Training Type
         train_type = TrainingType.FULL  # Default
@@ -642,3 +652,14 @@ class DataSplittingDialog(BaseDialog):
 
         """
         return self.split_result
+
+    def _sync_availability(self) -> None:
+        """Reflect whether this dialog has epoch data required for splitting."""
+        blocked = self.epoch_data is None
+        message = "Create epochs before splitting data." if blocked else ""
+        if self.btn_confirm is not None:
+            self.btn_confirm.setEnabled(not blocked)
+            self.btn_confirm.setToolTip(message)
+        if self.blocked_label is not None:
+            self.blocked_label.setText(message)
+            self.blocked_label.setVisible(blocked)

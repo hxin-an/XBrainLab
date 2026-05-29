@@ -223,17 +223,27 @@ class Saliency3DEngine(QObject):
         except Exception as e:
             logger.error("Failed to load meshes: %s", e)
 
-    def process_data(self, eval_record, epoch_data, selected_event_name):
+    def process_data(
+        self,
+        eval_record,
+        epoch_data,
+        selected_event_name,
+        *,
+        method="Gradient",
+        absolute=False,
+    ):
         """Process epoch data and evaluation record for 3-D visualisation.
 
         Computes saliency values, maps channels onto the 3-D head model,
         builds scaled meshes, and prepares the interpolation cap.
 
         Args:
-            eval_record: Evaluation record containing gradient data.
+            eval_record: Evaluation record containing saliency data.
             epoch_data: Epoch data providing channel names, montage positions
                 and event IDs.
             selected_event_name: Name of the event class to visualise.
+            method: Saliency method to render.
+            absolute: Whether to render absolute saliency magnitudes.
 
         Returns:
             int: Number of channels in the saliency matrix.
@@ -244,16 +254,22 @@ class Saliency3DEngine(QObject):
             RuntimeError: If the head or brain mesh has not been loaded.
 
         """
-        # Training records usually store gradients by class index, while EEG files
+        # Training records usually store saliency by class index, while EEG files
         # often keep original event codes such as 769/770. Resolve both shapes.
+        saliency_store = self._saliency_store(eval_record, method)
         label_key = self._resolve_saliency_label_key(
-            eval_record,
+            saliency_store,
             epoch_data,
             selected_event_name,
         )
-        saliency_raw = eval_record.gradient[label_key]
+        saliency_raw = np.asarray(saliency_store[label_key], dtype=float)
+        if absolute:
+            saliency_raw = np.abs(saliency_raw)
         self.saliency = saliency_raw.mean(axis=0)
-        self.scalar_bar_range = [self.saliency.min(), self.saliency.max()]
+        self.scalar_bar_range = [
+            float(self.saliency.min()),
+            float(self.saliency.max()),
+        ]
 
         # get channel pos
         ch_pos = epoch_data.get_montage_position()
@@ -321,12 +337,8 @@ class Saliency3DEngine(QObject):
         return np.asarray(position, dtype=float) + np.asarray(translation, dtype=float)
 
     @staticmethod
-    def _resolve_saliency_label_key(eval_record, epoch_data, selected_event_name):
-        """Map an EEG event name/code to the gradient key used by training results."""
-        gradient = getattr(eval_record, "gradient", None)
-        if gradient is None:
-            raise KeyError("No saliency gradient is available for this evaluation.")
-
+    def _resolve_saliency_label_key(saliency_store, epoch_data, selected_event_name):
+        """Map an EEG event name/code to the saliency key used by training results."""
         event_id = getattr(epoch_data, "event_id", {}) or {}
         event_names = list(event_id.keys())
         event_value = event_id.get(selected_event_name)
@@ -341,21 +353,21 @@ class Saliency3DEngine(QObject):
         if event_order_index is not None:
             candidates.append(event_order_index)
 
-        if isinstance(gradient, dict):
+        if isinstance(saliency_store, dict):
             for candidate in candidates:
                 if candidate is None:
                     continue
-                if candidate in gradient:
+                if candidate in saliency_store:
                     return candidate
-                for key in gradient:
+                for key in saliency_store:
                     if str(key) == str(candidate):
                         return key
-            if len(gradient) == 1:
-                return next(iter(gradient))
-            available = ", ".join(map(str, gradient.keys()))
+            if len(saliency_store) == 1:
+                return next(iter(saliency_store))
+            available = ", ".join(map(str, saliency_store.keys()))
         else:
             try:
-                gradient_len = len(gradient)
+                gradient_len = len(saliency_store)
             except TypeError:
                 gradient_len = 0
             for candidate in candidates:
@@ -372,6 +384,25 @@ class Saliency3DEngine(QObject):
             f"(event code {event_value!r}) to saliency results. "
             f"Available saliency keys: {available}."
         )
+
+    @staticmethod
+    def _saliency_store(eval_record, method):
+        """Return saliency data for the selected 3-D method."""
+        if method == "Gradient":
+            store = getattr(eval_record, "gradient", None)
+        elif method == "Gradient * Input":
+            store = getattr(eval_record, "gradient_input", None)
+        elif method == "SmoothGrad":
+            store = getattr(eval_record, "smoothgrad", None)
+        elif method == "SmoothGrad_Squared":
+            store = getattr(eval_record, "smoothgrad_sq", None)
+        elif method == "VarGrad":
+            store = getattr(eval_record, "vargrad", None)
+        else:
+            raise ValueError(f"Unknown saliency method: {method}")
+        if store is None:
+            raise KeyError(f"No {method} saliency is available for this evaluation.")
+        return store
 
     def update_scalars(self, timestamp, neighbor=3):
         """Update scalar values on the saliency cap for a given time point.

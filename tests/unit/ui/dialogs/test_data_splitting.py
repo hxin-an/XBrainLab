@@ -156,8 +156,49 @@ class TestDataSplittingDialog:
 
         assert dlg.epoch_data is None
         assert dlg.dataset_generator is None
+        assert dlg.btn_confirm is not None
+        assert not dlg.btn_confirm.isEnabled()
+        assert dlg.blocked_label is not None
+        assert "Create epochs" in dlg.blocked_label.text()
         controller.get_epoch_data.assert_not_called()
         controller.get_dataset_generator.assert_not_called()
+
+    def test_confirm_without_epoch_data_does_not_open_preview(
+        self,
+        qtbot,
+        controller,
+    ):
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+            DataSplittingDialog,
+        )
+
+        dlg = DataSplittingDialog(None, controller, epoch_data=None)
+        qtbot.addWidget(dlg)
+
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_dialog."
+            "DataSplittingPreviewDialog"
+        ) as MockPreview:
+            dlg.confirm()
+
+        MockPreview.assert_not_called()
+        assert dlg.get_result() is None
+
+    def test_preview_dialog_rejects_missing_epoch_data(self, qtbot):
+        from XBrainLab.backend.dataset import DataSplittingConfig, TrainingType
+        from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
+            DataSplittingPreviewDialog,
+        )
+
+        config = DataSplittingConfig(
+            train_type=TrainingType.FULL,
+            is_cross_validation=False,
+            val_splitter_list=[],
+            test_splitter_list=[],
+        )
+
+        with pytest.raises(ValueError, match="Create epochs"):
+            DataSplittingPreviewDialog(None, "Data Splitting Step 2", None, config)
 
     def test_default_split_config_uses_trainable_trial_splits(
         self,

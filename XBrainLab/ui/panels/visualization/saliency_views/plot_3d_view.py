@@ -153,14 +153,28 @@ class Saliency3DPlotWidget(QWidget):
             # initialized
             QTimer.singleShot(
                 100,
-                lambda: self._do_3d_plot(eval_record, epoch_data, selected_event),
+                lambda: self._do_3d_plot(
+                    eval_record,
+                    epoch_data,
+                    selected_event,
+                    method=method,
+                    absolute=absolute,
+                ),
             )
 
         except Exception as e:
             logger.error("Error initializing 3D plot: %s", e, exc_info=True)
             self.show_error(str(e))
 
-    def _do_3d_plot(self, eval_record, epoch_data, selected_event):
+    def _do_3d_plot(
+        self,
+        eval_record,
+        epoch_data,
+        selected_event,
+        *,
+        method="Gradient",
+        absolute=False,
+    ):
         try:
             if not self.plotter_widget:
                 return
@@ -169,6 +183,8 @@ class Saliency3DPlotWidget(QWidget):
                 eval_record,
                 epoch_data,
                 selected_event,
+                method=method,
+                absolute=absolute,
                 plotter=self.plotter_widget,
             )
             init_error = getattr(saliency, "init_error", "")
