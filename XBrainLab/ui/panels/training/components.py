@@ -71,7 +71,17 @@ class MetricTab(QWidget):
         self.epochs.append(epoch)
         self.train_vals.append(train_val)
         self.val_vals.append(val_val)
+        self._draw_series()
 
+    def set_series(self, epochs, train_vals, val_vals):
+        """Replace the full metric series and redraw once."""
+        self.epochs = list(epochs)
+        self.train_vals = list(train_vals)
+        self.val_vals = list(val_vals)
+        self._draw_series()
+
+    def _draw_series(self) -> None:
+        """Render the current metric series in one canvas pass."""
         self.ax.clear()
 
         # Plot Lines
@@ -111,6 +121,7 @@ class MetricTab(QWidget):
 
         # Apply Theme (Handles styles for axes, ticks, spines, labels, and legend)
         Theme.apply_matplotlib_dark_theme(self.fig, ax=self.ax)
+        self._fit_axes()
 
         self.canvas.draw()
 
@@ -118,7 +129,7 @@ class MetricTab(QWidget):
         """Keep dark themed axis labels visible in compact panel captures."""
         self.fig.subplots_adjust(left=0.14, right=0.95, top=0.88, bottom=0.16)
 
-    def clear(self):
+    def clear(self, *, redraw: bool = True):
         """Clear the plot and reset accumulated data history."""
         # Clear plot
         self.ax.clear()
@@ -134,7 +145,8 @@ class MetricTab(QWidget):
         self.ax.grid(True, linestyle="--", alpha=0.3, color=Theme.TEXT_SECONDARY)
         Theme.apply_matplotlib_dark_theme(self.fig, ax=self.ax)
         self._fit_axes()
-        self.canvas.draw()
+        if redraw:
+            self.canvas.draw()
 
         # Clear history data
         if hasattr(self, "epochs"):

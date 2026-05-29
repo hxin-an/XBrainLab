@@ -22,6 +22,7 @@ from XBrainLab.ui.application_capabilities import (
     LegacyControllerFallbackUnavailableError,
     blocked_reason,
     execute_application_command,
+    execute_application_command_async,
     get_command_capability,
     run_legacy_controller_fallback,
 )
@@ -288,23 +289,33 @@ class ControlSidebar(QWidget):
         if win.exec():
             params = win.get_result()
             if params:
-                result = execute_application_command(
+                started = execute_application_command_async(
                     self,
                     SaliencyCommand(params=dict(params)),
+                    on_result=self._on_saliency_configured,
+                    on_error=self._on_saliency_configuration_error,
                 )
-                if result is None:
+                if not started:
                     self._show_legacy_fallback_warning("Saliency blocked")
                     return
-                elif result.failed:
-                    QMessageBox.critical(
-                        self,
-                        "Error",
-                        f"Saliency setup failed: {result.message}",
-                    )
-                    return
-                QMessageBox.information(self, "Success", "Saliency parameters set")
 
-                self._on_update_after_legacy_result(result)
+    def _on_saliency_configured(self, result) -> None:
+        if result.failed:
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Saliency setup failed: {result.message}",
+            )
+            return
+        QMessageBox.information(self, "Success", "Saliency parameters set")
+        if self.panel and hasattr(self.panel, "mark_refresh_dirty"):
+            self.panel.mark_refresh_dirty()
+        if self.panel and hasattr(self.panel, "update_info"):
+            self.panel.update_info()
+
+    def _on_saliency_configuration_error(self, error: tuple) -> None:
+        message = error[1] if len(error) > 1 else error
+        QMessageBox.critical(self, "Error", f"Saliency setup failed: {message}")
 
     def _saliency_dialog_params(self, query_result) -> dict | None:
         if query_result is None:

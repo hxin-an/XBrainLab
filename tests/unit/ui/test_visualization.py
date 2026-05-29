@@ -533,7 +533,7 @@ class TestSaliency3DPlotWidget:
             with (
                 patch.object(
                     Saliency3DPlotWidget,
-                    "_probe_interactive_3d_runtime",
+                    "_interactive_3d_runtime_available",
                     return_value=(True, ""),
                 ),
                 patch.object(
@@ -580,7 +580,7 @@ class TestSaliency3DPlotWidget:
             with (
                 patch.object(
                     Saliency3DPlotWidget,
-                    "_probe_interactive_3d_runtime",
+                    "_interactive_3d_runtime_available",
                     return_value=(False, "3D rendering is blocked by BadWindow."),
                 ),
                 patch.object(

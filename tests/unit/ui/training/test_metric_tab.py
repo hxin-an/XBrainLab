@@ -31,6 +31,19 @@ def test_update_plot(metric_tab):
     assert len(metric_tab.ax.lines) == 2
 
 
+def test_set_series_draws_full_history_once(metric_tab, monkeypatch):
+    draw_calls = []
+    monkeypatch.setattr(metric_tab.canvas, "draw", lambda: draw_calls.append(True))
+
+    metric_tab.set_series([1, 2, 3], [0.4, 0.5, 0.6], [0.3, 0.4, 0.5])
+
+    assert metric_tab.epochs == [1, 2, 3]
+    assert metric_tab.train_vals == [0.4, 0.5, 0.6]
+    assert metric_tab.val_vals == [0.3, 0.4, 0.5]
+    assert len(metric_tab.ax.lines) == 2
+    assert len(draw_calls) == 1
+
+
 def test_empty_plot_uses_dark_theme_text(metric_tab):
     assert metric_tab.ax.title.get_color() == Theme.TEXT_MUTED
     assert metric_tab.ax.xaxis.label.get_color() == Theme.TEXT_MUTED

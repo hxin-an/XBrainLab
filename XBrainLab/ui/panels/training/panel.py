@@ -342,16 +342,22 @@ class TrainingPanel(BasePanel):
 
         # Re-populate data
         epochs = len(record.train[TrainRecordKey.ACC])
+        epoch_values = []
+        train_acc_values = []
+        val_acc_values = []
+        train_loss_values = []
+        val_loss_values = []
         for i in range(epochs):
             epoch = i + 1
 
-            train_acc = get_val(TrainRecordKey.ACC, record.train, i)
-            val_acc = get_val(RecordKey.ACC, record.val, i)
-            train_loss = get_val(TrainRecordKey.LOSS, record.train, i)
-            val_loss = get_val(RecordKey.LOSS, record.val, i)
+            epoch_values.append(epoch)
+            train_acc_values.append(get_val(TrainRecordKey.ACC, record.train, i))
+            val_acc_values.append(get_val(RecordKey.ACC, record.val, i))
+            train_loss_values.append(get_val(TrainRecordKey.LOSS, record.train, i))
+            val_loss_values.append(get_val(RecordKey.LOSS, record.val, i))
 
-            self.tab_acc.update_plot(epoch, train_acc, val_acc)
-            self.tab_loss.update_plot(epoch, train_loss, val_loss)
+        self.tab_acc.set_series(epoch_values, train_acc_values, val_acc_values)
+        self.tab_loss.set_series(epoch_values, train_loss_values, val_loss_values)
 
     def training_finished(self):
         """Display a completion dialog when all training jobs finish."""

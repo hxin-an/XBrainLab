@@ -290,7 +290,11 @@ def test_sidebar_set_montage_apply_none_refuses_real_study_controller_fallback(q
         ) as mock_dialog,
         patch(
             "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
-            side_effect=[query_result, None],
+            return_value=query_result,
+        ),
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command_async",
+            return_value=False,
         ),
         patch(
             "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"
@@ -503,7 +507,11 @@ def test_sidebar_set_saliency_apply_none_refuses_real_study_controller_fallback(
         ) as mock_dialog,
         patch(
             "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
-            side_effect=[query_result, None],
+            return_value=query_result,
+        ),
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command_async",
+            return_value=False,
         ),
         patch(
             "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"
@@ -538,8 +546,15 @@ def test_sidebar_set_saliency_service_success_uses_coordinator_refresh(
         ) as mock_dialog,
         patch(
             "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
-            return_value=MagicMock(failed=False),
+            return_value=MagicMock(
+                failed=False,
+                diagnostics={"payload_type": "saliency_summary", "params": None},
+            ),
         ) as mock_execute,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command_async",
+            return_value=True,
+        ) as mock_execute_async,
         patch(
             "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information"
         ),
@@ -550,6 +565,9 @@ def test_sidebar_set_saliency_service_success_uses_coordinator_refresh(
 
     command = mock_execute.call_args.args[1]
     assert isinstance(command, SaliencyCommand)
+    async_command = mock_execute_async.call_args.args[1]
+    assert isinstance(async_command, SaliencyCommand)
+    assert async_command.params == {"method": "gradient"}
     mock_panel.controller.set_saliency_params.assert_not_called()
     mock_panel.on_update.assert_not_called()
 
@@ -570,7 +588,12 @@ def test_sidebar_set_saliency_uses_query_defaults_before_stale_controller(
             "params": {"SmoothGrad": {"nt_samples": 4}},
         },
     )
-    configure_result = MagicMock(failed=False)
+    async_calls = []
+
+    def fake_execute_async(_sidebar, command, **kwargs):
+        async_calls.append((command, kwargs))
+        kwargs["on_result"](MagicMock(failed=False))
+        return True
 
     with (
         patch(
@@ -578,8 +601,12 @@ def test_sidebar_set_saliency_uses_query_defaults_before_stale_controller(
         ) as mock_dialog,
         patch(
             "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
-            side_effect=[query_result, configure_result],
+            return_value=query_result,
         ) as mock_execute,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command_async",
+            side_effect=fake_execute_async,
+        ),
         patch(
             "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information"
         ),
@@ -596,8 +623,8 @@ def test_sidebar_set_saliency_uses_query_defaults_before_stale_controller(
         sidebar,
         {"SmoothGrad": {"nt_samples": 4}},
     )
-    first_command = mock_execute.call_args_list[0].args[1]
-    second_command = mock_execute.call_args_list[1].args[1]
+    first_command = mock_execute.call_args.args[1]
+    second_command = async_calls[0][0]
     assert isinstance(first_command, SaliencyCommand)
     assert isinstance(second_command, SaliencyCommand)
     assert second_command.params == {"SmoothGrad": {"nt_samples": 5}}

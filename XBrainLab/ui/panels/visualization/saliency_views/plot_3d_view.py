@@ -4,10 +4,11 @@ import subprocess
 import sys
 
 import pyvistaqt
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QThreadPool, QTimer
 from PyQt6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.ui.core.worker import Worker
 from XBrainLab.ui.styles.theme import Theme
 
 from .plot_3d_head import Saliency3D
@@ -42,6 +43,8 @@ class Saliency3DPlotWidget(QWidget):
 
     def __init__(self, parent):
         super().__init__(parent)
+        self._runtime_probe_worker = None
+        self._pending_3d_request = None
         self.init_ui()
 
     def init_ui(self):
@@ -137,6 +140,16 @@ class Saliency3DPlotWidget(QWidget):
             selected_event = events[0]
 
             available, reason = self._interactive_3d_runtime_available()
+            if available is None:
+                self.show_message(reason)
+                self._start_interactive_3d_runtime_probe(
+                    plan,
+                    trainer,
+                    method,
+                    absolute,
+                    eval_record,
+                )
+                return
             if not available:
                 self.show_message(reason)
                 return
@@ -200,7 +213,7 @@ class Saliency3DPlotWidget(QWidget):
             self.show_error(f"Error during plotting: {e}")
 
     @staticmethod
-    def _interactive_3d_runtime_available() -> tuple[bool, str]:
+    def _interactive_3d_runtime_available() -> tuple[bool | None, str]:
         """Return whether an interactive OpenGL Qt runtime is available."""
         qt_platform = os.environ.get("QT_QPA_PLATFORM", "").strip().lower()
         active_qt_platform = Saliency3DPlotWidget._active_qt_platform_name()
@@ -223,8 +236,57 @@ class Saliency3DPlotWidget(QWidget):
                 "Use WSLg or a desktop session, or switch to a 2D saliency view.",
             )
         if sys.platform.startswith("linux"):
-            return Saliency3DPlotWidget._probe_interactive_3d_runtime()
+            cache_key = Saliency3DPlotWidget._runtime_probe_cache_key()
+            cached = _INTERACTIVE_3D_PROBE_CACHE.get(cache_key)
+            if cached is not None:
+                return cached
+            return None, "Checking 3D runtime..."
         return True, ""
+
+    def _start_interactive_3d_runtime_probe(
+        self,
+        plan,
+        trainer,
+        method,
+        absolute,
+        eval_record,
+    ) -> None:
+        self._pending_3d_request = (plan, trainer, method, absolute, eval_record)
+        if self._runtime_probe_worker is not None:
+            return
+        worker = Worker(self._probe_interactive_3d_runtime)
+        self._runtime_probe_worker = worker
+        worker.signals.result.connect(self._on_interactive_3d_runtime_probe_result)
+        worker.signals.error.connect(self._on_interactive_3d_runtime_probe_error)
+        thread_pool = QThreadPool.globalInstance()
+        if thread_pool is None:
+            self._runtime_probe_worker = None
+            self._pending_3d_request = None
+            self.show_message(
+                "3D runtime check could not start. Use a 2D saliency view.",
+            )
+            return
+        thread_pool.start(worker)
+
+    def _on_interactive_3d_runtime_probe_result(self, result) -> None:
+        self._runtime_probe_worker = None
+        available, reason = result
+        pending = self._pending_3d_request
+        self._pending_3d_request = None
+        if not available:
+            self.show_message(str(reason))
+            return
+        if pending is not None:
+            self.update_plot(*pending)
+
+    def _on_interactive_3d_runtime_probe_error(self, error: tuple) -> None:
+        self._runtime_probe_worker = None
+        self._pending_3d_request = None
+        message = error[1] if len(error) > 1 else error
+        self.show_message(
+            "3D rendering could not be checked in the background "
+            f"({message}). Use a 2D saliency view.",
+        )
 
     @staticmethod
     def _active_qt_platform_name() -> str:
@@ -241,12 +303,7 @@ class Saliency3DPlotWidget(QWidget):
     def _probe_interactive_3d_runtime() -> tuple[bool, str]:
         """Probe PyVistaQt in a child process before touching the live UI."""
         env = dict(os.environ)
-        cache_key = (
-            env.get("QT_QPA_PLATFORM", ""),
-            env.get("DISPLAY", ""),
-            env.get("WAYLAND_DISPLAY", ""),
-            env.get("XDG_SESSION_TYPE", ""),
-        )
+        cache_key = Saliency3DPlotWidget._runtime_probe_cache_key(env)
         cached = _INTERACTIVE_3D_PROBE_CACHE.get(cache_key)
         if cached is not None:
             return cached
@@ -288,3 +345,15 @@ class Saliency3DPlotWidget(QWidget):
             )
         _INTERACTIVE_3D_PROBE_CACHE[cache_key] = result
         return result
+
+    @staticmethod
+    def _runtime_probe_cache_key(
+        env: dict[str, str] | None = None,
+    ) -> tuple[str, str, str, str]:
+        source = env if env is not None else os.environ
+        return (
+            source.get("QT_QPA_PLATFORM", ""),
+            source.get("DISPLAY", ""),
+            source.get("WAYLAND_DISPLAY", ""),
+            source.get("XDG_SESSION_TYPE", ""),
+        )
