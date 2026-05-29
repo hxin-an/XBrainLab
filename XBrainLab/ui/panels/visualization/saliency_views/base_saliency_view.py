@@ -53,9 +53,22 @@ class BaseSaliencyView(QWidget):
         self.error_label.setText(f"Error: {message}")
         self.error_label.show()
 
+    def show_message(self, message):
+        """Display a neutral placeholder message over the view."""
+        if self.canvas is not None:
+            self.canvas.hide()
+        self.error_label.setStyleSheet(
+            f"color: {Theme.TEXT_SECONDARY}; font-size: 14px; font-weight: bold;",
+        )
+        self.error_label.setText(message)
+        self.error_label.show()
+
     def clear_plot(self):
         """Clear the plot and reset error state."""
         self.error_label.hide()
+        self.error_label.setStyleSheet(
+            f"color: {Theme.ACCENT_ERROR}; font-size: 14px; font-weight: bold;",
+        )
         if self.canvas is not None:
             self.canvas.show()
         if self.fig is None or self.canvas is None:

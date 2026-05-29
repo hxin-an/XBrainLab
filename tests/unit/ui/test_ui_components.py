@@ -46,6 +46,20 @@ class TestSinglePlotWindow:
         assert w.toolbar is None
         assert w.plot_number is None
 
+    def test_set_figure_reuses_same_figure_without_closing_it(self, qtbot):
+        from XBrainLab.ui.components import single_plot_window
+        from XBrainLab.ui.components.single_plot_window import SinglePlotWindow
+
+        w = SinglePlotWindow(None, title="Test")
+        qtbot.addWidget(w)
+        current_figure = w.fig_param["fig"]
+
+        with patch.object(single_plot_window.plt, "close") as close_figure:
+            w.set_figure(current_figure, w.figsize, w.dpi)
+
+        close_figure.assert_not_called()
+        assert w.fig_param["fig"] is current_figure
+
 
 # ============ MessageBubble ============
 

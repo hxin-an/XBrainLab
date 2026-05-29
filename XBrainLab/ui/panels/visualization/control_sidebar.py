@@ -269,6 +269,12 @@ class ControlSidebar(QWidget):
                 query_result.message,
             )
             return
+        configuration_block_reason = self._saliency_configuration_block_reason(
+            query_result,
+        )
+        if configuration_block_reason is not None:
+            QMessageBox.warning(self, "Saliency blocked", configuration_block_reason)
+            return
         try:
             dialog_params = self._saliency_dialog_params(query_result)
         except LegacyControllerFallbackUnavailableError:
@@ -308,6 +314,23 @@ class ControlSidebar(QWidget):
             return None
         params = diagnostics.get("params")
         return params if isinstance(params, dict) else None
+
+    @staticmethod
+    def _saliency_configuration_block_reason(query_result) -> str | None:
+        if query_result is None:
+            return None
+        diagnostics = getattr(query_result, "diagnostics", {}) or {}
+        if diagnostics.get("payload_type") != "saliency_summary":
+            return None
+        if diagnostics.get("configure_available", True) is not False:
+            return None
+        reasons = diagnostics.get("configure_reasons")
+        if isinstance(reasons, list):
+            for reason in reasons:
+                text = str(reason).strip()
+                if text:
+                    return text
+        return "Select a model and training settings before configuring saliency."
 
     def _legacy_saliency_dialog_params(self) -> dict | None:
         """Return saliency params only for mock / legacy UI contexts."""

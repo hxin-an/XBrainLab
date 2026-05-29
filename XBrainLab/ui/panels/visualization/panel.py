@@ -356,6 +356,10 @@ class VisualizationPanel(BasePanel):
         absolute = self.abs_check.isChecked()
 
         if plan_name not in self.friendly_map or not run_name:
+            setup_message = self._setup_only_message()
+            if setup_message:
+                self._show_widget_message(current_widget, setup_message)
+                return
             # Clear or show placeholder
             self._show_widget_error(current_widget, "Please select a Plan and Run.")
             return
@@ -514,6 +518,19 @@ class VisualizationPanel(BasePanel):
             return str(result.message)
         return "No visualization views are ready yet."
 
+    def _setup_only_message(self) -> str | None:
+        payload = self._visualization_query_payload()
+        if payload is None:
+            return None
+        if payload.get("plot_views_available", True) is not False:
+            return None
+        views = payload.get("available_views")
+        if not isinstance(views, list) or "montage setup" not in views:
+            return None
+        return (
+            "Complete training to view saliency plots. Set Montage remains available."
+        )
+
     def _clear_plan_controls(self) -> None:
         self.plan_combo.blockSignals(True)
         self.run_combo.blockSignals(True)
@@ -531,3 +548,11 @@ class VisualizationPanel(BasePanel):
             return False
         show_error(message)
         return True
+
+    @staticmethod
+    def _show_widget_message(widget, message: str) -> bool:
+        show_message = getattr(widget, "show_message", None)
+        if callable(show_message):
+            show_message(message)
+            return True
+        return VisualizationPanel._show_widget_error(widget, message)

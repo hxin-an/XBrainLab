@@ -389,6 +389,54 @@ def test_sidebar_set_saliency_blocked_by_backend_capability(qtbot):
     )
 
 
+def test_sidebar_set_saliency_uses_query_configuration_readiness(qtbot):
+    controller = MagicMock()
+    main_window = QMainWindow()
+    cast(Any, main_window).study = Study()
+    panel = MagicMock()
+    panel.controller = controller
+    panel.main_window = main_window
+    sidebar = ControlSidebar(panel)
+    qtbot.addWidget(sidebar)
+    query_result = MagicMock(
+        failed=False,
+        diagnostics={
+            "payload_type": "saliency_summary",
+            "params": {},
+            "configure_available": False,
+            "configure_reasons": [
+                "Select a model and training settings before configuring saliency."
+            ],
+        },
+    )
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.get_command_capability",
+            return_value=MagicMock(enabled=True),
+        ),
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
+            return_value=query_result,
+        ),
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.SaliencySettingDialog"
+        ) as mock_dialog,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"
+        ) as mock_warning,
+    ):
+        sidebar.set_saliency()
+
+    mock_dialog.assert_not_called()
+    mock_warning.assert_called_once_with(
+        sidebar,
+        "Saliency blocked",
+        "Select a model and training settings before configuring saliency.",
+    )
+    controller.get_saliency_params.assert_not_called()
+
+
 def test_sidebar_set_saliency_refuses_real_study_controller_fallback(qtbot):
     controller = MagicMock()
     controller.get_saliency_params.return_value = None

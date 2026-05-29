@@ -14,6 +14,7 @@ def _widget_factory(parent=None):
     widget = QWidget(parent)
     mock_widget = cast(Any, widget)
     mock_widget.show_error = MagicMock()
+    mock_widget.show_message = MagicMock()
     mock_widget.update_plot = MagicMock()
     mock_widget.repaint = MagicMock()
     return widget
@@ -252,6 +253,64 @@ def test_visualization_panel_shows_placeholder_without_valid_selection(qtbot):
     panel.on_update()
 
     current_widget.show_error.assert_called_once_with("Please select a Plan and Run.")
+
+
+def test_visualization_panel_shows_setup_message_without_training_results(
+    qtbot,
+    monkeypatch,
+):
+    from XBrainLab.backend.application import SaliencyCommand, VisualizeCommand
+
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    def fake_execute(_panel, command, **_kwargs):
+        if isinstance(command, SaliencyCommand):
+            return CommandResult.success_result(
+                command_name="saliency",
+                message="Saliency parameters are not configured yet.",
+                state={},
+                changed_state=ChangedState(),
+                diagnostics={
+                    "payload_type": "saliency_summary",
+                    "saliency_available": False,
+                    "configure_available": True,
+                },
+            )
+        if isinstance(command, VisualizeCommand):
+            return CommandResult.success_result(
+                command_name="visualize",
+                message="Visualization summary ready.",
+                state={},
+                changed_state=ChangedState(),
+                diagnostics={
+                    "payload_type": "visualization_summary",
+                    "available": True,
+                    "available_views": ["montage setup"],
+                    "plot_views_available": False,
+                    "trainer_objects": [],
+                    "averaged_records": [],
+                },
+            )
+        raise AssertionError(f"unexpected command: {command!r}")
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command",
+        fake_execute,
+    )
+    panel, _ctrl = _make_panel(qtbot, parent=RealMainWindow())
+    current_widget = _current_mock_widget(panel)
+    current_widget.show_message.reset_mock()
+    current_widget.show_error.reset_mock()
+
+    panel.update_panel()
+
+    current_widget.show_message.assert_called_with(
+        "Complete training to view saliency plots. Set Montage remains available."
+    )
+    current_widget.show_error.assert_not_called()
 
 
 def test_visualization_panel_update_panel_refreshes_combos_and_tab(qtbot):

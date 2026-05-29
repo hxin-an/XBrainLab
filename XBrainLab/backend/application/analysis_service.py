@@ -113,14 +113,22 @@ class AnalysisCommandService:
         state = self._get_state()
         trainers = self._safe_call_list(self.visualization.get_trainers)
         available_views = []
+        blocked_views: dict[str, list[str]] = {}
         if state.epoch.available:
-            available_views.extend(["epoch overview", "channel montage"])
+            available_views.append("montage setup")
         if state.evaluation.finished_runs:
             available_views.extend(["confusion matrix", "metrics", "saliency setup"])
         if state.visualization.saliency_available:
             available_views.extend(
-                ["saliency map", "spectrogram", "topographic map", "3D plot"],
+                ["saliency map", "spectrogram", "topographic map"],
             )
+            if state.visualization.channel_positions_available:
+                available_views.append("3D plot")
+            else:
+                blocked_views["3D plot"] = ["Set Montage before opening the 3D plot."]
+        plot_views_available = bool(
+            state.evaluation.finished_runs or state.visualization.saliency_available
+        )
         message = (
             "Visualization summary ready."
             if available_views
@@ -131,6 +139,8 @@ class AnalysisCommandService:
             "available": bool(available_views),
             "view": command.view,
             "available_views": available_views,
+            "blocked_views": blocked_views,
+            "plot_views_available": plot_views_available,
             "trainer_count": len(trainers),
             "channel_count": state.visualization.channel_count,
             "montage_available": state.visualization.montage_available,
@@ -157,16 +167,9 @@ class AnalysisCommandService:
                 command.params,
             )
             state = self._get_state()
-            if not (
-                state.active_training.has_trainer
-                or (
-                    state.active_training.has_model
-                    and state.active_training.has_training_option
-                )
-            ):
-                raise PreconditionError(
-                    "Select a model and training settings before configuring saliency.",
-                )
+            configure_reasons = self._saliency_configuration_reasons(state)
+            if configure_reasons:
+                raise PreconditionError("; ".join(configure_reasons))
             self.visualization.set_saliency_params(params)
             return (
                 "Saliency parameters configured.",
@@ -184,6 +187,7 @@ class AnalysisCommandService:
 
         current_params = self.visualization.get_saliency_params()
         state = self._get_state()
+        configure_reasons = self._saliency_configuration_reasons(state)
         return (
             (
                 "Saliency summary ready."
@@ -195,6 +199,8 @@ class AnalysisCommandService:
                 "action": "query",
                 "saliency_configured": current_params is not None,
                 "saliency_available": state.visualization.saliency_available,
+                "configure_available": not configure_reasons,
+                "configure_reasons": configure_reasons,
                 "params": self._json_safe(current_params or {}),
                 "finished_run_count": state.evaluation.finished_runs,
             },
@@ -247,6 +253,17 @@ class AnalysisCommandService:
             for method_params in normalized.values():
                 method_params.update(flat_params)
         return normalized, requested_method
+
+    @staticmethod
+    def _saliency_configuration_reasons(
+        state: ApplicationStateSnapshot,
+    ) -> list[str]:
+        if state.active_training.has_trainer or (
+            state.active_training.has_model
+            and state.active_training.has_training_option
+        ):
+            return []
+        return ["Select a model and training settings before configuring saliency."]
 
     @staticmethod
     def _safe_call_list(call: Callable[[], Any]) -> list[Any]:

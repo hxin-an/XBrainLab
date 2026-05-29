@@ -139,9 +139,13 @@ class SinglePlotWindow(BaseDialog):
             dpi: Dots per inch for the figure.
 
         """
+        old_fig = self.fig_param.get("fig")
+        if self.figure_canvas and old_fig is figure:
+            self.fig_param = {"fig": figure, "figsize": figsize, "dpi": dpi}
+            return
+
         if self.figure_canvas:
             # Close the old matplotlib figure to prevent memory leak
-            old_fig = self.fig_param.get("fig")
             if old_fig is not None:
                 plt.close(old_fig)
             self.main_layout.removeWidget(self.figure_canvas)

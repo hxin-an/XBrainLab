@@ -106,6 +106,8 @@ def _state(
     saliency_available: bool = False,
     saliency_configured: bool = False,
     finished_runs: int = 0,
+    montage_available: bool = True,
+    channel_positions_available: bool = True,
     has_model: bool = True,
     has_training_option: bool = True,
     has_trainer: bool = False,
@@ -133,8 +135,8 @@ def _state(
         visualization=VisualizationStateSnapshot(
             saliency_configured=saliency_configured,
             saliency_available=saliency_available,
-            montage_available=True,
-            channel_positions_available=True,
+            montage_available=montage_available,
+            channel_positions_available=channel_positions_available,
             channel_count=1,
         ),
         interpretation=InterpretationStateSnapshot(),
@@ -277,6 +279,64 @@ def test_analysis_service_visualize_saliency_and_montage_handlers() -> None:
     assert preprocess.applied_montage == (["Cz"], [(0.0, 0.0, 0.0)])
     assert montage_message == "Applied montage 'standard_1020' to 1 channel(s)."
     assert montage == {"channel_count": 1, "montage_name": "standard_1020"}
+
+
+def test_analysis_service_reports_saliency_configuration_readiness() -> None:
+    state = _state(
+        has_epoch=True,
+        has_model=False,
+        has_training_option=False,
+        has_trainer=False,
+    )
+    service, _visualization, _preprocess = _service(state=state)
+
+    _message, saliency = _expect_payload(service.handle_saliency(SaliencyCommand()))
+
+    assert saliency["payload_type"] == "saliency_summary"
+    assert saliency["configure_available"] is False
+    assert saliency["configure_reasons"] == [
+        "Select a model and training settings before configuring saliency."
+    ]
+
+
+def test_analysis_service_reports_montage_setup_without_plot_views() -> None:
+    state = _state(
+        has_epoch=True,
+        saliency_available=False,
+        saliency_configured=False,
+        finished_runs=0,
+    )
+    service, _visualization, _preprocess = _service(state=state)
+
+    _message, visualize = _expect_payload(
+        service.handle_visualize(VisualizeCommand(view="summary")),
+    )
+
+    assert visualize["payload_type"] == "visualization_summary"
+    assert visualize["available"] is True
+    assert visualize["available_views"] == ["montage setup"]
+    assert visualize["plot_views_available"] is False
+
+
+def test_analysis_service_requires_channel_positions_for_3d_plot() -> None:
+    state = _state(
+        saliency_available=True,
+        saliency_configured=True,
+        finished_runs=1,
+        montage_available=False,
+        channel_positions_available=False,
+    )
+    service, _visualization, _preprocess = _service(state=state)
+
+    _message, visualize = _expect_payload(
+        service.handle_visualize(VisualizeCommand(view="summary")),
+    )
+
+    assert "saliency map" in visualize["available_views"]
+    assert "3D plot" not in visualize["available_views"]
+    assert visualize["blocked_views"]["3D plot"] == [
+        "Set Montage before opening the 3D plot."
+    ]
 
 
 def test_analysis_service_can_return_ui_visualization_objects() -> None:
