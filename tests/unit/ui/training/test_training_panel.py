@@ -58,7 +58,7 @@ def test_training_panel_start_training_success(
     mock_main_window, mock_controller, qtbot
 ):
     """
-    Test that 'Start Training' works correctly using controller.
+    Test that 'Start Training' blocks instead of mutating the legacy controller.
     """
     # Setup
     panel = TrainingPanel(
@@ -84,12 +84,10 @@ def test_training_panel_start_training_success(
     ):
         panel.sidebar.start_training_ui_action()
 
-        # Should call controller.start_training
-        mock_controller.start_training.assert_called_once()
-
-        # Verify no errors
+        mock_controller.start_training.assert_not_called()
         assert not mock_critical.called
-        assert not mock_warning.called
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Start Training Blocked"
 
 
 def test_metric_tab_methods_exist():
@@ -103,7 +101,7 @@ def test_metric_tab_methods_exist():
 
 def test_training_panel_split_data_success(mock_main_window, mock_controller, qtbot):
     """
-    Test that 'Dataset Splitting' delegates to dialog and controller.
+    Test that 'Dataset Splitting' blocks instead of mutating the legacy controller.
     """
     panel = TrainingPanel(
         parent=mock_main_window,
@@ -111,10 +109,17 @@ def test_training_panel_split_data_success(mock_main_window, mock_controller, qt
         dataset_controller=mock_controller,
     )
     qtbot.addWidget(panel)
+    mock_controller.has_datasets.return_value = False
+    mock_controller.get_trainer.return_value = None
 
     with (
         patch("XBrainLab.ui.panels.training.sidebar.DataSplittingDialog") as MockDialog,
-        patch("XBrainLab.ui.panels.training.sidebar.QMessageBox.information"),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.QMessageBox.information"
+        ) as mock_info,
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.QMessageBox.warning"
+        ) as mock_warning,
     ):
         # Setup Dialog Mock
         instance = MockDialog.return_value
@@ -127,13 +132,15 @@ def test_training_panel_split_data_success(mock_main_window, mock_controller, qt
         # Verify Dialog checked with Controller
         MockDialog.assert_called_with(panel.sidebar, mock_controller)
 
-        # Verify Controller applied splitting
-        mock_controller.apply_data_splitting.assert_called_once_with(mock_generator)
+        mock_controller.apply_data_splitting.assert_not_called()
+        mock_info.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Data Splitting Blocked"
 
 
 def test_training_panel_stop_training(mock_main_window, mock_controller, qtbot):
     """
-    Test that 'Stop Training' delegates to controller.
+    Test that 'Stop Training' blocks instead of mutating the legacy controller.
     """
     panel = TrainingPanel(
         parent=mock_main_window,
@@ -145,9 +152,14 @@ def test_training_panel_stop_training(mock_main_window, mock_controller, qtbot):
     # Simulate Training
     mock_controller.is_training.return_value = True
 
-    panel.sidebar.stop_training()
+    with patch(
+        "XBrainLab.ui.panels.training.sidebar.QMessageBox.warning"
+    ) as mock_warning:
+        panel.sidebar.stop_training()
 
-    mock_controller.stop_training.assert_called_once()
+    mock_controller.stop_training.assert_not_called()
+    mock_warning.assert_called_once()
+    assert mock_warning.call_args.args[1] == "Stop Training Blocked"
 
 
 def test_training_panel_check_ready(mock_main_window, mock_controller, qtbot):

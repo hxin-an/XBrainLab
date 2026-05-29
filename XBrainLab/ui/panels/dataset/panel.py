@@ -20,6 +20,7 @@ from XBrainLab.backend.application import (
 )
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
+    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
     LegacyControllerFallbackUnavailableError,
     blocked_reason,
     execute_application_command,
@@ -228,10 +229,6 @@ class DatasetPanel(BasePanel):
         self.update_panel()
         return len(loader)
 
-    def _update_panel_after_legacy_result(self, result) -> None:
-        if result is None:
-            self.update_panel()
-
     def update_panel(self):
         """Refresh the sidebar and table contents from the controller."""
         if not hasattr(self, "controller"):
@@ -372,18 +369,6 @@ class DatasetPanel(BasePanel):
             )
             return []
 
-    def _legacy_update_metadata(self, controller, *, row: int, **kwargs) -> bool:
-        try:
-            run_legacy_controller_fallback(
-                self,
-                lambda: controller.update_metadata(row, **kwargs),
-            )
-        except LegacyControllerFallbackUnavailableError as exc:
-            QMessageBox.warning(self, "Metadata blocked", str(exc))
-            self._update_panel_after_legacy_result(None)
-            return False
-        return True
-
     @staticmethod
     def _metadata_item(
         value: str,
@@ -428,42 +413,32 @@ class DatasetPanel(BasePanel):
             return
 
         if col == 1:  # Subject
-            controller = getattr(self, "controller", None)
-            result = None
-            if controller is not None:
-                result = execute_application_command(
+            result = execute_application_command(
+                self,
+                UpdateMetadataCommand(index=row, subject=new_value),
+            )
+            if result is None:
+                QMessageBox.warning(
                     self,
-                    UpdateMetadataCommand(index=row, subject=new_value),
+                    "Metadata blocked",
+                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
                 )
-                if result is None:
-                    if not self._legacy_update_metadata(
-                        controller,
-                        row=row,
-                        subject=new_value,
-                    ):
-                        return
-                elif result.failed:
-                    QMessageBox.warning(self, "Metadata blocked", result.message)
-                    self.update_panel()
-                    return
-            self._update_panel_after_legacy_result(result)
+                return
+            if result.failed:
+                QMessageBox.warning(self, "Metadata blocked", result.message)
+                return
         elif col == 2:  # Session
-            controller = getattr(self, "controller", None)
-            result = None
-            if controller is not None:
-                result = execute_application_command(
+            result = execute_application_command(
+                self,
+                UpdateMetadataCommand(index=row, session=new_value),
+            )
+            if result is None:
+                QMessageBox.warning(
                     self,
-                    UpdateMetadataCommand(index=row, session=new_value),
+                    "Metadata blocked",
+                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
                 )
-                if result is None:
-                    if not self._legacy_update_metadata(
-                        controller,
-                        row=row,
-                        session=new_value,
-                    ):
-                        return
-                elif result.failed:
-                    QMessageBox.warning(self, "Metadata blocked", result.message)
-                    self.update_panel()
-                    return
-            self._update_panel_after_legacy_result(result)
+                return
+            if result.failed:
+                QMessageBox.warning(self, "Metadata blocked", result.message)
+                return

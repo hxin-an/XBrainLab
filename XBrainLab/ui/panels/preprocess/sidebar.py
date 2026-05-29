@@ -27,6 +27,7 @@ from XBrainLab.ui.application_capabilities import (
     LegacyControllerFallbackUnavailableError,
     blocked_reason,
     execute_application_command,
+    execute_application_command_async,
     get_command_capability,
     run_legacy_controller_fallback,
 )
@@ -441,6 +442,15 @@ class PreprocessSidebar(QWidget):
 
         logger.info(message)
 
+    def _show_preprocess_success(self, result: Any, message: str) -> None:
+        self._notify_update_after_legacy_result(result)
+        QMessageBox.information(self, "Success", message)
+
+    def _handle_epoch_command_success(self, result: Any) -> None:
+        self._notify_update_after_legacy_result(result)
+        self._refresh_shared_status_after_legacy_result(result)
+        self._show_epoch_success(result)
+
     def _run_legacy_preprocess_fallback(
         self,
         blocked_title: str,
@@ -452,6 +462,51 @@ class PreprocessSidebar(QWidget):
             QMessageBox.warning(self, blocked_title, str(exc))
             return False, None
 
+    def _execute_preprocess_command(
+        self,
+        command: PreprocessCommand | CreateEpochCommand,
+        *,
+        blocked_title: str,
+        failure_prefix: str,
+        on_success: Callable[[Any], None],
+    ) -> None:
+        """Run an expensive preprocess command without blocking the UI thread."""
+
+        def _handle_result(result) -> None:
+            if result.failed:
+                self._show_command_failure("Error", result.message)
+                return
+            on_success(result)
+
+        def _handle_error(error: tuple) -> None:
+            message = error[1] if len(error) > 1 else error
+            QMessageBox.critical(self, "Error", f"{failure_prefix}: {message}")
+
+        if execute_application_command_async(
+            self,
+            command,
+            on_result=_handle_result,
+            on_error=_handle_error,
+            busy_target=self.panel,
+        ):
+            return
+
+        try:
+            result = execute_application_command(self, command)
+            if result is None:
+                QMessageBox.warning(
+                    self,
+                    blocked_title,
+                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                )
+                return
+            elif result.failed:
+                self._show_command_failure("Error", result.message)
+                return
+            on_success(result)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"{failure_prefix}: {e}")
+
     def open_filtering(self):
         """Open the filtering dialog and apply bandpass/notch filters."""
         if self.check_lock() or not self.check_data_loaded():
@@ -462,44 +517,28 @@ class PreprocessSidebar(QWidget):
             params = dialog.get_params()
             if params:
                 l_freq, h_freq, notch_freqs = params
-                try:
-                    result = None
-                    if l_freq is not None and h_freq is not None:
-                        result = execute_application_command(
-                            self,
-                            PreprocessCommand(
-                                operation=PreprocessOperation.BANDPASS,
-                                low_freq=l_freq,
-                                high_freq=h_freq,
-                                notch_freq=notch_freqs,
-                            ),
-                        )
-                    elif notch_freqs is not None:
-                        result = execute_application_command(
-                            self,
-                            PreprocessCommand(
-                                operation=PreprocessOperation.NOTCH,
-                                notch_freq=notch_freqs,
-                            ),
-                        )
-                    if result is None:
-                        fallback_ok, _ = self._run_legacy_preprocess_fallback(
-                            "Filtering Blocked",
-                            lambda: self.controller.apply_filter(
-                                l_freq,
-                                h_freq,
-                                notch_freqs,
-                            ),
-                        )
-                        if not fallback_ok:
-                            return
-                    elif result.failed:
-                        self._show_command_failure("Error", result.message)
-                        return
-                    self._notify_update_after_legacy_result(result)
-                    QMessageBox.information(self, "Success", "Filtering applied.")
-                except Exception as e:
-                    QMessageBox.critical(self, "Error", f"Filtering failed: {e}")
+                command = (
+                    PreprocessCommand(
+                        operation=PreprocessOperation.BANDPASS,
+                        low_freq=l_freq,
+                        high_freq=h_freq,
+                        notch_freq=notch_freqs,
+                    )
+                    if l_freq is not None and h_freq is not None
+                    else PreprocessCommand(
+                        operation=PreprocessOperation.NOTCH,
+                        notch_freq=notch_freqs,
+                    )
+                )
+                self._execute_preprocess_command(
+                    command,
+                    blocked_title="Filtering Blocked",
+                    failure_prefix="Filtering failed",
+                    on_success=lambda result: self._show_preprocess_success(
+                        result,
+                        "Filtering applied.",
+                    ),
+                )
 
     def open_resample(self):
         """Open the resample dialog and change the sampling rate."""
@@ -511,28 +550,18 @@ class PreprocessSidebar(QWidget):
             sfreq = dialog.get_params()
             if sfreq:
                 rate = int(sfreq)
-                try:
-                    result = execute_application_command(
-                        self,
-                        PreprocessCommand(
-                            operation=PreprocessOperation.RESAMPLE,
-                            rate=rate,
-                        ),
-                    )
-                    if result is None:
-                        fallback_ok, _ = self._run_legacy_preprocess_fallback(
-                            "Resampling Blocked",
-                            lambda: self.controller.apply_resample(rate),
-                        )
-                        if not fallback_ok:
-                            return
-                    elif result.failed:
-                        self._show_command_failure("Error", result.message)
-                        return
-                    self._notify_update_after_legacy_result(result)
-                    QMessageBox.information(self, "Success", "Resampling applied.")
-                except Exception as e:
-                    QMessageBox.critical(self, "Error", f"Resample failed: {e}")
+                self._execute_preprocess_command(
+                    PreprocessCommand(
+                        operation=PreprocessOperation.RESAMPLE,
+                        rate=rate,
+                    ),
+                    blocked_title="Resampling Blocked",
+                    failure_prefix="Resample failed",
+                    on_success=lambda result: self._show_preprocess_success(
+                        result,
+                        "Resampling applied.",
+                    ),
+                )
 
     def open_rereference(self):
         """Open the re-reference dialog and apply the new reference."""
@@ -550,33 +579,21 @@ class PreprocessSidebar(QWidget):
         if dialog.exec():
             ref_channels = dialog.get_params()
             if ref_channels:
-                try:
-                    result = execute_application_command(
-                        self,
-                        PreprocessCommand(
-                            operation=PreprocessOperation.REREFERENCE,
-                            method=ref_channels
-                            if isinstance(ref_channels, str)
-                            else None,
-                            channels=ref_channels
-                            if isinstance(ref_channels, list)
-                            else None,
-                        ),
-                    )
-                    if result is None:
-                        fallback_ok, _ = self._run_legacy_preprocess_fallback(
-                            "Re-reference Blocked",
-                            lambda: self.controller.apply_rereference(ref_channels),
-                        )
-                        if not fallback_ok:
-                            return
-                    elif result.failed:
-                        self._show_command_failure("Error", result.message)
-                        return
-                    self._notify_update_after_legacy_result(result)
-                    QMessageBox.information(self, "Success", "Re-reference applied.")
-                except Exception as e:
-                    QMessageBox.critical(self, "Error", f"Re-reference failed: {e}")
+                self._execute_preprocess_command(
+                    PreprocessCommand(
+                        operation=PreprocessOperation.REREFERENCE,
+                        method=ref_channels if isinstance(ref_channels, str) else None,
+                        channels=ref_channels
+                        if isinstance(ref_channels, list)
+                        else None,
+                    ),
+                    blocked_title="Re-reference Blocked",
+                    failure_prefix="Re-reference failed",
+                    on_success=lambda result: self._show_preprocess_success(
+                        result,
+                        "Re-reference applied.",
+                    ),
+                )
 
     def open_normalize(self):
         """Open the normalization dialog and apply the selected method."""
@@ -587,28 +604,18 @@ class PreprocessSidebar(QWidget):
         if dialog.exec():
             method = dialog.get_params()
             if method:
-                try:
-                    result = execute_application_command(
-                        self,
-                        PreprocessCommand(
-                            operation=PreprocessOperation.NORMALIZE,
-                            method=method,
-                        ),
-                    )
-                    if result is None:
-                        fallback_ok, _ = self._run_legacy_preprocess_fallback(
-                            "Normalization Blocked",
-                            lambda: self.controller.apply_normalization(method),
-                        )
-                        if not fallback_ok:
-                            return
-                    elif result.failed:
-                        self._show_command_failure("Error", result.message)
-                        return
-                    self._notify_update_after_legacy_result(result)
-                    QMessageBox.information(self, "Success", "Normalization applied.")
-                except Exception as e:
-                    QMessageBox.critical(self, "Error", f"Normalization failed: {e}")
+                self._execute_preprocess_command(
+                    PreprocessCommand(
+                        operation=PreprocessOperation.NORMALIZE,
+                        method=method,
+                    ),
+                    blocked_title="Normalization Blocked",
+                    failure_prefix="Normalization failed",
+                    on_success=lambda result: self._show_preprocess_success(
+                        result,
+                        "Normalization applied.",
+                    ),
+                )
 
     def open_epoching(self):
         """Open the epoching dialog and segment the continuous data into epochs."""
@@ -638,41 +645,17 @@ class PreprocessSidebar(QWidget):
             params = dialog.get_params()
             if params:
                 baseline, selected_events, tmin, tmax = params
-                try:
-                    result = execute_application_command(
-                        self,
-                        CreateEpochCommand(
-                            t_min=tmin,
-                            t_max=tmax,
-                            baseline=baseline,
-                            event_ids=selected_events,
-                        ),
-                    )
-                    applied = True
-                    if result is None:
-                        fallback_ok, legacy_applied = (
-                            self._run_legacy_preprocess_fallback(
-                                "Epoching Blocked",
-                                lambda: self.controller.apply_epoching(
-                                    baseline,
-                                    selected_events,
-                                    tmin,
-                                    tmax,
-                                ),
-                            )
-                        )
-                        if not fallback_ok:
-                            return
-                        applied = bool(legacy_applied)
-                    elif result.failed:
-                        self._show_command_failure("Error", result.message)
-                        return
-                    if applied:
-                        self._notify_update_after_legacy_result(result)
-                        self._refresh_shared_status_after_legacy_result(result)
-                        self._show_epoch_success(result)
-                except Exception as e:
-                    QMessageBox.critical(self, "Error", f"Epoching failed: {e}")
+                self._execute_preprocess_command(
+                    CreateEpochCommand(
+                        t_min=tmin,
+                        t_max=tmax,
+                        baseline=baseline,
+                        event_ids=selected_events,
+                    ),
+                    blocked_title="Epoching Blocked",
+                    failure_prefix="Epoching failed",
+                    on_success=self._handle_epoch_command_success,
+                )
 
     def _epoch_handoff_for_dialog(self) -> dict[str, Any]:
         """Return Data Import epoch defaults when the command service is available."""
@@ -727,12 +710,12 @@ class PreprocessSidebar(QWidget):
                 ResetPreprocessCommand(confirmed=True),
             )
             if result is None:
-                applied, _ = self._run_legacy_preprocess_fallback(
+                QMessageBox.warning(
+                    self,
                     "Reset Blocked",
-                    self.controller.reset_preprocess,
+                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
                 )
-                if not applied:
-                    return
+                return
             elif result.failed:
                 self._show_command_failure("Error", result.message)
                 return

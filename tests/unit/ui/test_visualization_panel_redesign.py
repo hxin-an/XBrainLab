@@ -87,6 +87,75 @@ def test_visualization_panel_layout_and_sidebar(qtbot):
     assert panel.sidebar.btn_export.isHidden()
 
 
+def test_visualization_panel_defers_service_queries_until_opened(
+    qtbot,
+    monkeypatch,
+):
+    from XBrainLab.backend.application import SaliencyCommand, VisualizeCommand
+
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    calls = []
+
+    def fake_execute(_panel, command, **_kwargs):
+        calls.append(command)
+        if isinstance(command, SaliencyCommand):
+            return CommandResult.success_result(
+                command_name="saliency",
+                message="Saliency parameters are not configured yet.",
+                state={},
+                changed_state=ChangedState(),
+                diagnostics={
+                    "payload_type": "saliency_summary",
+                    "saliency_available": False,
+                },
+            )
+        if isinstance(command, VisualizeCommand):
+            return CommandResult.success_result(
+                command_name="visualize",
+                message="No visualization views are ready yet.",
+                state={},
+                changed_state=ChangedState(),
+                diagnostics={
+                    "payload_type": "visualization_summary",
+                    "available": False,
+                    "trainer_objects": [],
+                    "averaged_records": [],
+                },
+            )
+        raise AssertionError(f"unexpected command: {command!r}")
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command",
+        fake_execute,
+    )
+
+    panel, _ctrl = _make_panel(qtbot, parent=RealMainWindow())
+
+    assert calls == []
+
+    panel.update_panel()
+    panel.update_panel()
+
+    assert [type(command) for command in calls] == [
+        SaliencyCommand,
+        VisualizeCommand,
+    ]
+
+    panel.mark_refresh_dirty()
+    panel.update_panel()
+
+    assert [type(command) for command in calls] == [
+        SaliencyCommand,
+        VisualizeCommand,
+        SaliencyCommand,
+        VisualizeCommand,
+    ]
+
+
 def test_visualization_panel_populates_controls_for_multiple_trainers(qtbot):
     panel, ctrl = _make_panel(qtbot)
     ctrl.get_trainers.return_value = [

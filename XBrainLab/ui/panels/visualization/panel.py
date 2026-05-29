@@ -76,6 +76,10 @@ class VisualizationPanel(BasePanel):
         self.training_controller = training_controller
         self.preprocess_controller = preprocess_controller
         self.friendly_map = {}
+        self.last_application_query = None
+        self.last_saliency_query = None
+        self._application_summary_dirty = True
+        self._saliency_summary_dirty = True
 
         # 2. Base Init
         super().__init__(parent=parent, controller=controller)
@@ -196,11 +200,8 @@ class VisualizationPanel(BasePanel):
         # Connect tab signal now that everything is initialized
         self.tabs.currentChanged.connect(self.on_tab_changed)
 
-        # Set initial state for tabs (visibility of buttons etc)
-        self.on_tab_changed(self.tabs.currentIndex())
-
-        # Initial refresh of combos
-        self.refresh_combos()
+        # Keep startup light; populate data-backed controls when the panel is opened.
+        self._clear_plan_controls()
 
     def get_trainers(self):
         """Return the list of available trainers from the controller.
@@ -226,11 +227,14 @@ class VisualizationPanel(BasePanel):
 
     def refresh_combos(self):
         """Refresh Plan ComboBox based on current trainers."""
-        self.last_application_query = execute_application_command(
-            self,
-            VisualizeCommand(view="summary", include_objects=True),
-            refresh=False,
-        )
+        if self._application_summary_dirty or self.last_application_query is None:
+            self.last_application_query = execute_application_command(
+                self,
+                VisualizeCommand(view="summary", include_objects=True),
+                refresh=False,
+            )
+            self._application_summary_dirty = False
+
         if self._application_query_blocks_display(self.last_application_query):
             self._clear_plan_controls()
             return
@@ -331,14 +335,17 @@ class VisualizationPanel(BasePanel):
     def on_update(self):
         """Gather settings and call update_plot on current tab."""
         current_widget = self.tabs.currentWidget()
-        self.last_application_query = execute_application_command(
-            self,
-            VisualizeCommand(
-                view=self.tabs.tabText(self.tabs.currentIndex()),
-                include_objects=True,
-            ),
-            refresh=False,
-        )
+        if self._application_summary_dirty or self.last_application_query is None:
+            self.last_application_query = execute_application_command(
+                self,
+                VisualizeCommand(
+                    view=self.tabs.tabText(self.tabs.currentIndex()),
+                    include_objects=True,
+                ),
+                refresh=False,
+            )
+            self._application_summary_dirty = False
+
         if self._application_query_blocks_display(self.last_application_query):
             self._show_widget_error(current_widget, self._application_query_message())
             return
@@ -421,11 +428,14 @@ class VisualizationPanel(BasePanel):
 
     def update_info(self):
         """Update the Sidebar Info Panel and refresh combos."""
-        self.last_saliency_query = execute_application_command(
-            self,
-            SaliencyCommand(),
-            refresh=False,
-        )
+        if self._saliency_summary_dirty or self.last_saliency_query is None:
+            self.last_saliency_query = execute_application_command(
+                self,
+                SaliencyCommand(),
+                refresh=False,
+            )
+            self._saliency_summary_dirty = False
+
         if hasattr(self, "sidebar"):
             self.sidebar.update_info()
 
@@ -438,6 +448,11 @@ class VisualizationPanel(BasePanel):
         # Explicitly trigger update to ensure plot is shown even if signals were
         # suppressed
         self.on_update()
+
+    def mark_refresh_dirty(self) -> None:
+        """Invalidate cached ApplicationService visualization summaries."""
+        self._application_summary_dirty = True
+        self._saliency_summary_dirty = True
 
     def _application_query_blocks_display(self, result) -> bool:
         if result is None:

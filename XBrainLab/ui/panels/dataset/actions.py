@@ -36,9 +36,11 @@ from XBrainLab.backend.application import (
 )
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
+    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
     LegacyControllerFallbackUnavailableError,
     blocked_reason,
     execute_application_command,
+    execute_application_command_async,
     get_command_capability,
     run_legacy_controller_fallback,
 )
@@ -120,36 +122,6 @@ class DatasetActionHandler:
             return True
         return False
 
-    def _legacy_import_files(self, filepaths: list[str]) -> bool:
-        controller = self.controller
-        if controller is None:
-            QMessageBox.warning(
-                self.panel,
-                "Interpretation Blocked",
-                "Dataset controller unavailable.",
-            )
-            return False
-        available, _ = self._legacy_controller_value(
-            "Interpretation Blocked",
-            lambda: controller.import_files(filepaths),
-        )
-        return bool(available)
-
-    def _legacy_apply_smart_parse(self, results) -> tuple[bool, int]:
-        controller = self.controller
-        if controller is None:
-            QMessageBox.warning(
-                self.panel,
-                "Smart Parse Blocked",
-                "Dataset controller unavailable.",
-            )
-            return False, 0
-        available, count = self._legacy_controller_value(
-            "Smart Parse Blocked",
-            lambda: controller.apply_smart_parse(results),
-        )
-        return bool(available), int(count or 0)
-
     def _legacy_filenames_for_smart_parse(self) -> list[str] | None:
         controller = self.controller
         if controller is None:
@@ -161,30 +133,6 @@ class DatasetActionHandler:
         if not available:
             return None
         return list(filenames or [])
-
-    def _legacy_import_labels(
-        self,
-        target_files,
-        label_map,
-        mapping,
-        selected_event_names,
-        plan,
-    ) -> tuple[bool, int]:
-        try:
-            count = run_legacy_controller_fallback(
-                self.panel,
-                lambda: self._run_legacy_label_import(
-                    target_files,
-                    label_map,
-                    mapping,
-                    selected_event_names,
-                    plan,
-                ),
-            )
-        except LegacyControllerFallbackUnavailableError as exc:
-            QMessageBox.warning(self.panel, "Label Import Blocked", str(exc))
-            return False, 0
-        return True, int(count or 0)
 
     def _legacy_target_files_from_controller(self, selected_rows) -> list[Any]:
         controller = self.controller
@@ -225,24 +173,6 @@ class DatasetActionHandler:
             )
             return []
         return [int(item) for item in suggestions or []]
-
-    def _legacy_update_metadata(self, controller, updates) -> bool:
-        try:
-            run_legacy_controller_fallback(
-                self.panel,
-                lambda: self._run_metadata_update_fallback(controller, updates),
-            )
-        except LegacyControllerFallbackUnavailableError as exc:
-            QMessageBox.warning(self.panel, "Metadata Update Blocked", str(exc))
-            return False
-        return True
-
-    def _legacy_remove_files(self, controller, rows) -> bool:
-        available, _ = self._legacy_controller_value(
-            "Remove Files Blocked",
-            lambda: controller.remove_files(rows),
-        )
-        return bool(available)
 
     def import_data(self):
         """Scan, preview, validate, and apply an EEG data interpretation."""
@@ -310,8 +240,11 @@ class DatasetActionHandler:
                         )
                         return
                     if result is None:
-                        if not self._legacy_import_files(list(filepaths)):
-                            return
+                        QMessageBox.warning(
+                            self.panel,
+                            "Interpretation Blocked",
+                            LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                        )
                         return
                     QMessageBox.information(
                         self.panel,
@@ -845,32 +778,53 @@ class DatasetActionHandler:
         confirmed = str(decision.get("decision")) == "needs_confirmation" and bool(
             dialog_result.get("confirmed"),
         )
-        apply_result = execute_application_command(
-            self.panel,
-            ApplyInterpretationCommand(
-                candidate_id=self._optional_payload_id(decision, "candidate_id")
-                or candidate_id,
-                confirmed=confirmed,
-            ),
+        apply_command = ApplyInterpretationCommand(
+            candidate_id=self._optional_payload_id(decision, "candidate_id")
+            or candidate_id,
+            confirmed=confirmed,
         )
-        if apply_result is None:
-            return False
-        if apply_result.failed:
+
+        def _handle_apply_result(apply_result) -> None:
+            if apply_result.failed:
+                QMessageBox.critical(
+                    self.panel,
+                    "Interpretation apply failed",
+                    apply_result.message,
+                )
+                return
+
+            recipe_message = ""
+            if bool(dialog_result.get("save_recipe", False)):
+                recipe_message = self._save_interpretation_recipe()
+            QMessageBox.information(
+                self.panel,
+                "Data interpreted",
+                " ".join(
+                    part for part in [apply_result.message, recipe_message] if part
+                ),
+            )
+
+        def _handle_apply_error(error: tuple) -> None:
+            message = error[1] if len(error) > 1 else error
             QMessageBox.critical(
                 self.panel,
                 "Interpretation apply failed",
-                apply_result.message,
+                str(message),
             )
+
+        if execute_application_command_async(
+            self.panel,
+            apply_command,
+            on_result=_handle_apply_result,
+            on_error=_handle_apply_error,
+            busy_target=self.panel,
+        ):
             return True
 
-        recipe_message = ""
-        if bool(dialog_result.get("save_recipe", False)):
-            recipe_message = self._save_interpretation_recipe()
-        QMessageBox.information(
-            self.panel,
-            "Data interpreted",
-            " ".join(part for part in [apply_result.message, recipe_message] if part),
-        )
+        apply_result = execute_application_command(self.panel, apply_command)
+        if apply_result is None:
+            return False
+        _handle_apply_result(apply_result)
         return True
 
     @staticmethod
@@ -1071,9 +1025,12 @@ class DatasetActionHandler:
                 ApplySmartParseCommand(results=results),
             )
             if result is None:
-                available, count = self._legacy_apply_smart_parse(results)
-                if not available:
-                    return
+                QMessageBox.warning(
+                    self.panel,
+                    "Smart Parse Blocked",
+                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                )
+                return
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
                 return
@@ -1193,15 +1150,12 @@ class DatasetActionHandler:
                 ImportLabelsCommand(plan=plan),
             )
             if result is None:
-                available, count = self._legacy_import_labels(
-                    target_files,
-                    label_map,
-                    mapping,
-                    selected_event_names,
-                    plan,
+                QMessageBox.warning(
+                    self.panel,
+                    "Label Import Blocked",
+                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
                 )
-                if not available:
-                    return
+                return
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
                 return
@@ -1367,34 +1321,6 @@ class DatasetActionHandler:
             selected_event_names=selected_names,
         )
 
-    def _run_legacy_label_import(
-        self,
-        target_files,
-        label_map,
-        mapping,
-        selected_event_names,
-        plan,
-    ):
-        controller = self.controller
-        if controller is None:
-            raise RuntimeError("Dataset controller unavailable.")
-
-        if plan.mode in {"batch", "timestamp"}:
-            return controller.apply_labels_batch(
-                target_files,
-                label_map,
-                plan.file_mapping,
-                mapping,
-                selected_event_names,
-            )
-        labels = next(iter(label_map.values()))
-        return controller.apply_labels_legacy(
-            target_files,
-            labels,
-            mapping,
-            selected_event_names,
-        )
-
     def _filter_events_for_import(self, target_files, target_count):
         """Show an event filter dialog for selecting which events to relabel.
 
@@ -1550,22 +1476,16 @@ class DatasetActionHandler:
                 UpdateMetadataCommand(updates=updates),
             )
             if result is None:
-                if not self._legacy_update_metadata(controller, updates):
-                    return
+                QMessageBox.warning(
+                    self.panel,
+                    "Metadata Update Blocked",
+                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                )
+                return
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
                 return
             self._update_panel_after_legacy_result(result)
-
-    @staticmethod
-    def _run_metadata_update_fallback(controller, updates) -> None:
-        for update in updates:
-            kwargs = {}
-            if update.subject is not None:
-                kwargs["subject"] = update.subject
-            if update.session is not None:
-                kwargs["session"] = update.session
-            controller.update_metadata(update.index, **kwargs)
 
     def _remove_files(self, rows):
         remove_capability = get_command_capability(
@@ -1597,16 +1517,12 @@ class DatasetActionHandler:
                 RemoveFilesCommand(indices=list(rows)),
             )
             if result is None:
-                controller = self.controller
-                if controller is None:
-                    QMessageBox.critical(
-                        self.panel,
-                        "Error",
-                        "Dataset controller unavailable.",
-                    )
-                    return
-                if not self._legacy_remove_files(controller, rows):
-                    return
+                QMessageBox.warning(
+                    self.panel,
+                    "Remove Files Blocked",
+                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                )
+                return
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
                 return

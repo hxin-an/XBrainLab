@@ -193,7 +193,7 @@ def test_sidebar_set_montage_surfaces_command_failure(mock_panel, qtbot):
         mock_warning.assert_called_once()
 
 
-def test_sidebar_set_montage_legacy_result_uses_controller_fallback(
+def test_sidebar_set_montage_legacy_result_blocks_controller_fallback(
     mock_panel,
     qtbot,
 ):
@@ -206,20 +206,22 @@ def test_sidebar_set_montage_legacy_result_uses_controller_fallback(
             "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
         ) as mock_dialog,
         patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information"
+            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information",
         ) as mock_info,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning",
+        ) as mock_warning,
     ):
         mock_dialog.return_value.exec.return_value = True
         mock_dialog.return_value.get_result.return_value = (["Ch1"], [[0, 0, 0]])
 
         sidebar.set_montage()
 
-    mock_panel.controller.set_montage.assert_called_once_with(
-        ["Ch1"],
-        [(0.0, 0.0, 0.0)],
-    )
-    mock_panel.on_update.assert_called_once()
-    mock_info.assert_called_once_with(sidebar, "Success", "Montage set")
+    mock_panel.controller.set_montage.assert_not_called()
+    mock_panel.on_update.assert_not_called()
+    mock_info.assert_not_called()
+    mock_warning.assert_called_once()
+    assert mock_warning.call_args.args[1] == "Montage blocked"
 
 
 def test_sidebar_set_montage_refuses_real_study_controller_fallback(qtbot):

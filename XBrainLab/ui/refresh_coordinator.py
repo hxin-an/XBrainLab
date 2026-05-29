@@ -65,7 +65,7 @@ def refresh_after_command(context: Any, result: CommandResult | None) -> bool:
         refreshed = False
         for panel_name in _panel_names_for(result.changed_state):
             panel = getattr(main_window, panel_name, None)
-            refreshed = refresh_panel(panel) or refreshed
+            refreshed = refresh_panel(panel, mark_dirty=True) or refreshed
 
         return _refresh_shared_status(main_window) or refreshed
     finally:
@@ -110,7 +110,7 @@ def refresh_after_observer(context: Any, *, event_name: str | None = None) -> bo
             source_panel_name, changed_state = route
             source_panel = getattr(main_window, source_panel_name, None)
             if source_panel is None:
-                refreshed = refresh_panel(context)
+                refreshed = refresh_panel(context, mark_dirty=True)
                 if _should_refresh_shared_status(event_name):
                     return _refresh_shared_status(main_window) or refreshed
                 return refreshed
@@ -119,9 +119,9 @@ def refresh_after_observer(context: Any, *, event_name: str | None = None) -> bo
             panel_names = _panel_names_for_observer_event(event_name, changed_state)
             for panel_name in panel_names:
                 panel = getattr(main_window, panel_name, None)
-                refreshed = refresh_panel(panel) or refreshed
+                refreshed = refresh_panel(panel, mark_dirty=True) or refreshed
         else:
-            refreshed = refresh_panel(context)
+            refreshed = refresh_panel(context, mark_dirty=True)
         if _should_refresh_shared_status(event_name):
             return _refresh_shared_status(main_window) or refreshed
         return refreshed
@@ -168,8 +168,10 @@ def suppress_observer_refresh_during_command(context: Any) -> Iterator[None]:
             _COMMAND_EXECUTING_MAIN_WINDOWS[main_window_id] = active_count - 1
 
 
-def refresh_panel(panel: Any) -> bool:
+def refresh_panel(panel: Any, *, mark_dirty: bool = False) -> bool:
     """Refresh one workflow panel through the shared safe call boundary."""
+    if mark_dirty:
+        _call_noarg(panel, "mark_refresh_dirty")
     return _call_noarg(panel, "update_panel")
 
 

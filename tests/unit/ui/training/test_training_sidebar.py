@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtWidgets import QPushButton
@@ -31,8 +31,11 @@ def test_on_start_clicked(sidebar):
 
     # Test Start
     sidebar.controller.is_training.return_value = False
-    sidebar.start_training_ui_action()
-    sidebar.controller.start_training.assert_called_once()
+    with patch("XBrainLab.ui.panels.training.sidebar.QMessageBox.warning") as warning:
+        sidebar.start_training_ui_action()
+    sidebar.controller.start_training.assert_not_called()
+    warning.assert_called_once()
+    assert warning.call_args.args[1] == "Start Training Blocked"
 
     # Test Stop is separate method: stop_training
     # But checking start_training_ui_action logic:
@@ -48,8 +51,11 @@ def test_on_start_clicked(sidebar):
 
 def test_stop_training(sidebar):
     sidebar.controller.is_training.return_value = True
-    sidebar.stop_training()
-    sidebar.controller.stop_training.assert_called_once()
+    with patch("XBrainLab.ui.panels.training.sidebar.QMessageBox.warning") as warning:
+        sidebar.stop_training()
+    sidebar.controller.stop_training.assert_not_called()
+    warning.assert_called_once()
+    assert warning.call_args.args[1] == "Stop Training Blocked"
 
 
 def test_check_ready_to_train(sidebar):

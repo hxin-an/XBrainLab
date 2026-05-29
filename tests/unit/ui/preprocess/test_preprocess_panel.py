@@ -170,7 +170,7 @@ def test_update_plot_only_epoched_data_shows_locked_message_without_plotting(qtb
 
 
 def test_preprocess_panel_filtering(mock_main_window, mock_controller, qtbot):
-    """Test filtering delegates to controller."""
+    """Filtering blocks instead of mutating the legacy controller."""
     mock_controller.has_data.return_value = True
 
     # Use real window
@@ -193,19 +193,26 @@ def test_preprocess_panel_filtering(mock_main_window, mock_controller, qtbot):
             50.0,
         )  # l_freq, h_freq, notch
 
-        with patch(
-            "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.information"
-        ) as mock_info:
+        with (
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.information"
+            ) as mock_info,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+            ) as mock_warning,
+        ):
             panel.sidebar.open_filtering()
 
-            mock_controller.apply_filter.assert_called_with(1.0, 40.0, 50.0)
-            mock_info.assert_called_once()
+            mock_controller.apply_filter.assert_not_called()
+            mock_warning.assert_called_once()
+            assert mock_warning.call_args.args[1] == "Filtering Blocked"
+            mock_info.assert_not_called()
 
     real_window.close()
 
 
 def test_preprocess_panel_resample(mock_main_window, mock_controller, qtbot):
-    """Test resampling delegates to controller."""
+    """Resampling blocks instead of mutating the legacy controller."""
     mock_controller.has_data.return_value = True
     # Use real window
     real_window = QMainWindow()
@@ -223,19 +230,26 @@ def test_preprocess_panel_resample(mock_main_window, mock_controller, qtbot):
         instance.exec.return_value = True
         instance.get_params.return_value = 256.0
 
-        with patch(
-            "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.information"
-        ) as mock_info:
+        with (
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.information"
+            ) as mock_info,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+            ) as mock_warning,
+        ):
             panel.sidebar.open_resample()
 
-            mock_controller.apply_resample.assert_called_with(256.0)
-            mock_info.assert_called_once()
+            mock_controller.apply_resample.assert_not_called()
+            mock_warning.assert_called_once()
+            assert mock_warning.call_args.args[1] == "Resampling Blocked"
+            mock_info.assert_not_called()
 
     real_window.close()
 
 
 def test_preprocess_panel_epoching(mock_main_window, mock_controller, qtbot):
-    """Test epoching delegates to controller."""
+    """Epoching blocks instead of mutating the legacy controller."""
     mock_controller.has_data.return_value = True
     # Use real window
     real_window = QMainWindow()
@@ -255,22 +269,26 @@ def test_preprocess_panel_epoching(mock_main_window, mock_controller, qtbot):
 
         mock_controller.apply_epoching.return_value = True
 
-        with patch(
-            "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.information"
-        ) as mock_info:
+        with (
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.information"
+            ) as mock_info,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+            ) as mock_warning,
+        ):
             panel.sidebar.open_epoching()
 
-            mock_controller.apply_epoching.assert_called_with(
-                (0.0, 0.1), ["Event1"], -0.2, 0.5
-            )
-            # Should show success message
-            mock_info.assert_called_once()
+            mock_controller.apply_epoching.assert_not_called()
+            mock_warning.assert_called_once()
+            assert mock_warning.call_args.args[1] == "Epoching Blocked"
+            mock_info.assert_not_called()
 
     real_window.close()
 
 
 def test_preprocess_panel_reset(mock_main_window, mock_controller, qtbot):
-    """Test reset delegates to controller."""
+    """Reset blocks instead of mutating the legacy controller."""
     mock_controller.has_data.return_value = True
     real_window = QMainWindow()
     cast(Any, real_window).study = mock_main_window.study
@@ -287,11 +305,16 @@ def test_preprocess_panel_reset(mock_main_window, mock_controller, qtbot):
         patch(
             "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.information"
         ) as mock_info,
+        patch(
+            "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+        ) as mock_warning,
         patch.object(panel.sidebar, "info_panel") as mock_info_panel,
     ):
         panel.sidebar.reset_preprocess()
-        mock_controller.reset_preprocess.assert_called_once()
-        mock_info.assert_called_once()
+        mock_controller.reset_preprocess.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Reset Blocked"
+        mock_info.assert_not_called()
         # mock_info_panel.update_info.assert_called_once()  # Handled by Service now
 
     real_window.close()
@@ -321,12 +344,17 @@ class TestPreprocessSidebarOps:
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.information"
             ) as mock_info,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+            ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = ["Cz"]
             panel.sidebar.open_rereference()
-            mock_ctrl.apply_rereference.assert_called_with(["Cz"])
-            mock_info.assert_called_once()
+            mock_ctrl.apply_rereference.assert_not_called()
+            mock_warning.assert_called_once()
+            assert mock_warning.call_args.args[1] == "Re-reference Blocked"
+            mock_info.assert_not_called()
 
     def test_rereference_error(self, setup):
         panel, mock_ctrl, _ = setup
@@ -339,11 +367,17 @@ class TestPreprocessSidebarOps:
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.critical"
             ) as mock_crit,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+            ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = ["Cz"]
             panel.sidebar.open_rereference()
-            mock_crit.assert_called_once()
+            mock_ctrl.apply_rereference.assert_not_called()
+            mock_warning.assert_called_once()
+            assert mock_warning.call_args.args[1] == "Re-reference Blocked"
+            mock_crit.assert_not_called()
 
     def test_normalize_success(self, setup):
         panel, mock_ctrl, _ = setup
@@ -353,12 +387,17 @@ class TestPreprocessSidebarOps:
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.information"
             ) as mock_info,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+            ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = "zscore"
             panel.sidebar.open_normalize()
-            mock_ctrl.apply_normalization.assert_called_with("zscore")
-            mock_info.assert_called_once()
+            mock_ctrl.apply_normalization.assert_not_called()
+            mock_warning.assert_called_once()
+            assert mock_warning.call_args.args[1] == "Normalization Blocked"
+            mock_info.assert_not_called()
 
     def test_normalize_error(self, setup):
         panel, mock_ctrl, _ = setup
@@ -369,11 +408,17 @@ class TestPreprocessSidebarOps:
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.critical"
             ) as mock_crit,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+            ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = "zscore"
             panel.sidebar.open_normalize()
-            mock_crit.assert_called_once()
+            mock_ctrl.apply_normalization.assert_not_called()
+            mock_warning.assert_called_once()
+            assert mock_warning.call_args.args[1] == "Normalization Blocked"
+            mock_crit.assert_not_called()
 
     def test_filtering_error(self, setup):
         panel, mock_ctrl, _ = setup
@@ -384,11 +429,17 @@ class TestPreprocessSidebarOps:
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.critical"
             ) as mock_crit,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+            ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = (1.0, 40.0, 50.0)
             panel.sidebar.open_filtering()
-            mock_crit.assert_called_once()
+            mock_ctrl.apply_filter.assert_not_called()
+            mock_warning.assert_called_once()
+            assert mock_warning.call_args.args[1] == "Filtering Blocked"
+            mock_crit.assert_not_called()
 
     def test_resample_error(self, setup):
         panel, mock_ctrl, _ = setup
@@ -399,11 +450,17 @@ class TestPreprocessSidebarOps:
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.critical"
             ) as mock_crit,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+            ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = 256.0
             panel.sidebar.open_resample()
-            mock_crit.assert_called_once()
+            mock_ctrl.apply_resample.assert_not_called()
+            mock_warning.assert_called_once()
+            assert mock_warning.call_args.args[1] == "Resampling Blocked"
+            mock_crit.assert_not_called()
 
     def test_epoching_error(self, setup):
         panel, mock_ctrl, _ = setup
@@ -414,6 +471,9 @@ class TestPreprocessSidebarOps:
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.critical"
             ) as mock_crit,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+            ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = (
@@ -423,7 +483,10 @@ class TestPreprocessSidebarOps:
                 0.5,
             )
             panel.sidebar.open_epoching()
-            mock_crit.assert_called_once()
+            mock_ctrl.apply_epoching.assert_not_called()
+            mock_warning.assert_called_once()
+            assert mock_warning.call_args.args[1] == "Epoching Blocked"
+            mock_crit.assert_not_called()
 
     def test_reset_error(self, setup):
         panel, mock_ctrl, _ = setup
@@ -437,9 +500,15 @@ class TestPreprocessSidebarOps:
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.critical"
             ) as mock_crit,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+            ) as mock_warning,
         ):
             panel.sidebar.reset_preprocess()
-            mock_crit.assert_called_once()
+            mock_ctrl.reset_preprocess.assert_not_called()
+            mock_warning.assert_called_once()
+            assert mock_warning.call_args.args[1] == "Reset Blocked"
+            mock_crit.assert_not_called()
 
     def test_update_button_states_epoched(self, setup):
         panel, _, _ = setup

@@ -51,6 +51,13 @@ def _application_state(study):
     return _query_diagnostics(study, "state")["state"]
 
 
+def _wait_for_raw_count(qtbot, study, expected: int) -> None:
+    qtbot.waitUntil(
+        lambda: _application_state(study)["raw"]["count"] == expected,
+        timeout=10000,
+    )
+
+
 def _query_diagnostics(study, query: str, *, include_objects: bool = False):
     result = get_application_service(study).execute(
         QueryStateCommand(query=query, include_objects=include_objects),
@@ -312,7 +319,7 @@ def test_import_command_success_refreshes_dataset_table_without_stale_controller
         }
         _click(qtbot, test_app.dataset_panel.sidebar.import_btn)
 
-    assert _application_state(test_app.study)["raw"]["count"] == 1
+    _wait_for_raw_count(qtbot, test_app.study, 1)
     loaded_objects = _query_diagnostics(
         test_app.study,
         "data_lists",
@@ -355,7 +362,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         assert test_app.dataset_panel.sidebar.import_btn.text() == "Import file"
         _click(qtbot, test_app.dataset_panel.sidebar.import_btn)
 
-    assert _application_state(test_app.study)["raw"]["count"] == 1
+    _wait_for_raw_count(qtbot, test_app.study, 1)
     assert test_app.dataset_panel.table.rowCount() == 1
 
     _click(qtbot, test_app.nav_btns[1])

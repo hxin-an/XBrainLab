@@ -317,6 +317,52 @@ def test_evaluation_panel_uses_application_query_before_stale_controller_plans(q
     assert panel.run_combo.count() == 0
 
 
+def test_evaluation_panel_reuses_application_query_until_marked_dirty(
+    qtbot,
+    monkeypatch,
+):
+    """Navigation refreshes should not rerun the expensive evaluation query."""
+
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    calls = []
+
+    def fake_execute(_panel, command, **_kwargs):
+        calls.append(command)
+        return CommandResult.success_result(
+            command_name="evaluate",
+            message="No completed training runs are available for evaluation yet.",
+            state={},
+            changed_state=ChangedState(),
+            diagnostics={
+                "payload_type": "evaluation_summary",
+                "available": False,
+                "plan_objects": [],
+            },
+        )
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.evaluation.panel.execute_application_command",
+        fake_execute,
+    )
+
+    panel = EvaluationPanel(controller=MagicMock(), parent=RealMainWindow())
+    qtbot.addWidget(panel)
+
+    panel.update_panel()
+    panel.update_panel()
+
+    assert len(calls) == 1
+
+    panel.mark_refresh_dirty()
+    panel.update_panel()
+
+    assert len(calls) == 2
+
+
 def test_evaluation_panel_uses_application_payload_before_stale_controller(
     qtbot, monkeypatch
 ):

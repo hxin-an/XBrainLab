@@ -97,6 +97,7 @@ class EvaluationPanel(BasePanel):
         self.training_controller = training_controller
         self.preprocess_controller = preprocess_controller
         self.last_application_query = None
+        self._application_summary_dirty = True
 
         # 2. Base Init
         super().__init__(parent=parent, controller=controller)
@@ -122,11 +123,14 @@ class EvaluationPanel(BasePanel):
         if hasattr(self, "info_panel"):
             pass  # Handled by InfoPanelService
 
-        self.last_application_query = execute_application_command(
-            self,
-            EvaluateCommand(include_objects=True),
-            refresh=False,
-        )
+        if self._application_summary_dirty or self.last_application_query is None:
+            self.last_application_query = execute_application_command(
+                self,
+                EvaluateCommand(include_objects=True),
+                refresh=False,
+            )
+            self._application_summary_dirty = False
+
         if self._application_query_blocks_display():
             self._show_no_data_available()
             return
@@ -183,6 +187,10 @@ class EvaluationPanel(BasePanel):
             self._show_no_data_available()
 
         self.model_combo.blockSignals(False)
+
+    def mark_refresh_dirty(self) -> None:
+        """Invalidate the cached ApplicationService evaluation summary."""
+        self._application_summary_dirty = True
 
     def _application_query_blocks_display(self) -> bool:
         """Return whether ApplicationService says evaluation is not displayable."""

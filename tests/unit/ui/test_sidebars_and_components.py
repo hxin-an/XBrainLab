@@ -220,7 +220,7 @@ class TestPreprocessSidebar:
         assert mock_warning.call_args.args[1] == "Warning"
         assert "could not safely complete" in mock_warning.call_args.args[2]
 
-    def test_open_filtering_legacy_mock_context_applies_controller_fallback(
+    def test_open_filtering_without_command_service_does_not_mutate_controller(
         self,
         sidebar,
     ):
@@ -230,6 +230,7 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=None,
             ) as mock_execute,
+            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
             patch("PyQt6.QtWidgets.QMessageBox.information"),
         ):
             MockDlg.return_value.exec.return_value = True
@@ -237,11 +238,9 @@ class TestPreprocessSidebar:
             sidebar.open_filtering()
 
         mock_execute.assert_called_once()
-        sidebar.panel.controller.apply_filter.assert_called_once_with(
-            1.0,
-            40.0,
-            [50.0],
-        )
+        sidebar.panel.controller.apply_filter.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Filtering Blocked"
 
     def test_open_filtering_refuses_real_study_controller_fallback(self, sidebar):
         from XBrainLab.backend.study import Study
@@ -254,6 +253,10 @@ class TestPreprocessSidebar:
 
         with (
             patch("XBrainLab.ui.panels.preprocess.sidebar.FilteringDialog") as MockDlg,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command_async",
+                return_value=False,
+            ),
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=None,
@@ -273,7 +276,43 @@ class TestPreprocessSidebar:
         mock_critical.assert_not_called()
         mock_info.assert_not_called()
 
-    def test_open_resample_legacy_mock_context_applies_controller_fallback(
+    def test_open_filtering_uses_async_for_real_study(self, sidebar):
+        from XBrainLab.backend.application import PreprocessCommand
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        raw = MagicMock()
+        raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
+        study.data_manager.loaded_data_list = [raw]
+        sidebar.panel.main_window.study = study
+        async_calls = []
+
+        with (
+            patch("XBrainLab.ui.panels.preprocess.sidebar.FilteringDialog") as MockDlg,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command_async",
+                side_effect=lambda *args, **kwargs: async_calls.append(
+                    (args, kwargs),
+                )
+                or True,
+            ),
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
+            ) as sync_execute,
+            patch("PyQt6.QtWidgets.QMessageBox.information") as mock_info,
+        ):
+            MockDlg.return_value.exec.return_value = True
+            MockDlg.return_value.get_params.return_value = (1.0, 40.0, [50.0])
+            sidebar.open_filtering()
+
+        assert len(async_calls) == 1
+        command = async_calls[0][0][1]
+        assert isinstance(command, PreprocessCommand)
+        sync_execute.assert_not_called()
+        sidebar.panel.controller.apply_filter.assert_not_called()
+        mock_info.assert_not_called()
+
+    def test_open_resample_without_command_service_does_not_mutate_controller(
         self,
         sidebar,
     ):
@@ -283,6 +322,7 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=None,
             ) as mock_execute,
+            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
             patch("PyQt6.QtWidgets.QMessageBox.information"),
         ):
             MockDlg.return_value.exec.return_value = True
@@ -290,9 +330,11 @@ class TestPreprocessSidebar:
             sidebar.open_resample()
 
         mock_execute.assert_called_once()
-        sidebar.panel.controller.apply_resample.assert_called_once_with(256)
+        sidebar.panel.controller.apply_resample.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Resampling Blocked"
 
-    def test_open_rereference_legacy_mock_context_applies_controller_fallback(
+    def test_open_rereference_without_command_service_does_not_mutate_controller(
         self,
         sidebar,
     ):
@@ -309,6 +351,7 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=None,
             ) as mock_execute,
+            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
             patch("PyQt6.QtWidgets.QMessageBox.information"),
         ):
             MockDlg.return_value.exec.return_value = True
@@ -319,7 +362,9 @@ class TestPreprocessSidebar:
         command = mock_execute.call_args_list[1].args[1]
         assert isinstance(command, PreprocessCommand)
         assert command.channels == ["Cz"]
-        sidebar.panel.controller.apply_rereference.assert_called_once_with(["Cz"])
+        sidebar.panel.controller.apply_rereference.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Re-reference Blocked"
 
     def test_open_rereference_uses_query_data_list_before_stale_controller(
         self,
@@ -368,7 +413,7 @@ class TestPreprocessSidebar:
         sidebar.panel.controller.get_preprocessed_data_list.assert_not_called()
         sidebar.panel.controller.apply_rereference.assert_not_called()
 
-    def test_open_normalize_legacy_mock_context_applies_controller_fallback(
+    def test_open_normalize_without_command_service_does_not_mutate_controller(
         self,
         sidebar,
     ):
@@ -378,6 +423,7 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=None,
             ) as mock_execute,
+            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
             patch("PyQt6.QtWidgets.QMessageBox.information"),
         ):
             MockDlg.return_value.exec.return_value = True
@@ -385,7 +431,9 @@ class TestPreprocessSidebar:
             sidebar.open_normalize()
 
         mock_execute.assert_called_once()
-        sidebar.panel.controller.apply_normalization.assert_called_once_with("z-score")
+        sidebar.panel.controller.apply_normalization.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Normalization Blocked"
 
     def test_open_normalize_service_success_uses_coordinator_refresh(self, sidebar):
         from XBrainLab.backend.application import PreprocessCommand
@@ -406,7 +454,7 @@ class TestPreprocessSidebar:
         sidebar.panel.controller.apply_normalization.assert_not_called()
         sidebar.panel.update_panel.assert_not_called()
 
-    def test_open_epoching_legacy_mock_context_applies_controller_fallback(
+    def test_open_epoching_without_command_service_does_not_mutate_controller(
         self,
         sidebar,
     ):
@@ -418,6 +466,7 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=None,
             ) as mock_execute,
+            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
             patch("PyQt6.QtWidgets.QMessageBox.information"),
         ):
             MockDlg.return_value.exec.return_value = True
@@ -437,14 +486,11 @@ class TestPreprocessSidebar:
         assert command.t_max == 1.0
         assert command.baseline == (None, 0)
         assert command.event_ids == ["left", "right"]
-        sidebar.panel.controller.apply_epoching.assert_called_once_with(
-            (None, 0),
-            ["left", "right"],
-            -0.5,
-            1.0,
-        )
+        sidebar.panel.controller.apply_epoching.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Epoching Blocked"
 
-    def test_open_epoching_legacy_result_refreshes_shared_status(self, sidebar):
+    def test_open_epoching_without_command_service_skips_shared_status(self, sidebar):
         sidebar.panel.main_window.update_info_panel = MagicMock()
         sidebar.panel.main_window.agent_manager = SimpleNamespace(
             refresh_backend_status=MagicMock(),
@@ -452,6 +498,11 @@ class TestPreprocessSidebar:
 
         with (
             patch("XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog") as MockDlg,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
+                return_value=None,
+            ),
+            patch("PyQt6.QtWidgets.QMessageBox.warning"),
             patch("PyQt6.QtWidgets.QMessageBox.information"),
         ):
             MockDlg.return_value.exec.return_value = True
@@ -464,10 +515,10 @@ class TestPreprocessSidebar:
             sidebar.panel.controller.apply_epoching.return_value = True
             sidebar.open_epoching()
 
-        sidebar.panel.controller.apply_epoching.assert_called_once()
-        sidebar.panel.main_window.update_info_panel.assert_called_once()
+        sidebar.panel.controller.apply_epoching.assert_not_called()
+        sidebar.panel.main_window.update_info_panel.assert_not_called()
         (
-            sidebar.panel.main_window.agent_manager.refresh_backend_status.assert_called_once()
+            sidebar.panel.main_window.agent_manager.refresh_backend_status.assert_not_called()
         )
 
     def test_open_epoching_uses_epoch_capability_not_preprocess_block(
@@ -667,11 +718,17 @@ class TestPreprocessSidebar:
     def test_reset_preprocess(self, sidebar):
         from PyQt6.QtWidgets import QMessageBox
 
-        with patch.object(
-            QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes
+        with (
+            patch.object(
+                QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes
+            ),
+            patch.object(QMessageBox, "warning") as mock_warning,
         ):
             sidebar.reset_preprocess()
-            sidebar.panel.controller.reset_preprocess.assert_called()
+
+        sidebar.panel.controller.reset_preprocess.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Reset Blocked"
 
     def test_reset_preprocess_service_success_does_not_fallback_to_controller(
         self,
@@ -871,7 +928,7 @@ class TestTrainingSidebar:
         sidebar.panel.controller.validate_ready.assert_not_called()
         sidebar.panel.controller.has_datasets.assert_not_called()
 
-    def test_split_data_legacy_mock_context_applies_controller_fallback(
+    def test_split_data_without_command_service_does_not_mutate_controller(
         self,
         sidebar,
     ):
@@ -885,15 +942,24 @@ class TestTrainingSidebar:
             patch(
                 "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog"
             ) as MockDlg,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
+                return_value=False,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=None,
+            ),
+            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
             patch("PyQt6.QtWidgets.QMessageBox.information"),
         ):
             MockDlg.return_value.exec.return_value = QDialog.DialogCode.Accepted
             MockDlg.return_value.get_result.return_value = generator
             sidebar.split_data()
 
-        sidebar.panel.controller.apply_data_splitting.assert_called_once_with(
-            generator,
-        )
+        sidebar.panel.controller.apply_data_splitting.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Data Splitting Blocked"
 
     def test_split_data_service_success_does_not_fallback_to_controller(
         self,
@@ -1036,6 +1102,12 @@ class TestTrainingSidebar:
         sidebar.panel.controller.has_datasets.return_value = True
         sidebar.panel.controller.get_trainer.return_value = None
         generator = MagicMock()
+        async_commands = []
+
+        def fake_async(_panel, command, *, on_result, **_kwargs):
+            async_commands.append(command)
+            on_result(_command_result())
+            return True
 
         with (
             patch(
@@ -1050,6 +1122,10 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 return_value=_command_result(),
             ) as mock_execute,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
+                side_effect=fake_async,
+            ),
             patch.object(QMessageBox, "warning") as mock_warning,
             patch("PyQt6.QtWidgets.QMessageBox.information"),
         ):
@@ -1066,7 +1142,7 @@ class TestTrainingSidebar:
             if not isinstance(command, QueryStateCommand)
         ]
         assert isinstance(split_commands[0], ClearDatasetsCommand)
-        assert isinstance(split_commands[1], GenerateDatasetCommand)
+        assert isinstance(async_commands[0], GenerateDatasetCommand)
 
     def test_split_data_uses_backend_replacement_boundary_when_controller_stale(
         self,
@@ -1092,6 +1168,12 @@ class TestTrainingSidebar:
         sidebar.panel.controller.has_datasets.return_value = False
         sidebar.panel.controller.get_trainer.return_value = None
         generator = MagicMock()
+        async_commands = []
+
+        def fake_async(_panel, command, *, on_result, **_kwargs):
+            async_commands.append(command)
+            on_result(_command_result())
+            return True
 
         with (
             patch(
@@ -1106,6 +1188,10 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 return_value=_command_result(),
             ) as mock_execute,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
+                side_effect=fake_async,
+            ),
             patch.object(QMessageBox, "warning") as mock_warning,
             patch("PyQt6.QtWidgets.QMessageBox.information"),
         ):
@@ -1123,7 +1209,7 @@ class TestTrainingSidebar:
             if not isinstance(command, QueryStateCommand)
         ]
         assert isinstance(split_commands[0], ClearDatasetsCommand)
-        assert isinstance(split_commands[1], GenerateDatasetCommand)
+        assert isinstance(async_commands[0], GenerateDatasetCommand)
         sidebar.panel.controller.clean_datasets.assert_not_called()
         sidebar.panel.controller.apply_data_splitting.assert_not_called()
 
@@ -1163,14 +1249,23 @@ class TestTrainingSidebar:
             dataset_generator=study.data_manager.dataset_generator,
         )
 
+        def fake_async(_panel, command, *, on_result, **_kwargs):
+            assert isinstance(command, GenerateDatasetCommand)
+            on_result(_command_result())
+            return True
+
         with (
             patch(
                 "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog"
             ) as mock_dialog,
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
-                side_effect=[query_result, _command_result()],
+                side_effect=[query_result],
             ) as mock_execute,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
+                side_effect=fake_async,
+            ) as mock_async,
             patch.object(QMessageBox, "warning") as mock_warning,
             patch("PyQt6.QtWidgets.QMessageBox.information"),
         ):
@@ -1190,7 +1285,7 @@ class TestTrainingSidebar:
         assert isinstance(commands[0], QueryStateCommand)
         assert commands[0].query == "dataset_generation_context"
         assert commands[0].include_objects is True
-        assert isinstance(commands[1], GenerateDatasetCommand)
+        assert isinstance(mock_async.call_args.args[1], GenerateDatasetCommand)
 
     def test_split_data_refuses_real_study_query_none_dialog_context(
         self,
@@ -1275,6 +1370,10 @@ class TestTrainingSidebar:
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 side_effect=execute_for,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
+                return_value=False,
             ),
             patch.object(QMessageBox, "warning") as mock_warning,
             patch.object(QMessageBox, "critical") as mock_critical,
@@ -1361,12 +1460,12 @@ class TestTrainingSidebar:
         sidebar.panel.controller.clean_datasets.assert_not_called()
         sidebar.panel.controller.apply_data_splitting.assert_not_called()
         mock_warning.assert_called_once()
-        assert mock_warning.call_args.args[1] == "Data Splitting Blocked"
+        assert mock_warning.call_args.args[1] == "Reset Training Data Blocked"
         mock_critical.assert_not_called()
         mock_info.assert_not_called()
         assert "could not safely complete" in mock_warning.call_args.args[2]
 
-    def test_select_model_legacy_mock_context_applies_controller_fallback(
+    def test_select_model_without_command_service_does_not_mutate_controller(
         self,
         sidebar,
     ):
@@ -1390,6 +1489,7 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 return_value=None,
             ) as mock_execute,
+            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
             patch("PyQt6.QtWidgets.QMessageBox.information") as mock_info,
         ):
             MockDlg.return_value.exec.return_value = True
@@ -1400,9 +1500,11 @@ class TestTrainingSidebar:
         assert isinstance(command, ConfigureTrainingCommand)
         assert command.model_name == "EEGNet"
         assert command.model_params == {"channels": 8}
-        sidebar.panel.controller.set_model_holder.assert_called_once_with(mock_holder)
-        sidebar.panel.controller.get_model_holder.assert_called_once()
-        mock_info.assert_called_once_with(sidebar, "Success", "Model selected: EEGNet")
+        sidebar.panel.controller.set_model_holder.assert_not_called()
+        sidebar.panel.controller.get_model_holder.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Model Selection Blocked"
+        mock_info.assert_not_called()
 
     def test_select_model_service_success_does_not_read_stale_controller(
         self,
@@ -1553,9 +1655,15 @@ class TestTrainingSidebar:
         assert isinstance(sidebar, QWidget)
 
     def test_stop_training(self, sidebar):
+        from PyQt6.QtWidgets import QMessageBox
+
         sidebar.panel.controller.is_training.return_value = True
-        sidebar.stop_training()
-        sidebar.panel.controller.stop_training.assert_called()
+        with patch.object(QMessageBox, "warning") as mock_warning:
+            sidebar.stop_training()
+
+        sidebar.panel.controller.stop_training.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Stop Training Blocked"
 
     def test_stop_training_uses_backend_capability_when_controller_stale(
         self,
@@ -1672,11 +1780,17 @@ class TestTrainingSidebar:
     def test_clear_history(self, sidebar):
         from PyQt6.QtWidgets import QMessageBox
 
-        with patch.object(
-            QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes
+        with (
+            patch.object(
+                QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes
+            ),
+            patch.object(QMessageBox, "warning") as mock_warning,
         ):
             sidebar.clear_history()
-            sidebar.panel.controller.clear_history.assert_called()
+
+        sidebar.panel.controller.clear_history.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Clear History Blocked"
 
     def test_clear_history_service_success_does_not_fallback_to_controller(
         self,
@@ -1793,7 +1907,7 @@ class TestTrainingSidebar:
         with patch("PyQt6.QtWidgets.QMessageBox.warning"):
             sidebar.training_setting()
 
-    def test_training_setting_legacy_mock_context_applies_controller_fallback(
+    def test_training_setting_without_command_service_does_not_mutate_controller(
         self,
         sidebar,
     ):
@@ -1825,6 +1939,7 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 side_effect=[None, None],
             ) as mock_execute,
+            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
             patch("PyQt6.QtWidgets.QMessageBox.information") as mock_info,
         ):
             MockDlg.return_value.exec.return_value = True
@@ -1843,10 +1958,10 @@ class TestTrainingSidebar:
         assert command.save_checkpoints_every == 3
         assert command.output_dir == "./legacy-output"
         assert command.evaluation_option == "val_acc"
-        sidebar.panel.controller.set_training_option.assert_called_once_with(option)
-        mock_info.assert_called_once_with(
-            sidebar, "Success", "Training settings saved."
-        )
+        sidebar.panel.controller.set_training_option.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Training Settings Blocked"
+        mock_info.assert_not_called()
 
     def test_training_setting_uses_state_snapshot_defaults_before_stale_controller(
         self,
@@ -2018,18 +2133,23 @@ class TestTrainingSidebar:
             "Stop training before changing training configuration.",
         )
 
-    def test_start_training_legacy_mock_context_runs_controller_fallback(
+    def test_start_training_without_command_service_does_not_mutate_controller(
         self,
         sidebar,
     ):
         sidebar.panel.controller.is_training.return_value = False
-        with patch(
-            "XBrainLab.ui.panels.training.sidebar.get_command_capability",
-            return_value=None,
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                return_value=None,
+            ),
+            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
         ):
             sidebar.start_training_ui_action()
 
-        sidebar.panel.controller.start_training.assert_called_once()
+        sidebar.panel.controller.start_training.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Start Training Blocked"
 
     def test_start_training_button_click_confirms_long_running_command(
         self,
@@ -2204,7 +2324,7 @@ class TestTrainingSidebar:
 
         mock_check_ready.assert_not_called()
 
-    def test_start_training_legacy_mock_context_reports_controller_error(
+    def test_start_training_without_command_service_blocks_before_controller_error(
         self,
         sidebar,
     ):
@@ -2215,11 +2335,15 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.get_command_capability",
                 return_value=None,
             ),
+            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
             patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_critical,
         ):
             sidebar.start_training_ui_action()
 
-        mock_critical.assert_called_once()
+        sidebar.panel.controller.start_training.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Start Training Blocked"
+        mock_critical.assert_not_called()
 
     def test_split_data_no_data(self, sidebar):
         sidebar.panel.controller.get_loaded_data_list.return_value = []
@@ -2571,7 +2695,7 @@ class TestDatasetSidebar:
         mock_warning.assert_called_once()
         assert "could not safely complete" in mock_warning.call_args.args[2]
 
-    def test_open_channel_selection_legacy_mock_context_applies_controller_fallback(
+    def test_open_channel_selection_legacy_mock_context_blocks_controller_fallback(
         self,
         sidebar,
     ):
@@ -2601,6 +2725,7 @@ class TestDatasetSidebar:
                 "XBrainLab.ui.panels.dataset.sidebar.ChannelSelectionDialog"
             ) as MockDlg,
             patch.object(QMessageBox, "information") as mock_info,
+            patch.object(QMessageBox, "warning") as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = QDialog.DialogCode.Accepted
             MockDlg.return_value.get_result.return_value = ["Fp1", "Fp2"]
@@ -2611,25 +2736,28 @@ class TestDatasetSidebar:
         assert isinstance(command, PreprocessCommand)
         assert command.channels == ["Fp1", "Fp2"]
         MockDlg.assert_called_once_with(sidebar, [raw])
-        sidebar.panel.controller.apply_channel_selection.assert_called_once_with(
-            ["Fp1", "Fp2"],
-        )
-        sidebar.panel.update_panel.assert_called_once()
-        mock_info.assert_called_once_with(
-            sidebar,
-            "Success",
-            "Channel selection applied.",
-        )
+        sidebar.panel.controller.apply_channel_selection.assert_not_called()
+        sidebar.panel.update_panel.assert_not_called()
+        mock_info.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Channel Selection Blocked"
 
     def test_clear_dataset(self, sidebar):
         from PyQt6.QtWidgets import QMessageBox
 
         sidebar.panel.controller.is_epoched.return_value = True
-        with patch.object(
-            QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes
+        with (
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch.object(QMessageBox, "warning") as mock_warning,
         ):
             sidebar.clear_dataset()
-            sidebar.panel.controller.clean_dataset.assert_called()
+            sidebar.panel.controller.clean_dataset.assert_not_called()
+            mock_warning.assert_called_once()
+            assert mock_warning.call_args.args[1] == "Clear Dataset Blocked"
 
     def test_clear_dataset_uses_reset_session_capability_before_confirm(
         self,

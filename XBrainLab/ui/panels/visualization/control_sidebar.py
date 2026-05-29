@@ -198,9 +198,8 @@ class ControlSidebar(QWidget):
                     ),
                 )
                 if result is None:
-                    if not self._legacy_apply_montage(chs, normalized_positions):
-                        self._show_legacy_fallback_warning("Montage blocked")
-                        return
+                    self._show_legacy_fallback_warning("Montage blocked")
+                    return
                 elif result.failed:
                     QMessageBox.warning(
                         self,
@@ -236,20 +235,6 @@ class ControlSidebar(QWidget):
             )
         except LegacyControllerFallbackUnavailableError:
             return None
-
-    def _legacy_apply_montage(self, chs, normalized_positions) -> bool:
-        """Apply montage only for mock / legacy UI contexts."""
-        try:
-            run_legacy_controller_fallback(
-                self,
-                lambda: self.controller.set_montage(
-                    list(chs),
-                    normalized_positions,
-                ),
-            )
-        except LegacyControllerFallbackUnavailableError:
-            return False
-        return True
 
     def _legacy_montage_channel_names(self) -> list[str]:
         """Return montage channel names only for mock / legacy UI contexts."""
@@ -302,9 +287,8 @@ class ControlSidebar(QWidget):
                     SaliencyCommand(params=dict(params)),
                 )
                 if result is None:
-                    if not self._legacy_set_saliency_params(params):
-                        self._show_legacy_fallback_warning("Saliency blocked")
-                        return
+                    self._show_legacy_fallback_warning("Saliency blocked")
+                    return
                 elif result.failed:
                     QMessageBox.critical(
                         self,
@@ -324,17 +308,6 @@ class ControlSidebar(QWidget):
             return None
         params = diagnostics.get("params")
         return params if isinstance(params, dict) else None
-
-    def _legacy_set_saliency_params(self, params) -> bool:
-        """Set saliency params only for mock / legacy UI contexts."""
-        try:
-            run_legacy_controller_fallback(
-                self,
-                lambda: self.controller.set_saliency_params(params),
-            )
-        except LegacyControllerFallbackUnavailableError:
-            return False
-        return True
 
     def _legacy_saliency_dialog_params(self) -> dict | None:
         """Return saliency params only for mock / legacy UI contexts."""

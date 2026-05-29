@@ -20,6 +20,7 @@ from XBrainLab.backend.study import Study
 from XBrainLab.ui import application_capabilities
 from XBrainLab.ui.application_capabilities import (
     execute_application_command,
+    execute_application_command_async,
     get_command_capability,
     run_legacy_controller_fallback,
 )
@@ -215,6 +216,105 @@ def test_execute_application_command_can_skip_refresh(qtbot, monkeypatch):
 
     assert command_result is result
     assert refresh_calls == []
+
+
+def test_execute_application_command_async_runs_service_off_gui_call_stack(
+    qtbot,
+    monkeypatch,
+):
+    study = Study()
+    widget = QWidget()
+    cast(Any, widget).main_window = SimpleNamespace(study=study)
+    qtbot.addWidget(widget)
+    busy_states: list[bool] = []
+    cast(Any, widget).set_busy = lambda busy: busy_states.append(bool(busy))
+    result = CommandResult.success_result(
+        command_name="query_state",
+        message="ok",
+        state=None,
+        changed_state=ChangedState(raw_changed=True),
+    )
+    executed: list[QueryStateCommand] = []
+    callbacks: list[CommandResult] = []
+    refresh_calls: list[tuple[Any, CommandResult]] = []
+    started_workers = []
+
+    class _Service:
+        def execute(self, command):
+            assert isinstance(command, QueryStateCommand)
+            executed.append(command)
+            return result
+
+    class _ThreadPool:
+        def start(self, worker):
+            started_workers.append(worker)
+
+    monkeypatch.setattr(
+        application_capabilities,
+        "get_application_service",
+        lambda provided_study: _Service(),
+    )
+    monkeypatch.setattr(
+        application_capabilities.QThreadPool,
+        "globalInstance",
+        lambda: _ThreadPool(),
+    )
+    monkeypatch.setattr(
+        application_capabilities,
+        "refresh_after_command",
+        lambda context, command_result: refresh_calls.append(
+            (context, command_result),
+        ),
+    )
+
+    started = execute_application_command_async(
+        widget,
+        QueryStateCommand(),
+        on_result=callbacks.append,
+    )
+
+    assert started is True
+    assert busy_states == [True]
+    assert executed == []
+    assert len(started_workers) == 1
+    assert cast(Any, widget)._xbrainlab_active_application_workers == started_workers
+
+    started_workers[0].run()
+
+    assert len(executed) == 1
+    assert callbacks == [result]
+    assert refresh_calls == [(widget, result)]
+    assert busy_states == [True, False]
+    assert cast(Any, widget)._xbrainlab_active_application_workers == []
+
+
+def test_execute_application_command_async_returns_false_for_mock_study(
+    qtbot,
+    monkeypatch,
+):
+    widget = QWidget()
+    cast(Any, widget).main_window = SimpleNamespace(study=MagicMock())
+    qtbot.addWidget(widget)
+    started_workers = []
+
+    class _ThreadPool:
+        def start(self, worker):
+            started_workers.append(worker)
+
+    monkeypatch.setattr(
+        application_capabilities.QThreadPool,
+        "globalInstance",
+        lambda: _ThreadPool(),
+    )
+
+    started = execute_application_command_async(
+        widget,
+        QueryStateCommand(),
+        on_result=lambda _result: None,
+    )
+
+    assert started is False
+    assert started_workers == []
 
 
 def test_legacy_controller_fallback_refuses_real_study(qtbot):

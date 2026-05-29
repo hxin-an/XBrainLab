@@ -40,7 +40,7 @@ class TestNormalizeDialog(unittest.TestCase):
     @patch("XBrainLab.ui.panels.preprocess.sidebar.NormalizeDialog")
     @patch("XBrainLab.ui.panels.preprocess.sidebar.QMessageBox")
     def test_open_normalize(self, MockBox, MockDialog):
-        """Test opening normalize dialog."""
+        """Opening normalize blocks instead of mutating the legacy controller."""
         mock_instance = MockDialog.return_value
         mock_instance.exec.return_value = True
         mock_instance.get_params.return_value = "z score"
@@ -48,10 +48,9 @@ class TestNormalizeDialog(unittest.TestCase):
         with patch.object(self.panel, "update_panel") as mock_update:
             self.panel.sidebar.open_normalize()
 
-            # Verify controller call
-            self.panel.controller.apply_normalization.assert_called_once_with("z score")
+            self.panel.controller.apply_normalization.assert_not_called()
 
-            # Verify update
-            # update_panel on main panel is called via notify_update from sidebar
-            mock_update.assert_called_once()
-            MockBox.information.assert_called_once()  # Success message
+            mock_update.assert_not_called()
+            MockBox.warning.assert_called_once()
+            self.assertEqual(MockBox.warning.call_args.args[1], "Normalization Blocked")
+            MockBox.information.assert_not_called()

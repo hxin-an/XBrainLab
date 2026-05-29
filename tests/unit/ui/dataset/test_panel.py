@@ -143,25 +143,28 @@ def test_dataset_panel_init_controller(mock_main_window, mock_controller, qtbot)
 
 
 def test_dataset_panel_import_data_success(mock_main_window, mock_controller, qtbot):
-    """Test successful data import delegates to controller."""
+    """Import without command service should not mutate the controller."""
     panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
     qtbot.addWidget(panel)
 
     # Patch the name imported in the module
-    with patch(
-        "XBrainLab.ui.panels.dataset.actions.QFileDialog.getOpenFileNames",
-        return_value=(["/path/to/file.set"], "Filter"),
+    with (
+        patch(
+            "XBrainLab.ui.panels.dataset.actions.QFileDialog.getOpenFileNames",
+            return_value=(["/path/to/file.set"], "Filter"),
+        ),
+        patch(
+            "XBrainLab.ui.panels.dataset.actions.QMessageBox.information",
+        ) as mock_info,
+        patch(
+            "XBrainLab.ui.panels.dataset.actions.QMessageBox.warning",
+        ) as mock_warning,
     ):
-        # Controller returns success
-        mock_controller.import_files.return_value = (1, [])
-
-        with patch(
-            "XBrainLab.ui.panels.dataset.actions.QMessageBox.information"
-        ) as mock_info:
-            panel.action_handler.import_data()
-            mock_controller.import_files.assert_called_once_with(["/path/to/file.set"])
-            # No success message provided for clean import
-            mock_info.assert_not_called()
+        panel.action_handler.import_data()
+        mock_controller.import_files.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Interpretation Blocked"
+        mock_info.assert_not_called()
 
 
 def test_dataset_panel_clear_dataset(mock_main_window, mock_controller, qtbot):
@@ -180,10 +183,15 @@ def test_dataset_panel_clear_dataset(mock_main_window, mock_controller, qtbot):
         patch(
             "XBrainLab.ui.panels.dataset.sidebar.QMessageBox.information"
         ) as mock_info,
+        patch(
+            "XBrainLab.ui.panels.dataset.sidebar.QMessageBox.warning"
+        ) as mock_warning,
     ):
         panel.sidebar.clear_dataset()
-        mock_controller.clean_dataset.assert_called_once()
-        mock_info.assert_called_once()
+        mock_controller.clean_dataset.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Clear Dataset Blocked"
+        mock_info.assert_not_called()
 
 
 def test_dataset_panel_update_table(mock_main_window, mock_controller, qtbot):
@@ -420,14 +428,18 @@ def test_dataset_panel_on_item_changed(mock_main_window, mock_controller, qtbot)
 
     # Mock update_panel to avoid clearing the table (which deletes the item
     # triggering the signal)
-    with patch.object(panel, "update_panel"):
+    with (
+        patch.object(panel, "update_panel"),
+        patch("XBrainLab.ui.panels.dataset.panel.QMessageBox.warning") as mock_warning,
+    ):
         # Simulate editing Subject (Column 1)
         item = panel.table.item(0, 1)  # Subject
         assert item is not None
         item.setText("NewSub")
 
-        # Verify controller called
-        mock_controller.update_metadata.assert_called()
+        mock_controller.update_metadata.assert_not_called()
+        mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[1] == "Metadata blocked"
 
 
 def test_dataset_panel_metadata_service_success_uses_coordinator_refresh(
@@ -507,7 +519,7 @@ def test_dataset_panel_metadata_edit_refuses_real_study_controller_fallback(qtbo
     mock_warning.assert_called_once()
     assert mock_warning.call_args.args[1] == "Metadata blocked"
     assert "could not safely complete" in mock_warning.call_args.args[2]
-    mock_update.assert_called_once()
+    mock_update.assert_not_called()
 
 
 def test_dataset_panel_metadata_cells_use_backend_update_capability(qtbot):
@@ -569,8 +581,8 @@ def test_dataset_panel_smart_parse(mock_main_window, mock_controller, qtbot):
 
         mock_controller.apply_smart_parse.return_value = 1
 
-        with patch("XBrainLab.ui.panels.dataset.actions.QMessageBox.information"):
+        with patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb:
             panel.action_handler.open_smart_parser()
-            mock_controller.apply_smart_parse.assert_called_with(
-                {"/path/file.set": ("sub", "ses")}
-            )
+            mock_controller.apply_smart_parse.assert_not_called()
+            mock_mb.warning.assert_called_once()
+            assert mock_mb.warning.call_args.args[1] == "Smart Parse Blocked"

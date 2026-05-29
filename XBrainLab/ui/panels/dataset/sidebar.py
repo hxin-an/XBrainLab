@@ -22,6 +22,7 @@ from XBrainLab.backend.application import (
     ResetSessionCommand,
 )
 from XBrainLab.ui.application_capabilities import (
+    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
     LegacyControllerFallbackUnavailableError,
     blocked_reason,
     execute_application_command,
@@ -472,20 +473,6 @@ class DatasetSidebar(QWidget):
             return False if isinstance(result, Mock) else bool(result)
         return False
 
-    def _legacy_clear_dataset(self) -> bool:
-        available, _ = self._legacy_controller_value(
-            self.controller.clean_dataset,
-            blocked_title="Clear Dataset Blocked",
-        )
-        return bool(available)
-
-    def _legacy_apply_channel_selection(self, result) -> bool:
-        available, _ = self._legacy_controller_value(
-            lambda: self.controller.apply_channel_selection(result),
-            blocked_title="Channel Selection Blocked",
-        )
-        return bool(available)
-
     def _legacy_loaded_data_list_for_channel_selection(self) -> list[Any] | None:
         available, data_list = self._legacy_controller_value(
             self.controller.get_loaded_data_list,
@@ -581,8 +568,12 @@ class DatasetSidebar(QWidget):
                         ),
                     )
                     if command_result is None:
-                        if not self._legacy_apply_channel_selection(result):
-                            return
+                        QMessageBox.warning(
+                            self,
+                            "Channel Selection Blocked",
+                            LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                        )
+                        return
                     elif command_result.failed:
                         QMessageBox.critical(
                             self,
@@ -660,8 +651,12 @@ class DatasetSidebar(QWidget):
                 ResetSessionCommand(confirmed=True),
             )
             if result is None:
-                if not self._legacy_clear_dataset():
-                    return
+                QMessageBox.warning(
+                    self,
+                    "Clear Dataset Blocked",
+                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                )
+                return
             elif result.failed:
                 QMessageBox.critical(
                     self,
