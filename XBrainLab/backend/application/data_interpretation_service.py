@@ -137,18 +137,13 @@ class DataInterpretationCommandService:
             raise PreconditionError("Validate an interpretation before applying it.")
         self._ensure_candidate_can_apply(command, decision)
         count, errors = self._replace_active_raw_data(candidate.selected_eeg_files)
-        if count == 0 and errors:
-            raise ApplicationError(
-                message=f"Failed to apply interpretation: {errors}",
-                error_type=ErrorType.RUNTIME,
-                recoverable=True,
-                diagnostics={"errors": errors},
-            )
+        loaded_files = self._loaded_filepaths() or list(candidate.selected_eeg_files)
         interpretation_id = self.state.next_id("interpretation")
         applied = self._build_applied_interpretation(
             interpretation_id=interpretation_id,
             candidate=candidate,
             decision=decision,
+            loaded_files=loaded_files,
         )
         self.state.record_applied(applied)
         metadata_apply = self.apply_service.apply_candidate_metadata_to_loaded_data(
@@ -200,6 +195,10 @@ class DataInterpretationCommandService:
                 "; ".join(decision.blocked_reasons) or "Interpretation is blocked."
             )
             raise PreconditionError(blocked)
+        if self._has_active_raw_data() and not command.confirmed:
+            raise ConfirmationRequiredError(
+                "Confirm replacing the currently loaded EEG data.",
+            )
         if (
             decision.decision == InterpretationDecision.NEEDS_CONFIRMATION.value
             and not command.confirmed
@@ -210,11 +209,85 @@ class DataInterpretationCommandService:
 
     def _replace_active_raw_data(self, paths: list[str]) -> tuple[int, list[str]]:
         """Replace active raw data before importing reviewed interpretation files."""
+        expected_count = len(paths)
+        snapshot = self._snapshot_raw_state()
         loaded_files = list(self.dataset.get_loaded_data_list() or [])
         clean_dataset = getattr(self.dataset, "clean_dataset", None)
         if loaded_files and callable(clean_dataset):
             clean_dataset()
-        return self.dataset.import_files(paths)
+        count, errors = self.dataset.import_files(paths)
+        if errors or count != expected_count:
+            self._restore_raw_state(snapshot)
+            diagnostics = {
+                "errors": errors,
+                "success_count": count,
+                "expected_count": expected_count,
+            }
+            raise ApplicationError(
+                message=(
+                    "Failed to apply interpretation without changing the active "
+                    f"dataset: loaded {count}/{expected_count} file(s)"
+                    + (f"; errors: {errors}" if errors else ".")
+                ),
+                error_type=ErrorType.RUNTIME,
+                recoverable=True,
+                diagnostics=diagnostics,
+            )
+        return count, errors
+
+    def _has_active_raw_data(self) -> bool:
+        return bool(list(self.dataset.get_loaded_data_list() or []))
+
+    def _loaded_filepaths(self) -> list[str]:
+        return [
+            self._data_filepath(data)
+            for data in list(self.dataset.get_loaded_data_list() or [])
+        ]
+
+    def _snapshot_raw_state(self) -> dict[str, Any]:
+        """Capture active raw state so failed interpretation apply can roll back."""
+        study = getattr(self.dataset, "study", None)
+        manager = getattr(study, "data_manager", None)
+        if manager is not None:
+            return {
+                "kind": "data_manager",
+                "loaded_data_list": list(getattr(manager, "loaded_data_list", [])),
+                "preprocessed_data_list": list(
+                    getattr(manager, "preprocessed_data_list", []),
+                ),
+                "epoch_data": getattr(manager, "epoch_data", None),
+                "datasets": list(getattr(manager, "datasets", [])),
+                "dataset_generator": getattr(manager, "dataset_generator", None),
+                "dataset_locked": bool(getattr(manager, "dataset_locked", False)),
+            }
+        return {
+            "kind": "generic",
+            "loaded": list(getattr(self.dataset, "loaded", [])),
+            "imported_paths": list(getattr(self.dataset, "imported_paths", [])),
+        }
+
+    def _restore_raw_state(self, snapshot: dict[str, Any]) -> None:
+        """Restore raw state captured before a failed interpretation apply."""
+        if snapshot.get("kind") == "data_manager":
+            study = getattr(self.dataset, "study", None)
+            manager = getattr(study, "data_manager", None)
+            if manager is not None:
+                manager.loaded_data_list = list(snapshot["loaded_data_list"])
+                manager.preprocessed_data_list = list(
+                    snapshot["preprocessed_data_list"],
+                )
+                manager.epoch_data = snapshot["epoch_data"]
+                manager.datasets = list(snapshot["datasets"])
+                manager.dataset_generator = snapshot["dataset_generator"]
+                manager.dataset_locked = bool(snapshot["dataset_locked"])
+        elif snapshot.get("kind") == "generic":
+            if hasattr(self.dataset, "loaded"):
+                self.dataset.loaded = list(snapshot["loaded"])
+            if hasattr(self.dataset, "imported_paths"):
+                self.dataset.imported_paths = list(snapshot["imported_paths"])
+        notify = getattr(self.dataset, "notify", None)
+        if callable(notify):
+            notify("data_changed")
 
     @staticmethod
     def _build_applied_interpretation(
@@ -222,6 +295,7 @@ class DataInterpretationCommandService:
         interpretation_id: str,
         candidate: InterpretationCandidate,
         decision: ValidationDecision,
+        loaded_files: list[str],
     ) -> AppliedInterpretation:
         confirmations = (
             list(decision.required_confirmations)
@@ -233,7 +307,7 @@ class DataInterpretationCommandService:
             candidate_id=candidate.candidate_id,
             source_path=candidate.source_path,
             source_kind=candidate.source_kind,
-            loaded_files=list(candidate.selected_eeg_files),
+            loaded_files=list(loaded_files),
             label_sources=list(candidate.label_sources),
             label_carriers=list(candidate.label_carriers),
             bids=dict(candidate.bids),

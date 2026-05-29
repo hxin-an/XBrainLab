@@ -116,7 +116,9 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         and not interpretation.pending_confirmation
     ):
         apply_reasons.append("Interpretation has already been applied.")
-    apply_needs_confirmation = interpretation.pending_confirmation
+    apply_needs_confirmation = (
+        interpretation.pending_confirmation or active_dataset.has_raw_data
+    )
     capabilities[CommandName.APPLY_INTERPRETATION.value] = CommandCapability(
         command_name=CommandName.APPLY_INTERPRETATION.value,
         enabled=not apply_reasons,

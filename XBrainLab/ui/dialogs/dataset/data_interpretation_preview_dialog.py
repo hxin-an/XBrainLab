@@ -5287,7 +5287,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if self._skip_labels:
             choices["skip_labels"] = True
         result: dict[str, Any] = {
-            "confirmed": self.decision == "needs_confirmation"
+            "confirmed": self.decision in {"safe", "needs_confirmation"}
             or (self.decision == "blocked" and self._has_complete_remap_choices()),
             "save_recipe": self.save_recipe_check.isChecked(),
             "choices": choices,

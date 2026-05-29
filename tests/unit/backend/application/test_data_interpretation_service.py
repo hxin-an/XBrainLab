@@ -19,7 +19,10 @@ from XBrainLab.backend.application.data_interpretation_service import (
     DataInterpretationCommandService,
     HandlerResult,
 )
-from XBrainLab.backend.application.errors import ConfirmationRequiredError
+from XBrainLab.backend.application.errors import (
+    ApplicationError,
+    ConfirmationRequiredError,
+)
 
 
 class _LoadedData:
@@ -306,6 +309,75 @@ def test_apply_interpretation_replaces_active_raw_data(
     assert dataset.imported_paths == [str(selected_eeg.resolve())]
     assert [item.filepath for item in dataset.loaded] == [str(selected_eeg.resolve())]
     assert apply_payload["success_count"] == 1
+
+
+def test_apply_interpretation_requires_confirmation_when_replacing_raw_data(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    selected_eeg = source_dir / "selected.fif"
+    selected_eeg.write_bytes(b"not loaded during scan")
+    service, dataset = _service()
+    dataset.loaded = [_LoadedData(str(tmp_path / "old_raw.fif"))]
+
+    service.handle_scan_source(ScanSourceCommand(source_path=str(source_dir)))
+    service.handle_preview_interpretation(
+        PreviewInterpretationCommand(
+            choices={"selected_eeg_files": [str(selected_eeg.resolve())]},
+        ),
+    )
+    service.handle_validate_interpretation(ValidateInterpretationCommand())
+
+    with pytest.raises(ConfirmationRequiredError, match="replacing"):
+        service.handle_apply_interpretation(ApplyInterpretationCommand())
+
+    assert [item.filepath for item in dataset.loaded] == [str(tmp_path / "old_raw.fif")]
+    assert dataset.imported_paths == []
+
+
+def test_apply_interpretation_rolls_back_partial_import_failure(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    good_eeg = source_dir / "good.fif"
+    bad_eeg = source_dir / "bad.fif"
+    good_eeg.write_bytes(b"not loaded during scan")
+    bad_eeg.write_bytes(b"not loaded during scan")
+    service, dataset = _service()
+    old_path = str(tmp_path / "old_raw.fif")
+    dataset.loaded = [_LoadedData(old_path)]
+    dataset.imported_paths = [old_path]
+
+    def partial_import(paths: list[str]) -> tuple[int, list[str]]:
+        dataset.imported_paths = [paths[0]]
+        dataset.loaded = [_LoadedData(paths[0])]
+        return 1, [f"{paths[1]}: bad file"]
+
+    dataset.import_files = partial_import  # type: ignore[method-assign]
+
+    service.handle_scan_source(ScanSourceCommand(source_path=str(source_dir)))
+    service.handle_preview_interpretation(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [
+                    str(good_eeg.resolve()),
+                    str(bad_eeg.resolve()),
+                ],
+            },
+        ),
+    )
+    service.handle_validate_interpretation(ValidateInterpretationCommand())
+
+    with pytest.raises(ApplicationError, match="loaded 1/2"):
+        service.handle_apply_interpretation(
+            ApplyInterpretationCommand(confirmed=True),
+        )
+
+    assert [item.filepath for item in dataset.loaded] == [old_path]
+    assert dataset.imported_paths == [old_path]
+    assert service.state.snapshot().has_applied_interpretation is False
 
 
 def test_apply_interpretation_requires_target_candidate_confirmation(

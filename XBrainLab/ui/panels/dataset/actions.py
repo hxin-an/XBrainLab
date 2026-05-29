@@ -491,9 +491,7 @@ class DatasetActionHandler:
                 )
                 return
 
-        confirmed = str(decision.get("decision")) == "needs_confirmation" and bool(
-            dialog_result.get("confirmed"),
-        )
+        confirmed = bool(dialog_result.get("confirmed"))
         apply_result = execute_application_command(
             self.panel,
             ApplyInterpretationCommand(
@@ -831,9 +829,7 @@ class DatasetActionHandler:
                 return True
             break
 
-        confirmed = str(decision.get("decision")) == "needs_confirmation" and bool(
-            dialog_result.get("confirmed"),
-        )
+        confirmed = bool(dialog_result.get("confirmed"))
         apply_command = ApplyInterpretationCommand(
             candidate_id=self._optional_payload_id(decision, "candidate_id")
             or candidate_id,
