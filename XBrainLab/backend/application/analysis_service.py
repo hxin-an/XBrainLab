@@ -57,7 +57,7 @@ class AnalysisCommandService:
             finished = [run for run in runs if self._run_finished(run)]
             metrics: dict[str, Any] = {}
             pooled_result: Any = None
-            if finished:
+            if finished and (command.include_metrics or command.include_pooled_results):
                 try:
                     labels, outputs, metrics = self.evaluation.get_pooled_eval_result(
                         plan,
@@ -75,8 +75,9 @@ class AnalysisCommandService:
                     "metrics": self._json_safe(metrics),
                 }
             )
-            if command.include_objects:
+            if command.include_pooled_results:
                 pooled_eval_results.append(pooled_result)
+            if command.include_model_summaries:
                 model_summaries.append(
                     {
                         "plan": self._safe_model_summary(plan),
@@ -100,7 +101,9 @@ class AnalysisCommandService:
         }
         if command.include_objects:
             diagnostics["plan_objects"] = plans
+        if command.include_pooled_results:
             diagnostics["pooled_eval_results"] = pooled_eval_results
+        if command.include_model_summaries:
             diagnostics["model_summaries"] = model_summaries
         return (
             message,

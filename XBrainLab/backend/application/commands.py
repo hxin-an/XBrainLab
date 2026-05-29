@@ -338,6 +338,9 @@ class EvaluateCommand:
 
     target: str | None = None
     include_objects: bool = False
+    include_metrics: bool = True
+    include_pooled_results: bool = False
+    include_model_summaries: bool = False
 
     @property
     def name(self) -> CommandName:

@@ -55,6 +55,8 @@ class _Plan:
 class _EvaluationController:
     def __init__(self, plans: list[_Plan]) -> None:
         self._plans = plans
+        self.pooled_result_calls = 0
+        self.model_summary_calls = 0
 
     def get_plans(self) -> list[_Plan]:
         return list(self._plans)
@@ -63,9 +65,11 @@ class _EvaluationController:
         self,
         _plan: _Plan,
     ) -> tuple[list[int], list[int], dict[str, Any]]:
+        self.pooled_result_calls += 1
         return [], [], {"accuracy": np.float32(0.75)}
 
     def get_model_summary_str(self, plan: _Plan, record: _Run | None = None) -> str:
+        self.model_summary_calls += 1
         suffix = " run" if record is not None else ""
         return f"{plan.get_name()} summary{suffix}"
 
@@ -236,7 +240,13 @@ def test_analysis_service_can_return_ui_evaluation_objects() -> None:
     )
 
     _message, diagnostics = _expect_payload(
-        service.handle_evaluate(EvaluateCommand(include_objects=True)),
+        service.handle_evaluate(
+            EvaluateCommand(
+                include_objects=True,
+                include_pooled_results=True,
+                include_model_summaries=True,
+            ),
+        ),
     )
 
     assert diagnostics["plan_objects"] == [plan]
@@ -246,6 +256,25 @@ def test_analysis_service_can_return_ui_evaluation_objects() -> None:
         "Plan A summary run",
         "Plan A summary run",
     ]
+
+
+def test_analysis_service_can_skip_heavy_evaluation_payloads() -> None:
+    plan = _Plan("Plan A", [_Run(finished=True), _Run(finished=False)])
+    evaluation = _EvaluationController([plan])
+    service, _visualization, _preprocess = _service(evaluation=evaluation)
+
+    _message, diagnostics = _expect_payload(
+        service.handle_evaluate(
+            EvaluateCommand(include_objects=True, include_metrics=False),
+        ),
+    )
+
+    assert diagnostics["plan_objects"] == [plan]
+    assert diagnostics["plans"][0]["metrics"] == {}
+    assert "pooled_eval_results" not in diagnostics
+    assert "model_summaries" not in diagnostics
+    assert evaluation.pooled_result_calls == 0
+    assert evaluation.model_summary_calls == 0
 
 
 def test_analysis_service_visualize_saliency_and_montage_handlers() -> None:

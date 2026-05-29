@@ -86,6 +86,9 @@ def test_mcp_tool_specs_use_same_command_schema():
     assert "label_carrier_remap" in preview_choices["properties"]
     evaluate_schema = tools[CommandName.EVALUATE.value]["inputSchema"]
     assert "include_objects" not in evaluate_schema["properties"]
+    assert "include_metrics" not in evaluate_schema["properties"]
+    assert "include_pooled_results" not in evaluate_schema["properties"]
+    assert "include_model_summaries" not in evaluate_schema["properties"]
     visualize_schema = tools[CommandName.VISUALIZE.value]["inputSchema"]
     assert "include_objects" not in visualize_schema["properties"]
 
@@ -113,13 +116,22 @@ def test_mcp_tool_specs_expose_execution_boundary_metadata():
     assert reset_execution["confirmation_required"] is False
 
 
-@pytest.mark.parametrize("command_name", [CommandName.EVALUATE, CommandName.VISUALIZE])
-def test_automation_rejects_ui_object_payload_flag(command_name):
-    with pytest.raises(AutomationPayloadError, match="include_objects"):
+@pytest.mark.parametrize(
+    ("command_name", "field_name"),
+    [
+        (CommandName.EVALUATE, "include_objects"),
+        (CommandName.EVALUATE, "include_metrics"),
+        (CommandName.EVALUATE, "include_pooled_results"),
+        (CommandName.EVALUATE, "include_model_summaries"),
+        (CommandName.VISUALIZE, "include_objects"),
+    ],
+)
+def test_automation_rejects_ui_only_payload_flags(command_name, field_name):
+    with pytest.raises(AutomationPayloadError, match=field_name):
         build_command_from_payload(
             {
                 "command": command_name.value,
-                "arguments": {"include_objects": True},
+                "arguments": {field_name: True},
             },
         )
 

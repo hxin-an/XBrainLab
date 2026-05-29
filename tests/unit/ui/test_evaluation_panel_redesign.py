@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application import EvaluateCommand
 from XBrainLab.backend.application.results import ChangedState, CommandResult
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.observer import Observable
@@ -356,6 +357,11 @@ def test_evaluation_panel_reuses_application_query_until_marked_dirty(
     panel.update_panel()
 
     assert len(calls) == 1
+    assert isinstance(calls[0], EvaluateCommand)
+    assert calls[0].include_objects is True
+    assert calls[0].include_metrics is False
+    assert calls[0].include_pooled_results is False
+    assert calls[0].include_model_summaries is False
 
     panel.mark_refresh_dirty()
     panel.update_panel()
@@ -374,16 +380,27 @@ def test_evaluation_panel_uses_application_payload_before_stale_controller(
             self.study = Study()
 
     service_plan = MockPlanHolder("Service Plan")
-    query_result = CommandResult.success_result(
-        command_name="evaluate",
-        message="Evaluation summary ready.",
-        state={},
-        changed_state=ChangedState(),
-        diagnostics={
+    calls = []
+
+    def fake_execute(_panel, command, **_kwargs):
+        calls.append(command)
+        diagnostics = {
             "payload_type": "evaluation_summary",
             "available": True,
             "plan_objects": [service_plan],
-            "pooled_eval_results": [
+        }
+        if command.include_model_summaries:
+            diagnostics["model_summaries"] = [
+                {
+                    "plan": "Service plan summary",
+                    "runs": [
+                        "Service run 1 summary",
+                        "Service run 2 summary",
+                    ],
+                },
+            ]
+        if command.include_pooled_results:
+            diagnostics["pooled_eval_results"] = [
                 (
                     [0, 1],
                     [0, 1],
@@ -396,21 +413,18 @@ def test_evaluation_panel_uses_application_payload_before_stale_controller(
                         },
                     },
                 ),
-            ],
-            "model_summaries": [
-                {
-                    "plan": "Service plan summary",
-                    "runs": [
-                        "Service run 1 summary",
-                        "Service run 2 summary",
-                    ],
-                },
-            ],
-        },
-    )
+            ]
+        return CommandResult.success_result(
+            command_name="evaluate",
+            message="Evaluation summary ready.",
+            state={},
+            changed_state=ChangedState(),
+            diagnostics=diagnostics,
+        )
+
     monkeypatch.setattr(
         "XBrainLab.ui.panels.evaluation.panel.execute_application_command",
-        lambda *_args, **_kwargs: query_result,
+        fake_execute,
     )
     stale_controller = MagicMock()
     stale_controller.get_plans.return_value = [MockPlanHolder("Stale Plan")]
@@ -426,6 +440,17 @@ def test_evaluation_panel_uses_application_payload_before_stale_controller(
     stale_controller.get_model_summary_str.assert_not_called()
     assert panel.model_combo.count() == 1
     assert panel.model_combo.itemText(0) == "Fold 1: Service Plan"
+    assert (
+        panel.summary_text.toPlainText() == "Open Model Summary to load model details."
+    )
+    assert calls[0].include_metrics is False
+    assert calls[0].include_pooled_results is False
+    assert calls[0].include_model_summaries is False
+
+    panel.bottom_tabs.setCurrentWidget(panel.summary_tab)
+
+    stale_controller.get_model_summary_str.assert_not_called()
+    assert calls[-1].include_model_summaries is True
     assert panel.summary_text.toPlainText() == "Service run 1 summary"
 
 
@@ -462,6 +487,7 @@ def test_evaluation_panel_shows_placeholder_when_service_summary_missing(
     qtbot.addWidget(panel)
 
     panel.update_panel()
+    panel.bottom_tabs.setCurrentWidget(panel.summary_tab)
 
     assert "Model summary unavailable" in panel.summary_text.toPlainText()
 

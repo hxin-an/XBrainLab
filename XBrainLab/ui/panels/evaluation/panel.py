@@ -34,6 +34,7 @@ MODEL_SUMMARY_UNAVAILABLE_TEXT = (
     "Model summary unavailable for the selected run. "
     "Train or refresh the model, then open this tab again."
 )
+MODEL_SUMMARY_DEFERRED_TEXT = "Open Model Summary to load model details."
 
 
 class EvaluationPanel(BasePanel):
@@ -124,11 +125,7 @@ class EvaluationPanel(BasePanel):
             pass  # Handled by InfoPanelService
 
         if self._application_summary_dirty or self.last_application_query is None:
-            self.last_application_query = execute_application_command(
-                self,
-                EvaluateCommand(include_objects=True),
-                refresh=False,
-            )
+            self._refresh_application_query()
             self._application_summary_dirty = False
 
         if self._application_query_blocks_display():
@@ -214,6 +211,36 @@ class EvaluationPanel(BasePanel):
         if diagnostics.get("payload_type") != "evaluation_summary":
             return None
         return diagnostics
+
+    def _refresh_application_query(
+        self,
+        *,
+        include_pooled_results: bool = False,
+        include_model_summaries: bool = False,
+    ) -> bool:
+        """Refresh the service-backed evaluation payload with explicit UI needs."""
+        payload = self._evaluation_query_payload()
+        if payload is not None:
+            include_pooled_results = include_pooled_results or (
+                "pooled_eval_results" in payload
+            )
+            include_model_summaries = include_model_summaries or (
+                "model_summaries" in payload
+            )
+        result = execute_application_command(
+            self,
+            EvaluateCommand(
+                include_objects=True,
+                include_metrics=False,
+                include_pooled_results=include_pooled_results,
+                include_model_summaries=include_model_summaries,
+            ),
+            refresh=False,
+        )
+        if result is None:
+            return False
+        self.last_application_query = result
+        return not result.failed
 
     def _plans_from_application_query(self):
         payload = self._evaluation_query_payload()
@@ -303,8 +330,11 @@ class EvaluationPanel(BasePanel):
             pooled_result = self._pooled_result_from_application_query(plan)
             if pooled_result is None:
                 if self._evaluation_query_payload() is not None:
-                    self._clear_metric_views()
-                    return
+                    self._refresh_application_query(include_pooled_results=True)
+                    pooled_result = self._pooled_result_from_application_query(plan)
+                    if pooled_result is None:
+                        self._clear_metric_views()
+                        return
                 pooled_result = self._legacy_pooled_result_for_render(plan)
                 if pooled_result is None:
                     self._clear_metric_views()
@@ -342,7 +372,7 @@ class EvaluationPanel(BasePanel):
 
             self.metrics_table.update_data(metrics)
             self.bar_chart.update_plot(metrics)
-            self.update_model_summary(plan)
+            self._update_summary_if_visible(plan)
             return
 
         # Handle Single Record
@@ -363,17 +393,43 @@ class EvaluationPanel(BasePanel):
 
         plan = self.model_combo.currentData()
         if plan:
-            self.update_model_summary(plan, record=record)
+            self._update_summary_if_visible(plan, record=record)
 
     def update_model_summary(self, plan, record=None):
         """Generate and display model summary."""
         has_service_payload = self._evaluation_query_payload() is not None
+        if has_service_payload:
+            self._refresh_application_query(include_model_summaries=True)
         summary_str = self._summary_from_application_query(plan, record)
         if summary_str is None:
             summary_str = self._legacy_summary_for_render(plan, record)
         if has_service_payload and not summary_str.strip():
             summary_str = MODEL_SUMMARY_UNAVAILABLE_TEXT
         self.summary_text.setText(summary_str)
+
+    def _update_summary_if_visible(self, plan, record=None) -> None:
+        if not self._summary_tab_visible():
+            self.summary_text.setText(MODEL_SUMMARY_DEFERRED_TEXT)
+            return
+        self.update_model_summary(plan, record=record)
+
+    def _summary_tab_visible(self) -> bool:
+        return (
+            hasattr(self, "bottom_tabs")
+            and hasattr(self, "summary_tab")
+            and self.bottom_tabs.currentWidget() is self.summary_tab
+        )
+
+    def _on_bottom_tab_changed(self, _index: int) -> None:
+        if not self._summary_tab_visible():
+            return
+        plan = self.model_combo.currentData()
+        if not plan:
+            self.summary_text.clear()
+            return
+        data = self.run_combo.currentData()
+        record = None if data == "average" else data
+        self.update_model_summary(plan, record=record)
 
     def _legacy_pooled_result_for_render(self, plan):
         controller = self.controller
@@ -543,6 +599,7 @@ class EvaluationPanel(BasePanel):
         self.summary_text.setFontFamily("Courier New")
         summary_layout.addWidget(self.summary_text)
         self.bottom_tabs.addTab(self.summary_tab, "Model Summary")
+        self.bottom_tabs.currentChanged.connect(self._on_bottom_tab_changed)
 
         # Add to left layout directly
         left_layout.addWidget(plots_group, stretch=2)
