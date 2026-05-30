@@ -490,6 +490,7 @@ class DataSplittingDialog(BaseDialog):
         right_layout.addLayout(form_layout)
 
         self.cv_check = QCheckBox("Cross validation")
+        self.cv_check.stateChanged.connect(self.update_preview)
         right_layout.addWidget(self.cv_check)
 
         self.blocked_label = QLabel("")

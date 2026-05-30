@@ -134,3 +134,54 @@ def test_iter_saliency_by_label_skips_empty_class_arrays():
     labels = visualizer.iter_saliency_by_label("Gradient")
 
     assert [(key, name) for key, name, _saliency in labels] == [(1, "class 1")]
+
+
+def test_visualizer_resolves_string_saliency_keys():
+    label = np.ones(10)
+    output = np.ones((10, 2))
+    gradient = {
+        "0": np.zeros((10, 2, 3, 4)),
+        "1": np.ones((10, 2, 3, 4)),
+    }
+    eval_record = EvalRecord(
+        label,
+        output,
+        gradient,
+        gradient.copy(),
+        gradient.copy(),
+        gradient.copy(),
+        gradient.copy(),
+    )
+    visualizer = Visualizer(eval_record, None)
+
+    assert np.array_equal(
+        visualizer.get_saliency("Gradient", 1), np.ones((10, 2, 3, 4))
+    )
+
+
+def test_visualizer_iterates_available_saliency_without_zero_based_assumption():
+    label = np.ones(10)
+    output = np.ones((10, 2))
+    gradient = {
+        769: np.zeros((10, 2, 3, 4)),
+        770: np.ones((10, 2, 3, 4)),
+    }
+    epoch_data = type(
+        "EpochData",
+        (),
+        {"label_map": {769: "left", 770: "right"}},
+    )()
+    eval_record = EvalRecord(
+        label,
+        output,
+        gradient,
+        gradient.copy(),
+        gradient.copy(),
+        gradient.copy(),
+        gradient.copy(),
+    )
+    visualizer = Visualizer(eval_record, epoch_data)
+
+    saliency_by_label = visualizer.iter_saliency_by_label("Gradient")
+
+    assert [item[1] for item in saliency_by_label] == ["left", "right"]

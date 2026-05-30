@@ -7,12 +7,13 @@ validation and testing split units, amounts, and manual selection support.
 import threading
 from typing import Any
 
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtWidgets import (
     QComboBox,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -30,6 +31,7 @@ from XBrainLab.backend.dataset import (
     ValSplitByType,
 )
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.styles.theme import Theme
 
 from .manual_split_dialog import ManualSplitDialog
 
@@ -37,6 +39,78 @@ DEFAULT_SPLIT_ENTRY_VALUE = "0.2"
 PREVIEW_WORKER_RESTART_JOIN_TIMEOUT_SEC = 0.2
 PREVIEW_WORKER_CLOSE_JOIN_TIMEOUT_SEC = 1.0
 PREVIEW_DEBOUNCE_MS = 250
+
+_PREVIEW_DIALOG_STYLE = f"""
+    QDialog {{
+        background-color: {Theme.BACKGROUND_DARK};
+        color: {Theme.TEXT_SECONDARY};
+    }}
+    QLabel {{
+        color: {Theme.TEXT_SECONDARY};
+    }}
+    QGroupBox {{
+        background-color: {Theme.BACKGROUND_MID};
+        border: 1px solid {Theme.BACKGROUND_LIGHT};
+        border-radius: 4px;
+        margin-top: 18px;
+        padding-top: 12px;
+        color: {Theme.TEXT_SECONDARY};
+        font-weight: bold;
+    }}
+    QGroupBox::title {{
+        subcontrol-origin: margin;
+        left: 10px;
+        padding: 0 6px;
+        background-color: {Theme.BACKGROUND_DARK};
+        color: {Theme.TEXT_PRIMARY};
+    }}
+    QComboBox, QLineEdit {{
+        background-color: {Theme.BACKGROUND_DARK};
+        color: {Theme.TEXT_PRIMARY};
+        border: 1px solid {Theme.BACKGROUND_LIGHT};
+        border-radius: 3px;
+        padding: 5px 8px;
+        min-height: 24px;
+    }}
+    QPushButton {{
+        background-color: {Theme.ACCENT_PRIMARY};
+        color: {Theme.TEXT_PRIMARY};
+        border: none;
+        border-radius: 4px;
+        padding: 7px 12px;
+        font-weight: bold;
+    }}
+    QPushButton:hover {{
+        background-color: {Theme.ACCENT_HOVER};
+    }}
+"""
+
+_RESULT_TREE_STYLE = f"""
+    QTreeWidget {{
+        background-color: {Theme.BACKGROUND_MID};
+        alternate-background-color: {Theme.BACKGROUND_DARK};
+        color: {Theme.TEXT_PRIMARY};
+        border: 1px solid {Theme.BACKGROUND_LIGHT};
+        border-radius: 4px;
+        gridline-color: {Theme.BACKGROUND_LIGHT};
+    }}
+    QTreeWidget::item {{
+        padding: 5px 8px;
+        min-height: 26px;
+    }}
+    QTreeWidget::item:selected {{
+        background-color: {Theme.BLUE_PRESSED};
+        color: {Theme.TEXT_PRIMARY};
+    }}
+    QHeaderView::section {{
+        background-color: {Theme.BACKGROUND_LIGHT};
+        color: {Theme.TEXT_PRIMARY};
+        border: none;
+        border-right: 1px solid {Theme.BACKGROUND_MID};
+        padding: 6px 8px;
+        font-weight: bold;
+    }}
+"""
 
 
 class DataSplitterHolder(DataSplitter):
@@ -146,22 +220,50 @@ class DataSplittingPreviewDialog(BaseDialog):
 
     def init_ui(self):
         """Initialize the dialog UI with tree view and split controls."""
+        self.setStyleSheet(_PREVIEW_DIALOG_STYLE)
+        self.setMinimumSize(920, 620)
         layout = QHBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(18)
 
         # Left: Tree
         left_layout = QVBoxLayout()
+        left_layout.setSpacing(10)
+        results_group = QGroupBox("Split Results")
+        results_layout = QVBoxLayout(results_group)
+        results_layout.setContentsMargins(10, 12, 10, 10)
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["select", "name", "train", "val", "test"])
-        left_layout.addWidget(self.tree)
+        self.tree.setHeaderLabels(["Select", "Dataset", "Train", "Validation", "Test"])
+        self.tree.setRootIsDecorated(False)
+        self.tree.setAlternatingRowColors(True)
+        self.tree.setUniformRowHeights(True)
+        self.tree.setIndentation(0)
+        self.tree.setStyleSheet(_RESULT_TREE_STYLE)
+        header = self.tree.header()
+        if header is not None:
+            header.setStretchLastSection(False)
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+            for col in (2, 3, 4):
+                header.setSectionResizeMode(
+                    col,
+                    QHeaderView.ResizeMode.ResizeToContents,
+                )
+        results_layout.addWidget(self.tree)
+        left_layout.addWidget(results_group, stretch=1)
 
-        layout.addLayout(left_layout, stretch=1)
+        layout.addLayout(left_layout, stretch=3)
 
         # Right: Controls
         right_layout = QVBoxLayout()
+        right_layout.setSpacing(12)
 
         # Dataset Info
         info_group = QGroupBox("Dataset Info")
         info_layout = QGridLayout(info_group)
+        info_layout.setContentsMargins(12, 12, 12, 12)
+        info_layout.setHorizontalSpacing(12)
+        info_layout.setVerticalSpacing(8)
         info_layout.addWidget(QLabel("Subject:"), 0, 0)
         info_layout.addWidget(QLabel(str(len(self.epoch_data.subject_map))), 0, 1)
         info_layout.addWidget(QLabel("Session:"), 1, 0)
@@ -175,12 +277,19 @@ class DataSplittingPreviewDialog(BaseDialog):
         # Training Type
         train_group = QGroupBox("Training type")
         train_layout = QVBoxLayout(train_group)
+        train_layout.setContentsMargins(12, 12, 12, 12)
+        train_layout.setSpacing(6)
+        train_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         train_layout.addWidget(QLabel(self.config.train_type.value))
         right_layout.addWidget(train_group)
 
         # Validation
         val_group = QGroupBox("Validation")
         val_layout = QGridLayout(val_group)
+        val_layout.setContentsMargins(12, 12, 12, 12)
+        val_layout.setHorizontalSpacing(8)
+        val_layout.setVerticalSpacing(8)
+        val_layout.setColumnStretch(1, 1)
         self.val_widgets = []
 
         split_unit_list = [
@@ -250,6 +359,10 @@ class DataSplittingPreviewDialog(BaseDialog):
         # Testing
         test_group = QGroupBox("Testing")
         test_layout = QGridLayout(test_group)
+        test_layout.setContentsMargins(12, 12, 12, 12)
+        test_layout.setHorizontalSpacing(8)
+        test_layout.setVerticalSpacing(8)
+        test_layout.setColumnStretch(1, 1)
         row = 0
         if self.config.is_cross_validation:
             test_layout.addWidget(QLabel("Cross Validation"), row, 0, 1, 2)
@@ -298,7 +411,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         self.btn_confirm.clicked.connect(self.confirm)
         right_layout.addWidget(self.btn_confirm)
 
-        layout.addLayout(right_layout)
+        layout.addLayout(right_layout, stretch=1)
 
     def on_split_type_change(self, splitter, text):
         """Handle changes to the split unit combo box.
@@ -378,6 +491,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         if self.tree:
             self.tree.clear()
             item = QTreeWidgetItem(self.tree)
+            item.setSizeHint(0, QSize(0, 28))
             item.setText(0, "...")
             item.setText(1, "calculating")
 
@@ -406,6 +520,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         if self.dataset_generator and self.dataset_generator.preview_failed:
             self.tree.clear()
             item = QTreeWidgetItem(self.tree)
+            item.setSizeHint(0, QSize(0, 28))
             item.setText(1, "Nan")
         else:
             with self._datasets_lock:
@@ -424,6 +539,7 @@ class DataSplittingPreviewDialog(BaseDialog):
                     for i in range(current_count, len(snapshot)):
                         dataset = snapshot[i]
                         item = QTreeWidgetItem(self.tree)
+                        item.setSizeHint(0, QSize(0, 28))
                         info = dataset.get_treeview_row_info()
                         for col, val in enumerate(info):
                             item.setText(col, str(val))

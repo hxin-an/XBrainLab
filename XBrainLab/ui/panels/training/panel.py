@@ -98,6 +98,8 @@ class TrainingPanel(BasePanel):
 
         self.current_plotting_record = None
         self._last_epoch_count: int = -1
+        self._last_plot_signature = None
+        self._logged_epoch_signatures_by_record: dict[int, dict[int, tuple]] = {}
         self._selection_pinned_by_user = False
         self.plan_items = {}
         self.run_items = {}
@@ -225,6 +227,7 @@ class TrainingPanel(BasePanel):
     def _on_config_changed(self):
         """Re-evaluate the ready-to-train state when configuration changes."""
         self.log_text.clear()
+        self._logged_epoch_signatures_by_record.clear()
         if hasattr(self, "sidebar"):
             self.sidebar.check_ready_to_train()
         self.update_loop()
@@ -236,7 +239,7 @@ class TrainingPanel(BasePanel):
         self.training_completed_shown = False
         if hasattr(self, "sidebar"):
             self.sidebar.on_training_started()
-        self.update_loop(force_active=True)
+        self.update_loop(force_active=True, log_epochs=True)
         refresh_after_observer(self, event_name="training_started")
 
     def _on_training_stopped(self):
@@ -244,14 +247,14 @@ class TrainingPanel(BasePanel):
         self.training_finished()
         self.log_text.append("Training stopped (event).")
         # FORCE update to ensure the Table shows "Done" or "Stopped"
-        self.update_loop()
+        self.update_loop(log_epochs=True)
         if hasattr(self, "sidebar"):
             self.sidebar.on_training_stopped()
         refresh_after_observer(self, event_name="training_stopped")
 
     def _on_training_updated(self):
         """Refresh live training progress and shared observer status."""
-        self.update_loop()
+        self.update_loop(log_epochs=True)
         refresh_after_observer(self, event_name="training_updated")
 
     def _on_history_cleared(self):
@@ -267,7 +270,9 @@ class TrainingPanel(BasePanel):
         self.tab_loss.clear(redraw=False)
         self.current_plotting_record = None
         self._last_epoch_count = -1
+        self._last_plot_signature = None
         self._selection_pinned_by_user = False
+        self._logged_epoch_signatures_by_record.clear()
         self.history_table.clear_history()
 
     def _select_preferred_plot_record(self, plans, force_active=False):
@@ -317,6 +322,7 @@ class TrainingPanel(BasePanel):
         self.current_plotting_record = record
         if record:
             self._selection_pinned_by_user = True
+            self._last_plot_signature = None
             self.refresh_plot(record)
         else:
             self._selection_pinned_by_user = False
@@ -332,16 +338,17 @@ class TrainingPanel(BasePanel):
         self.tab_loss.clear()
 
         def get_val(key, source, idx):
-            if idx < len(source[key]):
-                val = source[key][idx]
+            values = source.get(key, [])
+            if idx < len(values):
+                val = values[idx]
                 try:
                     return float(val)
                 except (ValueError, TypeError):
-                    return 0.0
-            return 0.0
+                    return None
+            return None
 
         # Re-populate data
-        epochs = len(record.train[TrainRecordKey.ACC])
+        epochs = len(record.train.get(TrainRecordKey.ACC, []))
         epoch_values = []
         train_acc_values = []
         val_acc_values = []
@@ -383,7 +390,7 @@ class TrainingPanel(BasePanel):
             self.sidebar.check_ready_to_train()
         self.update_loop()
 
-    def update_loop(self, force_active=False):
+    def update_loop(self, force_active=False, log_epochs=False):
         """Handle real-time training updates."""
         # 1. Update History Table
         plans = self._history_from_application_query()
@@ -402,6 +409,7 @@ class TrainingPanel(BasePanel):
             if preferred_record is not self.current_plotting_record:
                 self.current_plotting_record = preferred_record
                 self._last_epoch_count = -1
+                self._last_plot_signature = None
                 self._selection_pinned_by_user = False
 
         # 3. Update Plots if the current record is active and has new data
@@ -410,10 +418,19 @@ class TrainingPanel(BasePanel):
                 current_epochs = len(
                     self.current_plotting_record.train.get(TrainRecordKey.ACC, []),
                 )
+                current_signature = self._record_plot_signature(
+                    self.current_plotting_record,
+                )
                 last_count = getattr(self, "_last_epoch_count", -1)
-                if last_count != current_epochs:
+                if (
+                    last_count != current_epochs
+                    or self._last_plot_signature != current_signature
+                ):
                     self._last_epoch_count = current_epochs
+                    self._last_plot_signature = current_signature
                     self.refresh_plot(self.current_plotting_record)
+                if log_epochs:
+                    self._append_epoch_logs(self.current_plotting_record)
             except Exception:
                 # Fallback: just refresh
                 logger.warning(
@@ -421,6 +438,129 @@ class TrainingPanel(BasePanel):
                     exc_info=True,
                 )
                 self.refresh_plot(self.current_plotting_record)
+
+    def _record_plot_signature(self, record):
+        """Return a compact signature for plot-relevant train/val metric changes."""
+        return (
+            self._series_signature(record.train, TrainRecordKey.ACC),
+            self._series_signature(record.train, TrainRecordKey.LOSS),
+            self._series_signature(record.val, RecordKey.ACC),
+            self._series_signature(record.val, RecordKey.LOSS),
+            self._series_signature(getattr(record, "test", {}), RecordKey.ACC),
+            self._series_signature(getattr(record, "test", {}), RecordKey.LOSS),
+        )
+
+    @staticmethod
+    def _series_signature(source, key):
+        values = source.get(key, []) if hasattr(source, "get") else []
+        tail = tuple(repr(value) for value in values[-3:])
+        return len(values), tail
+
+    def _append_epoch_logs(self, record) -> None:
+        completed_epochs = self._completed_epoch_count(record)
+        if completed_epochs <= 0:
+            return
+        record_logs = self._logged_epoch_signatures_by_record.setdefault(id(record), {})
+        for epoch_index in range(completed_epochs):
+            signature = self._epoch_log_signature(record, epoch_index)
+            if record_logs.get(epoch_index) == signature:
+                continue
+            record_logs[epoch_index] = signature
+            self.log_text.append(self._format_epoch_log_line(record, epoch_index))
+
+    @staticmethod
+    def _completed_epoch_count(record) -> int:
+        train_values = record.train.get(TrainRecordKey.ACC, [])
+        if not train_values:
+            train_values = record.train.get(TrainRecordKey.LOSS, [])
+        train_count = len(train_values)
+        get_epoch = getattr(record, "get_epoch", None)
+        if not callable(get_epoch):
+            return train_count
+        try:
+            record_epoch = int(get_epoch())
+        except (TypeError, ValueError):
+            return train_count
+        if record_epoch <= 0:
+            return train_count
+        return min(train_count, record_epoch)
+
+    def _epoch_log_signature(self, record, epoch_index: int) -> tuple:
+        return (
+            self._metric_at(record.train, TrainRecordKey.LOSS, epoch_index),
+            self._metric_at(record.train, TrainRecordKey.ACC, epoch_index),
+            self._metric_at(record.train, TrainRecordKey.AUC, epoch_index),
+            self._metric_at(record.val, RecordKey.LOSS, epoch_index),
+            self._metric_at(record.val, RecordKey.ACC, epoch_index),
+            self._metric_at(record.val, RecordKey.AUC, epoch_index),
+            self._metric_at(getattr(record, "test", {}), RecordKey.LOSS, epoch_index),
+            self._metric_at(getattr(record, "test", {}), RecordKey.ACC, epoch_index),
+            self._metric_at(getattr(record, "test", {}), RecordKey.AUC, epoch_index),
+            self._metric_at(record.train, TrainRecordKey.LR, epoch_index),
+            self._metric_at(record.train, TrainRecordKey.TIME, epoch_index),
+        )
+
+    def _format_epoch_log_line(self, record, epoch_index: int) -> str:
+        values = {
+            "train_loss": self._metric_at(
+                record.train,
+                TrainRecordKey.LOSS,
+                epoch_index,
+            ),
+            "train_acc": self._metric_at(record.train, TrainRecordKey.ACC, epoch_index),
+            "train_auc": self._metric_at(record.train, TrainRecordKey.AUC, epoch_index),
+            "val_loss": self._metric_at(record.val, RecordKey.LOSS, epoch_index),
+            "val_acc": self._metric_at(record.val, RecordKey.ACC, epoch_index),
+            "val_auc": self._metric_at(record.val, RecordKey.AUC, epoch_index),
+            "test_loss": self._metric_at(
+                getattr(record, "test", {}),
+                RecordKey.LOSS,
+                epoch_index,
+            ),
+            "test_acc": self._metric_at(
+                getattr(record, "test", {}),
+                RecordKey.ACC,
+                epoch_index,
+            ),
+            "test_auc": self._metric_at(
+                getattr(record, "test", {}),
+                RecordKey.AUC,
+                epoch_index,
+            ),
+            "lr": self._metric_at(record.train, TrainRecordKey.LR, epoch_index),
+            "time": self._metric_at(record.train, TrainRecordKey.TIME, epoch_index),
+        }
+        epoch = epoch_index + 1
+        return (
+            f"Epoch {epoch} | "
+            f"train loss={self._format_metric(values['train_loss'])} "
+            f"acc={self._format_metric(values['train_acc'])} "
+            f"auc={self._format_metric(values['train_auc'])} | "
+            f"val loss={self._format_metric(values['val_loss'])} "
+            f"acc={self._format_metric(values['val_acc'])} "
+            f"auc={self._format_metric(values['val_auc'])} | "
+            f"test loss={self._format_metric(values['test_loss'])} "
+            f"acc={self._format_metric(values['test_acc'])} "
+            f"auc={self._format_metric(values['test_auc'])} | "
+            f"lr={self._format_metric(values['lr'])} "
+            f"time={self._format_metric(values['time'])}"
+        )
+
+    @staticmethod
+    def _metric_at(source, key, epoch_index: int):
+        values = source.get(key, []) if hasattr(source, "get") else []
+        if epoch_index >= len(values):
+            return None
+        return values[epoch_index]
+
+    @staticmethod
+    def _format_metric(value) -> str:
+        if value is None:
+            return "-"
+        try:
+            return f"{float(value):.4g}"
+        except (TypeError, ValueError):
+            return str(value)
 
     def _history_from_application_query(self):
         result = execute_application_command(

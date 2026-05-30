@@ -673,6 +673,85 @@ def test_training_panel_refreshes_progress_and_plot_on_training_updated(
     assert panel.tab_acc.train_vals[-1] == 0.81
 
 
+def test_training_panel_refreshes_plot_when_validation_changes_without_new_train_epoch(
+    mock_main_window,
+    qtbot,
+):
+    """Validation points should redraw even if train epoch count is unchanged."""
+    controller = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+
+    active_entry = _make_history_entry(
+        epoch_count=1,
+        is_current_run=True,
+        is_active=True,
+        run_name="1",
+        repeat=1,
+    )
+    controller.get_formatted_history = MagicMock(return_value=[active_entry])
+
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+
+    panel.update_loop()
+    assert panel.tab_acc.val_vals == [0.75]
+
+    active_entry["record"].val[RecordKey.ACC] = [0.77]
+    controller.notify("training_updated")
+    qtbot.wait(50)
+
+    assert panel.tab_acc.epochs == [1]
+    assert panel.tab_acc.val_vals == [0.77]
+
+
+def test_training_panel_logs_each_epoch_on_training_updated(
+    mock_main_window,
+    qtbot,
+):
+    """The log tab should include per-epoch train/validation metrics."""
+    controller = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+
+    active_entry = _make_history_entry(
+        epoch_count=2,
+        is_current_run=True,
+        is_active=True,
+        run_name="1",
+        repeat=1,
+    )
+    active_entry["record"].train[TrainRecordKey.LOSS] = [0.5, 0.49]
+    active_entry["record"].train[TrainRecordKey.ACC] = [0.8, 0.81]
+    active_entry["record"].train[TrainRecordKey.LR] = [0.001, 0.001]
+    active_entry["record"].val[RecordKey.LOSS] = [0.6, 0.59]
+    active_entry["record"].val[RecordKey.ACC] = [0.75, 0.76]
+    controller.get_formatted_history = MagicMock(return_value=[active_entry])
+
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+
+    controller.notify("training_updated")
+    qtbot.wait(50)
+
+    log_text = panel.log_text.toPlainText()
+    assert "Epoch 1 | train loss=0.5 acc=0.8" in log_text
+    assert "Epoch 2 | train loss=0.49 acc=0.81" in log_text
+    assert "val loss=0.59 acc=0.76" in log_text
+
+
 def test_training_updated_observer_enters_refresh_coordinator(
     mock_main_window,
     qtbot,

@@ -85,25 +85,38 @@ class MetricTab(QWidget):
         self.ax.clear()
 
         # Plot Lines
-        self.ax.plot(
-            self.epochs,
-            self.train_vals,
-            marker="o",
-            markersize=4,
-            linestyle="-",
-            color=self.color,
-            label=f"Train {self.metric_name}",
-        )
-        # Improved Validation Line: Dashed, lighter color, smaller dot marker
-        self.ax.plot(
-            self.epochs,
-            self.val_vals,
-            marker="o",
-            markersize=4,
-            linestyle="--",
-            color=Theme.TEXT_SECONDARY,
-            label=f"Val {self.metric_name}",
-        )
+        train_points = [
+            (epoch_value, value)
+            for epoch_value, value in zip(self.epochs, self.train_vals, strict=False)
+            if value is not None
+        ]
+        val_points = [
+            (epoch_value, value)
+            for epoch_value, value in zip(self.epochs, self.val_vals, strict=False)
+            if value is not None
+        ]
+        if train_points:
+            xs, ys = zip(*train_points, strict=False)
+            self.ax.plot(
+                xs,
+                ys,
+                marker="o",
+                markersize=4,
+                linestyle="-",
+                color=self.color,
+                label=f"Train {self.metric_name}",
+            )
+        if val_points:
+            xs, ys = zip(*val_points, strict=False)
+            self.ax.plot(
+                xs,
+                ys,
+                marker="o",
+                markersize=4,
+                linestyle="--",
+                color=Theme.TEXT_SECONDARY,
+                label=f"Val {self.metric_name}",
+            )
 
         self.ax.set_title(f"{self.metric_name} vs Epoch")
         self.ax.set_xlabel("Epoch")
@@ -117,7 +130,8 @@ class MetricTab(QWidget):
         self.ax.grid(True, linestyle="--", alpha=0.3, color=Theme.TEXT_SECONDARY)
 
         # Create Legend (Standard colors, will be themed)
-        self.ax.legend(facecolor=Theme.BACKGROUND_MID, edgecolor=Theme.TEXT_MUTED)
+        if train_points or val_points:
+            self.ax.legend(facecolor=Theme.BACKGROUND_MID, edgecolor=Theme.TEXT_MUTED)
 
         # Apply Theme (Handles styles for axes, ticks, spines, labels, and legend)
         Theme.apply_matplotlib_dark_theme(self.fig, ax=self.ax)
