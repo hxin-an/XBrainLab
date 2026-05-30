@@ -16,7 +16,7 @@
 - metrics available: `True`
 - saliency available: `True`
 - ready screenshot: `/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual/artifacts/ui/visualization-render/visualization-render-saliency-map.png`
-- elapsed seconds: `8.703`
+- elapsed seconds: `9.229`
 - uncaught exceptions: `0`
 
 ## Rendered Tabs

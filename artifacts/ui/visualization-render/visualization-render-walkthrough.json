@@ -1433,9 +1433,9 @@
           "finished_run_count": 1,
           "metrics": {
             "0": {
-              "precision": 1.0,
-              "recall": 1.0,
-              "f1-score": 1.0,
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1-score": 0.0,
               "support": 1
             },
             "1": {
@@ -1445,9 +1445,9 @@
               "support": 0
             },
             "macro_avg": {
-              "precision": 0.5,
-              "recall": 0.5,
-              "f1-score": 0.5,
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1-score": 0.0,
               "support": 1
             }
           }
@@ -2080,6 +2080,6 @@
       }
     }
   },
-  "elapsed_seconds": 8.703,
+  "elapsed_seconds": 9.229,
   "uncaught_exceptions": []
 }
