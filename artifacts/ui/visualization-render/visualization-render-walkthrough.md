@@ -9,7 +9,7 @@
 - metrics available: `True`
 - saliency available: `True`
 - ready screenshot: `artifacts/ui/visualization-render/visualization-render-saliency-map.png`
-- elapsed seconds: `8.761`
+- elapsed seconds: `10.76`
 - uncaught exceptions: `0`
 
 ## Rendered Tabs
@@ -61,5 +61,6 @@
 ## Claim Boundary
 
 - Supports true MainWindow VisualizationPanel Matplotlib saliency renders.
-- Supports a user-facing 3D blocked reason in headless/offscreen runtime.
-- Does not support interactive 3D render or Windows human click-through.
+- Supports user-facing 3D blocked reason in headless/offscreen runtime.
+- Does not support interactive 3D render.
+- Does not support Windows human click-through.

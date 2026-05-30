@@ -57,9 +57,9 @@ class DrawColor(Enum):
 
     """
 
-    TRAIN = QColor("DodgerBlue")
-    VAL = QColor("LightBlue")
-    TEST = QColor("green")
+    TRAIN = QColor("#1f83d0")
+    VAL = QColor("#7bb7c9")
+    TEST = QColor("#2f9f64")
 
 
 class DrawRegion:
@@ -253,6 +253,7 @@ class PreviewCanvas(QWidget):
 
     def __init__(self, parent):
         super().__init__(parent)
+        self.setObjectName("DataSplitPreviewCanvas")
         self.setMinimumSize(400, 200)
         self.regions = []  # List of (DrawRegion, DrawColor)
         self.subject_num = 5
@@ -277,6 +278,7 @@ class PreviewCanvas(QWidget):
         """
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.fillRect(self.rect(), QColor("#181a1d"))
 
         w = self.width() - 100
         h = self.height() - 50
@@ -305,7 +307,7 @@ class PreviewCanvas(QWidget):
 
         # Draw box
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(Qt.GlobalColor.white)  # Assuming dark theme
+        painter.setPen(QColor("#d9e1ea"))
         painter.drawRect(left, top, int(w), int(h))
 
         # Grid lines
@@ -319,7 +321,7 @@ class PreviewCanvas(QWidget):
             painter.drawLine(int(d), top, int(d), int(top + h))
 
         # Labels
-        painter.setPen(Qt.GlobalColor.white)
+        painter.setPen(QColor("#edf2f7"))
 
         # X-axis Label
         painter.drawText(int(left + w / 2 - 20), int(top + h + 20), "Session")
@@ -406,7 +408,9 @@ class DataSplittingDialog(BaseDialog):
         self.blocked_label = None
 
         super().__init__(parent, title="Data Splitting Setting")
+        self.setObjectName("DataSplittingDialog")
         self.resize(800, 600)
+        self.setStyleSheet(self._dialog_style())
 
         self._sync_availability()
         self.update_preview()
@@ -414,9 +418,15 @@ class DataSplittingDialog(BaseDialog):
     def init_ui(self):
         """Initialize the dialog UI with preview canvas and split controls."""
         layout = QHBoxLayout(self)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(18)
 
         # Left: Preview
         left_layout = QVBoxLayout()
+        left_layout.setSpacing(12)
+        title = QLabel("Data splitting preview")
+        title.setObjectName("DataSplitTitle")
+        left_layout.addWidget(title)
         self.canvas = PreviewCanvas(self)
         left_layout.addWidget(self.canvas)
 
@@ -428,6 +438,7 @@ class DataSplittingDialog(BaseDialog):
             ("Testing", DrawColor.TEST),
         ]:
             lbl_color = QLabel("  ")
+            lbl_color.setObjectName("DataSplitLegendSwatch")
             lbl_color.setStyleSheet(f"background-color: {color.value.name()};")
             legend_layout.addWidget(lbl_color)
             legend_layout.addWidget(QLabel(name))
@@ -436,6 +447,7 @@ class DataSplittingDialog(BaseDialog):
 
         # Right: Options
         right_layout = QVBoxLayout()
+        right_layout.setSpacing(8)
 
         # Training Type
         right_layout.addWidget(QLabel("Training Type"))
@@ -663,3 +675,68 @@ class DataSplittingDialog(BaseDialog):
         if self.blocked_label is not None:
             self.blocked_label.setText(message)
             self.blocked_label.setVisible(blocked)
+
+    @staticmethod
+    def _dialog_style() -> str:
+        return """
+        QDialog#DataSplittingDialog {
+            background: #1b1b1d;
+            color: #f2f5f8;
+        }
+        QLabel {
+            background: transparent;
+            color: #f2f5f8;
+        }
+        QLabel#DataSplitTitle {
+            font-size: 16px;
+            font-weight: 700;
+        }
+        QLabel#DataSplitLegendSwatch {
+            border-radius: 2px;
+            min-width: 18px;
+            max-width: 18px;
+            min-height: 12px;
+            max-height: 12px;
+        }
+        QWidget#DataSplitPreviewCanvas {
+            background: #181a1d;
+            border: 1px solid #3d454d;
+            border-radius: 6px;
+        }
+        QComboBox {
+            background: #25272a;
+            color: #f2f5f8;
+            border: 1px solid #3d454d;
+            border-radius: 4px;
+            padding: 5px 8px;
+            min-width: 180px;
+        }
+        QComboBox::drop-down {
+            border-left: 1px solid #3d454d;
+            width: 24px;
+        }
+        QComboBox QAbstractItemView {
+            background: #25272a;
+            color: #f2f5f8;
+            selection-background-color: #0b5f94;
+            selection-color: #ffffff;
+        }
+        QCheckBox {
+            color: #f2f5f8;
+            spacing: 8px;
+        }
+        QPushButton {
+            min-width: 128px;
+            padding: 7px 12px;
+            border-radius: 4px;
+            border: 1px solid #0a7fc7;
+            background: #0069a8;
+            color: #f2f5f8;
+            font-weight: 700;
+        }
+        QPushButton:disabled {
+            border-color: #3d454d;
+            background: #2a2c30;
+            color: #87909b;
+        }
+        """

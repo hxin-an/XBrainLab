@@ -24,11 +24,11 @@
 | Family | 用途 | 不能代表 |
 | --- | --- | --- |
 | `quality/` | local generated fast engineering dashboard。 | product complete；clean clone 內的 canonical truth。 |
-| `ui/human-like-walkthrough/` | automated PyQt walkthrough、截圖、按鈕狀態。 | human Windows desktop acceptance。 |
 | `agent_evals/` | tool-call benchmark / scorer output。 | UI usability 或 EEG training quality。 |
 | `mcp/` | MCP stdio / HTTP adapter walkthrough。 | 完整 MCP client certification。 |
 | `data_interpretation/` | format capability matrix、internal-event preview evidence。 | 所有 EEG 格式完整支援，或數字 event code 的真實 class semantics。 |
 | `ui/data-import-wizard-steps/` | Data Import wizard minimal review screenshots plus placement panels。 | final Match Labels / Review and Import UX，或 human Windows acceptance。 |
+| `ui/app-polish/` | current model selection、data splitting、evaluation metrics UI polish screenshots。 | end-to-end training quality 或完整人工驗收。 |
 | `launcher/` | Windows launcher / startup smoke。 | release approval 或 signed installer。 |
 | `docs-site/` | docs site visual check 截圖。 | 文件內容一定正確。 |
 | `ui/chatpanel-local-pipeline-chain/` | local ChatPanel 從 Data Interpretation 到 dataset 的 command-chain walkthrough。 | long human desktop local-model session。 |
@@ -41,13 +41,13 @@
 | Artifact | 什麼時候看 |
 | --- | --- |
 | `quality/latest.md` | 想看本機最近 fast dashboard；此檔由 script 產生且 git-ignored。 |
-| `ui/human-like-walkthrough/human-like-walkthrough.md` | 想看 UI automated evidence。 |
 | `agent_evals/dashboard.md` | 想看 tool-call benchmark。 |
 | `mcp/http-walkthrough.md` | 想看 MCP HTTP baseline。 |
 | `data_interpretation/format-capability-matrix.md` | 想看 Data Interpretation format boundary。 |
 | `data_interpretation/internal-event-preview-backend.png` | 想看 backend internal-event evidence preview 的人眼截圖。 |
 | `data_interpretation/internal-event-evidence-A01T-A03T.json` | 想看 A01T/A02T/A03T internal-event evidence payload。 |
 | `ui/data-import-wizard-steps/README.md` | 想看目前保留的 Data Import wizard screenshot 入口和 Match Labels placement mode 截圖索引。 |
+| `ui/app-polish/README.md` | 想看 current training/evaluation side-panel polish screenshots。 |
 | `docs-site/data-import-private-portal/visual-review.md` | 想看 private docs portal 首頁 desktop/mobile visual review。 |
 | `launcher/windows-launcher-walkthrough.md` | 想看 launcher smoke。 |
 | `ui/chatpanel-local-pipeline-chain/chatpanel-local-pipeline-chain-walkthrough.md` | 想看 local ChatPanel tool-chain evidence。 |
@@ -137,6 +137,17 @@ be regenerated during the next artifact refresh.
 `artifacts/ui/.gitignore` now keeps future top-level dashboard captures local-only. UI walkthrough
 and review evidence should live in named artifact subdirectories with a clear README or markdown
 entry.
+
+2026-05-30 release-candidate gate cleanup removed:
+
+- `ui/human-like-walkthrough/`; it still showed the old debug-style Data Interpretation
+  preview and must not be presented as current Data Import wizard evidence.
+- `ui/audit-visualization-render/`; the current canonical visualization evidence is
+  `ui/visualization-render/`.
+
+Historical records may still mention those removed paths because they describe past
+validation runs. They are not current evidence entrances; regenerate or use the
+current families above when judging the active branch.
 
 ## 新 artifact 要寫清楚
 

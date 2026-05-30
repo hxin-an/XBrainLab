@@ -567,7 +567,15 @@ class TestStopGeneration:
         ctrl.worker.generation_thread.isRunning.return_value = True
         ctrl.stop_generation()
         assert not ctrl.is_processing
-        ctrl.worker.generation_thread.requestInterruption.assert_called()
+        ctrl.worker._cleanup_generation_thread.assert_called_once()
+
+    def test_stop_generation_cancels_backend_generation(self, ctrl):
+        ctrl.is_processing = True
+        ctrl.stop_generation()
+
+        ctrl.worker._cleanup_generation_thread.assert_called_once()
+        wait_ms = ctrl.worker._cleanup_generation_thread.call_args.kwargs["wait_ms"]
+        assert wait_ms > 0
 
 
 # --- set_model ---

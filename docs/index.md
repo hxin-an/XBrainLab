@@ -64,12 +64,6 @@ Private docs review; human smoke; manual-test branch review before any `main` pr
 
     <span class="xlb-artifact-path">`artifacts/ui/data-import-wizard-steps/README.md`</span>
 
-- **Human-like walkthrough**
-
-    Automated PyQt replay with screenshots and visible-state snapshots.
-
-    <span class="xlb-artifact-path">`artifacts/ui/human-like-walkthrough/human-like-walkthrough.md`</span>
-
 - **Internal event evidence**
 
     Backend generated event-evidence preview for A01T/A02T/A03T.
@@ -135,11 +129,11 @@ Private docs review; human smoke; manual-test branch review before any `main` pr
 | 證據入口 | 能支撐 | 不能支撐 |
 | --- | --- | --- |
 | `artifacts/quality/latest.md` | Local generated fast engineering health：lint、type、architecture guard、startup smoke、UI baseline、real-data IO。 | Canonical current truth、product completion、thesis claim、local LLM readiness。 |
-| `artifacts/ui/human-like-walkthrough/human-like-walkthrough.md` | Automated PyQt replay with screenshots、visible text、button states、geometry checks。 | Human Windows desktop acceptance、DPI / dual-monitor confidence、long local-model session。 |
 | `artifacts/agent_evals/dashboard.md` | Tool-call benchmark slice for selected local models and deterministic baseline。 | EEG training accuracy、UI usability、product completion。 |
 | `artifacts/mcp/http-walkthrough.md` | Headless MCP HTTP transport、tools/list、scan/preview、train job status/cancel baseline。 | Full MCP client certification、desktop UI refresh、persistent recovery。 |
 | `artifacts/data_interpretation/format-capability-matrix.md` | Representative Data Interpretation scan/preview/validation format boundaries。 | Full manual certification for every real dataset or XDF / LSL parser support。 |
 | `artifacts/ui/data-import-wizard-steps/README.md` | Current Data Import wizard screenshots, including the four loaded-label placement mode panels。 | Final Match Labels / Review and Import UX approval。 |
+| `artifacts/ui/app-polish/README.md` | Current model-selection, data-splitting, and evaluation table polish screenshots。 | End-to-end training quality or human desktop acceptance。 |
 | `artifacts/launcher/windows-launcher-walkthrough.md` | Automated Windows launcher command/startup smoke。 | Human click-through release approval。 |
 
 Artifact governance lives in `artifacts/README.md`; artifacts are evidence outputs, not canonical

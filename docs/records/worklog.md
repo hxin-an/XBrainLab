@@ -15599,3 +15599,45 @@
     handoff and the Create Epochs entry point needed after Data Import.
   - This is not a full BIDS support claim; BIDS-like `events.tsv` handoff is covered only for the
     reviewed label/timing fields in this slice.
+
+### 2026-05-30 Release-candidate non-blocking gate cleanup
+
+- scope：
+  - Treat both blocking and non-blocking specialist-gate findings as required cleanup for the
+    integrated manual-test branch.
+  - Keep the work inside current stabilization evidence: no new Match Labels / Review and Import
+    redesign, no full BIDS claim, and no local-LLM prompt smoke claim while the approved cache is
+    missing.
+- 做了什麼：
+  - Split the Data Import wizard dialog into step mixins for internal EEG events, loaded-label
+    placement, Load Labels, and Review/Import while preserving the existing dialog API.
+  - Removed the generic `_LazyStudyController` from `ApplicationService`; the service now uses
+    explicit lazy controller adapters for dataset, preprocess, training, evaluation, and
+    visualization command surfaces.
+  - Made Chat Stop call the worker generation-thread cleanup path so backend generation is
+    cancelled instead of only interrupting the Qt thread handle.
+  - Refreshed Data Import internal-label screenshot evidence so action buttons are not clipped and
+    event `772` coverage matches the missing-file evidence.
+  - Made Create Epochs fit the interval/internal-event import handoff without an initial scrollbar,
+    and refreshed `artifacts/ui/epoching-dialog/`.
+  - Darkened and refreshed model-selection, data-splitting, and evaluation-table polish evidence in
+    `artifacts/ui/app-polish/`.
+  - Removed stale current-tree `artifacts/ui/human-like-walkthrough/` and
+    `artifacts/ui/audit-visualization-render/`; current evidence uses Data Import wizard,
+    App Polish, and canonical Visualization Render artifacts.
+  - Added `claim_boundary` directly to `visualization-render-walkthrough.json` and regenerated the
+    VisualizationPanel render evidence.
+- validation：
+  - `poetry run ruff check .` -> `All checks passed!`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application tests/integration/backend/test_application_service_workflow.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_data_splitting.py tests/unit/ui/test_dialogs_extra.py tests/unit/llm/agent/test_controller.py::TestStopGeneration tests/unit/llm/agent/test_controller_cov.py::TestStopGeneration tests/unit/llm/test_worker_coverage.py::TestAgentWorkerCleanup -q`
+    -> `429 passed`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `poetry run mkdocs build --strict` -> PASS.
+  - `QT_QPA_PLATFORM=offscreen PYVISTA_OFF_SCREEN=true poetry run python scripts/dev/capture_visualization_render_walkthrough.py --output-dir artifacts/ui/visualization-render --timeout-seconds 540`
+    -> PASS and regenerated JSON/Markdown/screenshots.
+- 不能宣稱：
+  - This is still not human Windows acceptance.
+  - This does not prove true local-model prompt smoke; current local assistant evidence remains
+    preflight / unavailable-state because the approved model cache is missing.
+  - Historical records can still reference deleted artifact paths; those are records, not current
+    evidence entrances.

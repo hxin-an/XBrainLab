@@ -166,15 +166,12 @@ and structured-output smoke require installing an approved local model cache fir
 
 `LLMConfig` 和 `AssistantRuntimeSelection` 是 runtime truth。UI 顯示文字不能當成真實 backend 狀態。
 
-目前 primary / fallback local LLM 已通過 GPU prompt smoke 和 structured-output smoke。
-Goal 1 後續也新增真 local LLM tool-call runner；目前 thesis-candidate local benchmark 使用
-`121` cases，包含 recipe reload `choices.eeg_file_remap` / `choices.label_carrier_remap` /
-missing remap target clarification，deterministic、primary local 和 fallback local artifacts 都是
-`121 / 121`，primary / fallback raw output 各重跑 `3` 次。這支撐目前已重跑的 benchmark
-slice，不可替代 ChatPanel 長時間 workflow、Windows launcher、UI usability 或 human desktop
-acceptance。最新 agent mapped-tool command-surface hardening 已完成 release/thesis gate rerun：
-deterministic、primary local 和 fallback local artifacts 仍是同一 `121 / 121` suite，且 fallback
-rerun 記錄了 16 GB VRAM 邊界上的 resource pressure。
+目前 worktree 的 primary / fallback local LLM cache 是 missing；不能宣稱 GPU prompt smoke 或
+structured-output smoke 已在本輪 release-candidate gate 通過。歷史 tool-call benchmark artifact
+曾記錄 deterministic、primary local、fallback local 的 `121 / 121` slice 和 fallback resource
+pressure，但那是歷史 benchmark evidence，不是目前本機 runtime readiness。它不可替代
+ChatPanel 長時間 workflow、Windows launcher、UI usability、human desktop acceptance，或目前
+cache missing 狀態下的 local model smoke。
 4-bit loading 仍是 optional path；`accelerate` / `bitsandbytes` 不是預設產品啟動硬需求。
 
 Gemini/API 不再列為產品驗證目標；default dependencies 不包含 remote SDK。若歷史研究需要遠端
@@ -340,9 +337,9 @@ pipeline，不足以完整描述同一 dataset 上多個 training run、已完�
 
 已在本輪 runtime 驗證的部分：
 
-- local LLM primary / fallback model cache 存在且低於容量上限。
-- primary / fallback 都可在 CUDA 上載入並回覆最小 prompt。
-- primary / fallback 都可照 prompt-protocol 輸出 `{"tool_name":"get_state","arguments":{}}`。
+- local model catalog、download preflight 和 health-check script 存在。
+- `scripts/dev/inspect_local_assistant_runtime.py --format markdown` 回報 missing cache；
+  因此目前只支撐 preflight / unavailable-state claim。
 - local runtime unavailable 時，chat panel 會保持可開並顯示原因；first-run consent 只在
   local backend 還未 acknowledged 且即將啟用時出現。
 - assistant product UI 已改成使用者語言：workflow stage、local model status、next steps 和
@@ -357,8 +354,8 @@ pipeline，不足以完整描述同一 dataset 上多個 training run、已完�
 - 多步 tool-call loop 在真實使用者 workflow 中是否穩定。
 - agent 操作完整資料 pipeline 的端到端正確性。
 - 真 Windows launcher / human desktop acceptance。
-- local-only runtime cleanup 已完成 product path 封口；已有真 local model ChatPanel
-  walkthrough artifacts，但仍未做長時間真人桌面 session。
+- local model cache 目前 missing；本輪只證明 preflight / unavailable-state，不證明真 local
+  model ChatPanel walkthrough 或長時間真人桌面 session。
 
 ## 架構評斷
 

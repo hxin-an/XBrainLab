@@ -53,6 +53,12 @@ branch fixed and validated these product-quality gaps:
   states;
 - metrics and model-selection tables use dark active/inactive/disabled palettes and
   clear initial selection, preventing white selected rows from hiding text;
+- data-splitting and epoching dialogs now have current screenshot evidence with
+  dark readable controls and visible primary actions;
+- stale current-tree `human-like-walkthrough` and `audit-visualization-render`
+  artifacts were removed; historical records can still mention them, but current
+  evidence now points to `data-import-wizard-steps`, `app-polish`, and
+  `visualization-render`;
 - training record figure helpers use figure-scoped rendering and close empty
   figures, preventing matplotlib figure accumulation during repeated visualization;
 - `ApplicationService` lazy service wrappers now expose explicit command handlers
@@ -219,7 +225,7 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
 
 QT_QPA_PLATFORM=offscreen PYVISTA_OFF_SCREEN=true poetry run python \
   scripts/dev/capture_visualization_render_walkthrough.py \
-  --output-dir artifacts/ui/audit-visualization-render --timeout-seconds 540
+  --output-dir artifacts/ui/visualization-render --timeout-seconds 540
 # passed; 3 rendered saliency tabs and 3D blocked-state evidence captured
 
 poetry run python scripts/dev/update_quality_dashboard.py
@@ -344,7 +350,7 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
 
 QT_QPA_PLATFORM=offscreen PYVISTA_OFF_SCREEN=true poetry run python \
   scripts/dev/capture_visualization_render_walkthrough.py \
-  --output-dir artifacts/ui/audit-visualization-render --timeout-seconds 540
+  --output-dir artifacts/ui/visualization-render --timeout-seconds 540
 # passed
 
 poetry run python scripts/dev/update_quality_dashboard.py

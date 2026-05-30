@@ -9,7 +9,7 @@ from typing import Any
 
 from PIL import Image
 from PyQt6.QtCore import QSize
-from PyQt6.QtWidgets import QApplication, QWidget
+from PyQt6.QtWidgets import QApplication, QPushButton, QWidget
 
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
@@ -90,6 +90,20 @@ def _capture(widget: QWidget, output_path: Path) -> None:
         raise RuntimeError(f"Could not save {output_path}.")
     if _is_nearly_black(output_path):
         raise RuntimeError(f"Screenshot is nearly black: {output_path}.")
+    _assert_no_clipped_inline_actions(widget, output_path)
+
+
+def _assert_no_clipped_inline_actions(widget: QWidget, output_path: Path) -> None:
+    for button in widget.findChildren(QPushButton):
+        if button.objectName() != "DataImportInlineAction" or not button.isVisible():
+            continue
+        text_width = button.fontMetrics().horizontalAdvance(button.text()) + 18
+        if button.width() < text_width:
+            raise RuntimeError(
+                "Inline action appears clipped in "
+                f"{output_path.name}: {button.text()} width={button.width()} "
+                f"needed={text_width}"
+            )
 
 
 def _is_nearly_black(path: Path) -> bool:
@@ -209,7 +223,13 @@ def _internal_events_dialog() -> DataInterpretationPreviewDialog:
                     _event("769", "Class label", 216, "Repeats once per trial"),
                     _event("770", "Class label", 216, "Repeats once per trial"),
                     _event("771", "Class label", 216, "Repeats once per trial"),
-                    _event("772", "Class label", 144, "Missing in A03T.gdf"),
+                    _event(
+                        "772",
+                        "Class label",
+                        144,
+                        "Missing in A03T.gdf",
+                        coverage="2/3 files",
+                    ),
                 ],
                 "not_used_events": [
                     _event("768", "Trial timing", 864, "Trial start marker"),
@@ -551,12 +571,14 @@ def _event(
     use_as: str,
     event_count: int,
     evidence: str,
+    *,
+    coverage: str = "3/3 files",
 ) -> dict[str, Any]:
     return {
         "event_code": event_code,
         "use_as": use_as,
         "event_count": event_count,
-        "coverage": "3/3 files",
+        "coverage": coverage,
         "evidence": evidence,
     }
 

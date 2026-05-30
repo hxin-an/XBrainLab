@@ -11,7 +11,7 @@ import tempfile
 import time
 import traceback
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication, QLabel, QMessageBox
@@ -153,6 +153,16 @@ def run_visualization_render_walkthrough(
         "application_visualize": {},
         "renders": [],
         "blocked_renders": [],
+        "claim_boundary": {
+            "supports": [
+                "true MainWindow VisualizationPanel Matplotlib saliency renders",
+                "user-facing 3D blocked reason in headless/offscreen runtime",
+            ],
+            "does_not_support": [
+                "interactive 3D render",
+                "Windows human click-through",
+            ],
+        },
         "dismissed_dialogs": [],
         "screenshots": {"ready": ""},
         "final_state": {},
@@ -193,7 +203,7 @@ def run_visualization_render_walkthrough(
     window.switch_page(4)
     _process_events(app, 800)
 
-    panel = window.visualization_panel
+    panel = cast(Any, window).visualization_panel
     payload["ui_state"] = {
         "current_panel": "Visualization",
         "plan": panel.plan_combo.currentText(),
@@ -682,11 +692,13 @@ def render_markdown(payload: dict[str, Any]) -> str:
             "",
             "## Claim Boundary",
             "",
-            "- Supports true MainWindow VisualizationPanel Matplotlib saliency renders.",
-            "- Supports a user-facing 3D blocked reason in headless/offscreen runtime.",
-            "- Does not support interactive 3D render or Windows human click-through.",
         ],
     )
+    boundary = payload.get("claim_boundary") or {}
+    for item in boundary.get("supports") or []:
+        lines.append(f"- Supports {item}.")
+    for item in boundary.get("does_not_support") or []:
+        lines.append(f"- Does not support {item}.")
     return "\n".join(lines).rstrip() + "\n"
 
 

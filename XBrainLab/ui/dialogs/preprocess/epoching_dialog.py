@@ -100,20 +100,20 @@ class EpochingDialog(BaseDialog):
         self.b_max_spin: QDoubleSpinBox | None = None
 
         super().__init__(parent, title="Time Epoching")
-        self.resize(620, 680)
+        self.resize(640, 720)
         self.setStyleSheet(self._dialog_style())
 
     def init_ui(self):
         """Initialize the dialog UI with event list, parameter controls, and buttons."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 16, 18, 14)
-        layout.setSpacing(12)
+        layout.setContentsMargins(18, 15, 18, 13)
+        layout.setSpacing(10)
 
         content = QWidget()
         content.setObjectName("EpochDialogContent")
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(12)
+        content_layout.setSpacing(10)
 
         scroll = QScrollArea()
         scroll.setObjectName("EpochDialogContentScroll")
@@ -176,9 +176,9 @@ class EpochingDialog(BaseDialog):
                 item.setCheckState(Qt.CheckState.Unchecked)
 
         self.event_list.setMinimumHeight(
-            min(260, max(130, self.event_list.count() * 31 + 28)),
+            min(190, max(100, self.event_list.count() * 28 + 18)),
         )
-        self.event_list.setMaximumHeight(260)
+        self.event_list.setMaximumHeight(190)
         event_layout.addWidget(self.event_list)
         content_layout.addWidget(event_group)
 
@@ -309,8 +309,8 @@ class EpochingDialog(BaseDialog):
         card.setFrameShape(QFrame.Shape.StyledPanel)
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(16, 13, 16, 14)
-        card_layout.setSpacing(9)
+        card_layout.setContentsMargins(14, 11, 14, 12)
+        card_layout.setSpacing(8)
         title_label = QLabel(title)
         title_label.setObjectName("EpochSectionTitle")
         card_layout.addWidget(title_label)

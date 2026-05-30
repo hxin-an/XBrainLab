@@ -320,7 +320,7 @@ class TestStopGeneration:
         ctrl.worker.generation_thread.isRunning.return_value = True
         ctrl.stop_generation()
         assert not ctrl.is_processing
-        ctrl.worker.generation_thread.requestInterruption.assert_called()
+        ctrl.worker._cleanup_generation_thread.assert_called_once()
 
 
 # --- set_model ---
