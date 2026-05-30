@@ -70,15 +70,15 @@ Validation:
 ```bash
 QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/update_quality_dashboard.py
 # Overall status: PASS
-# generated_at: 2026-05-30 15:21:01 UTC+08:00
-# commit: aad24e2aa7ef
+# generated_at: 2026-05-30 16:37:27 UTC+08:00
+# commit: 2197149db09a
 # workspace: /mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual
 # checks: Ruff, Basedpyright, Architecture Compliance, Startup Smoke,
 # UI Baseline Capture, UI Dialog Acceptance, UI Product Walkthrough,
 # UI Unit Suite, Real-Data IO Integration all PASS
 
 QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/run_tests.py ui
-# 1236 passed
+# 1242 passed
 
 poetry run basedpyright
 # 0 errors, 0 warnings, 0 notes

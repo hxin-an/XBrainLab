@@ -240,7 +240,8 @@ poetry run python scripts/dev/inspect_local_assistant_runtime.py \
 目前 `docs/validation/README.md` 記錄的 refresh 狀態：
 
 - latest fast dashboard artifact：local generated `artifacts/quality/latest.*`
-- generated at：`2026-05-30 15:21:01 UTC+08:00`
+- generated at：`2026-05-30 16:37:27 UTC+08:00`
+- commit：`2197149db09a`
 - workspace：`/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`
 - overall：`PASS`
 - UI baseline capture：`7 UI artifacts match approved references`
@@ -249,7 +250,7 @@ poetry run python scripts/dev/inspect_local_assistant_runtime.py \
 
 同一輪 release-candidate follow-up validation：
 
-- UI unit validation：`1236 passed`。
+- UI unit validation：`1242 passed`。
 - Real-data IO integration：`31 passed, 8 warnings`。
 - pipeline smoke：`2 passed`。
 - Windows launcher walkthrough：`passed`，但這仍不是真人 desktop click-through 或 signed installer。
