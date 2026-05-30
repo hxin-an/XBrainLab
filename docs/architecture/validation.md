@@ -241,8 +241,8 @@ poetry run python scripts/dev/inspect_local_assistant_runtime.py \
 目前 `docs/validation/README.md` 記錄的 refresh 狀態：
 
 - latest fast dashboard artifact：local generated `artifacts/quality/latest.*`
-- generated at：`2026-05-30 16:43:30 UTC+08:00`
-- exact commit：recorded in local generated `artifacts/quality/latest.md`
+- generated at：`2026-05-30 17:40:41 UTC+08:00`
+- exact commit：`5a04bf804938`
 - workspace：`/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`
 - overall：`PASS`
 - UI baseline capture：`7 UI artifacts match approved references`

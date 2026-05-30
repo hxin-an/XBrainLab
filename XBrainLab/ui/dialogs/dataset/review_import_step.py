@@ -35,13 +35,18 @@ from XBrainLab.ui.dialogs.dataset.review_presenter import (
     target_step_for_review_text,
 )
 
+if TYPE_CHECKING:
+    from XBrainLab.ui.dialogs.dataset.wizard_host_protocol import (
+        DataImportWizardHostProtocol,
+    )
+else:
 
-class ReviewImportStepMixin:
+    class DataImportWizardHostProtocol:
+        pass
+
+
+class ReviewImportStepMixin(DataImportWizardHostProtocol):
     """Render helpers for final review, action items, and recipe trace."""
-
-    if TYPE_CHECKING:
-
-        def __getattr__(self, name: str) -> Any: ...
 
     def _build_review_import_summary(self, layout: QVBoxLayout) -> None:
         layout.addWidget(self.decision_label)

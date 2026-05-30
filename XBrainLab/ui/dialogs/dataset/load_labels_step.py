@@ -14,13 +14,18 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+if TYPE_CHECKING:
+    from XBrainLab.ui.dialogs.dataset.wizard_host_protocol import (
+        DataImportWizardHostProtocol,
+    )
+else:
 
-class LoadLabelsStepMixin:
+    class DataImportWizardHostProtocol:
+        pass
+
+
+class LoadLabelsStepMixin(DataImportWizardHostProtocol):
     """Render and mutation helpers for the Load Labels step."""
-
-    if TYPE_CHECKING:
-
-        def __getattr__(self, name: str) -> Any: ...
 
     def _add_label_source_rows(self, layout: QVBoxLayout) -> None:
         carriers = self._label_carrier_preview_rows()
@@ -303,28 +308,6 @@ class LoadLabelsStepMixin:
         carrier = str(carrier_path).strip()
         if carrier and not self._is_label_carrier_excluded(carrier):
             self._excluded_label_carriers.append(carrier)
-
-    def _refresh_label_matching_after_source_change(self) -> None:
-        self._refresh_load_labels_static_state()
-        if hasattr(self, "label_carrier_tree"):
-            self.label_carrier_tree.clear()
-            self._label_carrier_items.clear()
-            self._label_target_widgets.clear()
-            self._label_choice_widgets.clear()
-            self._label_carrier_remap_widgets.clear()
-            self._populate_label_carrier_tree()
-            self._fit_label_carrier_tree_height()
-        if hasattr(self, "label_pairing_rows_layout"):
-            self._populate_pairing_rows()
-        if hasattr(self, "label_source_mode_combo") and not self._label_carrier_items:
-            self._set_combo_current_data(
-                self.label_source_mode_combo,
-                "internal_events",
-            )
-        self._refresh_event_detail_view()
-        if hasattr(self, "pairing_status_label"):
-            self._refresh_pairing_status()
-        self._refresh_label_source_mode()
 
     def _refresh_load_labels_static_state(self) -> None:
         has_bids_events = self._has_bids_events()

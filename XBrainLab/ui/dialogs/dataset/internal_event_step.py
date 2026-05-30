@@ -17,13 +17,18 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+if TYPE_CHECKING:
+    from XBrainLab.ui.dialogs.dataset.wizard_host_protocol import (
+        DataImportWizardHostProtocol,
+    )
+else:
 
-class InternalEventStepMixin:
+    class DataImportWizardHostProtocol:
+        pass
+
+
+class InternalEventStepMixin(DataImportWizardHostProtocol):
     """Render and model helpers for labels stored inside EEG files."""
-
-    if TYPE_CHECKING:
-
-        def __getattr__(self, name: str) -> Any: ...
 
     def _build_internal_event_rules_view(self) -> None:
         self.event_group.setTitle("")

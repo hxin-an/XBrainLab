@@ -13,7 +13,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "ui" / "visualization-render"
+DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "ui" / "pyvistaqt-runtime-probe"
 JSON_ARTIFACT = "pyvistaqt-runtime-probe.json"
 MD_ARTIFACT = "pyvistaqt-runtime-probe.md"
 SCREENSHOT_NAME = "pyvistaqt-runtime-probe.png"

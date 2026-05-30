@@ -111,6 +111,15 @@ def _capture(widget: QWidget, output_path: Path) -> None:
 def _write_readme() -> None:
     (OUTPUT_DIR / "README.md").write_text(
         "# App Polish Screenshots\n\n"
+        "status: current release-candidate review evidence\n"
+        "generator: `scripts/dev/capture_ui_polish_surfaces.py`\n"
+        "environment: PyQt offscreen capture\n"
+        "supports: current visual state for model selection, data splitting, "
+        "and evaluation metrics table polish\n"
+        "does_not_support: end-to-end training quality, human desktop "
+        "acceptance, or long-running runtime behavior\n"
+        "next_human_or_runtime_gate: open the same dialogs in the Windows "
+        "desktop app during manual acceptance\n\n"
         "Focused current screenshots for manual review of surfaces that are not "
         "fully represented by the Data Import wizard artifacts.\n\n"
         "- `model-selection-dialog.png`\n"

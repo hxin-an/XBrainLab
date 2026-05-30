@@ -1975,6 +1975,29 @@ class DataInterpretationPreviewDialog(
             self.label_sources_label.setVisible(True)
         self._sync_scroll_policy()
 
+    def _refresh_label_matching_after_source_change(self) -> None:
+        """Refresh downstream matching views after the label-source set changes."""
+        self._refresh_load_labels_static_state()
+        if hasattr(self, "label_carrier_tree"):
+            self.label_carrier_tree.clear()
+            self._label_carrier_items.clear()
+            self._label_target_widgets.clear()
+            self._label_choice_widgets.clear()
+            self._label_carrier_remap_widgets.clear()
+            self._populate_label_carrier_tree()
+            self._fit_label_carrier_tree_height()
+        if hasattr(self, "label_pairing_rows_layout"):
+            self._populate_pairing_rows()
+        if hasattr(self, "label_source_mode_combo") and not self._label_carrier_items:
+            self._set_combo_current_data(
+                self.label_source_mode_combo,
+                "internal_events",
+            )
+        self._refresh_event_detail_view()
+        if hasattr(self, "pairing_status_label"):
+            self._refresh_pairing_status()
+        self._refresh_label_source_mode()
+
     def _skip_labels_for_now(self) -> None:
         self._skip_labels = True
         self.label_sources_label.setText(self._label_sources_status_text())

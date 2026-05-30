@@ -28,6 +28,7 @@
 | `mcp/` | MCP stdio / HTTP adapter walkthrough。 | 完整 MCP client certification。 |
 | `data_interpretation/` | format capability matrix、internal-event preview evidence。 | 所有 EEG 格式完整支援，或數字 event code 的真實 class semantics。 |
 | `ui/data-import-wizard-steps/` | Data Import wizard minimal review screenshots plus placement panels。 | final Match Labels / Review and Import UX，或 human Windows acceptance。 |
+| `ui/epoching-dialog/` | Data Import -> Create Epochs handoff screenshots。 | full Preprocess redesign 或 scientific epoch-window approval。 |
 | `ui/app-polish/` | current model selection、data splitting、evaluation metrics UI polish screenshots。 | end-to-end training quality 或完整人工驗收。 |
 | `launcher/` | Windows launcher / startup smoke。 | release approval 或 signed installer。 |
 | `docs-site/` | docs site visual check 截圖。 | 文件內容一定正確。 |
@@ -47,6 +48,7 @@
 | `data_interpretation/internal-event-preview-backend.png` | 想看 backend internal-event evidence preview 的人眼截圖。 |
 | `data_interpretation/internal-event-evidence-A01T-A03T.json` | 想看 A01T/A02T/A03T internal-event evidence payload。 |
 | `ui/data-import-wizard-steps/README.md` | 想看目前保留的 Data Import wizard screenshot 入口和 Match Labels placement mode 截圖索引。 |
+| `ui/epoching-dialog/README.md` | 想看 Data Import handoff 到 Create Epochs 的 current screenshot evidence。 |
 | `ui/app-polish/README.md` | 想看 current training/evaluation side-panel polish screenshots。 |
 | `docs-site/data-import-private-portal/visual-review.md` | 想看 private docs portal 首頁 desktop/mobile visual review。 |
 | `launcher/windows-launcher-walkthrough.md` | 想看 launcher smoke。 |
@@ -144,6 +146,9 @@ entry.
   preview and must not be presented as current Data Import wizard evidence.
 - `ui/audit-visualization-render/`; the current canonical visualization evidence is
   `ui/visualization-render/`.
+- stale `ui/visualization-render/pyvistaqt-runtime-probe.*`; the current visualization
+  folder now only keeps canonical VisualizationPanel render evidence. The standalone
+  PyVistaQt probe script writes to `ui/pyvistaqt-runtime-probe/` when explicitly run.
 
 Historical records may still mention those removed paths because they describe past
 validation runs. They are not current evidence entrances; regenerate or use the

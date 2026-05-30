@@ -22,13 +22,18 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+if TYPE_CHECKING:
+    from XBrainLab.ui.dialogs.dataset.wizard_host_protocol import (
+        DataImportWizardHostProtocol,
+    )
+else:
 
-class LabelPlacementStepMixin:
+    class DataImportWizardHostProtocol:
+        pass
+
+
+class LabelPlacementStepMixin(DataImportWizardHostProtocol):
     """Render and state helpers for external label placement rules."""
-
-    if TYPE_CHECKING:
-
-        def __getattr__(self, name: str) -> Any: ...
 
     def _build_label_values_card(self, layout: QVBoxLayout) -> None:
         self._updating_label_rule = True

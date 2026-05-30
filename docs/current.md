@@ -57,7 +57,7 @@ XBrainLab 正在收斂成 Windows 本地 EEG / BCI 桌面工具。主線已經�
 | Gate | 最近結果 | 用途 |
 | --- | --- | --- |
 | `mkdocs build --strict` | PASS | 文件站可建。 |
-| fast quality dashboard | PASS at `2026-05-30 16:43:30 UTC+08:00`; exact commit is recorded in local generated `artifacts/quality/latest.md` | lint、type、architecture、startup、UI baseline、UI product walkthrough、UI unit、real-data IO。 |
+| fast quality dashboard | PASS at `2026-05-30 17:40:41 UTC+08:00` on `5a04bf804938`; exact details are in local generated `artifacts/quality/latest.md` | lint、type、architecture、startup、UI baseline、UI product walkthrough、UI unit、real-data IO。 |
 | full UI unit suite | `1242 passed` | 支撐目前 UI regression baseline，不取代人工 UX approval。 |
 | pipeline smoke | `2 passed` | 支撐 tiny train/evaluate loop。 |
 | Windows launcher walkthrough | PASS | 自動化 launcher command / bounded startup evidence，不是 signed installer 或真人 click-through。 |
