@@ -88,8 +88,11 @@ def test_visualization_panel_layout_and_sidebar(qtbot):
     assert panel.sidebar.btn_export.isHidden()
 
 
-def test_visualization_controls_use_wrapping_grid(qtbot):
+def test_visualization_controls_stay_in_a_compact_two_row_grid(qtbot):
     panel, _ctrl = _make_panel(qtbot)
+    panel.resize(760, 720)
+    panel.show()
+    qtbot.wait(50)
 
     control_group = next(
         group
@@ -99,10 +102,27 @@ def test_visualization_controls_use_wrapping_grid(qtbot):
     layout = control_group.layout()
 
     assert isinstance(layout, QGridLayout)
-    assert layout.itemAtPosition(0, 1).widget() is panel.plan_combo
-    assert layout.itemAtPosition(1, 1).widget() is panel.run_combo
-    assert layout.itemAtPosition(2, 1).widget() is panel.method_combo
-    assert layout.itemAtPosition(3, 1).widget() is panel.abs_check
+    plan_item = layout.itemAtPosition(0, 1)
+    run_item = layout.itemAtPosition(0, 3)
+    method_item = layout.itemAtPosition(1, 1)
+    absolute_item = layout.itemAtPosition(1, 3)
+    assert plan_item is not None
+    assert run_item is not None
+    assert method_item is not None
+    assert absolute_item is not None
+    assert plan_item.widget() is panel.plan_combo
+    assert run_item.widget() is panel.run_combo
+    assert method_item.widget() is panel.method_combo
+    assert absolute_item.widget() is panel.abs_check
+    assert abs(panel.plan_combo.y() - panel.run_combo.y()) <= 8
+    assert abs(panel.method_combo.y() - panel.abs_check.y()) <= 8
+    assert panel.plan_combo.y() < panel.method_combo.y()
+
+    widgets = [panel.plan_combo, panel.run_combo, panel.method_combo, panel.abs_check]
+    rects = [widget.geometry() for widget in widgets]
+    for left_index, left_rect in enumerate(rects):
+        for right_rect in rects[left_index + 1 :]:
+            assert not left_rect.intersects(right_rect)
 
 
 def test_visualization_panel_defers_service_queries_until_opened(

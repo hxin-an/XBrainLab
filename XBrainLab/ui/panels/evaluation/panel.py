@@ -635,11 +635,10 @@ class EvaluationPanel(BasePanel):
         self.no_data_label.setStyleSheet(f"color: {Theme.TEXT_MUTED}; font-size: 11pt;")
         self.plot_stack.addWidget(self.no_data_label)
 
-        plots_layout.addWidget(self.plot_stack)
-
-        # Toolbar (Below Charts)
-        toolbar_layout = QHBoxLayout()
-        toolbar_layout.setContentsMargins(0, 10, 0, 0)
+        # Toolbar (Above Charts)
+        self.evaluation_controls_bar = QWidget()
+        toolbar_layout = QHBoxLayout(self.evaluation_controls_bar)
+        toolbar_layout.setContentsMargins(0, 0, 0, 8)
         toolbar_layout.setSpacing(8)
 
         # Model Selection
@@ -668,7 +667,8 @@ class EvaluationPanel(BasePanel):
         toolbar_layout.addWidget(self.chk_percentage)
 
         toolbar_layout.addStretch()
-        plots_layout.addLayout(toolbar_layout)
+        plots_layout.addWidget(self.evaluation_controls_bar)
+        plots_layout.addWidget(self.plot_stack, stretch=1)
 
         # 2. Bottom Section (Tabs: Metrics & Model Summary)
         self.bottom_tabs = QTabWidget()

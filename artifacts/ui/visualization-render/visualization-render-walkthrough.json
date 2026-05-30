@@ -1532,11 +1532,11 @@
           "x": 0,
           "y": 0,
           "width": 474,
-          "height": 407
+          "height": 476
         },
         "container_size": {
           "width": 474,
-          "height": 407
+          "height": 476
         },
         "size_hint": {
           "width": 363,
@@ -2019,32 +2019,32 @@
       "overlaps": [],
       "rects": {
         "plan": {
-          "x": 247,
+          "x": 95,
           "y": 111,
-          "width": 260,
+          "width": 150,
           "height": 30
         },
         "run": {
-          "x": 247,
-          "y": 149,
-          "width": 220,
+          "x": 291,
+          "y": 111,
+          "width": 150,
           "height": 30
         },
         "method": {
-          "x": 247,
-          "y": 187,
-          "width": 260,
+          "x": 95,
+          "y": 147,
+          "width": 150,
           "height": 30
         },
         "absolute": {
-          "x": 247,
-          "y": 225,
-          "width": 260,
+          "x": 291,
+          "y": 151,
+          "width": 150,
           "height": 21
         }
       }
     }
   },
-  "elapsed_seconds": 9.236,
+  "elapsed_seconds": 9.411,
   "uncaught_exceptions": []
 }

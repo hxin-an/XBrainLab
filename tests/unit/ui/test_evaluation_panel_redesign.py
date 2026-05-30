@@ -121,6 +121,9 @@ def test_evaluation_panel_layout(qtbot):
     controller = main_window.study.get_controller("evaluation")
     panel = EvaluationPanel(controller=controller, parent=main_window)
     qtbot.addWidget(panel)
+    panel.resize(1000, 720)
+    panel.show()
+    qtbot.wait(50)
 
     # Check Splitter (Should be None now)
     splitter = panel.findChild(QSplitter)
@@ -154,6 +157,14 @@ def test_evaluation_panel_layout(qtbot):
     assert isinstance(model_combo, QComboBox)
     assert isinstance(run_combo, QComboBox)
     assert isinstance(chk_percentage, QCheckBox)
+
+    assert hasattr(panel, "evaluation_controls_bar")
+    plots_group = next(group for group in groups if group.title() == "EVALUATION PLOTS")
+    plots_layout = plots_group.layout()
+    assert plots_layout is not None
+    assert plots_layout.indexOf(panel.evaluation_controls_bar) < plots_layout.indexOf(
+        panel.plot_stack,
+    )
 
 
 def test_metrics_table_selection_uses_dark_theme(qtbot):
