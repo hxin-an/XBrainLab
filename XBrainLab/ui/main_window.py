@@ -26,9 +26,15 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from XBrainLab.backend.application import QueryStateCommand
+from XBrainLab.backend.application import (
+    QueryStateCommand,
+    StopTrainingCommand,
+)
 from XBrainLab.backend.utils.logger import logger
-from XBrainLab.ui.application_capabilities import execute_application_command
+from XBrainLab.ui.application_capabilities import (
+    execute_application_command,
+    execute_application_shutdown_command,
+)
 from XBrainLab.ui.core.worker import Worker
 from XBrainLab.ui.legacy_controller_bootstrap import (
     get_legacy_workflow_controllers_for_panel_bootstrap,
@@ -916,6 +922,7 @@ class MainWindow(QMainWindow):
 
         """
         logger.info("Closing application...")
+        self._stop_training_for_close()
         if not self.isMaximized() and not self.isFullScreen():
             settings = self._window_settings()
             if self._is_current_window_geometry_usable():
@@ -929,6 +936,23 @@ class MainWindow(QMainWindow):
         if self.agent_manager is not None:
             self.agent_manager.close()
         super().closeEvent(event)
+
+    def _stop_training_for_close(self) -> None:
+        """Request bounded training shutdown before the window disappears."""
+        result = execute_application_shutdown_command(
+            self,
+            StopTrainingCommand(wait_timeout=2.0),
+        )
+        if result is None:
+            return
+        if result.failed:
+            logger.debug("Close-time training stop skipped: %s", result.message)
+            return
+        stopped = result.diagnostics.get("stopped")
+        if stopped is False:
+            logger.warning(
+                "Training is still stopping after main-window close timeout.",
+            )
 
 
 def global_exception_handler(exctype, value, tb):

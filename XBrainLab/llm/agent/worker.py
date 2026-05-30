@@ -220,6 +220,10 @@ class AgentWorker(QObject):
         with contextlib.suppress(RuntimeError):
             running = thread.isRunning()
         if running:
+            cancel = getattr(self.engine, "cancel_generation", None)
+            if callable(cancel):
+                with contextlib.suppress(Exception):
+                    cancel(wait_timeout=wait_ms / 1000 if wait_ms > 0 else 0.25)
             thread.requestInterruption()
             if wait_ms > 0:
                 thread.wait(max(0, int(wait_ms)))

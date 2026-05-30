@@ -6,7 +6,7 @@ HuggingFace ``transformers`` with optional 4-bit quantization.
 
 import gc
 import logging
-from threading import Thread
+from threading import Event, Thread
 from typing import Any, TypedDict, cast
 
 from XBrainLab.llm.core.config import LLMConfig
@@ -45,6 +45,9 @@ class LocalBackend(BaseBackend):
         self.model: Any = None
         self.tokenizer: Any = None
         self.is_loaded = False
+        self._generation_cancel_event = Event()
+        self._active_generation_thread: Thread | None = None
+        self._active_streamer: Any = None
 
     def _normalize_runtime_device(self, torch_module) -> None:
         """Fallback from unusable CUDA setups to CPU before model load."""
@@ -214,6 +217,7 @@ class LocalBackend(BaseBackend):
 
     def unload(self) -> None:
         """Release loaded model resources and clear CUDA cache when available."""
+        self.cancel_generation()
         self.model = None
         self.tokenizer = None
         self.is_loaded = False
@@ -324,7 +328,9 @@ class LocalBackend(BaseBackend):
         if self.tokenizer is None or self.model is None:
             raise RuntimeError("Model/Tokenizer not loaded")
 
-        from transformers import TextIteratorStreamer
+        import transformers
+
+        text_iterator_streamer_cls = transformers.TextIteratorStreamer
 
         # Handle models that don't support system role (e.g., Gemma)
         processed_messages = self._process_messages_for_template(messages)
@@ -340,11 +346,13 @@ class LocalBackend(BaseBackend):
             raise RuntimeError("Model did not load correctly")
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
 
-        streamer = TextIteratorStreamer(
+        self._generation_cancel_event.clear()
+        streamer = text_iterator_streamer_cls(
             self.tokenizer,
             skip_prompt=True,
             skip_special_tokens=True,
         )
+        self._active_streamer = streamer
 
         generation_kwargs = dict(
             inputs,
@@ -355,6 +363,9 @@ class LocalBackend(BaseBackend):
         if self.config.do_sample:
             generation_kwargs["temperature"] = self.config.temperature
             generation_kwargs["top_p"] = self.config.top_p
+        stopping_criteria = self._build_stopping_criteria(transformers)
+        if stopping_criteria is not None:
+            generation_kwargs["stopping_criteria"] = stopping_criteria
 
         errors: list[BaseException] = []
 
@@ -367,10 +378,52 @@ class LocalBackend(BaseBackend):
                 if hasattr(streamer, "end"):
                     streamer.end()
 
-        thread = Thread(target=_generate)
+        thread = Thread(target=_generate, daemon=True)
+        self._active_generation_thread = thread
         thread.start()
 
-        yield from streamer
-        thread.join(timeout=0)
-        if errors:
+        try:
+            for chunk in streamer:
+                if self._generation_cancel_event.is_set():
+                    break
+                yield chunk
+        finally:
+            thread.join(timeout=0.25)
+            if not thread.is_alive():
+                self._active_generation_thread = None
+                self._active_streamer = None
+        if errors and not self._generation_cancel_event.is_set():
             raise RuntimeError(f"Local generation failed: {errors[0]}")
+
+    def _build_stopping_criteria(self, transformers_module: Any) -> Any | None:
+        """Return a HuggingFace stopping criterion tied to backend cancellation."""
+        stopping_base = getattr(transformers_module, "StoppingCriteria", None)
+        stopping_list = getattr(transformers_module, "StoppingCriteriaList", None)
+        if not isinstance(stopping_base, type) or stopping_list is None:
+            return None
+        cancel_event = self._generation_cancel_event
+
+        class _CancelStoppingCriteria(stopping_base):
+            def __call__(self, input_ids, scores, **kwargs):
+                _ = input_ids, scores, kwargs
+                return cancel_event.is_set()
+
+        return stopping_list([_CancelStoppingCriteria()])
+
+    def cancel_generation(self, wait_timeout: float = 0.25) -> bool:
+        """Request cancellation for any active local generation thread."""
+        self._generation_cancel_event.set()
+        streamer = self._active_streamer
+        if hasattr(streamer, "end"):
+            try:
+                streamer.end()
+            except Exception:
+                logger.debug("Failed to end local generation streamer", exc_info=True)
+        thread = self._active_generation_thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=max(0.0, float(wait_timeout)))
+        stopped = thread is None or not thread.is_alive()
+        if stopped:
+            self._active_generation_thread = None
+            self._active_streamer = None
+        return stopped

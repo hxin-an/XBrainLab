@@ -30,6 +30,7 @@ def load_label_file(
     label_field: str | None = None,
     anchor: str | None = None,
     duration_field: str | None = None,
+    sequence_only: bool = False,
 ) -> Any:
     """Load label data from a file.
 
@@ -40,6 +41,8 @@ def load_label_file(
         label_field: Optional reviewed label column or MAT variable.
         anchor: Optional reviewed time/sample/anchor column for CSV/TSV or MAT
             variable for sample-index event construction.
+        sequence_only: Force CSV/TSV loading to return the reviewed label column
+            as an ordered sequence even when timing columns are present.
 
     Returns:
         1D array of integer labels (Sequence Mode), or a list of dicts
@@ -61,6 +64,7 @@ def load_label_file(
             label_field=label_field,
             anchor=anchor,
             duration_field=duration_field,
+            sequence_only=sequence_only,
         )
     if filepath.endswith(".mat"):
         return _load_mat(filepath, label_field=label_field, anchor=anchor)
@@ -248,6 +252,7 @@ def _load_csv_tsv(
     label_field: str | None = None,
     anchor: str | None = None,
     duration_field: str | None = None,
+    sequence_only: bool = False,
 ):
     """Load labels from a CSV or TSV file.
 
@@ -291,6 +296,9 @@ def _load_csv_tsv(
             None,
         )
 
+        if sequence_only:
+            return _sequence_label_values(df, found_label)
+
         if found_time and found_label:
             # Timestamp Mode
             result = []
@@ -329,6 +337,14 @@ def _resolve_column(columns: Any, requested: str | None) -> str | None:
     if normalized in columns:
         return normalized
     raise ValueError(f"Column not found: {requested}")
+
+
+def _sequence_label_values(df: pd.DataFrame, found_label: str | None) -> Any:
+    if found_label:
+        return df[found_label].values
+    if len(df.columns) == 1:
+        return df.iloc[:, 0].values
+    raise ValueError("Label column is required for event-order labels.")
 
 
 def _duration_value(row: Any, *, onset_field: str, duration_field: str | None) -> Any:

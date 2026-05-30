@@ -761,6 +761,64 @@ def test_apply_interpretation_converts_sample_index_csv_labels_to_seconds(tmp_pa
     assert apply_result.state.interpretation.label_imports[0]["mode"] == "timestamp"
 
 
+def test_apply_interpretation_applies_reviewed_csv_tsv_event_order_labels(
+    tmp_path,
+    monkeypatch,
+):
+    for suffix, delimiter in (("csv", ","), ("tsv", "\t")):
+        source_dir = tmp_path / f"reviewed_{suffix}_event_order"
+        source_dir.mkdir()
+        eeg_path = source_dir / "A01T.gdf"
+        labels_path = source_dir / f"A01T_events.{suffix}"
+        eeg_path.write_bytes(b"not loaded during scan")
+        labels_path.write_text(
+            delimiter.join(["onset", "duration", "classlabel"])
+            + "\n"
+            + delimiter.join(["0.5", "0.1", "1"])
+            + "\n"
+            + delimiter.join(["1.5", "0.1", "2"])
+            + "\n",
+            encoding="utf-8",
+        )
+        _patch_internal_events(
+            monkeypatch,
+            {"A01T.gdf": {"768": {"count": 2, "description": "trial start"}}},
+        )
+        service = ApplicationService(Study())
+        raw = _raw_mock()
+        raw.get_filepath.return_value = str(eeg_path)
+        raw.get_filename.return_value = eeg_path.name
+        service.dataset.import_files = MagicMock(return_value=(1, []))
+        service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+        service.dataset.apply_labels_batch = MagicMock(return_value=1)
+
+        service.execute(ScanSourceCommand(source_path=str(source_dir)))
+        service.execute(
+            PreviewInterpretationCommand(
+                choices={
+                    "label_carrier_choices": {
+                        str(labels_path): {
+                            "label_field": "classlabel",
+                            "target_event_codes": ["768"],
+                            "placement_method": "eeg_event",
+                            "time_model": "trial_order",
+                            "granularity": "trial",
+                        },
+                    },
+                    "class_map": {"1": "left hand", "2": "right hand"},
+                },
+            ),
+        )
+        service.execute(ValidateInterpretationCommand())
+        apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+        assert apply_result.ok is True
+        assert apply_result.diagnostics["label_apply"]["mode"] == "sequence"
+        label_map = service.dataset.apply_labels_batch.call_args.args[1]
+        np.testing.assert_array_equal(label_map[str(labels_path)], np.array([1, 2]))
+        assert service.dataset.apply_labels_batch.call_args.args[4] == {"768"}
+
+
 def test_apply_interpretation_applies_reviewed_timestamp_label_carriers_by_stem(
     tmp_path,
 ):

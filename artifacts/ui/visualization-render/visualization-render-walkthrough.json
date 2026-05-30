@@ -21,7 +21,9 @@
             "eeg_files": [
               "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif"
             ],
+            "label_sources": [],
             "label_carriers": [],
+            "label_carrier_sources": {},
             "metadata": [
               {
                 "file": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
@@ -65,13 +67,65 @@
             ],
             "bids": {
               "is_bids": false,
+              "root": "/tmp/xbrainlab_chatpanel_training_completion",
+              "scan_location": "/tmp/xbrainlab_chatpanel_training_completion",
               "subjects": [],
               "sessions": [],
               "tasks": [],
               "runs": [],
+              "datatypes": [],
+              "eeg_file_count": 1,
               "events_files": [],
-              "dataset_description": null
+              "channels_files": [],
+              "participants_file": null,
+              "participant_count": 0,
+              "participants": [],
+              "channel_status_summary": {
+                "total": 0,
+                "good": 0,
+                "bad": 0,
+                "other": 0
+              },
+              "layout": [
+                {
+                  "file": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+                  "name": "training_completion_raw.fif",
+                  "relative_path": "training_completion_raw.fif",
+                  "subject": "",
+                  "session": "",
+                  "task": "",
+                  "run": "",
+                  "datatype": "",
+                  "events_file": "",
+                  "channels_file": ""
+                }
+              ],
+              "selected_scope": {
+                "eeg_file_count": 1,
+                "subjects": [],
+                "sessions": [],
+                "tasks": [],
+                "runs": [],
+                "datatypes": [],
+                "eeg_files": [
+                  "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif"
+                ],
+                "events_files": [],
+                "channels_files": []
+              },
+              "dataset_description": null,
+              "dataset": {}
             },
+            "format_capabilities": [
+              {
+                "path": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+                "name": "training_completion_raw.fif",
+                "format": "MNE FIF",
+                "role": "eeg",
+                "status": "supported",
+                "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+              }
+            ],
             "warnings": [],
             "blocked_reasons": []
           }
@@ -92,11 +146,125 @@
             "selected_eeg_files": [
               "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif"
             ],
+            "label_sources": [],
             "label_carriers": [],
-            "event_roles": {},
-            "class_map": {},
-            "time_model": "file_native_time",
-            "granularity": "recording",
+            "bids": {
+              "is_bids": false,
+              "root": "/tmp/xbrainlab_chatpanel_training_completion",
+              "scan_location": "/tmp/xbrainlab_chatpanel_training_completion",
+              "subjects": [],
+              "sessions": [],
+              "tasks": [],
+              "runs": [],
+              "datatypes": [],
+              "eeg_file_count": 1,
+              "events_files": [],
+              "channels_files": [],
+              "participants_file": null,
+              "participant_count": 0,
+              "participants": [],
+              "channel_status_summary": {
+                "total": 0,
+                "good": 0,
+                "bad": 0,
+                "other": 0
+              },
+              "layout": [
+                {
+                  "file": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+                  "name": "training_completion_raw.fif",
+                  "relative_path": "training_completion_raw.fif",
+                  "subject": "",
+                  "session": "",
+                  "task": "",
+                  "run": "",
+                  "datatype": "",
+                  "events_file": "",
+                  "channels_file": ""
+                }
+              ],
+              "selected_scope": {
+                "eeg_file_count": 1,
+                "subjects": [],
+                "sessions": [],
+                "tasks": [],
+                "runs": [],
+                "datatypes": [],
+                "eeg_files": [
+                  "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif"
+                ],
+                "events_files": [],
+                "channels_files": []
+              },
+              "dataset_description": null,
+              "dataset": {}
+            },
+            "label_carrier_plan": [],
+            "event_roles": {
+              "internal_events": "event role candidates"
+            },
+            "class_map": {
+              "left": "left",
+              "right": "right"
+            },
+            "class_map_source": "internal_events",
+            "internal_event_preview": {
+              "source": "mne_internal_events",
+              "file_count": 1,
+              "scanned_files": [
+                "training_completion_raw.fif"
+              ],
+              "event_count": 6,
+              "candidate_label_events": [
+                {
+                  "event_code": "left",
+                  "code": "left",
+                  "use_as": "Class label",
+                  "event_count": 3,
+                  "coverage": "1/1 files",
+                  "present_files": 1,
+                  "total_files": 1,
+                  "missing_files": [],
+                  "file_counts": {
+                    "training_completion_raw.fif": 3
+                  },
+                  "evidence": "Class-like text",
+                  "class_name": "left"
+                },
+                {
+                  "event_code": "right",
+                  "code": "right",
+                  "use_as": "Class label",
+                  "event_count": 3,
+                  "coverage": "1/1 files",
+                  "present_files": 1,
+                  "total_files": 1,
+                  "missing_files": [],
+                  "file_counts": {
+                    "training_completion_raw.fif": 3
+                  },
+                  "evidence": "Class-like text",
+                  "class_name": "right"
+                }
+              ],
+              "not_used_events": [],
+              "names_reliable": true,
+              "pattern_status": "Suggested label events found"
+            },
+            "internal_event_selection": {
+              "label_event_codes": [
+                "left",
+                "right"
+              ],
+              "not_label_event_codes": [],
+              "class_map": {
+                "left": "left",
+                "right": "right"
+              }
+            },
+            "run_event_mappings": {},
+            "time_model": "sample_index_or_annotation_time",
+            "granularity": "trial_or_event",
             "metadata": [
               {
                 "file": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
@@ -138,18 +306,32 @@
                 }
               }
             ],
+            "format_capabilities": [
+              {
+                "path": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+                "name": "training_completion_raw.fif",
+                "format": "MNE FIF",
+                "role": "eeg",
+                "status": "supported",
+                "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+              }
+            ],
             "warnings": [],
             "confirmation_items": [
               "Confirm run metadata for training_completion_raw.fif.",
               "Confirm session metadata for training_completion_raw.fif.",
               "Confirm subject metadata for training_completion_raw.fif.",
-              "Confirm task metadata for training_completion_raw.fif."
+              "Confirm task metadata for training_completion_raw.fif.",
+              "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries."
             ],
             "blocked_reasons": [],
-            "choices": {},
+            "choices": {
+              "label_carrier": "embedded_events"
+            },
             "recipe_trace": [
               "scan:scan-1",
-              "candidate:candidate-2"
+              "candidate:candidate-2",
+              "choices:label_carrier"
             ]
           },
           "preview": {
@@ -158,6 +340,48 @@
             "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
             "file_count": 1,
             "label_carrier_count": 0,
+            "source_selection": "Single file",
+            "selected_eeg_files": [
+              "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif"
+            ],
+            "action_items": [
+              {
+                "issue": "Confirm run metadata for training_completion_raw.fif.",
+                "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+                "next_action": "Review the target step and confirm the choice.",
+                "target_step": "Review Metadata",
+                "severity": "needs_confirmation"
+              },
+              {
+                "issue": "Confirm session metadata for training_completion_raw.fif.",
+                "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+                "next_action": "Review the target step and confirm the choice.",
+                "target_step": "Review Metadata",
+                "severity": "needs_confirmation"
+              },
+              {
+                "issue": "Confirm subject metadata for training_completion_raw.fif.",
+                "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+                "next_action": "Review the target step and confirm the choice.",
+                "target_step": "Review Metadata",
+                "severity": "needs_confirmation"
+              },
+              {
+                "issue": "Confirm task metadata for training_completion_raw.fif.",
+                "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+                "next_action": "Review the target step and confirm the choice.",
+                "target_step": "Review Metadata",
+                "severity": "needs_confirmation"
+              },
+              {
+                "issue": "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries.",
+                "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+                "next_action": "Review the target step and confirm the choice.",
+                "target_step": "Match Labels",
+                "severity": "needs_confirmation"
+              }
+            ],
+            "label_carrier_preview": [],
             "metadata_preview": [
               {
                 "file": "training_completion_raw.fif",
@@ -199,19 +423,131 @@
                 }
               }
             ],
+            "format_capabilities": [
+              {
+                "path": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+                "name": "training_completion_raw.fif",
+                "format": "MNE FIF",
+                "role": "eeg",
+                "status": "supported",
+                "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+              }
+            ],
             "warnings": [],
             "confirmation_items": [
               "Confirm run metadata for training_completion_raw.fif.",
               "Confirm session metadata for training_completion_raw.fif.",
               "Confirm subject metadata for training_completion_raw.fif.",
-              "Confirm task metadata for training_completion_raw.fif."
+              "Confirm task metadata for training_completion_raw.fif.",
+              "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries."
             ],
             "blocked_reasons": [],
             "downstream_impacts": [
               "Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session."
             ],
-            "event_roles": {},
-            "class_map": {}
+            "bids": {
+              "is_bids": false,
+              "root": "/tmp/xbrainlab_chatpanel_training_completion",
+              "scan_location": "/tmp/xbrainlab_chatpanel_training_completion",
+              "subjects": [],
+              "sessions": [],
+              "tasks": [],
+              "runs": [],
+              "datatypes": [],
+              "eeg_file_count": 1,
+              "events_files": [],
+              "channels_files": [],
+              "participants_file": null,
+              "participant_count": 0,
+              "participants": [],
+              "channel_status_summary": {
+                "total": 0,
+                "good": 0,
+                "bad": 0,
+                "other": 0
+              },
+              "layout": [
+                {
+                  "file": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+                  "name": "training_completion_raw.fif",
+                  "relative_path": "training_completion_raw.fif",
+                  "subject": "",
+                  "session": "",
+                  "task": "",
+                  "run": "",
+                  "datatype": "",
+                  "events_file": "",
+                  "channels_file": ""
+                }
+              ],
+              "selected_scope": {
+                "eeg_file_count": 1,
+                "subjects": [],
+                "sessions": [],
+                "tasks": [],
+                "runs": [],
+                "datatypes": [],
+                "eeg_files": [
+                  "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif"
+                ],
+                "events_files": [],
+                "channels_files": []
+              },
+              "dataset_description": null,
+              "dataset": {}
+            },
+            "event_roles": {
+              "internal_events": "event role candidates"
+            },
+            "class_map": {
+              "left": "left",
+              "right": "right"
+            },
+            "class_map_source": "internal_events",
+            "internal_event_preview": {
+              "source": "mne_internal_events",
+              "file_count": 1,
+              "scanned_files": [
+                "training_completion_raw.fif"
+              ],
+              "event_count": 6,
+              "candidate_label_events": [
+                {
+                  "event_code": "left",
+                  "code": "left",
+                  "use_as": "Class label",
+                  "event_count": 3,
+                  "coverage": "1/1 files",
+                  "present_files": 1,
+                  "total_files": 1,
+                  "missing_files": [],
+                  "file_counts": {
+                    "training_completion_raw.fif": 3
+                  },
+                  "evidence": "Class-like text",
+                  "class_name": "left"
+                },
+                {
+                  "event_code": "right",
+                  "code": "right",
+                  "use_as": "Class label",
+                  "event_count": 3,
+                  "coverage": "1/1 files",
+                  "present_files": 1,
+                  "total_files": 1,
+                  "missing_files": [],
+                  "file_counts": {
+                    "training_completion_raw.fif": 3
+                  },
+                  "evidence": "Class-like text",
+                  "class_name": "right"
+                }
+              ],
+              "not_used_events": [],
+              "names_reliable": true,
+              "pattern_status": "Suggested label events found"
+            },
+            "recipe_reload_summary": {}
           }
         }
       },
@@ -233,11 +569,49 @@
               "Confirm run metadata for training_completion_raw.fif.",
               "Confirm session metadata for training_completion_raw.fif.",
               "Confirm subject metadata for training_completion_raw.fif.",
-              "Confirm task metadata for training_completion_raw.fif."
+              "Confirm task metadata for training_completion_raw.fif.",
+              "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries."
             ],
             "blocked_reasons": [],
             "downstream_impacts": [
               "Downstream workflow remains blocked until the interpretation is confirmed and applied."
+            ],
+            "action_items": [
+              {
+                "issue": "Confirm run metadata for training_completion_raw.fif.",
+                "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+                "next_action": "Review the target step and confirm the choice.",
+                "target_step": "Review Metadata",
+                "severity": "needs_confirmation"
+              },
+              {
+                "issue": "Confirm session metadata for training_completion_raw.fif.",
+                "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+                "next_action": "Review the target step and confirm the choice.",
+                "target_step": "Review Metadata",
+                "severity": "needs_confirmation"
+              },
+              {
+                "issue": "Confirm subject metadata for training_completion_raw.fif.",
+                "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+                "next_action": "Review the target step and confirm the choice.",
+                "target_step": "Review Metadata",
+                "severity": "needs_confirmation"
+              },
+              {
+                "issue": "Confirm task metadata for training_completion_raw.fif.",
+                "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+                "next_action": "Review the target step and confirm the choice.",
+                "target_step": "Review Metadata",
+                "severity": "needs_confirmation"
+              },
+              {
+                "issue": "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries.",
+                "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+                "next_action": "Review the target step and confirm the choice.",
+                "target_step": "Match Labels",
+                "severity": "needs_confirmation"
+              }
             ]
           }
         }
@@ -259,7 +633,60 @@
             "loaded_files": [
               "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif"
             ],
+            "label_sources": [],
             "label_carriers": [],
+            "bids": {
+              "is_bids": false,
+              "root": "/tmp/xbrainlab_chatpanel_training_completion",
+              "scan_location": "/tmp/xbrainlab_chatpanel_training_completion",
+              "subjects": [],
+              "sessions": [],
+              "tasks": [],
+              "runs": [],
+              "datatypes": [],
+              "eeg_file_count": 1,
+              "events_files": [],
+              "channels_files": [],
+              "participants_file": null,
+              "participant_count": 0,
+              "participants": [],
+              "channel_status_summary": {
+                "total": 0,
+                "good": 0,
+                "bad": 0,
+                "other": 0
+              },
+              "layout": [
+                {
+                  "file": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+                  "name": "training_completion_raw.fif",
+                  "relative_path": "training_completion_raw.fif",
+                  "subject": "",
+                  "session": "",
+                  "task": "",
+                  "run": "",
+                  "datatype": "",
+                  "events_file": "",
+                  "channels_file": ""
+                }
+              ],
+              "selected_scope": {
+                "eeg_file_count": 1,
+                "subjects": [],
+                "sessions": [],
+                "tasks": [],
+                "runs": [],
+                "datatypes": [],
+                "eeg_files": [
+                  "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif"
+                ],
+                "events_files": [],
+                "channels_files": []
+              },
+              "dataset_description": null,
+              "dataset": {}
+            },
+            "label_carrier_plan": [],
             "metadata": [
               {
                 "file": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
@@ -301,24 +728,75 @@
                 }
               }
             ],
+            "format_capabilities": [
+              {
+                "path": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+                "name": "training_completion_raw.fif",
+                "format": "MNE FIF",
+                "role": "eeg",
+                "status": "supported",
+                "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+              }
+            ],
+            "skip_labels": false,
+            "label_carrier": "embedded_events",
+            "excluded_label_carriers": [],
             "validation_decision": "needs_confirmation",
             "confirmations": [
               "Confirm run metadata for training_completion_raw.fif.",
               "Confirm session metadata for training_completion_raw.fif.",
               "Confirm subject metadata for training_completion_raw.fif.",
-              "Confirm task metadata for training_completion_raw.fif."
+              "Confirm task metadata for training_completion_raw.fif.",
+              "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries."
             ],
-            "event_roles": {},
-            "class_map": {},
+            "event_roles": {
+              "internal_events": "event role candidates"
+            },
+            "class_map": {
+              "left": "left",
+              "right": "right"
+            },
+            "internal_event_selection": {
+              "label_event_codes": [
+                "left",
+                "right"
+              ],
+              "not_label_event_codes": [],
+              "class_map": {
+                "left": "left",
+                "right": "right"
+              }
+            },
+            "run_event_mappings": {},
             "label_imports": [],
             "recipe_trace": [
               "scan:scan-1",
               "candidate:candidate-2",
+              "choices:label_carrier",
               "validation:needs_confirmation",
               "applied:interpretation-4"
             ]
           },
-          "label_carriers_pending": []
+          "metadata_apply": [
+            {
+              "file": "training_completion_raw.fif",
+              "subject": "",
+              "session": "",
+              "task": "",
+              "run": ""
+            }
+          ],
+          "label_carriers_pending": [],
+          "label_apply": {
+            "status": "not_applicable",
+            "reason": "No label carrier plan."
+          },
+          "internal_epoch_hints": [
+            {
+              "file": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+              "source": "Labels inside EEG files"
+            }
+          ]
         }
       },
       {
@@ -346,7 +824,28 @@
           "split_audit": {
             "ok": true,
             "dataset_count": 1,
-            "issues": []
+            "issues": [
+              {
+                "dataset_name": "Subject-0_0",
+                "severity": "warning",
+                "message": "validation split is missing class label(s) 1.",
+                "indices": [
+                  1,
+                  3,
+                  5
+                ]
+              },
+              {
+                "dataset_name": "Subject-0_0",
+                "severity": "warning",
+                "message": "test split is missing class label(s) 1.",
+                "indices": [
+                  1,
+                  3,
+                  5
+                ]
+              }
+            ]
           },
           "split_summary": {
             "count": 1,
@@ -356,7 +855,28 @@
             "audit": {
               "ok": true,
               "dataset_count": 1,
-              "issues": []
+              "issues": [
+                {
+                  "dataset_name": "Subject-0_0",
+                  "severity": "warning",
+                  "message": "validation split is missing class label(s) 1.",
+                  "indices": [
+                    1,
+                    3,
+                    5
+                  ]
+                },
+                {
+                  "dataset_name": "Subject-0_0",
+                  "severity": "warning",
+                  "message": "test split is missing class label(s) 1.",
+                  "indices": [
+                    1,
+                    3,
+                    5
+                  ]
+                }
+              ]
             }
           }
         }
@@ -429,6 +949,7 @@
         "epoch_count": 6,
         "n_channels": 4,
         "n_times": 193,
+        "sfreq": 128.0,
         "event_names": [
           "left",
           "right"
@@ -460,13 +981,35 @@
           "audit": {
             "ok": true,
             "dataset_count": 1,
-            "issues": []
+            "issues": [
+              {
+                "dataset_name": "Subject-0_0",
+                "severity": "warning",
+                "message": "validation split is missing class label(s) 1.",
+                "indices": [
+                  1,
+                  3,
+                  5
+                ]
+              },
+              {
+                "dataset_name": "Subject-0_0",
+                "severity": "warning",
+                "message": "test split is missing class label(s) 1.",
+                "indices": [
+                  1,
+                  3,
+                  5
+                ]
+              }
+            ]
           }
         }
       },
       "training": {
         "has_model": false,
         "model_name": null,
+        "model_params": {},
         "has_training_option": false,
         "training_option": {},
         "has_trainer": false,
@@ -474,6 +1017,7 @@
         "plan_count": 0,
         "run_count": 0,
         "finished_run_count": 0,
+        "progress_message": null,
         "missing_requirements": [
           "Model Selection",
           "Training Settings"
@@ -507,10 +1051,48 @@
         "latest_recipe_id": null,
         "source_path": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
         "source_kind": "file",
+        "label_sources": [],
         "validation_decision": "needs_confirmation",
-        "pending_confirmation": true,
+        "pending_confirmation": false,
         "blocked_reasons": [],
         "warnings": [],
+        "action_items": [
+          {
+            "issue": "Confirm run metadata for training_completion_raw.fif.",
+            "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+            "next_action": "Review the target step and confirm the choice.",
+            "target_step": "Review Metadata",
+            "severity": "needs_confirmation"
+          },
+          {
+            "issue": "Confirm session metadata for training_completion_raw.fif.",
+            "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+            "next_action": "Review the target step and confirm the choice.",
+            "target_step": "Review Metadata",
+            "severity": "needs_confirmation"
+          },
+          {
+            "issue": "Confirm subject metadata for training_completion_raw.fif.",
+            "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+            "next_action": "Review the target step and confirm the choice.",
+            "target_step": "Review Metadata",
+            "severity": "needs_confirmation"
+          },
+          {
+            "issue": "Confirm task metadata for training_completion_raw.fif.",
+            "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+            "next_action": "Review the target step and confirm the choice.",
+            "target_step": "Review Metadata",
+            "severity": "needs_confirmation"
+          },
+          {
+            "issue": "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries.",
+            "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+            "next_action": "Review the target step and confirm the choice.",
+            "target_step": "Match Labels",
+            "severity": "needs_confirmation"
+          }
+        ],
         "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
         "metadata_preview": [
           {
@@ -554,6 +1136,173 @@
           }
         ],
         "label_carriers": [],
+        "bids": {
+          "is_bids": false,
+          "root": "/tmp/xbrainlab_chatpanel_training_completion",
+          "scan_location": "/tmp/xbrainlab_chatpanel_training_completion",
+          "subjects": [],
+          "sessions": [],
+          "tasks": [],
+          "runs": [],
+          "datatypes": [],
+          "eeg_file_count": 1,
+          "events_files": [],
+          "channels_files": [],
+          "participants_file": null,
+          "participant_count": 0,
+          "participants": [],
+          "channel_status_summary": {
+            "total": 0,
+            "good": 0,
+            "bad": 0,
+            "other": 0
+          },
+          "layout": [
+            {
+              "file": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+              "name": "training_completion_raw.fif",
+              "relative_path": "training_completion_raw.fif",
+              "subject": "",
+              "session": "",
+              "task": "",
+              "run": "",
+              "datatype": "",
+              "events_file": "",
+              "channels_file": ""
+            }
+          ],
+          "selected_scope": {
+            "eeg_file_count": 1,
+            "subjects": [],
+            "sessions": [],
+            "tasks": [],
+            "runs": [],
+            "datatypes": [],
+            "eeg_files": [
+              "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif"
+            ],
+            "events_files": [],
+            "channels_files": []
+          },
+          "dataset_description": null,
+          "dataset": {}
+        },
+        "label_carrier_plan": [],
+        "format_capabilities": [
+          {
+            "path": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+            "name": "training_completion_raw.fif",
+            "format": "MNE FIF",
+            "role": "eeg",
+            "status": "supported",
+            "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+          }
+        ],
+        "event_roles": {
+          "internal_events": "event role candidates"
+        },
+        "class_map": {
+          "left": "left",
+          "right": "right"
+        },
+        "run_event_mappings": {},
+        "epoch_handoff": {
+          "ready": true,
+          "supervised_ready": true,
+          "supervised_blockers": [],
+          "label_source": "internal_events",
+          "source": "applied_interpretation",
+          "placement_modes": [],
+          "class_map": {
+            "left": "left",
+            "right": "right"
+          },
+          "default_epoch_events": [
+            "left",
+            "right"
+          ],
+          "epoch_targets": [
+            {
+              "event": "left",
+              "source": "internal_events"
+            },
+            {
+              "event": "right",
+              "source": "internal_events"
+            }
+          ],
+          "selected_event_names": [
+            "left",
+            "right"
+          ],
+          "run_event_mappings": {},
+          "event_label_aliases": {
+            "left": "left",
+            "right": "right"
+          },
+          "bids": {
+            "is_bids": false,
+            "root": "/tmp/xbrainlab_chatpanel_training_completion",
+            "scan_location": "/tmp/xbrainlab_chatpanel_training_completion",
+            "subjects": [],
+            "sessions": [],
+            "tasks": [],
+            "runs": [],
+            "datatypes": [],
+            "eeg_file_count": 1,
+            "events_files": [],
+            "channels_files": [],
+            "participants_file": null,
+            "participant_count": 0,
+            "participants": [],
+            "channel_status_summary": {
+              "total": 0,
+              "good": 0,
+              "bad": 0,
+              "other": 0
+            },
+            "layout": [
+              {
+                "file": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+                "name": "training_completion_raw.fif",
+                "relative_path": "training_completion_raw.fif",
+                "subject": "",
+                "session": "",
+                "task": "",
+                "run": "",
+                "datatype": "",
+                "events_file": "",
+                "channels_file": ""
+              }
+            ],
+            "selected_scope": {
+              "eeg_file_count": 1,
+              "subjects": [],
+              "sessions": [],
+              "tasks": [],
+              "runs": [],
+              "datatypes": [],
+              "eeg_files": [
+                "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif"
+              ],
+              "events_files": [],
+              "channels_files": []
+            },
+            "dataset_description": null,
+            "dataset": {}
+          },
+          "internal_event_selection": {
+            "label_event_codes": [
+              "left",
+              "right"
+            ],
+            "not_label_event_codes": [],
+            "class_map": {
+              "left": "left",
+              "right": "right"
+            }
+          }
+        },
         "label_import_count": 0,
         "label_imports": [],
         "recipe_path": null
@@ -646,7 +1395,10 @@
         "ok": true,
         "message": "Training started.",
         "error_type": null,
-        "diagnostics": {}
+        "diagnostics": {
+          "append": true,
+          "interactive": false
+        }
       }
     ],
     "finished_run_count": 1,
@@ -664,6 +1416,7 @@
       "target": null,
       "plan_count": 1,
       "finished_run_count": 1,
+      "training_active": false,
       "plans": [
         {
           "index": 0,
@@ -672,9 +1425,9 @@
           "finished_run_count": 1,
           "metrics": {
             "0": {
-              "precision": 1.0,
-              "recall": 1.0,
-              "f1-score": 1.0,
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1-score": 0.0,
               "support": 1
             },
             "1": {
@@ -684,9 +1437,9 @@
               "support": 0
             },
             "macro_avg": {
-              "precision": 0.5,
-              "recall": 0.5,
-              "f1-score": 0.5,
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1-score": 0.0,
               "support": 1
             }
           }
@@ -704,8 +1457,7 @@
       "available": true,
       "view": "Saliency Map",
       "available_views": [
-        "epoch overview",
-        "channel montage",
+        "montage setup",
         "confusion matrix",
         "metrics",
         "saliency setup",
@@ -714,6 +1466,8 @@
         "topographic map",
         "3D plot"
       ],
+      "blocked_views": {},
+      "plot_views_available": true,
       "trainer_count": 1,
       "channel_count": 4,
       "montage_available": true,
@@ -728,8 +1482,8 @@
       "ok": true,
       "failure_reason": "",
       "error_visible": false,
-      "error_text": "Error: Please select a Plan and Run.",
-      "axes_count": 3,
+      "error_text": "Rendering saliency...",
+      "axes_count": 2,
       "image_count": 3,
       "canvas_visible": true
     },
@@ -739,8 +1493,8 @@
       "ok": true,
       "failure_reason": "",
       "error_visible": false,
-      "error_text": "",
-      "axes_count": 3,
+      "error_text": "Rendering saliency...",
+      "axes_count": 2,
       "image_count": 3,
       "canvas_visible": true
     },
@@ -750,8 +1504,8 @@
       "ok": true,
       "failure_reason": "",
       "error_visible": false,
-      "error_text": "",
-      "axes_count": 3,
+      "error_text": "Rendering saliency...",
+      "axes_count": 2,
       "image_count": 4,
       "canvas_visible": true
     }
@@ -763,15 +1517,30 @@
       "ok": true,
       "failure_reason": "",
       "blocked_reason": "3D rendering requires an interactive OpenGL desktop session. Use the desktop launcher, or switch to Saliency Map, Spectrogram, or Topographic Map in this headless environment.",
+      "message_evidence": {
+        "ok": true,
+        "reason": "",
+        "label_rect": {
+          "x": 0,
+          "y": 0,
+          "width": 474,
+          "height": 407
+        },
+        "container_size": {
+          "width": 474,
+          "height": 407
+        },
+        "size_hint": {
+          "width": 363,
+          "height": 146
+        },
+        "clipped_by_bounds": false,
+        "clipped_by_hint": false
+      },
       "plotter_created": false
     }
   ],
-  "dismissed_dialogs": [
-    {
-      "title": "Done",
-      "text": "All training jobs finished."
-    }
-  ],
+  "dismissed_dialogs": [],
   "screenshots": {
     "ready": "artifacts/ui/visualization-render/visualization-render-saliency-map.png"
   },
@@ -842,6 +1611,7 @@
       "epoch_count": 6,
       "n_channels": 4,
       "n_times": 193,
+      "sfreq": 128.0,
       "event_names": [
         "left",
         "right"
@@ -873,13 +1643,35 @@
         "audit": {
           "ok": true,
           "dataset_count": 1,
-          "issues": []
+          "issues": [
+            {
+              "dataset_name": "Subject-0_0",
+              "severity": "warning",
+              "message": "validation split is missing class label(s) 1.",
+              "indices": [
+                1,
+                3,
+                5
+              ]
+            },
+            {
+              "dataset_name": "Subject-0_0",
+              "severity": "warning",
+              "message": "test split is missing class label(s) 1.",
+              "indices": [
+                1,
+                3,
+                5
+              ]
+            }
+          ]
         }
       }
     },
     "training": {
       "has_model": true,
       "model_name": "EEGNet",
+      "model_params": {},
       "has_training_option": true,
       "training_option": {
         "epoch": 1,
@@ -896,6 +1688,7 @@
       "plan_count": 1,
       "run_count": 1,
       "finished_run_count": 1,
+      "progress_message": null,
       "missing_requirements": []
     },
     "evaluation": {
@@ -926,10 +1719,48 @@
       "latest_recipe_id": null,
       "source_path": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
       "source_kind": "file",
+      "label_sources": [],
       "validation_decision": "needs_confirmation",
-      "pending_confirmation": true,
+      "pending_confirmation": false,
       "blocked_reasons": [],
       "warnings": [],
+      "action_items": [
+        {
+          "issue": "Confirm run metadata for training_completion_raw.fif.",
+          "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+          "next_action": "Review the target step and confirm the choice.",
+          "target_step": "Review Metadata",
+          "severity": "needs_confirmation"
+        },
+        {
+          "issue": "Confirm session metadata for training_completion_raw.fif.",
+          "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+          "next_action": "Review the target step and confirm the choice.",
+          "target_step": "Review Metadata",
+          "severity": "needs_confirmation"
+        },
+        {
+          "issue": "Confirm subject metadata for training_completion_raw.fif.",
+          "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+          "next_action": "Review the target step and confirm the choice.",
+          "target_step": "Review Metadata",
+          "severity": "needs_confirmation"
+        },
+        {
+          "issue": "Confirm task metadata for training_completion_raw.fif.",
+          "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+          "next_action": "Review the target step and confirm the choice.",
+          "target_step": "Review Metadata",
+          "severity": "needs_confirmation"
+        },
+        {
+          "issue": "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries.",
+          "impact": "This choice affects imported metadata, labels, or downstream training readiness.",
+          "next_action": "Review the target step and confirm the choice.",
+          "target_step": "Match Labels",
+          "severity": "needs_confirmation"
+        }
+      ],
       "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
       "metadata_preview": [
         {
@@ -973,6 +1804,173 @@
         }
       ],
       "label_carriers": [],
+      "bids": {
+        "is_bids": false,
+        "root": "/tmp/xbrainlab_chatpanel_training_completion",
+        "scan_location": "/tmp/xbrainlab_chatpanel_training_completion",
+        "subjects": [],
+        "sessions": [],
+        "tasks": [],
+        "runs": [],
+        "datatypes": [],
+        "eeg_file_count": 1,
+        "events_files": [],
+        "channels_files": [],
+        "participants_file": null,
+        "participant_count": 0,
+        "participants": [],
+        "channel_status_summary": {
+          "total": 0,
+          "good": 0,
+          "bad": 0,
+          "other": 0
+        },
+        "layout": [
+          {
+            "file": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+            "name": "training_completion_raw.fif",
+            "relative_path": "training_completion_raw.fif",
+            "subject": "",
+            "session": "",
+            "task": "",
+            "run": "",
+            "datatype": "",
+            "events_file": "",
+            "channels_file": ""
+          }
+        ],
+        "selected_scope": {
+          "eeg_file_count": 1,
+          "subjects": [],
+          "sessions": [],
+          "tasks": [],
+          "runs": [],
+          "datatypes": [],
+          "eeg_files": [
+            "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif"
+          ],
+          "events_files": [],
+          "channels_files": []
+        },
+        "dataset_description": null,
+        "dataset": {}
+      },
+      "label_carrier_plan": [],
+      "format_capabilities": [
+        {
+          "path": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+          "name": "training_completion_raw.fif",
+          "format": "MNE FIF",
+          "role": "eeg",
+          "status": "supported",
+          "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+        }
+      ],
+      "event_roles": {
+        "internal_events": "event role candidates"
+      },
+      "class_map": {
+        "left": "left",
+        "right": "right"
+      },
+      "run_event_mappings": {},
+      "epoch_handoff": {
+        "ready": true,
+        "supervised_ready": true,
+        "supervised_blockers": [],
+        "label_source": "internal_events",
+        "source": "applied_interpretation",
+        "placement_modes": [],
+        "class_map": {
+          "left": "left",
+          "right": "right"
+        },
+        "default_epoch_events": [
+          "left",
+          "right"
+        ],
+        "epoch_targets": [
+          {
+            "event": "left",
+            "source": "internal_events"
+          },
+          {
+            "event": "right",
+            "source": "internal_events"
+          }
+        ],
+        "selected_event_names": [
+          "left",
+          "right"
+        ],
+        "run_event_mappings": {},
+        "event_label_aliases": {
+          "left": "left",
+          "right": "right"
+        },
+        "bids": {
+          "is_bids": false,
+          "root": "/tmp/xbrainlab_chatpanel_training_completion",
+          "scan_location": "/tmp/xbrainlab_chatpanel_training_completion",
+          "subjects": [],
+          "sessions": [],
+          "tasks": [],
+          "runs": [],
+          "datatypes": [],
+          "eeg_file_count": 1,
+          "events_files": [],
+          "channels_files": [],
+          "participants_file": null,
+          "participant_count": 0,
+          "participants": [],
+          "channel_status_summary": {
+            "total": 0,
+            "good": 0,
+            "bad": 0,
+            "other": 0
+          },
+          "layout": [
+            {
+              "file": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
+              "name": "training_completion_raw.fif",
+              "relative_path": "training_completion_raw.fif",
+              "subject": "",
+              "session": "",
+              "task": "",
+              "run": "",
+              "datatype": "",
+              "events_file": "",
+              "channels_file": ""
+            }
+          ],
+          "selected_scope": {
+            "eeg_file_count": 1,
+            "subjects": [],
+            "sessions": [],
+            "tasks": [],
+            "runs": [],
+            "datatypes": [],
+            "eeg_files": [
+              "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif"
+            ],
+            "events_files": [],
+            "channels_files": []
+          },
+          "dataset_description": null,
+          "dataset": {}
+        },
+        "internal_event_selection": {
+          "label_event_codes": [
+            "left",
+            "right"
+          ],
+          "not_label_event_codes": [],
+          "class_map": {
+            "left": "left",
+            "right": "right"
+          }
+        }
+      },
       "label_import_count": 0,
       "label_imports": [],
       "recipe_path": null
@@ -996,7 +1994,39 @@
     "current_panel": "Visualization",
     "plan": "Fold 1 (EEGNet)",
     "run": "Run 1",
-    "method": "Gradient"
+    "method": "Gradient",
+    "control_layout": {
+      "ok": true,
+      "hidden_or_empty": [],
+      "overlaps": [],
+      "rects": {
+        "plan": {
+          "x": 247,
+          "y": 111,
+          "width": 260,
+          "height": 30
+        },
+        "run": {
+          "x": 247,
+          "y": 149,
+          "width": 220,
+          "height": 30
+        },
+        "method": {
+          "x": 247,
+          "y": 187,
+          "width": 260,
+          "height": 30
+        },
+        "absolute": {
+          "x": 247,
+          "y": 225,
+          "width": 260,
+          "height": 21
+        }
+      }
+    }
   },
-  "elapsed_seconds": 7.164
+  "elapsed_seconds": 8.761,
+  "uncaught_exceptions": []
 }

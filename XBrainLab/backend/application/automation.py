@@ -12,6 +12,13 @@ from enum import Enum
 from types import UnionType
 from typing import Any, Union, get_args, get_origin, get_type_hints
 
+from XBrainLab.backend.dataset.option import (
+    SplitByType,
+    SplitUnit,
+    TrainingType,
+    ValSplitByType,
+)
+
 from .capabilities import CommandCapability
 from .commands import (
     ApplyInterpretationCommand,
@@ -407,7 +414,53 @@ def _command_field_schema(
 ) -> dict[str, Any]:
     if command_type is PreviewInterpretationCommand and field_name == "choices":
         return data_interpretation_choices_schema()
+    if command_type is GenerateDatasetCommand and field_name == "split_config":
+        return _dataset_split_config_schema()
     return _json_schema_for_type(annotation)
+
+
+def _dataset_split_config_schema() -> dict[str, Any]:
+    splitter_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "split_type": {
+                "type": "string",
+                "enum": sorted(
+                    {item.value for item in SplitByType}
+                    | {item.value for item in ValSplitByType}
+                ),
+            },
+            "split_unit": {
+                "type": "string",
+                "enum": [item.value for item in SplitUnit],
+            },
+            "value": {"type": "string"},
+            "value_var": {"type": "string"},
+            "is_option": {"type": "boolean"},
+        },
+        "required": ["split_type", "split_unit"],
+        "anyOf": [{"required": ["value"]}, {"required": ["value_var"]}],
+    }
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "train_type": {
+                "type": "string",
+                "enum": [item.value for item in TrainingType],
+            },
+            "is_cross_validation": {"type": "boolean"},
+            "val_splitters": {"type": "array", "items": splitter_schema},
+            "test_splitters": {"type": "array", "items": splitter_schema},
+        },
+        "required": [
+            "train_type",
+            "is_cross_validation",
+            "val_splitters",
+            "test_splitters",
+        ],
+    }
 
 
 def _json_schema_for_type(annotation: Any) -> dict[str, Any]:

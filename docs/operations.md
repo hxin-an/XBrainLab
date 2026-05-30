@@ -82,8 +82,8 @@ poetry run python scripts/dev/capture_windows_launcher_walkthrough.py --output-d
 
 | role | model | estimated download | VRAM estimate | cache |
 | --- | --- | ---: | ---: | --- |
-| primary | `microsoft/Phi-4-mini-instruct` | 7.69 GB | 9.0 GB | downloaded |
-| fallback | `microsoft/Phi-3.5-mini-instruct` | 7.64 GB | 8.5 GB | downloaded |
+| primary | `microsoft/Phi-4-mini-instruct` | 7.69 GB | 9.0 GB | missing cache |
+| fallback | `microsoft/Phi-3.5-mini-instruct` | 7.64 GB | 8.5 GB | missing cache |
 
 目前 cache：
 
@@ -91,8 +91,11 @@ poetry run python scripts/dev/capture_windows_launcher_walkthrough.py --output-d
 XBrainLab/llm/core/models
 ```
 
-目前用量約 `15.34 GB`，低於 20GB 上限。已刪除舊 Qwen cache；不要重新下載或使用
-Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM 等中國公司或中國來源模型。
+目前 `scripts/dev/inspect_local_assistant_runtime.py --format markdown` 回報
+`classification: missing-cache`，cache 用量 `0.00 GB`。這表示目前只有 preflight /
+download plan evidence，不能宣稱 local LLM prompt smoke 或 structured-output smoke 已在本機
+跑過。已刪除舊 Qwen cache；不要重新下載或使用 Qwen、DeepSeek、Yi、GLM、Baichuan、
+InternLM、MiniCPM 等中國公司或中國來源模型。
 
 下載前檢查：
 

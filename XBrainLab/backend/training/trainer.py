@@ -143,6 +143,26 @@ class Trainer:
         else:
             self.job()
 
+    def stop(self, wait_timeout: float | None = None) -> bool:
+        """Request interruption and optionally wait for the training thread.
+
+        Returns:
+            ``True`` when no background training thread remains alive.
+
+        """
+        self.set_interrupt()
+        thread = self.job_thread
+        if (
+            wait_timeout is not None
+            and thread is not None
+            and thread.is_alive()
+            and thread is not threading.current_thread()
+        ):
+            thread.join(timeout=max(0.0, float(wait_timeout)))
+            if not thread.is_alive():
+                self.job_thread = None
+        return not self.is_running()
+
     def get_progress_text(self) -> str:
         """Return a string representation of the current training progress.
 

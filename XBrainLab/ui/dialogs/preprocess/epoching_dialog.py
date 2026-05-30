@@ -614,7 +614,9 @@ class EpochingDialog(BaseDialog):
         tmax = self.tmax_spin.value()
         duration = tmax - tmin
 
-        self.duration_label.setText(f"{duration:.2f}s ({tmax} - ({tmin}))")
+        self.duration_label.setText(
+            f"{duration:.2f} s window ({tmin:.2f} to {tmax:.2f} s)"
+        )
 
         # Check if duration might be too short for models
         # Most models need at least 1.0-1.2s at typical sampling rates

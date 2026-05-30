@@ -81,6 +81,7 @@ class TestAgentWorkerCleanup:
         worker.shutdown(wait_ms=250)
 
         worker.timeout_timer.stop.assert_called_once()
+        engine.cancel_generation.assert_called_once_with(wait_timeout=0.25)
         mock_thread.requestInterruption.assert_called_once()
         mock_thread.wait.assert_called_once_with(250)
         engine.close.assert_called_once()

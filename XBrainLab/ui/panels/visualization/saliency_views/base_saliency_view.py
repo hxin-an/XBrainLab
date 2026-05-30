@@ -1,15 +1,15 @@
 import logging
 import threading
+import traceback
 from collections.abc import Callable
 from contextlib import suppress
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from PyQt6.QtCore import Qt, QThreadPool
-from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 
-from XBrainLab.ui.core.worker import Worker
 from XBrainLab.ui.styles.theme import Theme
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,6 @@ class BaseSaliencyView(QWidget):
             parent.controller if parent and hasattr(parent, "controller") else None
         )
         self._plot_generation = 0
-        self._plot_worker: Worker | None = None
 
         self.init_ui()
 
@@ -144,38 +143,31 @@ class BaseSaliencyView(QWidget):
         *,
         error_context: str,
     ) -> None:
-        """Render a figure off the UI thread and install the latest result."""
+        """Render a Matplotlib figure on the UI thread and install the result."""
         self._plot_generation += 1
         generation = self._plot_generation
         self.clear_plot()
         self._display_message("Rendering saliency...")
+        app = QApplication.instance()
+        if app is not None:
+            app.processEvents()
 
         def _locked_render() -> Figure | None:
             with _MATPLOTLIB_RENDER_LOCK:
                 return render_fn()
 
-        worker = Worker(_locked_render)
-        self._plot_worker = worker
-        worker.signals.result.connect(
-            lambda result, token=generation: self._handle_plot_result(token, result),
-        )
-        worker.signals.error.connect(
-            lambda error, token=generation, context=error_context: (
-                self._handle_plot_error(token, context, error)
-            ),
-        )
-        worker.signals.finished.connect(
-            lambda token=generation, finished_worker=worker: self._finish_plot_render(
-                token,
-                finished_worker,
-            ),
-        )
-        thread_pool = QThreadPool.globalInstance()
-        if thread_pool is None:
-            self._plot_worker = None
-            self._display_error("Background render worker is unavailable.")
-            return
-        thread_pool.start(worker)
+        try:
+            figure = _locked_render()
+        except Exception as exc:
+            self._handle_plot_error(
+                generation,
+                error_context,
+                (type(exc), exc, traceback.format_exc()),
+            )
+        else:
+            self._handle_plot_result(generation, figure)
+        finally:
+            self._finish_plot_render(generation)
 
     def _handle_plot_result(self, generation: int, figure: Figure | None) -> None:
         if generation != self._plot_generation:
@@ -194,13 +186,12 @@ class BaseSaliencyView(QWidget):
         logger.error("Error rendering %s: %s\n%s", context, value, formatted_traceback)
         self._display_error(str(value))
 
-    def _finish_plot_render(self, generation: int, worker: Worker) -> None:
-        if generation == self._plot_generation and self._plot_worker is worker:
-            self._plot_worker = None
+    def _finish_plot_render(self, generation: int) -> None:
+        if generation == self._plot_generation:
+            return
 
     def _cancel_pending_render(self) -> None:
         self._plot_generation += 1
-        self._plot_worker = None
 
     def closeEvent(self, event):  # noqa: N802
         """Release matplotlib figure and canvas widgets to prevent leaks."""

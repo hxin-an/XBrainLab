@@ -110,6 +110,24 @@ def execute_application_command(
     return result
 
 
+def execute_application_shutdown_command(
+    context: Any,
+    command: Command,
+) -> CommandResult | None:
+    """Execute a teardown command while the owning widget is closing.
+
+    This is intentionally narrower than ``execute_application_command(...,
+    refresh=False)``: it is for close-time cleanup where refreshing disappearing
+    widgets would be misleading, while Study detection and observer suppression
+    still remain centralized in the UI command helper layer.
+    """
+    study = find_study(context)
+    if study is None or not isinstance(study, Study) or isinstance(study, Mock):
+        return None
+    with suppress_observer_refresh_during_command(context):
+        return _application_service_for(study).execute(command)
+
+
 def execute_application_command_async(
     context: Any,
     command: Command,

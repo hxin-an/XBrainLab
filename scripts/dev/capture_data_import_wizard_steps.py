@@ -424,7 +424,7 @@ def _review_import_state_dialog(state: str) -> DataInterpretationPreviewDialog:
                 "target_step": "Review Metadata",
                 "issue": "Confirm subject metadata.",
                 "impact": "Subject was inferred from filenames for 3 files.",
-                "next_action": "Open Review Metadata if the subject is wrong.",
+                "next_action": "Review metadata if the subject is wrong.",
             }
         ]
         validation_decision = {"decision": "needs_confirmation"}
@@ -434,7 +434,7 @@ def _review_import_state_dialog(state: str) -> DataInterpretationPreviewDialog:
                 "target_step": "Match Labels",
                 "issue": "Label count needs review.",
                 "impact": "A03T.mat has 282 labels and 288 selected EEG events.",
-                "next_action": "Open Match Labels and check target EEG events.",
+                "next_action": "Check target EEG events in Match Labels.",
             }
         ]
     elif state == "both":
@@ -443,13 +443,13 @@ def _review_import_state_dialog(state: str) -> DataInterpretationPreviewDialog:
                 "target_step": "Review Metadata",
                 "issue": "Confirm subject metadata.",
                 "impact": "Subject was inferred from filenames for 3 files.",
-                "next_action": "Open Review Metadata if the subject is wrong.",
+                "next_action": "Review metadata if the subject is wrong.",
             },
             {
                 "target_step": "Match Labels",
                 "issue": "Label count needs review.",
                 "impact": "A03T.mat has 282 labels and 288 selected EEG events.",
-                "next_action": "Open Match Labels and check target EEG events.",
+                "next_action": "Check target EEG events in Match Labels.",
             },
         ]
         validation_decision = {"decision": "needs_confirmation"}

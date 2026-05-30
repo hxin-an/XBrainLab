@@ -120,11 +120,11 @@ class TestLabelWrappers:
         count = ctrl.apply_labels_batch([], {}, {}, {}, None)
         assert count == 2
 
-    def test_apply_labels_legacy(self):
+    def test_apply_labels_sequence(self):
         ctrl, _study = _make_ctrl()
         ctrl.label_service = MagicMock()
-        ctrl.label_service.apply_labels_legacy.return_value = 1
-        count = ctrl.apply_labels_legacy([], [], {}, None, force_import=True)
+        ctrl.label_service.apply_labels_sequence.return_value = 1
+        count = ctrl.apply_labels_sequence([], [], {}, None, force_import=True)
         assert count == 1
 
     def test_get_epoch_count(self):

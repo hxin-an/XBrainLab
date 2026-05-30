@@ -60,7 +60,9 @@
 - `physionet-eegmmidb-S008R04.edf`
 - `bbci-competition-iii-O3VR.gdf`
 - `sccn-eeglab_data.set`
-- `scan41_short.cnt`
+
+`scan41_short.cnt` 是 compact CNT IO/preprocess/epoch-only evidence；它的可用 epoch
+數太少，不再被當成 class-balanced one-epoch training smoke fixture。
 
 可重跑命令：
 

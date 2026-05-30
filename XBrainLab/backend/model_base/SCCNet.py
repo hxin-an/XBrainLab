@@ -64,6 +64,8 @@ class SCCNet(nn.Module):
         self.octsf = math.floor(self.sf * 0.1)
 
         requirement = minimum_samples_for_model("SCCNet", sfreq=sfreq)
+        if requirement is not None and requirement.unsupported_reason:
+            raise ValueError(requirement.unsupported_reason)
         if requirement is not None and samples < requirement.min_samples:
             epoch_duration = samples / sfreq
             raise ValueError(

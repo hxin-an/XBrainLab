@@ -239,7 +239,7 @@ normal training run does not silently run SmoothGrad / VarGrad work at the end.
 | Real-data IO integration | `PASS` in fast dashboard | 多格式 real fixtures 可 import。 | 完整 training / thesis reproducibility。 |
 | Checked-in GDF+MAT dataset generation | tests exist | A01T/A02T/A03T 可 attach labels、preprocess、epoch、generate dataset。 | 所有資料集來源都正確。 |
 | Checked-in GDF+MAT training smoke | tests exist | A01T/A02T/A03T 可 one-epoch training smoke。 | accuracy 有意義或 protocol 可發表。 |
-| Public cross-source training smoke | local-only tests exist | event-rich public fixtures 可走一個 training smoke。 | fixture 一定存在於乾淨 clone，或 thesis-grade reproducibility 完成。 |
+| Public cross-source training / epoch smoke | local-only tests exist | PhysioNet EDF、BBCI GDF、SCCN EEGLAB 可走 training smoke；tiny CNT 保留為 IO/preprocess/epoch-only evidence。 | fixture 一定存在於乾淨 clone，或 thesis-grade reproducibility 完成。 |
 | Tiny E2E pipeline smoke | `2 passed in 7.54s` on 2026-05-01 | synthetic / Study train cycle 有基本閉環。 | real-world data 全面可信。 |
 
 ## 目前可信結論
@@ -248,7 +248,7 @@ normal training run does not silently run SmoothGrad / VarGrad work at the end.
 - `ApplicationService / Command API` 能跑多格式 import path；`BackendFacade` module 已移除，
   guard 會擋 product runtime 重新引入。
 - checked-in GDF+MAT fixtures 已有 dataset generation 和 one-epoch training smoke tests。
-- public fixtures 的 cross-source training smoke 屬於 local-only evidence，不能當成 checked-in baseline。
+- public fixtures 的 cross-source evidence 屬於 local-only evidence，不能當成 checked-in baseline；tiny CNT 不再被宣稱可支撐 class-balanced training smoke。
 - pipeline 已有工程 smoke，但還不是 thesis validation。
 
 ## 目前風險

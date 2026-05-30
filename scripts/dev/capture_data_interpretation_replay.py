@@ -4,7 +4,12 @@
 Expected usage in WSL/headless environments:
 
     xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py \
-        --output-dir artifacts/ui
+        --output-dir /tmp/xbrainlab-data-interpretation-replay
+
+The current tree keeps Data Import wizard screenshots under
+``artifacts/ui/data-import-wizard-steps/``. This replay helper is kept for
+targeted debugging and should not repopulate top-level ``artifacts/ui`` legacy
+screenshots as canonical evidence.
 """
 
 from __future__ import annotations

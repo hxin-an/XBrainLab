@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PyQt6.QtWidgets import QWidget
 
+from XBrainLab.backend.application import StopTrainingCommand
 from XBrainLab.ui.main_window import MainWindow
 
 
@@ -137,6 +138,20 @@ def test_switch_page_status_uses_backend_state_when_agent_absent(main_window):
     assert main_window.statusBar().currentMessage() == (
         "EEG data loaded · Preprocess data"
     )
+
+
+def test_close_shutdown_requests_bounded_training_stop(main_window):
+    result = SimpleNamespace(failed=False, diagnostics={"stopped": True})
+
+    with patch(
+        "XBrainLab.ui.main_window.execute_application_shutdown_command",
+        return_value=result,
+    ) as execute:
+        main_window._stop_training_for_close()
+
+    command = execute.call_args.args[1]
+    assert isinstance(command, StopTrainingCommand)
+    assert command.wait_timeout == 2.0
 
 
 def test_update_info_panel_uses_info_service(main_window):

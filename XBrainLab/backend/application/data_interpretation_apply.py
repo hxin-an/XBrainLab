@@ -502,7 +502,8 @@ class DataInterpretationApplyService:
             carrier_path = str(carrier.get("path") or "").strip()
             label_field = str(carrier.get("selected_label_field") or "").strip()
             anchor = str(carrier.get("selected_anchor") or "").strip()
-            if not carrier_path or not label_field or not anchor:
+            needs_anchor = mode in {"timestamp", "anchored"}
+            if not carrier_path or not label_field or (needs_anchor and not anchor):
                 raise ValueError(
                     "Reviewed label carrier is missing label field or anchor.",
                 )
@@ -512,6 +513,7 @@ class DataInterpretationApplyService:
                 anchor=anchor if mode in {"timestamp", "anchored"} else None,
                 duration_field=str(carrier.get("selected_duration_field") or "").strip()
                 or None,
+                sequence_only=mode == "sequence",
             )
         return label_map
 
@@ -908,7 +910,7 @@ class DataInterpretationApplyService:
         time_model = str(plan.get("time_model") or "").strip().lower()
         granularity = str(plan.get("granularity") or "").strip().lower()
         return (
-            carrier_format in {"MAT", "MAT labels", "TXT"}
+            carrier_format in {"MAT", "MAT labels", "TXT", "CSV", "TSV", "BIDS events"}
             and bool(str(plan.get("selected_label_field") or "").strip())
             and time_model == "trial_order"
             and granularity == "trial"

@@ -14,7 +14,8 @@ class LabelImportService:
 
     Encapsulates logic for mapping label files to data files, filtering
     and synchronizing events, and applying labels to ``Raw`` objects.
-    Supports batch mapping, sequential legacy mode, and force-import mode.
+    Supports batch mapping, sequential label distribution, and explicit
+    force-import compatibility mode.
     """
 
     _FORCE_IMPORT_FALLBACK_EPOCHS = 100
@@ -66,7 +67,7 @@ class LabelImportService:
 
         return matched_count
 
-    def apply_labels_legacy(
+    def apply_labels_sequence(
         self,
         target_files: list[Any],
         labels: list[Any],
@@ -140,7 +141,7 @@ class LabelImportService:
 
         # Mismatch and not forced
         logger.warning(
-            "Legacy label import skipped due to count mismatch: labels=%d, "
+            "Sequential label import skipped due to count mismatch: labels=%d, "
             "expected_epochs=%d, files=%d, filtered_events=%s",
             label_count,
             total_epochs,

@@ -2714,7 +2714,7 @@ def test_bids_preset_surfaces_scope_labels_metadata_and_review(qtbot):
     assert "Needs review" in action_text
     assert "Confirm class names in Match Labels." in action_text
     assert any(
-        button.text() == "Open Match Labels"
+        button.text() == "Fix Match Labels"
         for button in dialog.review_actions_panel.findChildren(QPushButton)
     )
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the current public local-only cross-source training smoke protocol."""
+"""Run public local-only cross-source training plus epoch-only smoke evidence."""
 
 from __future__ import annotations
 
@@ -56,6 +56,9 @@ PUBLIC_TRAINING_FIXTURES = (
         "tmax": 2,
         "split_ratio": 0.2,
     },
+)
+
+PUBLIC_EPOCH_ONLY_FIXTURES = (
     {
         "name": "mne-cnt",
         "filename": "scan41_short.cnt",
@@ -63,7 +66,6 @@ PUBLIC_TRAINING_FIXTURES = (
         "event_ids": ["0", "109", "7"],
         "tmin": 0,
         "tmax": 2,
-        "split_ratio": 0.5,
     },
 )
 
@@ -78,11 +80,17 @@ class SmokeResult:
     status: str
     dataset_count: int
     message: str
+    protocol: str = "training"
 
 
 def _raise_if_failed(result) -> None:
     if result.failed:
         raise RuntimeError(result.message)
+
+
+def _require_epoch_count(epoch_count: int) -> None:
+    if epoch_count <= 0:
+        raise RuntimeError("epoch creation produced no usable epochs")
 
 
 def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
@@ -247,11 +255,96 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
         )
 
 
+def run_fixture_epoch_smoke(fixture: dict[str, object]) -> SmokeResult:
+    """Execute load/preprocess/epoch evidence for fixtures too small for training."""
+    filepath = PUBLIC_DATA_DIR / str(fixture["filename"])
+    if not filepath.exists():
+        return SmokeResult(
+            name=str(fixture["name"]),
+            filename=str(fixture["filename"]),
+            source_family=str(fixture["source_family"]),
+            status="missing",
+            dataset_count=0,
+            message=f"fixture not downloaded: {filepath}",
+            protocol="epoch-only",
+        )
+
+    study = Study()
+    service = get_application_service(study)
+    load_result = service.execute(LoadDataCommand(paths=[str(filepath)]))
+    if load_result.failed or load_result.diagnostics.get("success_count") != 1:
+        return SmokeResult(
+            name=str(fixture["name"]),
+            filename=str(fixture["filename"]),
+            source_family=str(fixture["source_family"]),
+            status="failed",
+            dataset_count=0,
+            message=f"load failed: {load_result.message}",
+            protocol="epoch-only",
+        )
+
+    try:
+        _raise_if_failed(
+            service.execute(
+                PreprocessCommand(
+                    operation=PreprocessOperation.BANDPASS,
+                    low_freq=4,
+                    high_freq=38,
+                ),
+            )
+        )
+        _raise_if_failed(
+            service.execute(
+                PreprocessCommand(
+                    operation=PreprocessOperation.NORMALIZE,
+                    method="z score",
+                ),
+            )
+        )
+        event_ids = [str(item) for item in cast(list[object], fixture["event_ids"])]
+        epoch_result = service.execute(
+            CreateEpochCommand(
+                t_min=float(cast(float | int | str, fixture["tmin"])),
+                t_max=float(cast(float | int | str, fixture["tmax"])),
+                event_ids=event_ids,
+            ),
+        )
+        _raise_if_failed(epoch_result)
+        epoch_count = int(epoch_result.state.epoch.epoch_count or 0)
+        _require_epoch_count(epoch_count)
+        return SmokeResult(
+            name=str(fixture["name"]),
+            filename=str(fixture["filename"]),
+            source_family=str(fixture["source_family"]),
+            status="passed",
+            dataset_count=0,
+            message=(
+                f"load/preprocess/epoch smoke passed with {epoch_count} epochs; "
+                "fixture is too small for class-balanced training evidence"
+            ),
+            protocol="epoch-only",
+        )
+    except Exception as exc:
+        return SmokeResult(
+            name=str(fixture["name"]),
+            filename=str(fixture["filename"]),
+            source_family=str(fixture["source_family"]),
+            status="failed",
+            dataset_count=0,
+            message=f"{type(exc).__name__}: {exc}",
+            protocol="epoch-only",
+        )
+
+
 def build_snapshot(repo_root: Path = ROOT) -> dict[str, Any]:
     """Run the current public cross-source smoke protocol and summarize it."""
     results = [
         asdict(run_fixture_smoke(fixture)) for fixture in PUBLIC_TRAINING_FIXTURES
     ]
+    results.extend(
+        asdict(run_fixture_epoch_smoke(fixture))
+        for fixture in PUBLIC_EPOCH_ONLY_FIXTURES
+    )
     passed = sum(1 for result in results if result["status"] == "passed")
     missing = sum(1 for result in results if result["status"] == "missing")
     failed = sum(1 for result in results if result["status"] == "failed")
@@ -264,8 +357,9 @@ def build_snapshot(repo_root: Path = ROOT) -> dict[str, Any]:
             "missing": missing,
             "failed": failed,
             "message": (
-                "Event-rich public local-only fixtures now provide a repeatable "
-                "cross-source one-epoch training-smoke protocol."
+                "Event-rich public local-only fixtures provide repeatable training "
+                "smoke where class-balanced splits are viable, with tiny CNT kept as "
+                "explicit load/preprocess/epoch-only evidence."
             ),
         },
     }
@@ -276,12 +370,12 @@ def render_markdown(snapshot: dict[str, Any]) -> str:
     lines = [
         "# Public Cross-Source Training Smoke",
         "",
-        "| Fixture | Source family | Status | Datasets | Message |",
-        "| --- | --- | --- | --- | --- |",
+        "| Fixture | Source family | Protocol | Status | Datasets | Message |",
+        "| --- | --- | --- | --- | --- | --- |",
     ]
     for result in snapshot["results"]:
         lines.append(
-            "| {filename} | {source_family} | {status} | {dataset_count} | {message} |".format(
+            "| {filename} | {source_family} | {protocol} | {status} | {dataset_count} | {message} |".format(
                 **result,
             )
         )

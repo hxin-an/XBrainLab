@@ -424,11 +424,20 @@ def latest_is_fresh(
         return False
     current_git = git_state or collect_git_state()
     payload_git = payload.get("git") if isinstance(payload.get("git"), dict) else {}
+    if payload_git.get("branch") != current_git.branch:
+        return False
     if payload_git.get("commit") != current_git.commit:
         return False
     if bool(payload_git.get("dirty")) != current_git.dirty:
         return False
     if int(payload_git.get("dirty_count") or 0) != current_git.dirty_count:
+        return False
+    if bool(payload_git.get("status_truncated")) != current_git.status_truncated:
+        return False
+    payload_status = payload_git.get("status_summary")
+    if not isinstance(payload_status, list):
+        return False
+    if [str(item) for item in payload_status] != current_git.status_summary:
         return False
     generated_at = datetime.fromisoformat(payload["generated_at"])
     age_seconds = (datetime.now(UTC) - generated_at).total_seconds()

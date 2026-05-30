@@ -46,7 +46,7 @@ def test_epoching_context_uses_interval_duration_for_default_window():
     assert context["suggested_t_min"] == 0.0
     assert context["suggested_t_max"] == 1.25
     assert context["suggested_baseline"] is None
-    assert context["window_evidence"] == "duration max 1.25s from duration"
+    assert context["window_evidence"] == "Suggested from imported duration field."
 
 
 def test_epoching_context_maps_internal_class_codes_to_event_names():

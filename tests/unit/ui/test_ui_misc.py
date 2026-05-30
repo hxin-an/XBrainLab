@@ -1897,7 +1897,7 @@ class TestDatasetActionHandler:
         handler.panel.controller.get_loaded_data_list.return_value = [MagicMock()]
         mock_dlg.return_value.exec.return_value = False
         handler.import_label()
-        handler.panel.controller.apply_labels_legacy.assert_not_called()
+        handler.panel.controller.apply_labels_sequence.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
@@ -2005,9 +2005,9 @@ class TestDatasetActionHandler:
             {"file1.txt": [0, 1, 0, 1]},
             "mapping",
         )
-        handler.panel.controller.apply_labels_legacy.return_value = 1
+        handler.panel.controller.apply_labels_sequence.return_value = 1
         handler.import_label()
-        handler.panel.controller.apply_labels_legacy.assert_not_called()
+        handler.panel.controller.apply_labels_sequence.assert_not_called()
         mock_mb.warning.assert_called_once()
         assert mock_mb.warning.call_args.args[1] == "Label Import Blocked"
 
@@ -2050,7 +2050,7 @@ class TestDatasetActionHandler:
         ):
             handler.import_label()
 
-        handler.panel.controller.apply_labels_legacy.assert_not_called()
+        handler.panel.controller.apply_labels_sequence.assert_not_called()
         handler.panel.controller.apply_labels_batch.assert_not_called()
         mock_mb.warning.assert_called_once()
         assert mock_mb.warning.call_args.args[1] == "Label Import Blocked"
@@ -2076,7 +2076,7 @@ class TestDatasetActionHandler:
             {"file1.txt": [0, 1, 0, 1]},
             "mapping",
         )
-        handler.panel.controller.apply_labels_legacy.return_value = 0
+        handler.panel.controller.apply_labels_sequence.return_value = 0
 
         handler.import_label()
 
@@ -2200,7 +2200,7 @@ class TestDatasetActionHandler:
         handler.import_label()
 
         handler.panel.controller.apply_labels_batch.assert_not_called()
-        handler.panel.controller.apply_labels_legacy.assert_not_called()
+        handler.panel.controller.apply_labels_sequence.assert_not_called()
         mock_mb.critical.assert_called_once()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
@@ -2293,9 +2293,11 @@ class TestDatasetActionHandler:
             {"f.txt": [0, 1]},
             "mapping",
         )
-        handler.panel.controller.apply_labels_legacy.side_effect = RuntimeError("fail")
+        handler.panel.controller.apply_labels_sequence.side_effect = RuntimeError(
+            "fail"
+        )
         handler.import_label()
-        handler.panel.controller.apply_labels_legacy.assert_not_called()
+        handler.panel.controller.apply_labels_sequence.assert_not_called()
         mock_mb.warning.assert_called_once()
         assert mock_mb.warning.call_args.args[1] == "Label Import Blocked"
         mock_mb.critical.assert_not_called()
@@ -2462,12 +2464,12 @@ class TestDatasetActionHandler:
             {"file1.txt": [0, 1, 0, 1]},
             "mapping",
         )
-        handler.panel.controller.apply_labels_legacy.return_value = 1
+        handler.panel.controller.apply_labels_sequence.return_value = 1
         with patch("XBrainLab.ui.panels.dataset.actions.EventFilterDialog") as mock_efd:
             mock_efd.return_value.exec.return_value = True
             mock_efd.return_value.get_selected_ids.return_value = ["left"]
             handler.import_label()
-        handler.panel.controller.apply_labels_legacy.assert_not_called()
+        handler.panel.controller.apply_labels_sequence.assert_not_called()
         mock_mb.warning.assert_called_once()
         assert mock_mb.warning.call_args.args[1] == "Label Import Blocked"
 

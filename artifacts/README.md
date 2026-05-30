@@ -1,6 +1,6 @@
 # XBrainLab Artifacts
 
-最後更新：`2026-05-14`
+最後更新：`2026-05-30`
 
 `artifacts/` 放的是機器產物：dashboard、截圖、walkthrough、eval output、packaging evidence。
 它們是 evidence，不是 current truth。
@@ -23,7 +23,7 @@
 
 | Family | 用途 | 不能代表 |
 | --- | --- | --- |
-| `quality/` | fast engineering dashboard。 | product complete。 |
+| `quality/` | local generated fast engineering dashboard。 | product complete；clean clone 內的 canonical truth。 |
 | `ui/human-like-walkthrough/` | automated PyQt walkthrough、截圖、按鈕狀態。 | human Windows desktop acceptance。 |
 | `agent_evals/` | tool-call benchmark / scorer output。 | UI usability 或 EEG training quality。 |
 | `mcp/` | MCP stdio / HTTP adapter walkthrough。 | 完整 MCP client certification。 |
@@ -40,7 +40,7 @@
 
 | Artifact | 什麼時候看 |
 | --- | --- |
-| `quality/latest.md` | 想看最近 fast dashboard。 |
+| `quality/latest.md` | 想看本機最近 fast dashboard；此檔由 script 產生且 git-ignored。 |
 | `ui/human-like-walkthrough/human-like-walkthrough.md` | 想看 UI automated evidence。 |
 | `agent_evals/dashboard.md` | 想看 tool-call benchmark。 |
 | `mcp/http-walkthrough.md` | 想看 MCP HTTP baseline。 |
@@ -60,7 +60,7 @@
 
 - canonical docs 或 artifact dashboard 直接引用；
 - 代表目前仍要判讀的 product evidence；
-- 是 `quality/latest.*`、approved UI baseline candidate、MCP / launcher / Data Import / agent eval
+- 是 approved UI baseline candidate、MCP / launcher / Data Import / agent eval
   這類仍在 evidence board 的入口；
 - 不是重複截圖，或雖然相似但代表不同使用者流程的重要狀態。
 
@@ -131,7 +131,8 @@ be regenerated during the next artifact refresh.
 - unreferenced `artifacts/ui/sidebar-operation-alignment.png`; it was not a current evidence
   entrance and remains recoverable from git history.
 - local generated `artifacts/quality/history.jsonl`; dashboard history is ignored generated output,
-  while current dashboard truth remains `artifacts/quality/latest.*`.
+  while current dashboard summaries are generated locally as `artifacts/quality/latest.*`
+  and canonical validation truth stays in `docs/validation/README.md`.
 
 `artifacts/ui/.gitignore` now keeps future top-level dashboard captures local-only. UI walkthrough
 and review evidence should live in named artifact subdirectories with a clear README or markdown

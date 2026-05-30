@@ -15,6 +15,7 @@ from XBrainLab.backend.application import (
     CommandName,
     CommandResult,
     QueryStateCommand,
+    StopTrainingCommand,
     get_application_service,
 )
 from XBrainLab.backend.study import Study
@@ -22,6 +23,7 @@ from XBrainLab.ui import application_capabilities
 from XBrainLab.ui.application_capabilities import (
     execute_application_command,
     execute_application_command_async,
+    execute_application_shutdown_command,
     get_command_capability,
     run_legacy_controller_fallback,
 )
@@ -214,6 +216,49 @@ def test_execute_application_command_can_skip_refresh(qtbot, monkeypatch):
         QueryStateCommand(),
         refresh=False,
     )
+
+    assert command_result is result
+    assert refresh_calls == []
+
+
+def test_execute_application_shutdown_command_suppresses_observers_without_refresh(
+    qtbot,
+    monkeypatch,
+):
+    study = Study()
+    widget = QWidget()
+    cast(Any, widget).main_window = SimpleNamespace(study=study)
+    qtbot.addWidget(widget)
+    result = CommandResult.success_result(
+        command_name="stop_training",
+        message="stopped",
+        state=None,
+        changed_state=ChangedState(training_changed=True),
+    )
+    refresh_calls = []
+
+    class _Service:
+        def execute(self, command):
+            assert isinstance(command, StopTrainingCommand)
+            assert (
+                refresh_after_observer(widget, event_name="training_changed") is False
+            )
+            return result
+
+    monkeypatch.setattr(
+        application_capabilities,
+        "get_application_service",
+        lambda provided_study: _Service(),
+    )
+    monkeypatch.setattr(
+        application_capabilities,
+        "refresh_after_command",
+        lambda context, command_result: refresh_calls.append(
+            (context, command_result),
+        ),
+    )
+
+    command_result = execute_application_shutdown_command(widget, StopTrainingCommand())
 
     assert command_result is result
     assert refresh_calls == []

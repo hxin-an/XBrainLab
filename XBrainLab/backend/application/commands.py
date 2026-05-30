@@ -331,6 +331,8 @@ class TrainCommand:
 class StopTrainingCommand:
     """Stop an active training run."""
 
+    wait_timeout: float | None = None
+
     @property
     def name(self) -> CommandName:
         return CommandName.STOP_TRAINING

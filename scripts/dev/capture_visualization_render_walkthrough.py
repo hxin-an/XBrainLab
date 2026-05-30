@@ -9,6 +9,7 @@ import shutil
 import sys
 import tempfile
 import time
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -62,6 +63,18 @@ BLOCKED_TAB_SPECS: list[dict[str, str]] = [
         "expected_reason": "interactive OpenGL desktop session",
     },
 ]
+UNCAUGHT_EXCEPTIONS: list[str] = []
+
+
+def _install_uncaught_exception_capture() -> None:
+    """Capture Qt slot exceptions so walkthrough payloads cannot pass silently."""
+
+    def _record_exception(exctype, value, tb):
+        formatted = "".join(traceback.format_exception(exctype, value, tb))
+        UNCAUGHT_EXCEPTIONS.append(formatted)
+        sys.__excepthook__(exctype, value, tb)
+
+    sys.excepthook = _record_exception
 
 
 def main() -> int:
@@ -83,6 +96,7 @@ def main() -> int:
         help="Temporary directory for tiny training outputs.",
     )
     args = parser.parse_args()
+    _install_uncaught_exception_capture()
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -115,6 +129,8 @@ def run_visualization_render_walkthrough(
     from XBrainLab.backend.study import Study
     from XBrainLab.ui.main_window import MainWindow
 
+    UNCAUGHT_EXCEPTIONS.clear()
+    _install_uncaught_exception_capture()
     started_at = time.monotonic()
     _clear_saved_main_window_geometry()
     source_path = write_synthetic_training_raw_fif()
@@ -142,6 +158,7 @@ def run_visualization_render_walkthrough(
         "final_state": {},
         "ui_state": {},
         "elapsed_seconds": 0.0,
+        "uncaught_exceptions": [],
     }
 
     if not dataset_preparation.get("ok"):
@@ -205,6 +222,7 @@ def run_visualization_render_walkthrough(
             )
 
     payload["final_state"] = service.get_state().to_dict()
+    payload["uncaught_exceptions"] = list(UNCAUGHT_EXCEPTIONS)
     ok, reason = validate_visualization_render_payload(payload)
     payload["status"] = "passed" if ok else "failed"
     payload["failure_reason"] = "" if ok else reason
@@ -495,6 +513,9 @@ def validate_visualization_render_payload(
     """Validate source -> tiny train -> real VisualizationPanel render evidence."""
     if not payload.get("dataset_preparation", {}).get("ok"):
         return False, "Dataset preparation failed."
+    if payload.get("uncaught_exceptions"):
+        first = str(payload["uncaught_exceptions"][0]).splitlines()[-1]
+        return False, f"Uncaught Qt/runtime exception during capture: {first}"
 
     training = payload.get("training") or {}
     if int(training.get("finished_run_count") or 0) < 1:
@@ -611,6 +632,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"- saliency available: `{payload.get('training', {}).get('saliency_available')}`",
         f"- ready screenshot: `{payload.get('screenshots', {}).get('ready', '')}`",
         f"- elapsed seconds: `{payload['elapsed_seconds']}`",
+        f"- uncaught exceptions: `{len(payload.get('uncaught_exceptions') or [])}`",
         "",
         "## Rendered Tabs",
         "",
@@ -725,6 +747,7 @@ def _finish_payload(
     payload["status"] = "failed"
     payload["failure_reason"] = reason
     payload["elapsed_seconds"] = round(time.monotonic() - started_at, 3)
+    payload["uncaught_exceptions"] = list(UNCAUGHT_EXCEPTIONS)
     try:
         payload["final_state"] = service.get_state().to_dict()
     except Exception:

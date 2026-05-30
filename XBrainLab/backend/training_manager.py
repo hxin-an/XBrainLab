@@ -126,12 +126,19 @@ class TrainingManager:
         self.trainer.run(interact=interact)
         logger.info("Started training (interact=%s)", interact)
 
-    def stop_training(self) -> None:
+    def stop_training(self, wait_timeout: float | None = None) -> bool:
         """Stop training execution."""
         if not self.trainer:
             raise ValueError("No valid trainer is generated")
-        self.trainer.set_interrupt()
-        logger.info("Stopped training")
+        stopped = self.trainer.stop(wait_timeout=wait_timeout)
+        if stopped:
+            logger.info("Stopped training")
+        else:
+            logger.warning(
+                "Training stop requested but worker did not exit within %.2fs",
+                wait_timeout if wait_timeout is not None else 0.0,
+            )
+        return stopped
 
     def is_training(self) -> bool:
         """Return whether training is currently running."""

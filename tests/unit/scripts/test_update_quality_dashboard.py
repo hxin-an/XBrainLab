@@ -134,9 +134,12 @@ def test_latest_is_fresh_uses_timestamp(monkeypatch, tmp_path: Path):
                 "workspace": str(dashboard.ROOT),
                 "profile": "fast",
                 "git": {
+                    "branch": "main",
                     "commit": "abcdef1",
                     "dirty": False,
                     "dirty_count": 0,
+                    "status_summary": [],
+                    "status_truncated": False,
                 },
             }
         ),
@@ -173,9 +176,12 @@ def test_latest_is_fresh_rejects_commit_or_dirty_mismatch(
                 "workspace": str(dashboard.ROOT),
                 "profile": "fast",
                 "git": {
+                    "branch": "main",
                     "commit": "abcdef1",
                     "dirty": False,
                     "dirty_count": 0,
+                    "status_summary": [],
+                    "status_truncated": False,
                 },
             }
         ),
@@ -207,6 +213,75 @@ def test_latest_is_fresh_rejects_commit_or_dirty_mismatch(
                 status_summary=["M app.py"],
                 dirty_count=1,
                 status_truncated=False,
+            ),
+        )
+        is False
+    )
+
+
+def test_latest_is_fresh_rejects_branch_or_dirty_status_mismatch(
+    monkeypatch,
+    tmp_path: Path,
+):
+    latest_json = tmp_path / "latest.json"
+    latest_json.write_text(
+        json.dumps(
+            {
+                "generated_at": "2999-01-01T00:00:00+00:00",
+                "workspace": str(dashboard.ROOT),
+                "profile": "fast",
+                "git": {
+                    "branch": "main",
+                    "commit": "abcdef1",
+                    "dirty": True,
+                    "dirty_count": 1,
+                    "status_summary": ["M app.py"],
+                    "status_truncated": False,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(dashboard, "LATEST_JSON", latest_json)
+
+    assert (
+        latest_is_fresh(
+            60,
+            git_state=GitState(
+                branch="feature",
+                commit="abcdef1",
+                dirty=True,
+                status_summary=["M app.py"],
+                dirty_count=1,
+                status_truncated=False,
+            ),
+        )
+        is False
+    )
+    assert (
+        latest_is_fresh(
+            60,
+            git_state=GitState(
+                branch="main",
+                commit="abcdef1",
+                dirty=True,
+                status_summary=["M other.py"],
+                dirty_count=1,
+                status_truncated=False,
+            ),
+        )
+        is False
+    )
+    assert (
+        latest_is_fresh(
+            60,
+            git_state=GitState(
+                branch="main",
+                commit="abcdef1",
+                dirty=True,
+                status_summary=["M app.py"],
+                dirty_count=1,
+                status_truncated=True,
             ),
         )
         is False

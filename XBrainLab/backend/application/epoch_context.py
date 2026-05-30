@@ -133,7 +133,7 @@ def _suggested_window(
                 0.0,
                 max_duration,
                 None,
-                f"duration max {max_duration:g}s from {duration_field}",
+                f"Suggested from imported {duration_field} field.",
             )
         return 0.0, 1.0, None, "duration not available; using 1.0s review default"
     return -0.2, 1.0, (-0.2, 0.0), "standard event-locked review default"

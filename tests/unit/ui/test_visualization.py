@@ -262,18 +262,10 @@ class TestSaliencyMapWidget:
         new_fig = Figure(figsize=(4, 3), dpi=100)
         visualizer.get_plt.return_value = new_fig
 
-        with (
-            patch(
-                "XBrainLab.ui.panels.visualization.saliency_views.map_view.VisualizerType"
-            ) as visualizer_type,
-            patch(
-                "XBrainLab.ui.panels.visualization.saliency_views.base_saliency_view.QThreadPool"
-            ) as thread_pool,
-        ):
+        with patch(
+            "XBrainLab.ui.panels.visualization.saliency_views.map_view.VisualizerType"
+        ) as visualizer_type:
             visualizer_type.SaliencyMap.value.return_value = visualizer
-            thread_pool.globalInstance.return_value.start.side_effect = (
-                lambda worker: worker.run()
-            )
             w.update_plot(plan, trainer, "Gradient", False, None)
 
         plan.get_eval_record.assert_called_once_with()
@@ -284,7 +276,9 @@ class TestSaliencyMapWidget:
         assert w.canvas.parent() is w
         assert not w.error_label.isVisible()
 
-    def test_update_plot_schedules_visualizer_render_on_worker(self, qtbot):
+    def test_update_plot_renders_visualizer_without_worker_thread(self, qtbot):
+        from matplotlib.figure import Figure
+
         from XBrainLab.ui.panels.visualization.saliency_views.map_view import (
             SaliencyMapWidget,
         )
@@ -299,25 +293,18 @@ class TestSaliencyMapWidget:
         trainer = MagicMock()
         epoch = MagicMock()
         trainer.get_dataset.return_value.get_epoch_data.return_value = epoch
-        started_workers = []
+        visualizer = MagicMock()
+        visualizer.get_plt.return_value = Figure(figsize=(4, 3), dpi=100)
 
-        with (
-            patch(
-                "XBrainLab.ui.panels.visualization.saliency_views.map_view.VisualizerType"
-            ) as visualizer_type,
-            patch(
-                "XBrainLab.ui.panels.visualization.saliency_views.base_saliency_view.QThreadPool"
-            ) as thread_pool,
-        ):
-            thread_pool.globalInstance.return_value.start.side_effect = (
-                lambda worker: started_workers.append(worker)
-            )
-
+        with patch(
+            "XBrainLab.ui.panels.visualization.saliency_views.map_view.VisualizerType"
+        ) as visualizer_type:
+            visualizer_type.SaliencyMap.value.return_value = visualizer
             w.update_plot(plan, trainer, "Gradient", False, None)
 
-        assert len(started_workers) == 1
-        visualizer_type.SaliencyMap.value.assert_not_called()
-        assert w.error_label.text() == "Rendering saliency..."
+        visualizer_type.SaliencyMap.value.assert_called_once_with(eval_rec, epoch)
+        visualizer.get_plt.assert_called_once_with(method="Gradient", absolute=False)
+        assert not w.error_label.isVisible()
 
     def test_close_releases_figure_and_canvas(self, qtbot):
         from PyQt6.QtGui import QCloseEvent

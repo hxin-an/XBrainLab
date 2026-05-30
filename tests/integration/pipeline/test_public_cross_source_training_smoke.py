@@ -1,4 +1,4 @@
-"""Cross-source one-epoch training smoke for event-rich public local-only fixtures."""
+"""Cross-source training and epoch-only smoke for public local-only fixtures."""
 
 from __future__ import annotations
 
@@ -60,13 +60,16 @@ PUBLIC_TRAINING_FIXTURES: tuple[PublicTrainingFixture, ...] = (
         "tmax": 2,
         "split_ratio": 0.2,
     },
+)
+
+PUBLIC_EPOCH_ONLY_FIXTURES: tuple[PublicTrainingFixture, ...] = (
     {
         "name": "mne-cnt",
         "filename": "scan41_short.cnt",
         "event_ids": ["0", "109", "7"],
         "tmin": 0,
         "tmax": 2,
-        "split_ratio": 0.5,
+        "split_ratio": 0.0,
     },
 )
 
@@ -187,3 +190,39 @@ def test_public_cross_source_training_smoke(
     record = history.diagnostics["rows"][0]["record"]
     assert RecordKey.LOSS in record.train
     assert RecordKey.ACC in record.train
+
+
+@pytest.mark.parametrize("fixture", PUBLIC_EPOCH_ONLY_FIXTURES, ids=lambda f: f["name"])
+def test_public_cross_source_epoch_only_boundary(
+    fixture: PublicTrainingFixture,
+) -> None:
+    """Tiny public fixtures should prove IO/epoch support without overclaiming training."""
+    service = _build_public_training_service(fixture)
+
+    filter_result = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.BANDPASS,
+            low_freq=4,
+            high_freq=38,
+        ),
+    )
+    normalize_result = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.NORMALIZE,
+            method="z score",
+        ),
+    )
+    epoch_result = service.execute(
+        CreateEpochCommand(
+            t_min=float(fixture["tmin"]),
+            t_max=float(fixture["tmax"]),
+            event_ids=list(fixture["event_ids"]),
+        ),
+    )
+
+    assert filter_result.ok is True
+    assert normalize_result.ok is True
+    assert epoch_result.ok is True
+    assert epoch_result.state.epoch.event_names == list(fixture["event_ids"])
+    assert epoch_result.state.epoch.epoch_count is not None
+    assert epoch_result.state.epoch.epoch_count > 0

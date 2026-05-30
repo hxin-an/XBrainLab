@@ -47,9 +47,10 @@ Manual-test gating on `/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-man
 treated non-blocking findings as work to clear, not as deferred polish. The current
 branch fixed and validated these product-quality gaps:
 
-- saliency 2D map / topomap / spectrogram rendering now runs through the UI worker
-  path with generation-token guarding, stale figure cleanup, and visible render /
-  error states instead of blocking the Qt thread;
+- saliency 2D map / topomap / spectrogram rendering now keeps Qt/Matplotlib
+  figure creation on the UI thread, avoiding native Qt backend crashes from
+  background-thread figure creation while still showing visible render / error
+  states;
 - metrics and model-selection tables use dark active/inactive/disabled palettes and
   clear initial selection, preventing white selected rows from hiding text;
 - training record figure helpers use figure-scoped rendering and close empty
@@ -69,14 +70,15 @@ Validation:
 ```bash
 QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/update_quality_dashboard.py
 # Overall status: PASS
-# generated_at: 2026-05-30 13:55:04 UTC+08:00
+# generated_at: 2026-05-30 15:21:01 UTC+08:00
+# commit: aad24e2aa7ef
 # workspace: /mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual
 # checks: Ruff, Basedpyright, Architecture Compliance, Startup Smoke,
 # UI Baseline Capture, UI Dialog Acceptance, UI Product Walkthrough,
 # UI Unit Suite, Real-Data IO Integration all PASS
 
 QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/run_tests.py ui
-# 1235 passed
+# 1236 passed
 
 poetry run basedpyright
 # 0 errors, 0 warnings, 0 notes
@@ -350,8 +352,11 @@ poetry run python scripts/dev/update_quality_dashboard.py
 ```
 
 Remaining coverage boundary: public cross-source fixtures are still optional /
-skipped when absent, and the default dashboard still does not claim human Windows
-click-through acceptance or full local-LLM runtime acceptance.
+skipped when absent. PhysioNet EDF, BBCI GDF, and SCCN EEGLAB are training-smoke
+fixtures when present; the compact MNE CNT fixture is IO/preprocess/epoch-only
+because it has too few usable epochs for a class-balanced training split. The
+default dashboard still does not claim human Windows click-through acceptance or
+full local-LLM runtime acceptance.
 
 ## 2026-05-22 Epoch Dialog Label Transparency
 

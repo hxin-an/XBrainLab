@@ -35,7 +35,7 @@ UI_CONTROLLER_FALLBACK_METHODS = (
     "apply_epoching",
     "apply_filter",
     "apply_labels_batch",
-    "apply_labels_legacy",
+    "apply_labels_sequence",
     "apply_montage",
     "apply_normalization",
     "apply_resample",
@@ -1902,7 +1902,10 @@ def check_ui_command_execution_suppresses_observer_refresh(root_dir: Path) -> li
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
-        if node.name != "execute_application_command":
+        if node.name not in {
+            "execute_application_command",
+            "execute_application_shutdown_command",
+        }:
             continue
         visitor = _CommandExecutionObserverSuppressionVisitor()
         visitor.visit(node)

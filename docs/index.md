@@ -29,7 +29,7 @@ artifact 和 product-success tests 是 evidence，不是第二套 truth；claim 
 
 <div markdown>
 <span class="xlb-kicker">Artifacts</span>
-`quality/latest.md`; screenshot index；private docs portal visual review.
+local quality dashboard；screenshot index；private docs portal visual review.
 </div>
 
 <div markdown>
@@ -46,7 +46,7 @@ Private docs review; human smoke; manual-test branch review before any `main` pr
 | Product readiness | Baseline exists; not product complete. | [Current](current.md), [Roadmap](planning/roadmap.md) | Human-observable desktop smoke. |
 | Backend architecture | `ApplicationService / Command API` is the shared backend spine; `BackendFacade` is physically removed. | [Architecture](architecture/README.md), [Validation](validation/README.md) | Keep guards green while UX continues. |
 | Data Import | `scan -> preview -> validate -> apply -> recipe` works as baseline; placement evidence covers four mainstream modes. | [Data Interpretation target](target/data_interpretation_system.md), `artifacts/ui/data-import-wizard-steps/README.md` | Record UX debt; do not redesign tonight. |
-| Validation | Architecture, backend, agent/MCP, UI refresh, split regression, docs, and dashboard gates are green for current branch. | `artifacts/quality/latest.md`, [Validation](validation/README.md) | Add human Windows acceptance evidence. |
+| Validation | Architecture, backend, agent/MCP, UI refresh, split regression, docs, and dashboard gates are green for current branch. | [Validation](validation/README.md); local generated `artifacts/quality/latest.md` | Add human Windows acceptance evidence. |
 
 ## Evidence Shortcuts
 
@@ -54,9 +54,9 @@ Private docs review; human smoke; manual-test branch review before any `main` pr
 
 - **Quality dashboard**
 
-    Latest fast health gate: lint, type, architecture, startup, UI baseline, UI unit suite, real-data IO.
+    Local generated fast health gate: lint, type, architecture, startup, UI baseline, UI unit suite, real-data IO.
 
-    <span class="xlb-artifact-path">`artifacts/quality/latest.md`</span>
+    <span class="xlb-artifact-path">`artifacts/quality/latest.md` (git-ignored, generate locally)</span>
 
 - **Data Import screenshots**
 
@@ -134,7 +134,7 @@ Private docs review; human smoke; manual-test branch review before any `main` pr
 
 | 證據入口 | 能支撐 | 不能支撐 |
 | --- | --- | --- |
-| `artifacts/quality/latest.md` | Fast engineering health：lint、type、architecture guard、startup smoke、UI baseline、real-data IO。 | Product completion、thesis claim、local LLM readiness。 |
+| `artifacts/quality/latest.md` | Local generated fast engineering health：lint、type、architecture guard、startup smoke、UI baseline、real-data IO。 | Canonical current truth、product completion、thesis claim、local LLM readiness。 |
 | `artifacts/ui/human-like-walkthrough/human-like-walkthrough.md` | Automated PyQt replay with screenshots、visible text、button states、geometry checks。 | Human Windows desktop acceptance、DPI / dual-monitor confidence、long local-model session。 |
 | `artifacts/agent_evals/dashboard.md` | Tool-call benchmark slice for selected local models and deterministic baseline。 | EEG training accuracy、UI usability、product completion。 |
 | `artifacts/mcp/http-walkthrough.md` | Headless MCP HTTP transport、tools/list、scan/preview、train job status/cancel baseline。 | Full MCP client certification、desktop UI refresh、persistent recovery。 |

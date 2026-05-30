@@ -118,12 +118,12 @@ Study / cached controllers
 - Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM 等模型不列入 primary / fallback 選型。
 - 優先考慮非中國來源、授權清楚、可本地部署的模型。
 
-2026-05-02 product runtime baseline：
+2026-05-30 local runtime truth：
 
 | role | model | provider | estimated download | cache status | smoke |
 | --- | --- | --- | ---: | --- | --- |
-| primary | `microsoft/Phi-4-mini-instruct` | Microsoft | 7.69 GB | downloaded | prompt + structured-output passed |
-| fallback | `microsoft/Phi-3.5-mini-instruct` | Microsoft | 7.64 GB | downloaded | prompt + structured-output passed |
+| primary | `microsoft/Phi-4-mini-instruct` | Microsoft | 7.69 GB | missing cache | not run in current worktree |
+| fallback | `microsoft/Phi-3.5-mini-instruct` | Microsoft | 7.64 GB | missing cache | not run in current worktree |
 
 cache 位置：
 
@@ -131,7 +131,11 @@ cache 位置：
 XBrainLab/llm/core/models
 ```
 
-目前 cache 約 `15.34 GB`，低於 20GB 上限。舊 Qwen cache 已刪除。
+`scripts/dev/inspect_local_assistant_runtime.py --format markdown` currently reports
+`classification: missing-cache`, `has_local_cache: False`, and cache usage `0.00 GB`.
+The current claim is therefore preflight/download-plan readiness only. Prompt smoke
+and structured-output smoke require installing an approved local model cache first.
+舊 Qwen cache 已刪除。
 
 新增 runtime policy：
 

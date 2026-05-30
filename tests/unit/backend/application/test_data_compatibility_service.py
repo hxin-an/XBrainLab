@@ -35,7 +35,7 @@ class _DatasetController:
         self.import_result: tuple[int, list[str]] = (0, [])
         self.loaded_data: list[Any] = []
         self.batch_calls: list[tuple[Any, ...]] = []
-        self.legacy_calls: list[tuple[Any, ...]] = []
+        self.sequence_calls: list[tuple[Any, ...]] = []
         self.batch_result: int | None = None
 
     def import_files(self, paths: list[str]) -> tuple[int, list[str]]:
@@ -52,8 +52,8 @@ class _DatasetController:
         target_files = args[0] if args else []
         return len(target_files)
 
-    def apply_labels_legacy(self, *args: Any, **kwargs: Any) -> int:
-        self.legacy_calls.append((*args, kwargs))
+    def apply_labels_sequence(self, *args: Any, **kwargs: Any) -> int:
+        self.sequence_calls.append((*args, kwargs))
         return 1
 
 

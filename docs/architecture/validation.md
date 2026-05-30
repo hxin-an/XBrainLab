@@ -60,8 +60,8 @@ protocol 是支撐工作流可信度，不是主要 thesis accuracy。
 | `tests/regression/` | regression tests。 |
 | `tests/fixtures/data/` | 測試資料與 fixture。 |
 | `tests/baselines/ui/` | approved UI baseline images。 |
-| `artifacts/quality/latest.json` | 最新 dashboard machine-readable artifact。 |
-| `artifacts/quality/latest.md` | 最新 dashboard human-readable artifact。 |
+| `artifacts/quality/latest.json` | local generated dashboard machine-readable artifact；git-ignored。 |
+| `artifacts/quality/latest.md` | local generated dashboard human-readable artifact；git-ignored。 |
 | `artifacts/quality/history.jsonl` | local generated dashboard history；ignored，不作 current evidence 入口。 |
 | `artifacts/ui/` | dashboard transient UI capture output and named UI evidence subdirectories。 |
 
@@ -239,17 +239,17 @@ poetry run python scripts/dev/inspect_local_assistant_runtime.py \
 
 目前 `docs/validation/README.md` 記錄的 refresh 狀態：
 
-- latest fast dashboard artifact：`artifacts/quality/latest.*`
-- generated at：`2026-05-30 13:55:04 UTC+08:00`
+- latest fast dashboard artifact：local generated `artifacts/quality/latest.*`
+- generated at：`2026-05-30 15:21:01 UTC+08:00`
 - workspace：`/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`
 - overall：`PASS`
 - UI baseline capture：`7 UI artifacts match approved references`
-- max UI mean diff：`0.069`
-- max UI changed ratio：`0.06%`
+- max UI mean diff：`0.353`
+- max UI changed ratio：`1.47%`
 
 同一輪 release-candidate follow-up validation：
 
-- UI unit validation：`1235 passed`。
+- UI unit validation：`1236 passed`。
 - Real-data IO integration：`31 passed, 8 warnings`。
 - pipeline smoke：`2 passed`。
 - Windows launcher walkthrough：`passed`，但這仍不是真人 desktop click-through 或 signed installer。

@@ -145,6 +145,20 @@ def test_trainer_force_clean_joins_running_job(training_plan_holders):
     assert trainer.interrupt is True
 
 
+def test_trainer_stop_sets_interrupt_and_waits(training_plan_holders):
+    trainer = Trainer(training_plan_holders)
+    thread = MagicMock()
+    thread.is_alive.side_effect = [True, False, False]
+    trainer.job_thread = thread
+
+    stopped = trainer.stop(wait_timeout=0.5)
+
+    assert stopped is True
+    thread.join.assert_called_once_with(timeout=0.5)
+    assert trainer.job_thread is None
+    assert trainer.interrupt is True
+
+
 def test_trainer_force_clean_raises_when_job_stays_running(training_plan_holders):
     trainer = Trainer(training_plan_holders)
     thread = MagicMock()

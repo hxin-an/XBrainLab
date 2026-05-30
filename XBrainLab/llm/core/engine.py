@@ -138,3 +138,11 @@ class LLMEngine:
         if not self.active_backend:
             raise RuntimeError("No active backend loaded")
         yield from self.active_backend.generate_stream(messages)
+
+    def cancel_generation(self, wait_timeout: float = 0.25) -> bool:
+        """Cancel generation on the active backend when it supports it."""
+        backend = self.active_backend
+        cancel = getattr(backend, "cancel_generation", None)
+        if not callable(cancel):
+            return True
+        return bool(cancel(wait_timeout=wait_timeout))

@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-05-29`
+最後更新：`2026-05-30`
 
 ## 這份文件的用途
 
@@ -34,6 +34,34 @@
 - 證據：
 - 接續 / 本輪剩餘：
 ```
+
+## 2026-05-30
+
+### 16:25 Release-candidate gate non-blocking cleanup
+
+- 做了什麼：
+  - 將 gate 的 non-blocking findings 也當成必修項處理：CSV/TSV event-order label apply、
+    SCCNet low-sfreq guard、public CNT epoch-only boundary、shutdown-time training stop、local
+    LLM cancellation、Data Import review presenter extraction、explicit split-config schema、
+    former sequential label public API removal、visualization artifact validation、dark UI
+    polish和 docs truth cleanup。
+  - 修正 Visualization capture harness，讓 Qt slot / runtime uncaught exceptions 會讓 artifact
+    fail，而不是 stdout 有錯但 JSON 仍 PASS。
+  - 修正 saliency 2D render 的穩定性：Matplotlib/Qt figure creation 不再在 background worker
+    thread 內執行，避免 offscreen/remote Qt backend native crash；3D tab 在 headless 環境維持
+    user-facing blocked reason。
+  - 重新渲染 Data Import wizard screenshots 和 Match Labels placement-mode screenshots。
+- 結果：
+  - `artifacts/ui/visualization-render/visualization-render-walkthrough.json` 目前 `status=passed`、
+    `uncaught_exceptions=0`，三個 2D saliency render tab 都有 canvas/image evidence，3D tab
+    有 unclipped blocked message 且沒有建立 PyVista plotter。
+- 證據：
+  - `QT_QPA_PLATFORM=offscreen PYVISTA_OFF_SCREEN=true poetry run python scripts/dev/capture_visualization_render_walkthrough.py --output-dir artifacts/ui/visualization-render --timeout-seconds 540` -> pass。
+  - Focused validation groups in this cleanup passed: Data Import/UI helper/visualization `157 passed`，
+    backend interpretation/application `141 passed`，model/training/LLM `304 passed`，public fixture /
+    dashboard freshness / architecture `134 passed`。
+- 接續 / 本輪剩餘：
+  - Commit/push checkpoint, run final dashboard on clean HEAD, then re-run specialist gates.
 
 ## 2026-05-29
 
@@ -1240,7 +1268,7 @@
 - 做了什麼：
   - `DatasetActionHandler.import_label()` now catches real `Study` legacy fallback refusal around
     the label-import fallback call and shows `Label Import Blocked`.
-  - Mock / legacy fallback still calls `DatasetController.apply_labels_legacy()` /
+  - Mock / legacy fallback still calls the former sequential label controller API /
     `apply_labels_batch()`.
 - validation：
   - Red gate:
@@ -4827,12 +4855,12 @@
 - 做了什麼：
   - 補 TDD 紅燈：兩個 loaded raw files 各自有 reviewed MAT `classlabel` carrier 時，
     `apply_interpretation` 應以 file stem 建立 mapping，並逐檔呼叫既有
-    `apply_labels_legacy`。
+    the former sequential label API。
   - `_apply_interpretation_label_carriers()` 的多檔 mapping 現在同時支援 timestamp mode 和
     sequence mode。
   - sequence mode 多檔時不串接 labels；每個 target 只套用自己 matched carrier 的 labels。
   - 補 negative regression：兩個 raw files 只有 generic `labels.mat` 時必須 skipped，且不可呼叫
-    `apply_labels_legacy`。
+    the former sequential label API。
 - 結果：
   - 初跑 positive test 先看到 `label_apply.status=skipped`，實作後 `applied`。
   - reviewed MAT / TXT trial-order labels 已有安全多檔 backend path。
@@ -5147,7 +5175,7 @@
     - time model 是 `trial_order`。
     - granularity 是 `trial`。
     - class map 已確認。
-  - 成功後呼叫既有 `dataset.apply_labels_legacy()`，並透過 `_record_label_import_for_recipe()`
+  - 成功後呼叫既有 the former sequential label dataset API，並透過 `_record_label_import_for_recipe()`
     寫入 `label_import:legacy:<n>`。
 - 結果：
   - MAT sequence test 先看到 `label_apply.status=skipped`，實作後改為 `applied / legacy`。
@@ -14269,7 +14297,7 @@
 - red / focused tests：
   - Added `test_legacy_mutation_helper_guard_flags_unwrapped_call` with
     `self._run_legacy_label_import()` calling a helper that invokes
-    `self.controller.apply_labels_legacy(...)`.
+    the former sequential label controller API.
   - Added `test_legacy_mutation_helper_guard_allows_wrapped_call` for the same helper behind
     `run_legacy_controller_fallback(...)`.
   - Red gate:
@@ -15514,7 +15542,7 @@
     of class-label candidates, and warns on PhysioNet-style run-dependent `T1` / `T2` semantics.
   - Blocked label placement review now blocks validation instead of becoming a soft confirmation.
   - Reviewed external sequence-label apply now passes selected target EEG event names into
-    `apply_labels_legacy()` and records them in label-import recipe state.
+    `former sequential label API()` and records them in label-import recipe state.
   - Match Labels gained a visible BIDS-like events review card; Load Labels many-row layout no
     longer truncates source paths into a narrow column; Review and Import action items are more
     compact while still showing target step, issue, impact, and next action.

@@ -463,7 +463,7 @@ class DatasetController(Observable):
             self.reset_preprocess()
         return count
 
-    def apply_labels_legacy(
+    def apply_labels_sequence(
         self,
         target_files,
         labels,
@@ -471,7 +471,7 @@ class DatasetController(Observable):
         selected_event_names,
         force_import=False,
     ):
-        """Apply labels using the legacy import path.
+        """Apply a sequential label list to loaded files.
 
         Args:
             target_files: Data objects to receive the labels.
@@ -484,7 +484,7 @@ class DatasetController(Observable):
             The number of files successfully updated.
 
         """
-        count = self.label_service.apply_labels_legacy(
+        count = self.label_service.apply_labels_sequence(
             target_files,
             labels,
             mapping,

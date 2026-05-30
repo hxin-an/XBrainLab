@@ -9,7 +9,8 @@
 - metrics available: `True`
 - saliency available: `True`
 - ready screenshot: `artifacts/ui/visualization-render/visualization-render-saliency-map.png`
-- elapsed seconds: `7.164`
+- elapsed seconds: `8.761`
+- uncaught exceptions: `0`
 
 ## Rendered Tabs
 
@@ -17,7 +18,7 @@
 
 - status: `ok`
 - screenshot: `artifacts/ui/visualization-render/visualization-render-saliency-map.png`
-- axes count: `3`
+- axes count: `2`
 - image count: `3`
 - error visible: `False`
 - canvas visible: `True`
@@ -26,7 +27,7 @@
 
 - status: `ok`
 - screenshot: `artifacts/ui/visualization-render/visualization-render-spectrogram.png`
-- axes count: `3`
+- axes count: `2`
 - image count: `3`
 - error visible: `False`
 - canvas visible: `True`
@@ -35,7 +36,7 @@
 
 - status: `ok`
 - screenshot: `artifacts/ui/visualization-render/visualization-render-topographic-map.png`
-- axes count: `3`
+- axes count: `2`
 - image count: `4`
 - error visible: `False`
 - canvas visible: `True`

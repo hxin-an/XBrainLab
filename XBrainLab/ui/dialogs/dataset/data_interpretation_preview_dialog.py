@@ -33,6 +33,13 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.dialogs.dataset.review_import_presenter import (
+    eeg_data_summary,
+    internal_label_placement_summary,
+    label_source_summary,
+    metadata_summary,
+    recipe_note,
+)
 from XBrainLab.ui.dialogs.dataset.review_presenter import (
     ReviewRow,
     build_review_rows,
@@ -3159,7 +3166,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
             ("Seconds from EEG start", "seconds"),
             ("Sample index", "sample_index"),
             ("Other relative time value", "relative_time"),
-            ("Device timestamp", "timestamp"),
         ]
 
     def _default_time_model_value(self, placement_method: str) -> str:
@@ -3680,7 +3686,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
             "seconds": "seconds",
             "sample_index": "samples",
             "relative_time": "relative time units",
-            "timestamp": "timestamps",
         }
         return labels.get(raw, "time units")
 
@@ -4003,7 +4008,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if "sample" in anchor:
             return "sample_index"
         if any(token in anchor for token in ("timestamp", "lsl")):
-            return "timestamp"
+            return "relative_time"
         if any(token in anchor for token in ("onset", "time", "latency")):
             first_carrier = self._first_active_label_carrier_original()
             if first_carrier and not self._carrier_uses_seconds(first_carrier):
@@ -4846,55 +4851,42 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
     def _review_eeg_data_text(self) -> str:
         names = self._selected_eeg_file_names()
-        count = self._file_count() or len(names)
-        file_word = "file" if count == 1 else "files"
-        summary = f"{count} EEG {file_word}"
-        preview = self._event_code_list_text(names, limit=3)
-        if preview:
-            return f"{summary} · {preview}"
-        return summary
+        return eeg_data_summary(
+            selected_names=names,
+            file_count=self._file_count() or len(names),
+            preview_text=self._event_code_list_text(names, limit=3),
+        )
 
     def _review_metadata_text(self) -> str:
-        if not self.file_tree.topLevelItemCount():
-            return "No metadata rows detected."
         complete_count, missing_fields = self._metadata_completion_counts()
         missing_fields = self._metadata_required_missing_fields(missing_fields)
-        if self._is_bids_like_source() and not missing_fields:
-            file_count = self.file_tree.topLevelItemCount()
-            file_word = "file" if file_count == 1 else "files"
-            return f"BIDS entities reviewed · {file_count} {file_word}"
-        return self._metadata_review_summary(complete_count, missing_fields)
+        return metadata_summary(
+            row_count=self.file_tree.topLevelItemCount(),
+            complete_count=complete_count,
+            missing_fields=missing_fields,
+            is_bids_like=self._is_bids_like_source(),
+            fallback_summary=self._metadata_review_summary(
+                complete_count,
+                missing_fields,
+            ),
+        )
 
     def _review_label_source_text(self) -> str:
-        if self._label_source_mode() == "internal_events":
-            candidate_count = len(self._class_map_items) or len(self._event_role_items)
-            if candidate_count:
-                event_word = "event" if candidate_count == 1 else "events"
-                return f"Labels inside EEG files · {candidate_count} {event_word}"
-            return "Labels inside EEG files · no class labels selected"
-        carrier_count = self._active_label_carrier_count()
-        if carrier_count <= 0:
-            return "No loaded label files"
-        if self._has_bids_events():
-            label_word = "file" if carrier_count == 1 else "files"
-            return f"BIDS events.tsv · {carrier_count} {label_word}"
-        label_word = "file" if carrier_count == 1 else "files"
-        source_note = (
-            "includes added label source"
-            if self._extra_label_sources
-            else "auto-detected or loaded"
+        return label_source_summary(
+            source_mode=self._label_source_mode(),
+            internal_candidate_count=len(self._class_map_items)
+            or len(self._event_role_items),
+            active_carrier_count=self._active_label_carrier_count(),
+            has_bids_events=self._has_bids_events(),
+            has_extra_sources=bool(self._extra_label_sources),
         )
-        return f"Loaded label files · {carrier_count} {label_word} · {source_note}"
 
     def _review_label_placement_text(self) -> str:
         if self._label_source_mode() == "internal_events":
-            selected = len(self._class_map_items)
-            if selected:
-                event_word = "event" if selected == 1 else "events"
-                return f"{selected} EEG {event_word} selected as class labels"
-            if self._event_role_items:
-                return "Event roles saved; confirm class labels before training"
-            return "No usable labels selected yet"
+            return internal_label_placement_summary(
+                selected_class_count=len(self._class_map_items),
+                event_role_count=len(self._event_role_items),
+            )
         if self._active_label_carrier_count() <= 0:
             return "No external labels selected"
         if self._should_show_label_table_fallback():
@@ -4924,17 +4916,13 @@ class DataInterpretationPreviewDialog(BaseDialog):
         return self._label_rule_status_text()
 
     def _review_recipe_note_text(self) -> str:
-        if self.decision == "blocked":
-            return "Resolve blocking items before import."
-        if self._label_source_mode() == "internal_events":
-            if self._class_map_items or self._event_role_items:
-                return "Internal label choices saved. Epoch setup comes later."
-            return "No training labels selected."
-        if self._active_label_carrier_count() <= 0:
-            return "No training labels selected."
-        if self._should_show_label_table_fallback():
-            return "Label file needs conversion before supervised training."
-        return "Label matching saved. Epoch setup comes later."
+        return recipe_note(
+            decision=self.decision,
+            source_mode=self._label_source_mode(),
+            has_internal_choices=bool(self._class_map_items or self._event_role_items),
+            active_carrier_count=self._active_label_carrier_count(),
+            needs_label_conversion=self._should_show_label_table_fallback(),
+        )
 
     def _active_label_carrier_count(self) -> int:
         return sum(
@@ -5023,7 +5011,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             action_row = QHBoxLayout()
             action_row.setContentsMargins(0, 2, 0, 0)
             action_row.addStretch()
-            button = QPushButton(f"Open {target_step}")
+            button = QPushButton(self._review_action_button_text(target_step))
             button.setObjectName("DataImportInlineAction")
             button.clicked.connect(
                 lambda _checked=False, step=target_step: self._go_to_step(
@@ -5033,6 +5021,15 @@ class DataInterpretationPreviewDialog(BaseDialog):
             action_row.addWidget(button)
             layout.addLayout(action_row)
         return row
+
+    @staticmethod
+    def _review_action_button_text(target_step: str) -> str:
+        return {
+            "Choose EEG Data": "Review EEG Data",
+            "Load Labels": "Fix Labels",
+            "Review Metadata": "Review Metadata",
+            "Match Labels": "Fix Match Labels",
+        }.get(target_step, target_step)
 
     @staticmethod
     def _step_panel() -> tuple[QWidget, QVBoxLayout]:
@@ -6126,22 +6123,21 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 background-color: {Theme.BACKGROUND_MID};
             }}
             QPushButton#DataImportInlineAction {{
-                background-color: transparent;
-                color: {Theme.TEXT_SECONDARY};
-                border: 1px solid transparent;
+                background-color: #243240;
+                color: #d8ecff;
+                border: 1px solid #3b5f7b;
                 border-radius: 4px;
-                padding: 2px 4px;
-                min-height: 16px;
-                font-size: 11px;
-                font-weight: 500;
+                padding: 4px 9px;
+                min-height: 18px;
+                font-size: 12px;
+                font-weight: 600;
             }}
             QPushButton#DataImportInlineAction:hover {{
-                color: #d8ecff;
-                border-color: #3d4d58;
-                background-color: #242a2e;
+                background-color: #2b3d4e;
+                border-color: #4b7798;
             }}
             QPushButton#DataImportInlineAction:pressed {{
-                background-color: #1a1f22;
+                background-color: #1f2b36;
             }}
             QDialogButtonBox QPushButton {{
                 background-color: {Theme.BACKGROUND_MID};
@@ -6794,6 +6790,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         selector = QComboBox(parent)
         self._prepare_table_combo(selector)
         selector.setEditable(hidden_selector.isEditable())
+        selector.setPlaceholderText("Optional class name")
         selector.setToolTip(hidden_selector.toolTip())
         for index in range(hidden_selector.count()):
             selector.addItem(
@@ -6978,6 +6975,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         selector = QComboBox(self.event_tree)
         self._prepare_table_combo(selector)
         selector.setEditable(True)
+        selector.setPlaceholderText("Optional class name")
         selector.setToolTip("Edit the class label used for training and recipe replay.")
         seen_values: set[str] = set()
         if not current_value:

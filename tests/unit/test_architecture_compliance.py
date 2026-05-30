@@ -1205,6 +1205,23 @@ def execute_application_command(context, command):
     assert check_ui_command_execution_suppresses_observer_refresh(tmp_path) == []
 
 
+def test_command_execution_suppression_guard_checks_shutdown_helper(tmp_path):
+    path = tmp_path / "XBrainLab" / "ui" / "application_capabilities.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+def execute_application_shutdown_command(context, command):
+    return get_application_service(study).execute(command)
+""",
+        encoding="utf-8",
+    )
+
+    violations = check_ui_command_execution_suppresses_observer_refresh(tmp_path)
+
+    assert len(violations) == 1
+    assert "suppress_observer_refresh_during_command" in violations[0]
+
+
 def test_post_command_refresh_guard_flags_direct_local_refresh(tmp_path):
     _write_ui_file(
         tmp_path,
@@ -1966,7 +1983,7 @@ def run(self):
     self._run_legacy_label_import()
 
 def _run_legacy_label_import(self):
-    self.controller.apply_labels_legacy([], [], None, None)
+    self.controller.apply_labels_sequence([], [], None, None)
 """,
     )
 
@@ -1988,7 +2005,7 @@ def run(self):
     )
 
 def _run_legacy_label_import(self):
-    self.controller.apply_labels_legacy([], [], None, None)
+    self.controller.apply_labels_sequence([], [], None, None)
 """,
     )
 

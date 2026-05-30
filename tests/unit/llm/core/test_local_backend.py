@@ -411,7 +411,7 @@ class TestGenerateStream:
         mock_streamer.__iter__ = MagicMock(return_value=iter([]))
 
         class ImmediateThread:
-            def __init__(self, target):
+            def __init__(self, target, **_kwargs):
                 self.target = target
 
             def start(self):
@@ -419,6 +419,9 @@ class TestGenerateStream:
 
             def join(self, timeout=0):
                 return None
+
+            def is_alive(self):
+                return False
 
         with (
             patch.dict(
@@ -438,3 +441,22 @@ class TestGenerateStream:
             list(backend.generate_stream([{"role": "user", "content": "hi"}]))
 
         mock_streamer.end.assert_called_once()
+
+    def test_cancel_generation_ends_streamer_and_joins_thread(self):
+        from XBrainLab.llm.core.backends.local import LocalBackend
+
+        backend = LocalBackend(_make_config())
+        streamer = MagicMock()
+        thread = MagicMock()
+        thread.is_alive.side_effect = [True, False]
+        backend._active_streamer = streamer
+        backend._active_generation_thread = thread
+
+        stopped = backend.cancel_generation(wait_timeout=0.5)
+
+        assert stopped is True
+        assert backend._generation_cancel_event.is_set() is True
+        streamer.end.assert_called_once()
+        thread.join.assert_called_once_with(timeout=0.5)
+        assert backend._active_generation_thread is None
+        assert backend._active_streamer is None

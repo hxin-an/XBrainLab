@@ -118,8 +118,11 @@ class TrainingCommandService:
     def handle_stop_training(self, command: Command) -> HandlerResult:
         if not isinstance(command, StopTrainingCommand):
             raise TypeError("Invalid command for stop_training")
-        self.training.stop_training()
-        return "Training stop requested."
+        stopped = self.training.stop_training(wait_timeout=command.wait_timeout)
+        return (
+            "Training stopped." if stopped else "Training stop requested.",
+            {"stopped": bool(stopped), "wait_timeout": command.wait_timeout},
+        )
 
     def handle_clear_training_history(self, command: Command) -> HandlerResult:
         if not isinstance(command, ClearTrainingHistoryCommand):

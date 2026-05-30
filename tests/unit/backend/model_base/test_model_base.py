@@ -79,3 +79,13 @@ def test_model_sample_requirement_matches_model_boundary(model_class_str, params
     assert output.shape == (2, 2)
     with pytest.raises(ValueError, match="Epoch duration is too short"):
         model_class(**{**constructor_kwargs, "samples": requirement.min_samples - 1})
+
+
+def test_sccnet_low_sampling_frequency_is_blocked_before_torch_kernels():
+    requirement = minimum_samples_for_model("SCCNet", sfreq=5)
+
+    assert requirement is not None
+    assert requirement.unsupported_reason
+    assert requirement.min_duration_seconds == float("inf")
+    with pytest.raises(ValueError, match="SCCNet requires a sampling frequency"):
+        model_base.SCCNet(n_classes=2, channels=4, samples=64, sfreq=5)

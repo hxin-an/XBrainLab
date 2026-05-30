@@ -52,8 +52,10 @@ class _TrainingController:
         self.started_append = append
         self.started_interactive = interactive
 
-    def stop_training(self) -> None:
+    def stop_training(self, wait_timeout: float | None = None) -> bool:
         self.stopped = True
+        self.stop_wait_timeout = wait_timeout
+        return True
 
     def clear_history(self) -> None:
         self.history_cleared = True
@@ -214,18 +216,22 @@ def test_training_service_start_stop_and_clear_history() -> None:
     start_message, start_payload = _expect_payload(
         service.handle_train(TrainCommand(append=False, interactive=False)),
     )
-    stop = service.handle_stop_training(StopTrainingCommand())
+    stop = service.handle_stop_training(StopTrainingCommand(wait_timeout=1.5))
     clear_message, clear_payload = _expect_payload(
         service.handle_clear_training_history(ClearTrainingHistoryCommand()),
     )
 
     assert start_message == "Training started."
     assert start_payload == {"append": False, "interactive": False}
-    assert stop == "Training stop requested."
+    assert stop == (
+        "Training stopped.",
+        {"stopped": True, "wait_timeout": 1.5},
+    )
     assert training.started is True
     assert training.started_append is False
     assert training.started_interactive is False
     assert training.stopped is True
+    assert training.stop_wait_timeout == 1.5
     assert training.history_cleared is True
     assert training.notifications == ["training_updated"]
     assert clear_message == "Training history cleared."

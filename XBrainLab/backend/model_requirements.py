@@ -53,6 +53,18 @@ def minimum_samples_for_model(
         min_samples = half_sf - 1 + pool_1 * (pool_2 + separable_kernel - 1)
         display_name = "EEGNet"
     elif normalized == "sccnet":
+        temporal_kernel = math.floor(sfreq_value * 0.1)
+        pool_kernel = int(sfreq_value / 2)
+        if temporal_kernel < 1 or pool_kernel < 1:
+            return ModelSampleRequirement(
+                model_name="SCCNet",
+                min_samples=10**12,
+                min_duration_seconds=math.inf,
+                unsupported_reason=(
+                    "SCCNet requires a sampling frequency high enough to form "
+                    "positive temporal and pooling kernels."
+                ),
+            )
         min_samples = int(sfreq_value / 2) + 1
         display_name = "SCCNet"
     elif normalized == "shallowconvnet":

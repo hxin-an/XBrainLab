@@ -81,7 +81,7 @@ class _DatasetController:
     ) -> int:
         return 1
 
-    def apply_labels_legacy(
+    def apply_labels_sequence(
         self,
         _target_files: list[Any],
         _labels: Any,

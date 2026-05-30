@@ -40,6 +40,23 @@ def test_command_specs_cover_application_commands_with_autonomy_policy():
     assert apply_spec.taxonomy == "data_interpretation"
     assert apply_spec.input_schema["properties"]["confirmed"]["type"] == "boolean"
 
+    dataset_spec = specs[CommandName.GENERATE_DATASET.value]
+    split_config = dataset_spec.input_schema["properties"]["split_config"]
+    assert split_config["additionalProperties"] is False
+    assert split_config["required"] == [
+        "train_type",
+        "is_cross_validation",
+        "val_splitters",
+        "test_splitters",
+    ]
+    assert split_config["properties"]["train_type"]["enum"] == [
+        "Full Data",
+        "Individual",
+    ]
+    splitter = split_config["properties"]["test_splitters"]["items"]
+    assert "By Trial" in splitter["properties"]["split_type"]["enum"]
+    assert "Ratio" in splitter["properties"]["split_unit"]["enum"]
+
 
 def test_preview_command_spec_exposes_recipe_remap_choices():
     service = ApplicationService(Study())

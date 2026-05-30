@@ -107,6 +107,7 @@ def _base_payload():
                 "rects": {},
             },
         },
+        "uncaught_exceptions": [],
         "elapsed_seconds": 12.0,
     }
 
@@ -185,6 +186,19 @@ def test_validate_visualization_payload_rejects_control_overlap(tmp_path):
     assert ok is False
     assert "Visualization controls" in reason
     assert "plan/run" in reason
+
+
+def test_validate_visualization_payload_rejects_uncaught_qt_exception(tmp_path):
+    payload = _payload_with_screenshots(tmp_path)
+    payload["uncaught_exceptions"] = [
+        "Traceback (most recent call last):\nTypeError: update_plot() missing token"
+    ]
+
+    ok, reason = validate_visualization_render_payload(payload)
+
+    assert ok is False
+    assert "Uncaught Qt/runtime exception" in reason
+    assert "missing token" in reason
 
 
 def test_validate_visualization_payload_rejects_clipped_3d_message(tmp_path):

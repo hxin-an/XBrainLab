@@ -315,9 +315,9 @@ class Study:
         """Start training process via TrainingManager."""
         self.training_manager.train(interact=interact)
 
-    def stop_training(self) -> None:
+    def stop_training(self, wait_timeout: float | None = None) -> bool:
         """Stop training execution via TrainingManager."""
-        self.training_manager.stop_training()
+        return self.training_manager.stop_training(wait_timeout=wait_timeout)
 
     def is_training(self) -> bool:
         """Return whether training is currently running."""

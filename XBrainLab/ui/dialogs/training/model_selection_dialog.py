@@ -80,6 +80,8 @@ class ModelSelectionDialog(BaseDialog):
 
     def init_ui(self):
         """Initialize the dialog UI with model combo, parameter table, and buttons."""
+        self.setObjectName("ModelSelectionDialog")
+        self.setStyleSheet(self._dialog_style())
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 14)
         layout.setSpacing(12)
@@ -167,6 +169,58 @@ class ModelSelectionDialog(BaseDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    @staticmethod
+    def _dialog_style() -> str:
+        return f"""
+        QDialog#ModelSelectionDialog {{
+            background: {Theme.BACKGROUND_DARK};
+            color: {Theme.TEXT_PRIMARY};
+        }}
+        QDialog#ModelSelectionDialog QLabel {{
+            color: {Theme.TEXT_PRIMARY};
+            background: transparent;
+        }}
+        QDialog#ModelSelectionDialog QGroupBox {{
+            color: {Theme.TEXT_PRIMARY};
+            border: 1px solid {Theme.BACKGROUND_LIGHT};
+            border-radius: 6px;
+            margin-top: 10px;
+            padding: 10px 8px 8px 8px;
+            background: {Theme.BACKGROUND_MID};
+        }}
+        QDialog#ModelSelectionDialog QGroupBox::title {{
+            subcontrol-origin: margin;
+            left: 8px;
+            padding: 0 4px;
+            color: {Theme.TEXT_SECONDARY};
+            background: {Theme.BACKGROUND_DARK};
+            font-weight: 700;
+        }}
+        QDialog#ModelSelectionDialog QComboBox {{
+            background: {Theme.METRICS_TABLE_BG};
+            color: {Theme.TEXT_PRIMARY};
+            border: 1px solid {Theme.METRICS_TABLE_BORDER};
+            border-radius: 4px;
+            padding: 4px 8px;
+            min-height: 22px;
+        }}
+        QDialog#ModelSelectionDialog QPushButton {{
+            background: {Theme.BACKGROUND_MID};
+            color: {Theme.TEXT_PRIMARY};
+            border: 1px solid {Theme.BACKGROUND_LIGHT};
+            border-radius: 4px;
+            padding: 6px 12px;
+        }}
+        QDialog#ModelSelectionDialog QPushButton:hover {{
+            background: #32363b;
+        }}
+        QDialog#ModelSelectionDialog QPushButton:default {{
+            background: {Theme.BLUE_PRIMARY};
+            border-color: {Theme.BLUE_HOVER};
+            font-weight: 700;
+        }}
+        """
 
     def on_model_select(self, model_name):
         """Populate the parameter table based on the selected model.

@@ -1,6 +1,6 @@
 """Tests for LabelImportService covering all public methods.
 
-Targets: apply_labels_batch, apply_labels_legacy, apply_labels_to_single_file,
+Targets: apply_labels_batch, apply_labels_sequence, apply_labels_to_single_file,
 _force_apply_single, get_epoch_count_for_file.
 """
 
@@ -246,11 +246,11 @@ class TestApplyLabelsBatch:
 
 
 # ---------------------------------------------------------------------------
-# apply_labels_legacy
+# apply_labels_sequence
 # ---------------------------------------------------------------------------
 
 
-class TestApplyLabelsLegacy:
+class TestApplyLabelsSequence:
     def test_exact_match(self, service):
         d1 = _make_data_mock("/data/sub01.set")
         d2 = _make_data_mock("/data/sub02.set")
@@ -262,7 +262,7 @@ class TestApplyLabelsLegacy:
             patch.object(service, "get_epoch_count_for_file", return_value=3),
             patch.object(service, "apply_labels_to_single_file") as mock_apply,
         ):
-            result = service.apply_labels_legacy([d1, d2], labels, mapping)
+            result = service.apply_labels_sequence([d1, d2], labels, mapping)
             assert result == 2
             assert mock_apply.call_count == 2
             # Check first call got labels [0,1,2], second got [3,4,5]
@@ -275,7 +275,7 @@ class TestApplyLabelsLegacy:
         mapping = {1: "A"}
 
         with patch.object(service, "get_epoch_count_for_file", return_value=10):
-            result = service.apply_labels_legacy([d1], labels, mapping)
+            result = service.apply_labels_sequence([d1], labels, mapping)
             assert result == 0
 
     def test_force_import(self, service):
@@ -287,7 +287,7 @@ class TestApplyLabelsLegacy:
             patch.object(service, "get_epoch_count_for_file", side_effect=[10, 5]),
             patch.object(service, "_force_apply_single") as mock_force,
         ):
-            result = service.apply_labels_legacy(
+            result = service.apply_labels_sequence(
                 [d1], labels, mapping, force_import=True
             )
             assert result == 1
@@ -304,7 +304,7 @@ class TestApplyLabelsLegacy:
             patch.object(service, "get_epoch_count_for_file", side_effect=[0, 0]),
             patch.object(service, "_force_apply_single") as mock_force,
         ):
-            result = service.apply_labels_legacy(
+            result = service.apply_labels_sequence(
                 [d1], labels, mapping, force_import=True
             )
             assert result == 1
@@ -322,7 +322,7 @@ class TestApplyLabelsLegacy:
             patch.object(service, "_force_apply_single") as mock_force,
         ):
             # With fallback=100, current_idx + 100 > 2, so skip
-            result = service.apply_labels_legacy(
+            result = service.apply_labels_sequence(
                 [d1], labels, mapping, force_import=True
             )
             assert result == 0
@@ -334,7 +334,7 @@ class TestApplyLabelsLegacy:
         mapping = {}
 
         with patch.object(service, "get_epoch_count_for_file", return_value=0):
-            result = service.apply_labels_legacy([d1], labels, mapping)
+            result = service.apply_labels_sequence([d1], labels, mapping)
             # label_count == total_epochs == 0, but total_epochs > 0 check fails
             assert result == 0
 
@@ -349,7 +349,7 @@ class TestApplyLabelsLegacy:
             patch.object(service, "get_epoch_count_for_file", side_effect=[0, 3, 0, 3]),
             patch.object(service, "apply_labels_to_single_file") as mock_apply,
         ):
-            result = service.apply_labels_legacy([d1, d2], labels, mapping)
+            result = service.apply_labels_sequence([d1, d2], labels, mapping)
             assert result == 2  # Both files processed
             # Only d2 actually calls apply (n > 0)
             assert mock_apply.call_count == 1

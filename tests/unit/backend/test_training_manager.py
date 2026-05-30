@@ -64,8 +64,8 @@ class TestGeneratePlan:
         with pytest.raises(ValueError, match="model holder"):
             tm.generate_plan(datasets=[MagicMock()])
 
-    @patch("XBrainLab.backend.training_manager.Trainer")
-    @patch("XBrainLab.backend.training_manager.TrainingPlanHolder")
+    @patch("XBrainLab.backend.training.Trainer")
+    @patch("XBrainLab.backend.training.TrainingPlanHolder")
     def test_creates_trainer(self, mock_tph, mock_trainer):
         tm = TrainingManager()
         tm.training_option = MagicMock()
@@ -78,7 +78,7 @@ class TestGeneratePlan:
         mock_trainer.assert_called_once()
         assert tm.trainer == mock_trainer.return_value
 
-    @patch("XBrainLab.backend.training_manager.TrainingPlanHolder")
+    @patch("XBrainLab.backend.training.TrainingPlanHolder")
     def test_append_to_existing(self, mock_tph):
         tm = TrainingManager()
         tm.training_option = MagicMock()
@@ -113,8 +113,9 @@ class TestStopTraining:
     def test_sets_interrupt(self):
         tm = TrainingManager()
         tm.trainer = MagicMock()
-        tm.stop_training()
-        tm.trainer.set_interrupt.assert_called_once()
+        tm.trainer.stop.return_value = True
+        assert tm.stop_training(wait_timeout=0.25) is True
+        tm.trainer.stop.assert_called_once_with(wait_timeout=0.25)
 
 
 class TestIsTraining:
