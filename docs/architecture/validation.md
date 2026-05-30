@@ -203,9 +203,10 @@ assistant / agent runtime validation 不屬於目前 fast dashboard 預設 profi
 目前狀態：
 
 - 2026-05-02 已建立 local model catalog / preflight / health check。
-- primary `microsoft/Phi-4-mini-instruct` 已下載並通過 CUDA prompt smoke / structured-output smoke。
-- fallback `microsoft/Phi-3.5-mini-instruct` 已下載並通過 CUDA prompt smoke / structured-output smoke。
-- 目前模型 cache 約 `15.34 GB`，低於 20GB 上限。
+- primary `microsoft/Phi-4-mini-instruct` 和 fallback
+  `microsoft/Phi-3.5-mini-instruct` 是目前允許的 non-China local catalog candidates。
+- 目前 inspect evidence 是 `classification: missing-cache`，cache 用量 `0.00 GB`；不能宣稱
+  CUDA prompt smoke 或 structured-output smoke 已在目前 worktree 通過。
 - Qwen cache 已刪除；中國公司或中國來源模型不列入 local validation 候選。
 - local agent runtime 還沒有被接受為 dashboard evidence。
 - assistant product runtime 已完成 local-only cleanup：remote backend modules 已從 product

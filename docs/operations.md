@@ -23,9 +23,10 @@ cd /mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual
 - `poetry install --with dev,test,docs`
 - import probe：`PIL`、`mne`、`PyQt6`、`torch`、`pytest`、`XBrainLab`
 - docs build：`poetry run mkdocs build --strict`
-- local assistant runtime：primary / fallback cache、GPU prompt smoke、structured-output smoke
+- local assistant runtime：catalog / download preflight / health-check scripts
 
-local assistant runtime 已完成 primary / fallback smoke 驗證。`accelerate` 和
+目前 local assistant model cache 是 missing 狀態，不能宣稱 primary / fallback prompt
+smoke 或 structured-output smoke 已在這個 worktree 上通過。`accelerate` 和
 `bitsandbytes` 不是預設硬需求；4-bit loading 仍是 optional path。
 
 ## 桌面啟動
