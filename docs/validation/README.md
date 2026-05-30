@@ -76,8 +76,7 @@ Validation:
 ```bash
 QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/update_quality_dashboard.py
 # Overall status: PASS
-# generated_at: 2026-05-30 19:09:35 UTC+08:00
-# commit: e30822ba05e8
+# generated_at / commit: see local generated artifacts/quality/latest.md
 # workspace: /mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual
 # checks: Ruff, Basedpyright, Architecture Compliance, Startup Smoke,
 # UI Baseline Capture, UI Dialog Acceptance, UI Product Walkthrough,
