@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -72,7 +73,9 @@ class ModelSelectionDialog(BaseDialog):
         self.model_list = list(self.model_map.keys())
 
         super().__init__(parent, title="Model Selection")
-        self.resize(640, 520)
+        self.resize(640, 430)
+        self.setMinimumSize(600, 400)
+        self.setMaximumHeight(460)
 
         # Init with first model
         if self.model_list:
@@ -93,23 +96,32 @@ class ModelSelectionDialog(BaseDialog):
         self.model_combo.addItems(self.model_list)
         self.model_combo.currentTextChanged.connect(self.on_model_select)
         top_layout.addWidget(self.model_combo)
+        top_layout.addStretch(1)
         layout.addLayout(top_layout)
 
         # Parameters Table
         self.params_group = QGroupBox("Model Parameters")
+        self.params_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
         group_layout = QVBoxLayout(self.params_group)
+        group_layout.setContentsMargins(10, 16, 10, 10)
         self.params_table = QTableWidget()
         self.params_table.setColumnCount(2)
         self.params_table.setHorizontalHeaderLabels(["Parameter", "Value"])
         self.params_table.setAlternatingRowColors(True)
-        self.params_table.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection
-        )
+        self.params_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.params_table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
         )
         self.params_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.params_table.setMinimumHeight(180)
+        self.params_table.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.params_table.setMinimumHeight(140)
+        self.params_table.setMaximumHeight(240)
         self.params_table.setStyleSheet(Stylesheets.METRICS_TABLE)
         palette = self.params_table.palette()
         for group in (
@@ -150,14 +162,17 @@ class ModelSelectionDialog(BaseDialog):
         if vertical_header is not None:
             vertical_header.setVisible(False)
         group_layout.addWidget(self.params_table)
-        layout.addWidget(self.params_group)
+        layout.addWidget(self.params_group, stretch=0)
 
         # Pretrained Weight
         weight_layout = QHBoxLayout()
+        weight_layout.setSpacing(8)
         weight_layout.addWidget(QLabel("Pretrained weight:"))
         self.weight_label = QLabel("")
+        self.weight_label.setObjectName("PretrainedWeightLabel")
         weight_layout.addWidget(self.weight_label)
-        self.weight_btn = QPushButton("load")
+        weight_layout.addStretch(1)
+        self.weight_btn = QPushButton("Load")
         self.weight_btn.clicked.connect(self.load_pretrained_weight)
         weight_layout.addWidget(self.weight_btn)
         layout.addLayout(weight_layout)
@@ -259,6 +274,7 @@ class ModelSelectionDialog(BaseDialog):
 
             if not rows:
                 self._show_no_editable_params()
+            self._resize_params_table_to_content()
             self._clear_params_table_selection()
             self.params_group.setVisible(True)
 
@@ -273,7 +289,28 @@ class ModelSelectionDialog(BaseDialog):
         value_item.setFlags(value_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         self.params_table.setItem(0, 0, name_item)
         self.params_table.setItem(0, 1, value_item)
+        self._resize_params_table_to_content()
         self._clear_params_table_selection()
+
+    def _resize_params_table_to_content(self) -> None:
+        """Keep the parameter table compact instead of filling the dialog."""
+        if not self.params_table:
+            return
+
+        self.params_table.resizeRowsToContents()
+        header_height = (
+            self.params_table.horizontalHeader().height()
+            if self.params_table.horizontalHeader() is not None
+            else 28
+        )
+        row_total = sum(
+            self.params_table.rowHeight(row)
+            for row in range(self.params_table.rowCount())
+        )
+        target_height = max(140, min(240, header_height + row_total + 18))
+        self.params_table.setFixedHeight(target_height)
+        if self.params_group:
+            self.params_group.setMaximumHeight(target_height + 42)
 
     def _clear_params_table_selection(self) -> None:
         """Avoid a misleading initial selected row in the parameter table."""
@@ -293,7 +330,7 @@ class ModelSelectionDialog(BaseDialog):
         if self.pretrained_weight_path:
             self.pretrained_weight_path = None
             self.weight_label.setText("")
-            self.weight_btn.setText("load")
+            self.weight_btn.setText("Load")
             return
 
         filepath, _ = QFileDialog.getOpenFileName(
@@ -304,7 +341,7 @@ class ModelSelectionDialog(BaseDialog):
         if filepath:
             self.pretrained_weight_path = filepath
             self.weight_label.setText(os.path.basename(filepath))
-            self.weight_btn.setText("clear")
+            self.weight_btn.setText("Clear")
 
     def accept(self):
         """Build the ModelHolder from current selections and accept.

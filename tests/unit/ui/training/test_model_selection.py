@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtGui import QColor, QPalette
-from PyQt6.QtWidgets import QTableWidgetItem
+from PyQt6.QtWidgets import QAbstractItemView, QTableWidgetItem
 
 from XBrainLab.ui.dialogs.training import ModelSelectionDialog
 from XBrainLab.ui.styles.theme import Theme
@@ -55,6 +55,11 @@ class TestModelSelection:
         assert dialog.params_table is not None
         assert dialog.params_table.selectedItems() == []
         assert dialog.params_table.currentRow() == -1
+        assert (
+            dialog.params_table.selectionMode()
+            == QAbstractItemView.SelectionMode.NoSelection
+        )
+        assert dialog.params_table.height() <= 240
         assert dialog.params_table.palette().color(QPalette.ColorRole.Highlight) == (
             QColor(Theme.BLUE_PRESSED)
         )
@@ -108,9 +113,9 @@ class TestModelSelection:
             dialog.load_pretrained_weight()
 
             assert dialog.pretrained_weight_path == "/path/to/weight.pth"
-            assert dialog.weight_btn.text() == "clear"
+            assert dialog.weight_btn.text() == "Clear"
 
             # Click again to clear
             dialog.load_pretrained_weight()
             assert dialog.pretrained_weight_path is None
-            assert dialog.weight_btn.text() == "load"
+            assert dialog.weight_btn.text() == "Load"

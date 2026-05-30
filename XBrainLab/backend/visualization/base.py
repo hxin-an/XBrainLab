@@ -127,36 +127,17 @@ class Visualizer:
         saliency_store = self._saliency_store(saliency_name)
         label_map = getattr(self.epoch_data, "label_map", {}) or {}
         mapped: list[tuple[object, str, np.ndarray]] = []
-        seen: set[object] = set()
-
-        label_items = list(label_map.items()) if isinstance(label_map, dict) else []
-
-        for order_index, (label_key, label_name) in enumerate(label_items):
-            resolved_key = self._resolve_saliency_key(
-                saliency_store,
-                label_key,
-                label_name,
-                order_index,
-            )
-            if resolved_key is None or resolved_key in seen:
-                continue
-            saliency = saliency_store[resolved_key]
-            if not self._has_saliency_data(saliency):
-                continue
-            seen.add(resolved_key)
-            mapped.append((label_key, str(label_name), saliency))
-
-        if mapped:
-            return mapped
-
         saliency_keys = self._iter_saliency_keys(saliency_store)
         for order_index, resolved_key in enumerate(saliency_keys):
-            if resolved_key in seen:
-                continue
             saliency = saliency_store[resolved_key]
             if not self._has_saliency_data(saliency):
                 continue
-            label_name = self._label_name_for_key(resolved_key, order_index, label_map)
+            label_name = self._label_name_for_key(
+                resolved_key,
+                order_index,
+                label_map,
+                class_count=len(saliency_keys),
+            )
             mapped.append((resolved_key, label_name, saliency))
         return mapped
 
@@ -239,6 +220,7 @@ class Visualizer:
         saliency_key: object,
         order_index: int,
         label_map: object,
+        class_count: int | None = None,
     ) -> str:
         if isinstance(label_map, dict):
             if saliency_key in label_map:
@@ -247,6 +229,10 @@ class Visualizer:
                 if str(label_key) == str(saliency_key):
                     return str(label_name)
             label_names = list(label_map.values())
-            if 0 <= order_index < len(label_names):
+            if (
+                class_count is not None
+                and len(label_names) == class_count
+                and 0 <= order_index < len(label_names)
+            ):
                 return str(label_names[order_index])
         return str(saliency_key)

@@ -1433,9 +1433,9 @@
           "finished_run_count": 1,
           "metrics": {
             "0": {
-              "precision": 0.0,
-              "recall": 0.0,
-              "f1-score": 0.0,
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1-score": 1.0,
               "support": 1
             },
             "1": {
@@ -1445,9 +1445,9 @@
               "support": 0
             },
             "macro_avg": {
-              "precision": 0.0,
-              "recall": 0.0,
-              "f1-score": 0.0,
+              "precision": 0.5,
+              "recall": 0.5,
+              "f1-score": 0.5,
               "support": 1
             }
           }
@@ -1486,7 +1486,7 @@
   "renders": [
     {
       "tab": "Saliency Map",
-      "screenshot": "artifacts/ui/visualization-render/visualization-render-saliency-map.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual/artifacts/ui/visualization-render/visualization-render-saliency-map.png",
       "ok": true,
       "failure_reason": "",
       "error_visible": false,
@@ -1497,7 +1497,7 @@
     },
     {
       "tab": "Spectrogram",
-      "screenshot": "artifacts/ui/visualization-render/visualization-render-spectrogram.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual/artifacts/ui/visualization-render/visualization-render-spectrogram.png",
       "ok": true,
       "failure_reason": "",
       "error_visible": false,
@@ -1508,7 +1508,7 @@
     },
     {
       "tab": "Topographic Map",
-      "screenshot": "artifacts/ui/visualization-render/visualization-render-topographic-map.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual/artifacts/ui/visualization-render/visualization-render-topographic-map.png",
       "ok": true,
       "failure_reason": "",
       "error_visible": false,
@@ -1521,7 +1521,7 @@
   "blocked_renders": [
     {
       "tab": "3D Plot",
-      "screenshot": "artifacts/ui/visualization-render/visualization-render-3d-blocked.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual/artifacts/ui/visualization-render/visualization-render-3d-blocked.png",
       "ok": true,
       "failure_reason": "",
       "blocked_reason": "3D rendering requires an interactive OpenGL desktop session. Use the desktop launcher, or switch to Saliency Map, Spectrogram, or Topographic Map in this headless environment.",
@@ -1560,7 +1560,7 @@
   },
   "dismissed_dialogs": [],
   "screenshots": {
-    "ready": "artifacts/ui/visualization-render/visualization-render-saliency-map.png"
+    "ready": "/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual/artifacts/ui/visualization-render/visualization-render-saliency-map.png"
   },
   "final_state": {
     "pipeline_stage": "trained",
@@ -2080,6 +2080,6 @@
       }
     }
   },
-  "elapsed_seconds": 8.776,
+  "elapsed_seconds": 8.703,
   "uncaught_exceptions": []
 }

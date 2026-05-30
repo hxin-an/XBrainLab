@@ -15,9 +15,12 @@ from PyQt6.QtGui import QBrush, QColor, QPainter
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -254,7 +257,8 @@ class PreviewCanvas(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
         self.setObjectName("DataSplitPreviewCanvas")
-        self.setMinimumSize(400, 200)
+        self.setMinimumSize(460, 280)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.regions = []  # List of (DrawRegion, DrawColor)
         self.subject_num = 5
         self.session_num = 5
@@ -409,7 +413,7 @@ class DataSplittingDialog(BaseDialog):
 
         super().__init__(parent, title="Data Splitting Setting")
         self.setObjectName("DataSplittingDialog")
-        self.resize(800, 600)
+        self.resize(820, 470)
         self.setStyleSheet(self._dialog_style())
 
         self._sync_availability()
@@ -417,21 +421,25 @@ class DataSplittingDialog(BaseDialog):
 
     def init_ui(self):
         """Initialize the dialog UI with preview canvas and split controls."""
-        layout = QHBoxLayout(self)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 16, 18, 16)
-        layout.setSpacing(18)
+        layout.setSpacing(14)
+
+        content_layout = QHBoxLayout()
+        content_layout.setSpacing(16)
 
         # Left: Preview
-        left_layout = QVBoxLayout()
+        preview_group = QGroupBox("Data splitting preview")
+        preview_group.setObjectName("DataSplitPreviewGroup")
+        left_layout = QVBoxLayout(preview_group)
+        left_layout.setContentsMargins(12, 18, 12, 12)
         left_layout.setSpacing(12)
-        title = QLabel("Data splitting preview")
-        title.setObjectName("DataSplitTitle")
-        left_layout.addWidget(title)
         self.canvas = PreviewCanvas(self)
         left_layout.addWidget(self.canvas)
 
         # Legend
         legend_layout = QHBoxLayout()
+        legend_layout.setSpacing(8)
         for name, color in [
             ("Training", DrawColor.TRAIN),
             ("Validation", DrawColor.VAL),
@@ -442,51 +450,62 @@ class DataSplittingDialog(BaseDialog):
             lbl_color.setStyleSheet(f"background-color: {color.value.name()};")
             legend_layout.addWidget(lbl_color)
             legend_layout.addWidget(QLabel(name))
+        legend_layout.addStretch(1)
         left_layout.addLayout(legend_layout)
-        layout.addLayout(left_layout, stretch=1)
+        content_layout.addWidget(preview_group, stretch=1)
 
         # Right: Options
-        right_layout = QVBoxLayout()
-        right_layout.setSpacing(8)
+        options_group = QGroupBox("Split settings")
+        options_group.setObjectName("DataSplitOptionsGroup")
+        options_group.setMinimumWidth(260)
+        options_group.setMaximumWidth(300)
+        right_layout = QVBoxLayout(options_group)
+        right_layout.setContentsMargins(12, 18, 12, 12)
+        right_layout.setSpacing(12)
+        form_layout = QFormLayout()
+        form_layout.setContentsMargins(0, 0, 0, 0)
+        form_layout.setSpacing(10)
+        form_layout.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+        form_layout.setFormAlignment(Qt.AlignmentFlag.AlignTop)
 
         # Training Type
-        right_layout.addWidget(QLabel("Training Type"))
         self.train_type_combo = QComboBox()
         self.train_type_combo.addItems([i.value for i in TrainingType])
         self.train_type_combo.currentTextChanged.connect(self.update_preview)
-        right_layout.addWidget(self.train_type_combo)
+        form_layout.addRow("Training", self.train_type_combo)
 
         # Testing Set
-        right_layout.addWidget(QLabel("Testing Set"))
         self.test_combo = QComboBox()
         self.test_combo.addItems([i.value for i in SplitByType])
         self.test_combo.setCurrentText(SplitByType.TRIAL.value)
         self.test_combo.currentTextChanged.connect(self.update_preview)
-        right_layout.addWidget(self.test_combo)
-
-        self.cv_check = QCheckBox("Cross Validation")
-        right_layout.addWidget(self.cv_check)
+        form_layout.addRow("Testing", self.test_combo)
 
         # Validation Set
-        right_layout.addWidget(QLabel("Validation Set"))
         self.val_combo = QComboBox()
         self.val_combo.addItems([i.value for i in ValSplitByType])
         self.val_combo.setCurrentText(ValSplitByType.TRIAL.value)
         self.val_combo.currentTextChanged.connect(self.update_preview)
-        right_layout.addWidget(self.val_combo)
+        form_layout.addRow("Validation", self.val_combo)
+        right_layout.addLayout(form_layout)
 
-        right_layout.addStretch()
+        self.cv_check = QCheckBox("Cross validation")
+        right_layout.addWidget(self.cv_check)
 
         self.blocked_label = QLabel("")
         self.blocked_label.setWordWrap(True)
         self.blocked_label.setStyleSheet("color: #f59e0b;")
         right_layout.addWidget(self.blocked_label)
+        right_layout.addStretch(1)
+        content_layout.addWidget(options_group, stretch=0)
+        layout.addLayout(content_layout)
 
+        action_layout = QHBoxLayout()
+        action_layout.addStretch(1)
         self.btn_confirm = QPushButton("Confirm")
         self.btn_confirm.clicked.connect(self.confirm)
-        right_layout.addWidget(self.btn_confirm)
-
-        layout.addLayout(right_layout)
+        action_layout.addWidget(self.btn_confirm)
+        layout.addLayout(action_layout)
 
     def update_preview(self, *args):
         """Recalculate and redraw the split preview based on current settings."""
@@ -691,6 +710,23 @@ class DataSplittingDialog(BaseDialog):
             font-size: 16px;
             font-weight: 700;
         }
+        QGroupBox#DataSplitPreviewGroup,
+        QGroupBox#DataSplitOptionsGroup {
+            border: 1px solid #3d454d;
+            border-radius: 6px;
+            margin-top: 10px;
+            background: #202225;
+            color: #f2f5f8;
+            font-weight: 700;
+        }
+        QGroupBox#DataSplitPreviewGroup::title,
+        QGroupBox#DataSplitOptionsGroup::title {
+            subcontrol-origin: margin;
+            left: 10px;
+            padding: 0 5px;
+            background: #1b1b1d;
+            color: #f2f5f8;
+        }
         QLabel#DataSplitLegendSwatch {
             border-radius: 2px;
             min-width: 18px;
@@ -709,7 +745,7 @@ class DataSplittingDialog(BaseDialog):
             border: 1px solid #3d454d;
             border-radius: 4px;
             padding: 5px 8px;
-            min-width: 180px;
+            min-width: 155px;
         }
         QComboBox::drop-down {
             border-left: 1px solid #3d454d;

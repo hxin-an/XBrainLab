@@ -125,6 +125,23 @@ def test_visualization_controls_stay_in_a_compact_two_row_grid(qtbot):
             assert not left_rect.intersects(right_rect)
 
 
+def test_visualization_controls_use_one_row_when_panel_is_wide(qtbot):
+    panel, _ctrl = _make_panel(qtbot)
+    panel.resize(1180, 720)
+    panel.show()
+    qtbot.wait(50)
+
+    assert panel.plan_combo.y() == panel.run_combo.y()
+    assert panel.plan_combo.y() == panel.method_combo.y()
+    assert abs(panel.plan_combo.y() - panel.abs_check.y()) <= 8
+
+    widgets = [panel.plan_combo, panel.run_combo, panel.method_combo, panel.abs_check]
+    rects = [widget.geometry() for widget in widgets]
+    for left_index, left_rect in enumerate(rects):
+        for right_rect in rects[left_index + 1 :]:
+            assert not left_rect.intersects(right_rect)
+
+
 def test_visualization_panel_defers_service_queries_until_opened(
     qtbot,
     monkeypatch,

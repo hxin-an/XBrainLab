@@ -58,3 +58,79 @@ def test_visualizer_closes_owned_figure_when_plotting_fails():
 
     assert visualizer.fig is None
     assert plt.get_fignums() == []
+
+
+def test_iter_saliency_by_label_uses_label_order_when_class_keys_are_zero_based():
+    """Display names should follow epoch labels when class-counts line up."""
+    eval_record = EvalRecord(
+        np.array([0, 1]),
+        np.array([[0.8, 0.2], [0.2, 0.8]]),
+        {
+            0: np.ones((1, 2, 3, 4)),
+            1: np.ones((1, 2, 3, 4)) * 2,
+        },
+        {},
+        {},
+        {},
+        {},
+    )
+    epoch_data = cast(Any, type("EpochData", (), {})())
+    epoch_data.label_map = {769: "Left hand", 770: "Right hand"}
+    visualizer = Visualizer(eval_record, epoch_data)
+
+    labels = visualizer.iter_saliency_by_label("Gradient")
+
+    assert [(key, name) for key, name, _saliency in labels] == [
+        (0, "Left hand"),
+        (1, "Right hand"),
+    ]
+
+
+def test_iter_saliency_by_label_prefers_actual_saliency_keys_over_extra_labels():
+    """Non-class EEG events in label_map must not hide computed saliency data."""
+    eval_record = EvalRecord(
+        np.array([0, 1]),
+        np.array([[0.8, 0.2], [0.2, 0.8]]),
+        {
+            0: np.ones((1, 2, 3, 4)),
+            1: np.ones((1, 2, 3, 4)) * 2,
+        },
+        {},
+        {},
+        {},
+        {},
+    )
+    epoch_data = cast(Any, type("EpochData", (), {})())
+    epoch_data.label_map = {
+        768: "Trial timing",
+        769: "Left hand",
+        770: "Right hand",
+    }
+    visualizer = Visualizer(eval_record, epoch_data)
+
+    labels = visualizer.iter_saliency_by_label("Gradient")
+
+    assert [key for key, _name, _saliency in labels] == [0, 1]
+    assert all(saliency.size > 0 for _key, _name, saliency in labels)
+
+
+def test_iter_saliency_by_label_skips_empty_class_arrays():
+    eval_record = EvalRecord(
+        np.array([1]),
+        np.array([[0.2, 0.8]]),
+        {
+            0: np.empty((0, 2, 3, 4)),
+            1: np.ones((1, 2, 3, 4)),
+        },
+        {},
+        {},
+        {},
+        {},
+    )
+    epoch_data = cast(Any, type("EpochData", (), {})())
+    epoch_data.label_map = {0: "class 0", 1: "class 1"}
+    visualizer = Visualizer(eval_record, epoch_data)
+
+    labels = visualizer.iter_saliency_by_label("Gradient")
+
+    assert [(key, name) for key, name, _saliency in labels] == [(1, "class 1")]

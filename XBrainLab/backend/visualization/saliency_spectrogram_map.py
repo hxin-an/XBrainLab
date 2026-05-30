@@ -44,7 +44,7 @@ class SaliencySpectrogramMapViz(Visualizer):
         saliency_by_label = self.iter_saliency_by_label(method)
         if not saliency_by_label:
             ax = fig.gca()
-            ax.text(0.5, 0.5, "No saliency data for selected labels.", ha="center")
+            ax.text(0.5, 0.5, "No saliency data for this run.", ha="center")
             ax.set_axis_off()
             return fig
         visible_label_number = len(saliency_by_label)

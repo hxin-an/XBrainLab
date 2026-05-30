@@ -119,60 +119,51 @@ class VisualizationPanel(BasePanel):
         left_layout.setSpacing(10)
 
         # 1. Unified Control Bar
-        ctrl_bar = QGroupBox("VISUALIZATION CONTROLS")
-        ctrl_layout = QGridLayout(ctrl_bar)
-        ctrl_layout.setContentsMargins(10, 15, 10, 10)
-        ctrl_layout.setHorizontalSpacing(8)
-        ctrl_layout.setVerticalSpacing(6)
-        ctrl_layout.setColumnStretch(4, 1)
+        self.ctrl_bar = QGroupBox("VISUALIZATION CONTROLS")
+        self.ctrl_layout = QGridLayout(self.ctrl_bar)
+        self.ctrl_layout.setContentsMargins(10, 15, 10, 10)
+        self.ctrl_layout.setHorizontalSpacing(8)
+        self.ctrl_layout.setVerticalSpacing(6)
 
         # Plan Selector
-        ctrl_layout.addWidget(QLabel("Plan:"), 0, 0)
+        self.plan_label = QLabel("Plan:")
         self.plan_combo = QComboBox()
         self.plan_combo.addItem("Select a plan")
-        self.plan_combo.setMinimumWidth(150)
-        self.plan_combo.setMaximumWidth(220)
         self.plan_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
         )
         self.plan_combo.setStyleSheet(Stylesheets.COMBO_BOX)
         self.plan_combo.currentTextChanged.connect(self.on_plan_changed)
-        ctrl_layout.addWidget(self.plan_combo, 0, 1)
 
         # Run Selector
-        ctrl_layout.addWidget(QLabel("Run:"), 0, 2)
+        self.run_label = QLabel("Run:")
         self.run_combo = QComboBox()
-        self.run_combo.setMinimumWidth(120)
-        self.run_combo.setMaximumWidth(180)
         self.run_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
         )
         self.run_combo.setStyleSheet(Stylesheets.COMBO_BOX)
         self.run_combo.currentTextChanged.connect(self.on_update)
-        ctrl_layout.addWidget(self.run_combo, 0, 3)
 
         # Method Selector
-        ctrl_layout.addWidget(QLabel("Method:"), 1, 0)
+        self.method_label = QLabel("Method:")
         self.method_combo = QComboBox()
         self.method_combo.addItem("Gradient")
         self.method_combo.addItem("Gradient * Input")
         self.method_combo.addItems(supported_saliency_methods)
-        self.method_combo.setMinimumWidth(150)
-        self.method_combo.setMaximumWidth(220)
         self.method_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
         )
         self.method_combo.setStyleSheet(Stylesheets.COMBO_BOX)
         self.method_combo.currentTextChanged.connect(self.on_update)
-        ctrl_layout.addWidget(self.method_combo, 1, 1)
 
         # Absolute Checkbox
         self.abs_check = QCheckBox("Absolute")
         self.abs_check.setToolTip("Use absolute saliency values")
         self.abs_check.setStyleSheet(Stylesheets.CHECKBOX_MUTED)
         self.abs_check.stateChanged.connect(self.on_update)
-        ctrl_layout.addWidget(self.abs_check, 1, 3)
-        left_layout.addWidget(ctrl_bar)
+        self._controls_single_row = None
+        self._apply_visualization_control_layout(single_row=False)
+        left_layout.addWidget(self.ctrl_bar)
 
         # 2. Plots Group
         plots_group = QGroupBox("EXPLANATION PLOTS")
@@ -215,6 +206,61 @@ class VisualizationPanel(BasePanel):
 
         # Keep startup light; populate data-backed controls when the panel is opened.
         self._clear_plan_controls()
+
+    def resizeEvent(self, event):  # noqa: N802
+        """Switch visualization controls between compact and full-width layouts."""
+        super().resizeEvent(event)
+        self._refresh_control_layout_for_width()
+
+    def _refresh_control_layout_for_width(self) -> None:
+        if not hasattr(self, "ctrl_bar"):
+            return
+        available_width = max(self.ctrl_bar.width(), self.width() - 340)
+        self._apply_visualization_control_layout(
+            single_row=available_width >= 720,
+        )
+
+    def _apply_visualization_control_layout(self, single_row: bool) -> None:
+        if getattr(self, "_controls_single_row", None) == single_row:
+            return
+
+        self._controls_single_row = single_row
+        for column in range(9):
+            self.ctrl_layout.setColumnStretch(column, 0)
+
+        if single_row:
+            self.plan_combo.setMinimumWidth(150)
+            self.plan_combo.setMaximumWidth(210)
+            self.run_combo.setMinimumWidth(105)
+            self.run_combo.setMaximumWidth(145)
+            self.method_combo.setMinimumWidth(150)
+            self.method_combo.setMaximumWidth(190)
+
+            self.ctrl_layout.addWidget(self.plan_label, 0, 0)
+            self.ctrl_layout.addWidget(self.plan_combo, 0, 1)
+            self.ctrl_layout.addWidget(self.run_label, 0, 2)
+            self.ctrl_layout.addWidget(self.run_combo, 0, 3)
+            self.ctrl_layout.addWidget(self.method_label, 0, 4)
+            self.ctrl_layout.addWidget(self.method_combo, 0, 5)
+            self.ctrl_layout.addWidget(self.abs_check, 0, 6)
+            self.ctrl_layout.setColumnStretch(7, 1)
+            return
+
+        self.plan_combo.setMinimumWidth(150)
+        self.plan_combo.setMaximumWidth(220)
+        self.run_combo.setMinimumWidth(120)
+        self.run_combo.setMaximumWidth(180)
+        self.method_combo.setMinimumWidth(150)
+        self.method_combo.setMaximumWidth(220)
+
+        self.ctrl_layout.addWidget(self.plan_label, 0, 0)
+        self.ctrl_layout.addWidget(self.plan_combo, 0, 1)
+        self.ctrl_layout.addWidget(self.run_label, 0, 2)
+        self.ctrl_layout.addWidget(self.run_combo, 0, 3)
+        self.ctrl_layout.addWidget(self.method_label, 1, 0)
+        self.ctrl_layout.addWidget(self.method_combo, 1, 1)
+        self.ctrl_layout.addWidget(self.abs_check, 1, 3)
+        self.ctrl_layout.setColumnStretch(4, 1)
 
     def get_trainers(self):
         """Return the list of available trainers from the controller.

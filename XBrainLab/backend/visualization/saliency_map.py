@@ -32,7 +32,7 @@ class SaliencyMapViz(Visualizer):
         saliency_by_label = self.iter_saliency_by_label(method)
         if not saliency_by_label:
             ax = plt.gca()
-            ax.text(0.5, 0.5, "No saliency data for selected labels.", ha="center")
+            ax.text(0.5, 0.5, "No saliency data for this run.", ha="center")
             ax.set_axis_off()
             return plt.gcf()
         visible_label_number = len(saliency_by_label)
