@@ -183,7 +183,7 @@ class Saliency3D:
             saliency_shape_1 = self.engine.saliency.shape[1]
         self.plotter.add_slider_widget(
             callback=lambda val: self("timestamp", int(val)),
-            rng=[1, saliency_shape_1],  # Use engine's saliency shape
+            rng=(1, saliency_shape_1),  # Use engine's saliency shape
             value=1,
             title="Timestamp",
             color="white",

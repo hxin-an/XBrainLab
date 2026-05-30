@@ -564,7 +564,7 @@ class TestSaliency3DPlotWidget:
             w = Saliency3DPlotWidget(parent=None)
             qtbot.addWidget(w)
             interactor_widget = QWidget()
-            interactor_widget.interactor = MagicMock()
+            cast(Any, interactor_widget).interactor = MagicMock()
             pyvistaqt.QtInteractor.return_value = interactor_widget
 
             eval_record = MagicMock()
@@ -752,3 +752,55 @@ class TestSaliency3DPlotWidget:
 
         assert captured_kwargs["method"] == "VarGrad"
         assert captured_kwargs["absolute"] is True
+
+    def test_3d_head_plot_uses_tuple_slider_range_for_pyvista(self):
+        from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_head import (
+            Saliency3D,
+        )
+
+        class PlotterStub:
+            def __init__(self):
+                self.slider_ranges = []
+                self.camera = MagicMock()
+
+            def add_camera_orientation_widget(self):
+                pass
+
+            def add_slider_widget(self, **kwargs):
+                self.slider_ranges.append(kwargs["rng"])
+
+            def add_checkbox_button_widget(self, *_args, **_kwargs):
+                pass
+
+            def add_text(self, *_args, **_kwargs):
+                pass
+
+            def add_mesh(self, *_args, **_kwargs):
+                return object()
+
+            def add_scalar_bar(self, *_args, **_kwargs):
+                pass
+
+            def update_scalar_bar_range(self, *_args, **_kwargs):
+                pass
+
+            def show_bounds(self, *_args, **_kwargs):
+                pass
+
+        saliency = Saliency3D.__new__(Saliency3D)
+        saliency.engine = MagicMock()
+        saliency.engine.saliency = np.zeros((3, 24))
+        saliency.engine.saliency_cap = object()
+        saliency.engine.brain_scaled = object()
+        saliency.engine.scalar_bar_range = [0.0, 1.0]
+        saliency.plotter = PlotterStub()
+        saliency.channelBox = MagicMock()
+        saliency.headBox = MagicMock()
+        saliency.showChannel = True
+        saliency.showHead = True
+        saliency.chs = []
+        cast(Any, saliency).cmap = "coolwarm"
+
+        saliency.get_3d_head_plot()
+
+        assert saliency.plotter.slider_ranges == [(1, 24)]

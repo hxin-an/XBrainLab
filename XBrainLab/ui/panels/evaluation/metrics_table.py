@@ -12,7 +12,7 @@ class MetricsTableWidget(QTableWidget):
     """Table widget showing precision, recall, F1-score, and support per class.
 
     Renders per-class rows followed by an optional macro-average summary row.
-    Read-only, single-row selection, dark-theme styled.
+    Read-only, non-selectable, dark-theme styled.
     """
 
     def __init__(self, parent=None):
@@ -41,7 +41,7 @@ class MetricsTableWidget(QTableWidget):
             v_header.setVisible(False)
         self.setAlternatingRowColors(True)
         self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
@@ -141,6 +141,7 @@ class MetricsTableWidget(QTableWidget):
                 item.setFont(font)
             item.setForeground(QColor(Theme.TEXT_PRIMARY))
             item.setBackground(QColor(row_color))
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
             return item
 
         self.setItem(row, 0, create_item(label, is_bold=is_summary))

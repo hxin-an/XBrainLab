@@ -1,12 +1,14 @@
 from unittest.mock import MagicMock
 
 from matplotlib.figure import Figure
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QGroupBox,
     QSplitter,
+    QTableWidget,
     QWidget,
 )
 
@@ -184,6 +186,7 @@ def test_metrics_table_selection_uses_dark_theme(qtbot):
         QPalette.ColorGroup.Inactive,
         QPalette.ColorRole.HighlightedText,
     ) == QColor(Theme.TEXT_PRIMARY)
+    assert table.selectionMode() == QTableWidget.SelectionMode.NoSelection
 
 
 def test_metrics_table_has_no_initial_selection_after_refresh(qtbot):
@@ -249,6 +252,7 @@ def test_metrics_table_sets_dark_background_on_every_metric_cell(qtbot):
             assert item is not None
             assert item.background().color() == expected_color
             assert item.foreground().color() == QColor(Theme.TEXT_PRIMARY)
+            assert not item.flags() & Qt.ItemFlag.ItemIsSelectable
 
 
 def test_evaluation_panel_logic(qtbot):
