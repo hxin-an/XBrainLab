@@ -76,8 +76,8 @@ Validation:
 ```bash
 QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/update_quality_dashboard.py
 # Overall status: PASS
-# generated_at: 2026-05-30 18:10:25 UTC+08:00
-# commit: 53bed8b96623
+# generated_at: 2026-05-30 19:09:35 UTC+08:00
+# commit: e30822ba05e8
 # workspace: /mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual
 # checks: Ruff, Basedpyright, Architecture Compliance, Startup Smoke,
 # UI Baseline Capture, UI Dialog Acceptance, UI Product Walkthrough,
@@ -637,7 +637,6 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/components/test_dialogs.py::test_epoching_dialog_init \
   tests/unit/ui/test_dialogs_extra.py::TestEpochingDialog \
   tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_accepted \
-  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_legacy_result_refreshes_shared_status \
   tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_uses_epoch_capability_not_preprocess_block \
   tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_uses_query_data_list_before_stale_controller \
   tests/unit/ui/preprocess/test_preprocess_panel.py::test_preprocess_panel_epoching \

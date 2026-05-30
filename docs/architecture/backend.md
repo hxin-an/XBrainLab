@@ -12,8 +12,8 @@
 | backend 主入口是什麼？ | `ApplicationService / Command API`。UI high-value actions、assistant、MCP、headless scripts 都應從這裡進 backend。 |
 | `BackendFacade` 還是不是架構的一部分？ | 不是。module 已刪除，architecture guard 會擋 product runtime 和 product-success tests 重新 import / construct。 |
 | `ApplicationService` 是不是 god object？ | 已從早期 god-object 形狀拆成 focused services；目前主要負責 dispatch、capability / confirmation gate、state/result envelope。 |
-| UI 是否完全不碰 controllers？ | 還不是。controllers 仍存在於 panel bootstrap、observer bridge、mock / legacy compatibility、部分 readonly display fallback。 |
-| product success 應該怎麼證明？ | 用 command result、`QueryStateCommand` / state snapshot、typed diagnostics、UI-visible state、exact event/epoch/split/history evidence；不要用 facade、legacy fallback、direct mutable `Study` state、generic non-empty / no-crash assertion。 |
+| UI 是否完全不碰 controllers？ | 還不是。controllers 仍存在於 panel bootstrap、observer bridge、mock / compatibility compatibility、部分 readonly display fallback。 |
+| product success 應該怎麼證明？ | 用 command result、`QueryStateCommand` / state snapshot、typed diagnostics、UI-visible state、exact event/epoch/split/history evidence；不要用 facade、controller compatibility、direct mutable `Study` state、generic non-empty / no-crash assertion。 |
 
 ## Current Target Gap
 
@@ -22,7 +22,7 @@
 | Command spine | load / preprocess / epoch / split / train / evaluate / visualize / saliency / reset / Data Interpretation / MCP job progress 都有 command or query truth。 | 要持續防止新 wrapper、direct manager mutation、direct service bypass 回流。 |
 | Focused services | Data Interpretation、analysis、training、dataset generation、lifecycle、compatibility、data table、preprocess、state/query 都已從 `ApplicationService` 拆出。 | focused service 間仍要靠 tests/guard 維持邊界，避免把 orchestration 塞回單一檔。 |
 | State truth | `StateSnapshotService` / `QueryStateCommandService` 是 UI / assistant / MCP 判斷狀態的主要讀法。 | 少數 lower-level domain / fixture tests 仍直接 setup/read `Study`，不能當 product smoke。 |
-| UI boundary | product action method 不可直接呼叫 legacy fallback helper；MainWindow controller lookup 收進 named quarantine。 | panels 還吃 injected controllers 作為 observer / adapter，不是完整 zero-controller UI。 |
+| UI boundary | product action method 不可直接呼叫 controller compatibility helper；MainWindow controller lookup 收進 named quarantine。 | panels 還吃 injected controllers 作為 observer / adapter，不是完整 zero-controller UI。 |
 | Evidence | exact-evidence stack 已替換多個 generic non-empty product smokes。 | human Windows desktop acceptance 和長時間 local-model session 仍缺人工 evidence。 |
 
 ## 驗證範圍與歷史脈絡
@@ -38,7 +38,7 @@
 - `XBrainLab/backend/training_manager.py`
 - `XBrainLab/backend/controller/*.py`
 - `XBrainLab/ui/main_window.py`
-- `XBrainLab/ui/legacy_controller_bootstrap.py`
+- `XBrainLab/ui/controller_compatibility_bootstrap.py`
 - `XBrainLab/llm/tools/real/*.py`
 - `XBrainLab/llm/pipeline_state.py`
 
@@ -83,16 +83,16 @@ label helper 拆到 `DataCompatibilityCommandService`。最新 data-table cleanu
 `ApplicationService` 仍只 dispatch / gate / wrap result。最新 UI runtime bypass cleanup
 也修正 Dataset direct file import 和 Preprocess reset 的 service-success path：real runtime
 收到 successful `CommandResult` 後不再落回 controller mutation；controller fallback 僅保留給
-mock / legacy adapter 回傳 `None` 的相容情境。
+mock / compatibility adapter 回傳 `None` 的相容情境。
 後續 Training sidebar cleanup 也把重新 split 前的 dataset cleanup 和 Clear History 接回
 `ClearDatasetsCommand` / `ClearTrainingHistoryCommand`；successful service result 不再落回
 training controller mutation。
 2026-05-12 UI fallback helper-scope cleanup 又把 product UI methods 內的直接
-`run_legacy_controller_fallback()` 呼叫收進 explicit `_legacy_*` / fallback helpers，並新增
+`run_controller_compatibility_call()` 呼叫收進 explicit `_compatibility_*` / fallback helpers，並新增
 architecture guard：real product method 若直接呼叫 fallback helper 會 fail。這次涵蓋
 Dataset actions / panel / sidebar、Preprocess sidebar、Training sidebar、Visualization
 control sidebar、AgentManager montage flow、TrainingSettingDialog initial-option fallback。
-mock / legacy `None` adapter branches 仍保留，但它們在程式碼上和 service-backed success path
+mock / compatibility `None` adapter branches 仍保留，但它們在程式碼上和 service-backed success path
 分離。
 最新 command-gate cleanup 又把 capability / confirmation enforcement 從
 `ApplicationService._ensure_command_allowed()` 的硬編碼清單抽到
@@ -177,9 +177,9 @@ calling `get_application_service(...).execute(...)` directly.
 instances now derive assistant stage from the shared ApplicationService state snapshot only; if
 that snapshot is unavailable or invalid, stage calculation fails closed to `EMPTY` instead of
 guessing from mutable `Study.loaded_data_list`, `epoch_data`, `datasets`, or `trainer`. Direct
-Study-shaped stage fallback remains only for mock / legacy compatibility tests, and architecture
+Study-shaped stage fallback remains only for mock / compatibility compatibility tests, and architecture
 compliance now rejects LLM product code that adds new direct mutable `Study` stage/state reads
-outside explicit legacy / fallback helpers.
+outside explicit compatibility / fallback helpers.
 
 ## 一句話架構
 
@@ -198,7 +198,7 @@ PyQt panels
   |       +--> ApplicationService.execute(...) for import / label / metadata / preprocess / epoch / split / query / train / reset / montage
   |       |
   |       v
-  |     explicit legacy helpers for mock fallback / panel bootstrap adapters
+  |     explicit compatibility helpers for mock fallback / panel bootstrap adapters
   |
   v
 DatasetController / PreprocessController / TrainingController
@@ -279,9 +279,9 @@ UI 不是透過 `BackendFacade` 操作 backend。
 
 `XBrainLab/ui/main_window.py` 初始化 panels 時不再把 `study.get_controller(...)` 當成
 未命名例外散在 MainWindow 內；它呼叫
-`get_legacy_workflow_controllers_for_panel_bootstrap(study)`，由
-`XBrainLab/ui/legacy_controller_bootstrap.py` 統一取得 dataset / preprocess / training /
-evaluation / visualization controller adapters。這個 helper 是具名 legacy quarantine：目前
+`get_compatibility_workflow_controllers_for_panel_bootstrap(study)`，由
+`XBrainLab/ui/controller_compatibility_bootstrap.py` 統一取得 dataset / preprocess / training /
+evaluation / visualization controller adapters。這個 helper 是具名 compatibility quarantine：目前
 panel constructors、observer bridge 和部分 read-only population 仍需要 injected controllers，
 但 product action execution、capability/readiness、command result refresh 不在這條路徑上。
 
@@ -306,7 +306,7 @@ action 已不再直接呼叫 controller，而是先經過 UI command adapter 進
 - Dataset import 使用 `LoadDataCommand`。
 - Dataset direct file import 的 successful `LoadDataCommand` path 不再再呼叫
   `DatasetController.import_files()`；controller import 只保留給 command adapter 不存在的
-  mock / legacy `None` fallback。
+  mock / compatibility `None` fallback。
 - Dataset clear / reset 使用 `ResetSessionCommand(confirmed=True)`。
 - Preprocess filtering / resample / rereference / normalize 使用 `PreprocessCommand`。
 - Preprocess reset 使用 `ResetPreprocessCommand(confirmed=True)`；successful service result 不再
@@ -328,7 +328,7 @@ action 已不再直接呼叫 controller，而是先經過 UI command adapter 進
 - Agent montage confirmation 使用 `ApplyMontageCommand`。
 - Info panel state refresh 使用 `QueryStateCommand(data_lists)`。
 
-UI 測試中的 mock `Study` 仍走 explicit legacy fallback，避免 unit test 用不完整 mock state
+UI 測試中的 mock `Study` 仍走 explicit controller compatibility，避免 unit test 用不完整 mock state
 誤觸真 ApplicationService policy。architecture guard 現在要求這些 fallback 只能出現在
 明確的 legacy / fallback helper，不可藏在 product action method 裡；MainWindow 的 panel
 bootstrap controller lookup 也只允許透過 named quarantine helper。
@@ -381,7 +381,7 @@ job baseline；evaluation / visualization jobs、job persistence / recovery、mu
 recovery-grade resource lock 和 full remote authorization 仍是後續 architecture work。
 Architecture compliance 也會拒絕 MCP product status/progress code 直接讀 mutable `Study`
 state，例如 `service.study.trainer`，或直接呼叫 `service.study.get_controller(...)` /
-`service.study.get_datasets_generator(...)`；只允許 explicit legacy / fallback helper 保留相容性。
+`service.study.get_datasets_generator(...)`；只允許 explicit compatibility / fallback helper 保留相容性。
 
 `ApplicationService` 會拿同一組 cached controllers：
 
@@ -548,7 +548,7 @@ readiness 判斷；需要狀態或 blocked reason 時使用 `ApplicationService.
 - `train` 的 long-running confirmation 由 `command_gate.py` 在 `ApplicationService.execute()`
   前檢查；UI / agent / headless adapter 只有在人類確認後才傳 `TrainCommand(confirmed=True)`。
 - UI Training sidebar 的 Clear History action 會透過 `ClearTrainingHistoryCommand` 進入
-  `TrainingCommandService`；只有 mock / legacy `None` adapter 情境才回到 controller fallback。
+  `TrainingCommandService`；只有 mock / compatibility `None` adapter 情境才回到 controller fallback。
 - `generate_dataset`、`clear_datasets`、split config、split audit、rollback 和
   `DatasetStateSnapshot.split_summary` 的實作位置現在是 `DatasetGenerationCommandService`。
   `ApplicationService` 的 reset preprocess rollback 只委派到這個 service 的 state restore
@@ -570,7 +570,7 @@ readiness 判斷；需要狀態或 blocked reason 時使用 `ApplicationService.
   它 owns preprocess controller calls、standard batch preprocessing、channel selection delegate
   和 `set_montage` UI confirmation boundary。
 - UI Preprocess reset action 會透過 `ResetPreprocessCommand` 進入 lifecycle service；只有
-  `execute_application_command()` 回傳 `None` 的 mock / legacy adapter 情境才回到 controller
+  `execute_application_command()` 回傳 `None` 的 mock / compatibility adapter 情境才回到 controller
   fallback。
 - Data Interpretation command handlers 實作位置現在是
   `DataInterpretationCommandService`。它 orchestration scan / preview / validate / apply /

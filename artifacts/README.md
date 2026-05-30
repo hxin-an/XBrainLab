@@ -112,9 +112,9 @@
 - `ui/human-like-walkthrough/03-source-selection.png`; it was byte-identical to
   `02-dataset-page.png`, so both screenshot labels now point at the same canonical
   PNG.
-- `ui/chatpanel-local-training-completion/chatpanel-training-completion-trained.png`;
-  it was byte-identical to `chatpanel-training-completion-turn-3.png`, so the
-  trained checkpoint now reuses the turn-3 screenshot path.
+- one previous ChatPanel training-completion duplicate screenshot; it was
+  byte-identical to the turn-3 checkpoint, so the trained checkpoint reused that
+  canonical screenshot path while the folder was current.
 - `ui/visualization-render/visualization-render-ready.png`; it was byte-identical
   to `visualization-render-saliency-map.png`, so the ready checkpoint now reuses
   the saliency render screenshot path.
@@ -152,15 +152,14 @@ current families above when judging the active branch.
 
 2026-05-30 local ChatPanel evidence cleanup:
 
-- `ui/chatpanel-local-pipeline-chain/` and
-  `ui/chatpanel-local-training-completion/` are previous-environment artifacts.
-  They were captured when the local model cache was present and the runtime was
-  `gpu-ready`.
+- The two previous local ChatPanel artifact folders were removed from the
+  current tree because they were captured when the local model cache was present
+  and the runtime was `gpu-ready`.
 - The active release-candidate environment now reports local model
   `missing-cache`, so those walkthroughs must not be used as current product
   evidence or high-value entry points.
-- Keep them only as historical artifacts until they are regenerated on the
-  current worktree and runtime state.
+- Regenerate them on the current worktree/runtime before adding ChatPanel local
+  pipeline screenshots back to current evidence.
 
 ## 新 artifact 要寫清楚
 

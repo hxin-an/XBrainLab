@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-from XBrainLab.backend.application.state_read_models import TrainingStateReadModel
+from XBrainLab.backend.application.state_read_models import (
+    EvaluationStateReadModel,
+    TrainingStateReadModel,
+)
 
 
 class _TargetModel:
@@ -64,3 +67,10 @@ def test_training_state_read_model_formats_history_without_controller_lookup() -
             "is_current_run": True,
         },
     ]
+
+
+def test_evaluation_state_read_model_lists_plans_without_controller_lookup() -> None:
+    plans = EvaluationStateReadModel(_Study()).get_plans()
+
+    assert len(plans) == 1
+    assert isinstance(plans[0], _Plan)
