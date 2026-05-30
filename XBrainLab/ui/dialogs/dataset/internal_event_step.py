@@ -1,7 +1,5 @@
 """Internal EEG event step helpers for the Data Import wizard."""
 
-# pyright: reportAttributeAccessIssue=false
-
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -21,15 +19,15 @@ from PyQt6.QtWidgets import (
 
 if TYPE_CHECKING:
     from XBrainLab.ui.dialogs.dataset.wizard_host_protocol import (
-        DataImportWizardHostProtocol,
+        DataImportWizardStepHostProtocol,
     )
 else:
 
-    class DataImportWizardHostProtocol:
+    class DataImportWizardStepHostProtocol:
         pass
 
 
-class InternalEventStepMixin(DataImportWizardHostProtocol):
+class InternalEventStepMixin(DataImportWizardStepHostProtocol):
     """Render and model helpers for labels stored inside EEG files."""
 
     def _build_internal_event_rules_view(self) -> None:

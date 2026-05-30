@@ -1,7 +1,5 @@
 """Review and Import step helpers for the Data Import wizard."""
 
-# pyright: reportAttributeAccessIssue=false
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -39,15 +37,15 @@ from XBrainLab.ui.dialogs.dataset.review_presenter import (
 
 if TYPE_CHECKING:
     from XBrainLab.ui.dialogs.dataset.wizard_host_protocol import (
-        DataImportWizardHostProtocol,
+        DataImportWizardStepHostProtocol,
     )
 else:
 
-    class DataImportWizardHostProtocol:
+    class DataImportWizardStepHostProtocol:
         pass
 
 
-class ReviewImportStepMixin(DataImportWizardHostProtocol):
+class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
     """Render helpers for final review, action items, and recipe trace."""
 
     def _build_review_import_summary(self, layout: QVBoxLayout) -> None:

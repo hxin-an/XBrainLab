@@ -1,7 +1,5 @@
 """Loaded-label placement step helpers for the Data Import wizard."""
 
-# pyright: reportAttributeAccessIssue=false
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
@@ -26,15 +24,15 @@ from PyQt6.QtWidgets import (
 
 if TYPE_CHECKING:
     from XBrainLab.ui.dialogs.dataset.wizard_host_protocol import (
-        DataImportWizardHostProtocol,
+        DataImportWizardStepHostProtocol,
     )
 else:
 
-    class DataImportWizardHostProtocol:
+    class DataImportWizardStepHostProtocol:
         pass
 
 
-class LabelPlacementStepMixin(DataImportWizardHostProtocol):
+class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
     """Render and state helpers for external label placement rules."""
 
     def _sync_label_placement_after_label_sources_changed(self) -> None:

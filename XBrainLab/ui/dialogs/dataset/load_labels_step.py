@@ -1,7 +1,5 @@
 """Load Labels step helpers for the Data Import wizard."""
 
-# pyright: reportAttributeAccessIssue=false
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -20,15 +18,15 @@ from XBrainLab.ui.dialogs.dataset.wizard_state import WizardStateChange
 
 if TYPE_CHECKING:
     from XBrainLab.ui.dialogs.dataset.wizard_host_protocol import (
-        DataImportWizardHostProtocol,
+        DataImportWizardStepHostProtocol,
     )
 else:
 
-    class DataImportWizardHostProtocol:
+    class DataImportWizardStepHostProtocol:
         pass
 
 
-class LoadLabelsStepMixin(DataImportWizardHostProtocol):
+class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
     """Render and mutation helpers for the Load Labels step."""
 
     def _add_label_source_rows(self, layout: QVBoxLayout) -> None:
