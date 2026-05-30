@@ -170,7 +170,7 @@ def test_update_plot_only_epoched_data_shows_locked_message_without_plotting(qtb
 
 
 def test_preprocess_panel_filtering(mock_main_window, mock_controller, qtbot):
-    """Filtering blocks instead of mutating the legacy controller."""
+    """Filtering blocks instead of mutating the controller compatibility."""
     mock_controller.has_data.return_value = True
 
     # Use real window
@@ -212,7 +212,7 @@ def test_preprocess_panel_filtering(mock_main_window, mock_controller, qtbot):
 
 
 def test_preprocess_panel_resample(mock_main_window, mock_controller, qtbot):
-    """Resampling blocks instead of mutating the legacy controller."""
+    """Resampling blocks instead of mutating the controller compatibility."""
     mock_controller.has_data.return_value = True
     # Use real window
     real_window = QMainWindow()
@@ -249,7 +249,7 @@ def test_preprocess_panel_resample(mock_main_window, mock_controller, qtbot):
 
 
 def test_preprocess_panel_epoching(mock_main_window, mock_controller, qtbot):
-    """Epoching blocks instead of mutating the legacy controller."""
+    """Epoching blocks instead of mutating the controller compatibility."""
     mock_controller.has_data.return_value = True
     # Use real window
     real_window = QMainWindow()
@@ -288,7 +288,7 @@ def test_preprocess_panel_epoching(mock_main_window, mock_controller, qtbot):
 
 
 def test_preprocess_panel_reset(mock_main_window, mock_controller, qtbot):
-    """Reset blocks instead of mutating the legacy controller."""
+    """Reset blocks instead of mutating the controller compatibility."""
     mock_controller.has_data.return_value = True
     real_window = QMainWindow()
     cast(Any, real_window).study = mock_main_window.study

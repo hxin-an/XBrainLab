@@ -1,4 +1,4 @@
-"""Legacy standalone training manager window with real-time status table."""
+"""Compatibility standalone training manager window with real-time status table."""
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (
@@ -23,7 +23,7 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 class TrainingManagerWindow(BaseDialog):
     """Standalone window for managing training process.
     Displays real-time status table and controls.
-    NOTE: Appears to be legacy/alternative to `TrainingPanel`.
+    NOTE: Appears to be compatibility/alternative to `TrainingPanel`.
     """
 
     def __init__(self, parent, trainer):

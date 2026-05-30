@@ -1,5 +1,12 @@
 # Data Import Wizard Screenshots
 
+status: current release-candidate UI evidence
+generator: `scripts/dev/capture_data_import_wizard_steps.py`
+environment: Qt offscreen desktop capture on `/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`
+supports: Data Import wizard step layout, Load Labels, Match Labels source/placement modes, Review and Import visual review
+does_not_support: human Windows acceptance, full arbitrary BIDS compliance, scientific label semantics approval
+next_human_or_runtime_gate: manual Windows click-through on representative EEG/label files before release approval
+
 This folder keeps only canonical review images for the current wizard design.
 Exploratory drafts and superseded discussion variants should not be kept here.
 

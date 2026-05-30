@@ -179,7 +179,7 @@ def test_main_window_delegates_info_refresh_to_coordinator(mock_study, qtbot):
     assert window.info_service._observes_controller_events is False
 
 
-def test_init_panels_uses_legacy_bootstrap_helper(mock_study, qtbot):
+def test_init_panels_uses_compatibility_bootstrap_helper(mock_study, qtbot):
     """MainWindow should lazy-create workflow panels from the bootstrap bundle."""
     controllers = SimpleNamespace(
         dataset=object(),
@@ -196,7 +196,7 @@ def test_init_panels_uses_legacy_bootstrap_helper(mock_study, qtbot):
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
         patch("XBrainLab.ui.main_window.InfoPanelService"),
         patch(
-            "XBrainLab.ui.main_window.get_legacy_workflow_controllers_for_panel_bootstrap",
+            "XBrainLab.ui.main_window.get_compatibility_workflow_controllers_for_panel_bootstrap",
             return_value=controllers,
         ) as bootstrap,
         patch(
@@ -234,7 +234,7 @@ def test_initial_panel_lazy_load_preserves_current_page(mock_study, qtbot):
         patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
         patch(
-            "XBrainLab.ui.main_window.get_legacy_workflow_controllers_for_panel_bootstrap",
+            "XBrainLab.ui.main_window.get_compatibility_workflow_controllers_for_panel_bootstrap",
             return_value=controllers,
         ),
         patch(
@@ -269,7 +269,7 @@ def test_default_startup_materializes_dataset_before_main_window_is_shown(
         patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
         patch(
-            "XBrainLab.ui.main_window.get_legacy_workflow_controllers_for_panel_bootstrap",
+            "XBrainLab.ui.main_window.get_compatibility_workflow_controllers_for_panel_bootstrap",
             return_value=controllers,
         ),
         patch(
@@ -305,7 +305,7 @@ def test_startup_prewarm_result_does_not_reload_dataset(mock_study, qtbot):
         patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
         patch(
-            "XBrainLab.ui.main_window.get_legacy_workflow_controllers_for_panel_bootstrap",
+            "XBrainLab.ui.main_window.get_compatibility_workflow_controllers_for_panel_bootstrap",
             return_value=controllers,
         ),
         patch(
@@ -369,7 +369,7 @@ def test_agent_manager_is_lazy_until_ai_toggle(mock_study, qtbot):
     assert window.agent_manager.toggled is True
 
 
-def test_update_info_panel_keeps_legacy_direct_panel_fallback(main_window):
+def test_update_info_panel_keeps_compatibility_direct_panel_fallback(main_window):
     """Older injected contexts without InfoPanelService can still update directly."""
     delattr(main_window, "info_service")
     main_window.info_panel = MagicMock()

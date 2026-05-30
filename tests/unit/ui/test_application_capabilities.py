@@ -25,7 +25,7 @@ from XBrainLab.ui.application_capabilities import (
     execute_application_command_async,
     execute_application_shutdown_command,
     get_command_capability,
-    run_legacy_controller_fallback,
+    run_controller_compatibility_call,
 )
 from XBrainLab.ui.refresh_coordinator import refresh_after_observer
 
@@ -434,7 +434,7 @@ def test_legacy_controller_fallback_refuses_real_study(qtbot):
     fallback = MagicMock()
 
     with pytest.raises(RuntimeError, match="could not safely complete"):
-        run_legacy_controller_fallback(widget, fallback)
+        run_controller_compatibility_call(widget, fallback)
 
     fallback.assert_not_called()
 
@@ -447,7 +447,7 @@ def test_legacy_controller_fallback_refuses_real_controller_study(qtbot):
     fallback = MagicMock()
 
     with pytest.raises(RuntimeError, match="could not safely complete"):
-        run_legacy_controller_fallback(widget, fallback)
+        run_controller_compatibility_call(widget, fallback)
 
     fallback.assert_not_called()
 
@@ -471,7 +471,7 @@ def test_legacy_controller_fallback_refuses_named_real_controller(qtbot):
     fallback = MagicMock()
 
     with pytest.raises(RuntimeError, match="could not safely complete"):
-        run_legacy_controller_fallback(widget, fallback)
+        run_controller_compatibility_call(widget, fallback)
 
     fallback.assert_not_called()
 
@@ -479,7 +479,7 @@ def test_legacy_controller_fallback_refuses_named_real_controller(qtbot):
 def test_legacy_controller_fallback_allows_plain_non_study_context():
     fallback = MagicMock(return_value="legacy-ok")
 
-    result = run_legacy_controller_fallback(object(), fallback)
+    result = run_controller_compatibility_call(object(), fallback)
 
     assert result == "legacy-ok"
     fallback.assert_called_once_with()

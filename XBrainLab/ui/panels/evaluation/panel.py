@@ -17,11 +17,11 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.application import EvaluateCommand
 from XBrainLab.backend.training.record.wrappers import PooledRecordWrapper
 from XBrainLab.ui.application_capabilities import (
-    LegacyControllerFallbackUnavailableError,
+    ControllerCompatibilityUnavailableError,
     execute_application_command,
     execute_application_command_async,
-    get_legacy_controller_from_study,
-    run_legacy_controller_fallback,
+    get_controller_for_compatibility_context,
+    run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.core.base_panel import BasePanel
@@ -83,13 +83,13 @@ class EvaluationPanel(BasePanel):
         """
         # 1. Controller Resolution
         if controller is None and parent and hasattr(parent, "study"):
-            controller = get_legacy_controller_from_study(
+            controller = get_controller_for_compatibility_context(
                 parent,
                 parent.study,
                 "evaluation",
             )
         if preprocess_controller is None and parent and hasattr(parent, "study"):
-            preprocess_controller = get_legacy_controller_from_study(
+            preprocess_controller = get_controller_for_compatibility_context(
                 parent,
                 parent.study,
                 "preprocess",
@@ -152,7 +152,7 @@ class EvaluationPanel(BasePanel):
 
         plans = self._plans_from_application_query()
         if plans is None:
-            plans = self._legacy_plans_for_render()
+            plans = self._compatibility_plans_for_render()
         if plans:
             self._show_evaluation_controls_available()
             for i, plan in enumerate(plans):
@@ -292,12 +292,12 @@ class EvaluationPanel(BasePanel):
             return None
         return list(payload.get("plan_objects") or [])
 
-    def _legacy_plans_for_render(self):
+    def _compatibility_plans_for_render(self):
         if self.controller is None:
             return []
         try:
-            return run_legacy_controller_fallback(self, self.controller.get_plans)
-        except LegacyControllerFallbackUnavailableError:
+            return run_controller_compatibility_call(self, self.controller.get_plans)
+        except ControllerCompatibilityUnavailableError:
             return []
 
     def _show_no_data_available(self) -> None:
@@ -418,7 +418,7 @@ class EvaluationPanel(BasePanel):
                         self._clear_metric_views()
                         return
                 else:
-                    pooled_result = self._legacy_pooled_result_for_render(plan)
+                    pooled_result = self._compatibility_pooled_result_for_render(plan)
                     if pooled_result is None:
                         self._clear_metric_views()
                         return
@@ -493,7 +493,7 @@ class EvaluationPanel(BasePanel):
                 self._refresh_application_query(include_model_summaries=True)
         summary_str = self._summary_from_application_query(plan, record)
         if summary_str is None:
-            summary_str = self._legacy_summary_for_render(plan, record)
+            summary_str = self._compatibility_summary_for_render(plan, record)
         if has_service_payload and not summary_str.strip():
             summary_str = MODEL_SUMMARY_UNAVAILABLE_TEXT
         self.summary_text.setText(summary_str)
@@ -522,28 +522,28 @@ class EvaluationPanel(BasePanel):
         record = None if data == "average" else data
         self.update_model_summary(plan, record=record)
 
-    def _legacy_pooled_result_for_render(self, plan):
+    def _compatibility_pooled_result_for_render(self, plan):
         controller = self.controller
         if controller is None:
             return None
         try:
-            return run_legacy_controller_fallback(
+            return run_controller_compatibility_call(
                 self,
                 lambda: controller.get_pooled_eval_result(plan),
             )
-        except LegacyControllerFallbackUnavailableError:
+        except ControllerCompatibilityUnavailableError:
             return None
 
-    def _legacy_summary_for_render(self, plan, record=None) -> str:
+    def _compatibility_summary_for_render(self, plan, record=None) -> str:
         controller = self.controller
         if controller is None:
             return ""
         try:
-            return run_legacy_controller_fallback(
+            return run_controller_compatibility_call(
                 self,
                 lambda: controller.get_model_summary_str(plan, record),
             )
-        except LegacyControllerFallbackUnavailableError:
+        except ControllerCompatibilityUnavailableError:
             return ""
 
     def _pooled_result_from_application_query(self, plan):

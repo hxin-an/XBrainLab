@@ -1,5 +1,5 @@
-from XBrainLab.ui.legacy_controller_bootstrap import (
-    get_legacy_workflow_controllers_for_panel_bootstrap,
+from XBrainLab.ui.controller_compatibility_bootstrap import (
+    get_compatibility_workflow_controllers_for_panel_bootstrap,
 )
 
 
@@ -12,10 +12,10 @@ class _StudyWithControllers:
         return f"{name}-controller"
 
 
-def test_legacy_workflow_controller_bootstrap_reads_controllers_lazily():
+def test_compatibility_workflow_controller_bootstrap_reads_controllers_lazily():
     study = _StudyWithControllers()
 
-    controllers = get_legacy_workflow_controllers_for_panel_bootstrap(study)
+    controllers = get_compatibility_workflow_controllers_for_panel_bootstrap(study)
 
     assert study.calls == []
     assert controllers.dataset == "dataset-controller"
@@ -36,8 +36,8 @@ def test_legacy_workflow_controller_bootstrap_reads_controllers_lazily():
     ]
 
 
-def test_legacy_workflow_controller_bootstrap_handles_missing_getter():
-    controllers = get_legacy_workflow_controllers_for_panel_bootstrap(object())
+def test_compatibility_workflow_controller_bootstrap_handles_missing_getter():
+    controllers = get_compatibility_workflow_controllers_for_panel_bootstrap(object())
 
     assert controllers.dataset is None
     assert controllers.preprocess is None

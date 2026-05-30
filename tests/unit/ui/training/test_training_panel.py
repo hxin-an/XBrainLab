@@ -58,7 +58,7 @@ def test_training_panel_start_training_success(
     mock_main_window, mock_controller, qtbot
 ):
     """
-    Test that 'Start Training' blocks instead of mutating the legacy controller.
+    Test that 'Start Training' blocks instead of mutating the controller compatibility.
     """
     # Setup
     panel = TrainingPanel(
@@ -119,7 +119,7 @@ def test_training_panel_update_panel_refreshes_training_history(
 
 def test_training_panel_split_data_success(mock_main_window, mock_controller, qtbot):
     """
-    Test that 'Dataset Splitting' blocks instead of mutating the legacy controller.
+    Test that 'Dataset Splitting' blocks instead of mutating the controller compatibility.
     """
     panel = TrainingPanel(
         parent=mock_main_window,
@@ -166,7 +166,7 @@ def test_training_panel_split_data_success(mock_main_window, mock_controller, qt
 
 def test_training_panel_stop_training(mock_main_window, mock_controller, qtbot):
     """
-    Test that 'Stop Training' blocks instead of mutating the legacy controller.
+    Test that 'Stop Training' blocks instead of mutating the controller compatibility.
     """
     panel = TrainingPanel(
         parent=mock_main_window,

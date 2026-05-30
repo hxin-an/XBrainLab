@@ -23,13 +23,13 @@ from XBrainLab.backend.application import (
 )
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
-    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
-    LegacyControllerFallbackUnavailableError,
+    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+    ControllerCompatibilityUnavailableError,
     blocked_reason,
     execute_application_command,
     execute_application_command_async,
     get_command_capability,
-    run_legacy_controller_fallback,
+    run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.dialogs.preprocess import (
@@ -182,21 +182,21 @@ class PreprocessSidebar(QWidget):
         preprocess_capability = get_command_capability(self, CommandName.PREPROCESS)
         epoch_capability = get_command_capability(self, CommandName.CREATE_EPOCH)
         if preprocess_capability is None and epoch_capability is None:
-            data_list = self._legacy_preprocessed_data_list_for_render()
+            data_list = self._compatibility_preprocessed_data_list_for_render()
             if data_list:
                 first_data = data_list[0]
                 is_epoched = not first_data.is_raw()
 
         self._update_button_states(is_epoched)
 
-    def _legacy_preprocessed_data_list_for_render(self) -> list[Any]:
-        """Return legacy render data only for mock / legacy UI contexts."""
+    def _compatibility_preprocessed_data_list_for_render(self) -> list[Any]:
+        """Return compatibility render data only for mock UI contexts."""
         try:
-            data_list = run_legacy_controller_fallback(
+            data_list = run_controller_compatibility_call(
                 self,
                 self.controller.get_preprocessed_data_list,
             )
-        except LegacyControllerFallbackUnavailableError:
+        except ControllerCompatibilityUnavailableError:
             return []
         return list(data_list) if isinstance(data_list, list) else []
 
@@ -221,7 +221,9 @@ class PreprocessSidebar(QWidget):
         )
         if result is None:
             if command_capability is None:
-                return self._legacy_preprocessed_data_list_for_dialog(failure_title)
+                return self._compatibility_preprocessed_data_list_for_dialog(
+                    failure_title,
+                )
             return []
         if result.failed:
             self._show_command_failure(failure_title, result.message)
@@ -229,21 +231,21 @@ class PreprocessSidebar(QWidget):
         data_list = result.diagnostics.get("preprocessed_data_list")
         return list(data_list) if isinstance(data_list, list) else []
 
-    def _legacy_preprocessed_data_list_for_dialog(
+    def _compatibility_preprocessed_data_list_for_dialog(
         self,
         failure_title: str,
     ) -> list[Any] | None:
-        """Return preprocessed data only for mock / legacy dialog contexts."""
+        """Return preprocessed data only for mock / compatibility dialog contexts."""
         try:
-            data_list = run_legacy_controller_fallback(
+            data_list = run_controller_compatibility_call(
                 self,
                 self.controller.get_preprocessed_data_list,
             )
-        except LegacyControllerFallbackUnavailableError:
+        except ControllerCompatibilityUnavailableError:
             QMessageBox.warning(
                 self,
                 failure_title,
-                LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
             )
             return None
         return list(data_list) if isinstance(data_list, list) else []
@@ -347,7 +349,7 @@ class PreprocessSidebar(QWidget):
             )
             return True
         if preprocess_capability is None:
-            fallback_ok, is_epoched = self._run_legacy_preprocess_fallback(
+            fallback_ok, is_epoched = self._run_preprocess_compatibility_call(
                 "Action Blocked",
                 self.controller.is_epoched,
             )
@@ -391,7 +393,7 @@ class PreprocessSidebar(QWidget):
                     "No data loaded. Please import data first.",
                 )
                 return False
-            fallback_ok, has_data = self._run_legacy_preprocess_fallback(
+            fallback_ok, has_data = self._run_preprocess_compatibility_call(
                 "Warning",
                 self.controller.has_data,
             )
@@ -411,11 +413,11 @@ class PreprocessSidebar(QWidget):
         if self.panel and hasattr(self.panel, "update_panel"):
             self.panel.update_panel()
 
-    def _notify_update_after_legacy_result(self, result) -> None:
+    def _notify_update_after_command_result(self, result) -> None:
         if result is None:
             self.notify_update()
 
-    def _refresh_shared_status_after_legacy_result(self, result) -> None:
+    def _refresh_shared_status_after_command_result(self, result) -> None:
         if result is None:
             refresh_shared_status(self)
 
@@ -443,22 +445,22 @@ class PreprocessSidebar(QWidget):
         logger.info(message)
 
     def _show_preprocess_success(self, result: Any, message: str) -> None:
-        self._notify_update_after_legacy_result(result)
+        self._notify_update_after_command_result(result)
         QMessageBox.information(self, "Success", message)
 
     def _handle_epoch_command_success(self, result: Any) -> None:
-        self._notify_update_after_legacy_result(result)
-        self._refresh_shared_status_after_legacy_result(result)
+        self._notify_update_after_command_result(result)
+        self._refresh_shared_status_after_command_result(result)
         self._show_epoch_success(result)
 
-    def _run_legacy_preprocess_fallback(
+    def _run_preprocess_compatibility_call(
         self,
         blocked_title: str,
         fallback: Callable[[], Any],
     ) -> tuple[bool, Any]:
         try:
-            return True, run_legacy_controller_fallback(self, fallback)
-        except LegacyControllerFallbackUnavailableError as exc:
+            return True, run_controller_compatibility_call(self, fallback)
+        except ControllerCompatibilityUnavailableError as exc:
             QMessageBox.warning(self, blocked_title, str(exc))
             return False, None
 
@@ -497,7 +499,7 @@ class PreprocessSidebar(QWidget):
                 QMessageBox.warning(
                     self,
                     blocked_title,
-                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return
             elif result.failed:
@@ -713,14 +715,14 @@ class PreprocessSidebar(QWidget):
                 QMessageBox.warning(
                     self,
                     "Reset Blocked",
-                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return
             elif result.failed:
                 self._show_command_failure("Error", result.message)
                 return
-            self._notify_update_after_legacy_result(result)
-            self._refresh_shared_status_after_legacy_result(result)
+            self._notify_update_after_command_result(result)
+            self._refresh_shared_status_after_command_result(result)
             QMessageBox.information(self, "Success", "Preprocessing reset.")
         except Exception as e:
             logger.error("Reset failed: %s", e)

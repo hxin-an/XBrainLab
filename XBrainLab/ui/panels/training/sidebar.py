@@ -24,13 +24,13 @@ from XBrainLab.backend.application import (
     TrainCommand,
 )
 from XBrainLab.ui.application_capabilities import (
-    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
-    LegacyControllerFallbackUnavailableError,
+    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+    ControllerCompatibilityUnavailableError,
     blocked_reason,
     execute_application_command,
     execute_application_command_async,
     get_command_capability,
-    run_legacy_controller_fallback,
+    run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 
@@ -180,16 +180,16 @@ class TrainingSidebar(QWidget):
         # Initial check
         self.check_ready_to_train()
 
-    def _legacy_controller_value(
+    def _compatibility_controller_value(
         self,
         fallback: Callable[[], Any],
         *,
         blocked_title: str | None = None,
     ) -> tuple[bool, Any]:
-        """Read legacy controller state only for mock / legacy UI contexts."""
+        """Read controller compatibility state only for mock UI contexts."""
         try:
-            return True, run_legacy_controller_fallback(self, fallback)
-        except LegacyControllerFallbackUnavailableError as exc:
+            return True, run_controller_compatibility_call(self, fallback)
+        except ControllerCompatibilityUnavailableError as exc:
             if blocked_title is not None:
                 QMessageBox.warning(self, blocked_title, str(exc))
             return False, None
@@ -198,7 +198,7 @@ class TrainingSidebar(QWidget):
         """Check if all configurations are set and enable/disable start button."""
         train_capability = get_command_capability(self, CommandName.TRAIN)
         if train_capability is None:
-            available, ready_value = self._legacy_controller_value(
+            available, ready_value = self._compatibility_controller_value(
                 self.controller.validate_ready,
             )
             if not available:
@@ -214,8 +214,8 @@ class TrainingSidebar(QWidget):
 
         if not ready:
             if train_capability is None:
-                available, missing = self._legacy_controller_value(
-                    self._legacy_missing_training_config,
+                available, missing = self._compatibility_controller_value(
+                    self._compatibility_missing_training_config,
                 )
                 if not available:
                     self.btn_start.setToolTip(
@@ -233,7 +233,7 @@ class TrainingSidebar(QWidget):
         else:
             self.btn_start.setToolTip("Start Training")
 
-    def _legacy_missing_training_config(self) -> list[str]:
+    def _compatibility_missing_training_config(self) -> list[str]:
         missing = []
         if not self.controller.has_datasets():
             missing.append("Data Splitting")
@@ -266,7 +266,7 @@ class TrainingSidebar(QWidget):
             )
             return True
         if configure_capability is None:
-            available, is_training = self._legacy_controller_value(
+            available, is_training = self._compatibility_controller_value(
                 self.controller.is_training,
                 blocked_title="Training Configuration Blocked",
             )
@@ -297,7 +297,7 @@ class TrainingSidebar(QWidget):
         )
         if (
             generate_capability is None
-            and self._legacy_data_splitting_preflight_blocked()
+            and self._compatibility_data_splitting_preflight_blocked()
         ):
             return
 
@@ -326,7 +326,7 @@ class TrainingSidebar(QWidget):
                     QMessageBox.warning(
                         self,
                         "Reset Training Data Blocked",
-                        LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                        CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                     )
                     return
                 elif clear_result.failed:
@@ -354,7 +354,7 @@ class TrainingSidebar(QWidget):
                         "Success",
                         "Data splitting configuration saved.",
                     )
-                    self._check_ready_after_legacy_result(result)
+                    self._check_ready_after_command_result(result)
 
                 def _handle_generate_error(error: tuple) -> None:
                     message = error[1] if len(error) > 1 else error
@@ -378,7 +378,7 @@ class TrainingSidebar(QWidget):
                     QMessageBox.warning(
                         self,
                         "Data Splitting Blocked",
-                        LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                        CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                     )
                     return
                 elif result.failed:
@@ -393,10 +393,10 @@ class TrainingSidebar(QWidget):
                     "Success",
                     "Data splitting configuration saved.",
                 )
-                self._check_ready_after_legacy_result(result)
+                self._check_ready_after_command_result(result)
 
-    def _legacy_data_splitting_preflight_blocked(self) -> bool:
-        available, data_list = self._legacy_controller_value(
+    def _compatibility_data_splitting_preflight_blocked(self) -> bool:
+        available, data_list = self._compatibility_controller_value(
             self.controller.get_loaded_data_list,
             blocked_title="Data Splitting Blocked",
         )
@@ -410,7 +410,7 @@ class TrainingSidebar(QWidget):
             )
             return True
 
-        available, epoch_data = self._legacy_controller_value(
+        available, epoch_data = self._compatibility_controller_value(
             self.controller.get_epoch_data,
             blocked_title="Data Splitting Blocked",
         )
@@ -424,7 +424,7 @@ class TrainingSidebar(QWidget):
             )
             return True
 
-        available, is_training = self._legacy_controller_value(
+        available, is_training = self._compatibility_controller_value(
             self.controller.is_training,
             blocked_title="Data Splitting Blocked",
         )
@@ -482,7 +482,7 @@ class TrainingSidebar(QWidget):
                 QMessageBox.warning(
                     self,
                     "Data Splitting Blocked",
-                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return None
             return {}
@@ -508,13 +508,13 @@ class TrainingSidebar(QWidget):
             CommandName.GENERATE_DATASET,
         )
         if generate_capability is None:
-            available, should_clear = self._legacy_controller_value(
+            available, should_clear = self._compatibility_controller_value(
                 lambda: self.controller.has_datasets() or self.controller.get_trainer(),
             )
             return bool(should_clear) if available else False
         return self._can_replace_existing_dataset(generate_capability.reasons)
 
-    def _check_ready_after_legacy_result(self, result) -> None:
+    def _check_ready_after_command_result(self, result) -> None:
         if result is None:
             self.check_ready_to_train()
 
@@ -547,7 +547,7 @@ class TrainingSidebar(QWidget):
                 QMessageBox.warning(
                     self,
                     "Model Selection Blocked",
-                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return
             elif result.failed:
@@ -558,7 +558,7 @@ class TrainingSidebar(QWidget):
                 "Success",
                 f"Model selected: {selected_model_name}",
             )
-            self._check_ready_after_legacy_result(result)
+            self._check_ready_after_command_result(result)
 
     def training_setting(self):
         """Open the training-settings dialog and store the configuration.
@@ -603,7 +603,7 @@ class TrainingSidebar(QWidget):
                 QMessageBox.warning(
                     self,
                     "Training Settings Blocked",
-                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return
             elif result.failed:
@@ -614,7 +614,7 @@ class TrainingSidebar(QWidget):
                 )
                 return
             QMessageBox.information(self, "Success", "Training settings saved.")
-            self._check_ready_after_legacy_result(result)
+            self._check_ready_after_command_result(result)
 
     def _training_option_snapshot(self) -> dict | None:
         result = execute_application_command(
@@ -668,7 +668,7 @@ class TrainingSidebar(QWidget):
                     QMessageBox.warning(
                         self,
                         "Start Training Blocked",
-                        LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                        CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                     )
                     return
                 elif result.failed:
@@ -679,7 +679,7 @@ class TrainingSidebar(QWidget):
                     )
                     return
                 self.btn_stop.setEnabled(True)
-                self._check_ready_after_legacy_result(result)
+                self._check_ready_after_command_result(result)
                 # Panel should know training started to update log?
                 # Observer in Panel handles "training_started" event.
         except Exception as e:
@@ -687,7 +687,7 @@ class TrainingSidebar(QWidget):
 
     def _should_start_training(self, train_capability) -> bool:
         if train_capability is None:
-            available, is_training = self._legacy_controller_value(
+            available, is_training = self._compatibility_controller_value(
                 self.controller.is_training,
                 blocked_title="Start Training Blocked",
             )
@@ -706,7 +706,7 @@ class TrainingSidebar(QWidget):
             return
 
         if stop_capability is None:
-            available, is_training = self._legacy_controller_value(
+            available, is_training = self._compatibility_controller_value(
                 self.controller.is_training,
                 blocked_title="Stop Training Blocked",
             )
@@ -718,7 +718,7 @@ class TrainingSidebar(QWidget):
             QMessageBox.warning(
                 self,
                 "Stop Training Blocked",
-                LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
             )
             return
         elif result.failed:
@@ -752,7 +752,7 @@ class TrainingSidebar(QWidget):
                 )
                 return
             if clear_capability is None:
-                available, is_training = self._legacy_controller_value(
+                available, is_training = self._compatibility_controller_value(
                     self.controller.is_training,
                     blocked_title="Clear History Blocked",
                 )
@@ -782,14 +782,14 @@ class TrainingSidebar(QWidget):
                 QMessageBox.warning(
                     self,
                     "Clear History Blocked",
-                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return
             elif result.failed:
                 QMessageBox.warning(self, "Warning", result.message)
                 return
 
-            self._check_ready_after_legacy_result(result)
+            self._check_ready_after_command_result(result)
         except Exception as e:
             QMessageBox.warning(self, "Warning", f"Error clearing history: {e}")
 

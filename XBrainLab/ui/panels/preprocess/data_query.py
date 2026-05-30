@@ -9,7 +9,7 @@ from XBrainLab.ui.application_capabilities import execute_application_command
 
 
 def query_preprocess_render_lists(context: Any) -> tuple[list[Any], list[Any]] | None:
-    """Return current/original data lists, or None for legacy mock fallback."""
+    """Return current/original data lists, or None for compatibility mock fallback."""
     result = execute_application_command(
         context,
         QueryStateCommand(query="data_lists", include_objects=True),

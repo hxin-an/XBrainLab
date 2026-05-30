@@ -51,7 +51,7 @@ def _label_sort_key(value: Any) -> tuple[int, Any]:
 
 
 def _parse_display_code(text: str) -> Any:
-    """Best-effort parser for legacy table rows that only stored text."""
+    """Best-effort parser for compatibility table rows that only stored text."""
     try:
         return int(text)
     except ValueError:

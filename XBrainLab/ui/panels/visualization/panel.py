@@ -19,11 +19,11 @@ from XBrainLab.backend.application import SaliencyCommand, VisualizeCommand
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.visualization import supported_saliency_methods
 from XBrainLab.ui.application_capabilities import (
-    LegacyControllerFallbackUnavailableError,
+    ControllerCompatibilityUnavailableError,
     execute_application_command,
     execute_application_command_async,
-    get_legacy_controller_from_study,
-    run_legacy_controller_fallback,
+    get_controller_for_compatibility_context,
+    run_controller_compatibility_call,
 )
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.styles.stylesheets import Stylesheets
@@ -63,13 +63,13 @@ class VisualizationPanel(BasePanel):
         """
         # 1. Controller Resolution
         if controller is None and parent and hasattr(parent, "study"):
-            controller = get_legacy_controller_from_study(
+            controller = get_controller_for_compatibility_context(
                 parent,
                 parent.study,
                 "visualization",
             )
         if preprocess_controller is None and parent and hasattr(parent, "study"):
-            preprocess_controller = get_legacy_controller_from_study(
+            preprocess_controller = get_controller_for_compatibility_context(
                 parent,
                 parent.study,
                 "preprocess",
@@ -241,14 +241,14 @@ class VisualizationPanel(BasePanel):
             return trainers
         if self.last_application_query is not None:
             return []
-        return self._legacy_trainers_for_render()
+        return self._compatibility_trainers_for_render()
 
-    def _legacy_trainers_for_render(self):
+    def _compatibility_trainers_for_render(self):
         if self.controller is None:
             return []
         try:
-            return run_legacy_controller_fallback(self, self.controller.get_trainers)
-        except LegacyControllerFallbackUnavailableError:
+            return run_controller_compatibility_call(self, self.controller.get_trainers)
+        except ControllerCompatibilityUnavailableError:
             return []
 
     def refresh_combos(self):
@@ -413,7 +413,9 @@ class VisualizationPanel(BasePanel):
                         None if averaged_record is _MISSING else averaged_record
                     )
                 else:
-                    eval_record = self._legacy_averaged_record_for_render(trainer)
+                    eval_record = self._compatibility_averaged_record_for_render(
+                        trainer,
+                    )
             else:
                 eval_record = averaged_record
             if not eval_record:
@@ -586,16 +588,16 @@ class VisualizationPanel(BasePanel):
             return _MISSING
         return records[trainer_index]
 
-    def _legacy_averaged_record_for_render(self, trainer):
+    def _compatibility_averaged_record_for_render(self, trainer):
         controller = self.controller
         if controller is None:
             return None
         try:
-            return run_legacy_controller_fallback(
+            return run_controller_compatibility_call(
                 self,
                 lambda: controller.get_averaged_record(trainer),
             )
-        except LegacyControllerFallbackUnavailableError:
+        except ControllerCompatibilityUnavailableError:
             return None
 
     def _current_trainer_index(self, trainer) -> int:

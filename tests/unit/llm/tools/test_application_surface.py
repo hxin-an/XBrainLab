@@ -384,7 +384,7 @@ def test_legacy_error_string_becomes_failed_structured_result():
     assert "Generate datasets" in result.message
 
 
-def test_legacy_result_success_inference_handles_error_prefixes():
+def test_command_result_success_inference_handles_error_prefixes():
     assert legacy_tool_result_succeeded("Successfully loaded 1 files.") is True
     assert legacy_tool_result_succeeded("Error: paths list cannot be empty.") is False
     assert legacy_tool_result_succeeded("Dataset generation failed: no epoch") is False

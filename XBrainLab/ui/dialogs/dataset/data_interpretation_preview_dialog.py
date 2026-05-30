@@ -36,6 +36,10 @@ from XBrainLab.ui.dialogs.dataset.label_placement_step import LabelPlacementStep
 from XBrainLab.ui.dialogs.dataset.load_labels_step import LoadLabelsStepMixin
 from XBrainLab.ui.dialogs.dataset.review_import_step import ReviewImportStepMixin
 from XBrainLab.ui.dialogs.dataset.smart_parser_dialog import SmartParserDialog
+from XBrainLab.ui.dialogs.dataset.wizard_state import (
+    DataImportWizardState,
+    WizardStateChange,
+)
 from XBrainLab.ui.styles.theme import Theme
 from XBrainLab.ui.table_sizing import scaled_column_widths
 
@@ -402,12 +406,12 @@ class DataInterpretationPreviewDialog(
         self._tree_column_specs: dict[int, tuple[int, ...]] = {}
         self._updating_label_rule = False
         self._label_rule_controls_changed = False
-        self._initial_label_sources = self._clean_label_sources(
+        initial_label_sources = self._clean_label_sources(
             self.scan_result.get("label_sources")
         )
-        self._extra_label_sources = list(self._initial_label_sources)
-        self._excluded_label_carriers: list[str] = []
-        self._skip_labels = False
+        self._wizard_state = DataImportWizardState.from_label_sources(
+            initial_label_sources
+        )
         super().__init__(
             parent=parent,
             title="Import EEG Data",
@@ -419,6 +423,34 @@ class DataInterpretationPreviewDialog(
     def decision(self) -> str:
         """Return the validation decision string."""
         return str(self.validation_decision.get("decision", "unknown"))
+
+    @property
+    def _initial_label_sources(self) -> list[str]:
+        return self._wizard_state.label_sources.initial_sources
+
+    @property
+    def _extra_label_sources(self) -> list[str]:
+        return self._wizard_state.label_sources.extra_sources
+
+    @_extra_label_sources.setter
+    def _extra_label_sources(self, value: list[str]) -> None:
+        self._wizard_state.label_sources.extra_sources = list(value)
+
+    @property
+    def _excluded_label_carriers(self) -> list[str]:
+        return self._wizard_state.label_sources.excluded_carriers
+
+    @_excluded_label_carriers.setter
+    def _excluded_label_carriers(self, value: list[str]) -> None:
+        self._wizard_state.label_sources.excluded_carriers = list(value)
+
+    @property
+    def _skip_labels(self) -> bool:
+        return self._wizard_state.label_sources.skip_labels
+
+    @_skip_labels.setter
+    def _skip_labels(self, value: bool) -> None:
+        self._wizard_state.label_sources.skip_labels = bool(value)
 
     def init_ui(self) -> None:
         self._apply_product_tree_style()
@@ -1649,7 +1681,7 @@ class DataInterpretationPreviewDialog(
         return result
 
     def _label_sources_changed(self) -> bool:
-        return self._extra_label_sources != self._initial_label_sources
+        return self._wizard_state.label_sources.label_sources_changed()
 
     def _label_detection_text(self) -> str:
         if self._has_bids_events():
@@ -1958,7 +1990,7 @@ class DataInterpretationPreviewDialog(
         if changed:
             self._skip_labels = False
             self._refresh_label_source_rows()
-            self._refresh_label_matching_after_source_change()
+            self._notify_wizard_state_changed(WizardStateChange.LABEL_SOURCES)
             self._select_loaded_label_source_if_available()
             self.label_sources_label.setText(
                 "Label source restored."
@@ -1975,8 +2007,13 @@ class DataInterpretationPreviewDialog(
             self.label_sources_label.setVisible(True)
         self._sync_scroll_policy()
 
-    def _refresh_label_matching_after_source_change(self) -> None:
-        """Refresh downstream matching views after the label-source set changes."""
+    def _notify_wizard_state_changed(self, change: WizardStateChange) -> None:
+        """Route shared wizard state changes to affected step views."""
+        if change is WizardStateChange.LABEL_SOURCES:
+            self._sync_steps_after_label_source_change()
+
+    def _sync_steps_after_label_source_change(self) -> None:
+        """Synchronize step views after the label-source set changes."""
         self._refresh_load_labels_static_state()
         if hasattr(self, "label_carrier_tree"):
             self.label_carrier_tree.clear()
@@ -1999,7 +2036,7 @@ class DataInterpretationPreviewDialog(
         self._refresh_label_source_mode()
 
     def _skip_labels_for_now(self) -> None:
-        self._skip_labels = True
+        self._wizard_state.label_sources.mark_skip()
         self.label_sources_label.setText(self._label_sources_status_text())
         self.label_sources_label.setVisible(True)
         self._sync_scroll_policy()

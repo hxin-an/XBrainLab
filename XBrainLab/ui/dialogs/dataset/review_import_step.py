@@ -1,5 +1,7 @@
 """Review and Import step helpers for the Data Import wizard."""
 
+# pyright: reportAttributeAccessIssue=false
+
 from __future__ import annotations
 
 from pathlib import Path

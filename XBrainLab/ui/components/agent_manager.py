@@ -28,12 +28,12 @@ from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.ui.application_capabilities import (
-    LegacyControllerFallbackUnavailableError,
+    ControllerCompatibilityUnavailableError,
     blocked_reason,
     execute_application_command,
     get_command_capability,
-    get_legacy_controller_from_study,
-    run_legacy_controller_fallback,
+    get_controller_for_compatibility_context,
+    run_controller_compatibility_call,
 )
 from XBrainLab.ui.chat.panel import ChatPanel
 from XBrainLab.ui.components.vram_checker import VRAMConflictChecker
@@ -134,7 +134,7 @@ class AgentManager(QObject):
         self.chat_controller.processing_state_changed.connect(
             self.on_processing_state_changed,
         )
-        self.preprocess_controller = get_legacy_controller_from_study(
+        self.preprocess_controller = get_controller_for_compatibility_context(
             self,
             study,
             "preprocess",
@@ -556,7 +556,7 @@ class AgentManager(QObject):
         # Note: 'sender' argument from LLMController is usually 'Assistant' or 'Tool'
         self.agent_controller.response_ready.connect(self._handle_agent_response)
 
-        # 2. Status Updates -> Update UI Status (Legacy behavior, maybe simplify later)
+        # 2. Status Updates -> Update UI Status.
         self.agent_controller.status_update.connect(self.on_agent_status_update)
 
         # 3. Error -> Add Error Message
@@ -1151,7 +1151,7 @@ class AgentManager(QObject):
 
         Presents a ``PickMontageDialog`` pre-populated with an optional
         montage suggestion from the agent. Real Study-backed paths use the
-        ApplicationService command layer; legacy mock paths may fall back to
+        ApplicationService command layer; compatibility mock paths may fall back to
         the preprocess controller for test compatibility.
 
         Args:
@@ -1205,7 +1205,7 @@ class AgentManager(QObject):
                     ),
                 )
                 if result is None:
-                    if not self._legacy_apply_montage_selection(chs, positions):
+                    if not self._compatibility_apply_montage_selection(chs, positions):
                         return
                 elif result.failed:
                     sb = self.main_window.statusBar()
@@ -1240,26 +1240,26 @@ class AgentManager(QObject):
             self.chat_controller.add_agent_message("Operation Cancelled.")
             self.handle_user_input("Montage Selection Cancelled by User.")
 
-    def _legacy_apply_montage_selection(self, chs, positions) -> bool:
-        """Apply montage only for mock / legacy UI contexts."""
+    def _compatibility_apply_montage_selection(self, chs, positions) -> bool:
+        """Apply montage only for mock / compatibility UI contexts."""
         controller = self.preprocess_controller
         if controller is None:
             sb = self.main_window.statusBar()
             if sb:
                 sb.showMessage(
-                    "Montage setup blocked: legacy controller unavailable.",
+                    "Montage setup blocked: controller compatibility unavailable.",
                 )
             self.handle_user_input("Montage Selection Failed.")
             return False
         try:
-            run_legacy_controller_fallback(
+            run_controller_compatibility_call(
                 self,
                 lambda: controller.apply_montage(
                     chs,
                     positions,
                 ),
             )
-        except LegacyControllerFallbackUnavailableError as exc:
+        except ControllerCompatibilityUnavailableError as exc:
             sb = self.main_window.statusBar()
             if sb:
                 sb.showMessage(f"Montage setup blocked: {exc}")
@@ -1275,7 +1275,7 @@ class AgentManager(QObject):
             refresh=False,
         )
         if result is None:
-            return self._legacy_montage_channel_names_for_dialog()
+            return self._compatibility_montage_channel_names_for_dialog()
         if result.failed:
             sb = self.main_window.statusBar()
             if sb:
@@ -1291,22 +1291,22 @@ class AgentManager(QObject):
             return []
         return [str(name) for name in channel_names]
 
-    def _legacy_montage_channel_names_for_dialog(self) -> list[str] | None:
-        """Return montage channel names only for mock / legacy UI contexts."""
+    def _compatibility_montage_channel_names_for_dialog(self) -> list[str] | None:
+        """Return montage channel names only for mock / compatibility UI contexts."""
         try:
-            return run_legacy_controller_fallback(
+            return run_controller_compatibility_call(
                 self,
-                self._legacy_montage_channel_names,
+                self._compatibility_montage_channel_names,
             )
-        except LegacyControllerFallbackUnavailableError as exc:
+        except ControllerCompatibilityUnavailableError as exc:
             sb = self.main_window.statusBar()
             if sb:
                 sb.showMessage(f"Montage setup blocked: {exc}")
             self.handle_user_input("Montage Selection Failed.")
             return None
 
-    def _legacy_montage_channel_names(self) -> list[str]:
-        """Read montage channel names only for mock / legacy UI contexts."""
+    def _compatibility_montage_channel_names(self) -> list[str]:
+        """Read montage channel names only for mock / compatibility UI contexts."""
         epoch_data = self.study.epoch_data
         if not epoch_data:
             return []
@@ -1318,7 +1318,10 @@ class AgentManager(QObject):
                 if isinstance(names, list | tuple):
                     return [str(name) for name in names]
             except Exception:
-                logger.debug("Legacy montage channel-name getter failed", exc_info=True)
+                logger.debug(
+                    "Compatibility montage channel-name getter failed",
+                    exc_info=True,
+                )
 
         try:
             mne_obj = epoch_data.get_mne()

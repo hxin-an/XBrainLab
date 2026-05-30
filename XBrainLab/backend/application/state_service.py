@@ -43,12 +43,16 @@ class StateSnapshotService:
         dataset_generation: Any,
         training_commands: Any,
         interpretation: Any,
+        training_state: Any | None = None,
+        evaluation_state: Any | None = None,
     ) -> None:
         self.study = study
         self.dataset = dataset
         self.preprocess = preprocess
         self.training = training
+        self.training_state = training_state or training
         self.evaluation = evaluation
+        self.evaluation_state = evaluation_state or evaluation
         self.visualization = visualization
         self.dataset_generation = dataset_generation
         self.training_commands = training_commands
@@ -143,7 +147,7 @@ class StateSnapshotService:
                 training_option,
             ),
             has_trainer=trainer is not None,
-            is_running=self._safe_bool(self.training.is_training),
+            is_running=self._safe_bool(self.training_state.is_training),
             plan_count=evaluation.total_plans,
             run_count=evaluation.total_runs,
             finished_run_count=evaluation.finished_runs,
@@ -151,7 +155,7 @@ class StateSnapshotService:
                 getattr(self.training, "get_progress_text", None),
             ),
             missing_requirements=self._safe_list(
-                self.training.get_missing_requirements,
+                self.training_state.get_missing_requirements,
             ),
         )
         visualization = VisualizationStateSnapshot(
@@ -247,7 +251,7 @@ class StateSnapshotService:
         include_objects: bool = False,
     ) -> list[dict[str, Any]]:
         """Return formatted training-history rows for UI or headless queries."""
-        getter = getattr(self.training, "get_formatted_history", None)
+        getter = getattr(self.training_state, "get_formatted_history", None)
         rows = self._safe_call_list(getter) if callable(getter) else []
         result: list[dict[str, Any]] = []
         for row in rows:
@@ -391,7 +395,7 @@ class StateSnapshotService:
         return f"Dataset {idx + 1}"
 
     def _evaluation_snapshot(self) -> EvaluationStateSnapshot:
-        plans = self._safe_call_list(self.evaluation.get_plans)
+        plans = self._safe_call_list(self.evaluation_state.get_plans)
         total_runs = 0
         finished_runs = 0
         metrics_available = False

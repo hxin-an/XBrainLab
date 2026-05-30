@@ -248,7 +248,7 @@ class AggregateInfoPanel(QGroupBox):
             "available": bool(event_id),
             "count": count,
             "labels": labels,
-            "source": "legacy",
+            "source": "compatibility",
             "scanned": True,
         }
 

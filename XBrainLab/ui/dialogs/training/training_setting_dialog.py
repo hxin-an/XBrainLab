@@ -30,8 +30,8 @@ from XBrainLab.backend.training.utils import (
     get_optimizer_classes,
 )
 from XBrainLab.ui.application_capabilities import (
-    LegacyControllerFallbackUnavailableError,
-    run_legacy_controller_fallback,
+    ControllerCompatibilityUnavailableError,
+    run_controller_compatibility_call,
 )
 from XBrainLab.ui.core.base_dialog import BaseDialog
 
@@ -98,10 +98,10 @@ class TrainingSettingDialog(BaseDialog):
         self.load_settings()
 
     def load_settings(self):
-        """Load settings from a service snapshot or explicit legacy fallback."""
+        """Load settings from a snapshot or controller compatibility."""
         opt = self.initial_option
         if opt is None:
-            opt = self._legacy_training_option()
+            opt = self._compatibility_training_option()
         if opt:
             if isinstance(opt, dict):
                 self._load_settings_snapshot(opt)
@@ -138,16 +138,16 @@ class TrainingSettingDialog(BaseDialog):
             if opt.evaluation_option and self.evaluation_combo:
                 self.evaluation_combo.setCurrentText(opt.evaluation_option.value)
 
-    def _legacy_training_option(self) -> Any | None:
-        """Read training option only for mock / legacy dialog contexts."""
+    def _compatibility_training_option(self) -> Any | None:
+        """Read training option only for mock / compatibility dialog contexts."""
         if not self.controller:
             return None
         try:
-            return run_legacy_controller_fallback(
+            return run_controller_compatibility_call(
                 self,
                 self.controller.get_training_option,
             )
-        except LegacyControllerFallbackUnavailableError:
+        except ControllerCompatibilityUnavailableError:
             return None
 
     def _load_settings_snapshot(self, option: dict[str, Any]) -> None:

@@ -37,13 +37,13 @@ from XBrainLab.backend.application.commands import (
 )
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
-    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
-    LegacyControllerFallbackUnavailableError,
+    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+    ControllerCompatibilityUnavailableError,
     blocked_reason,
     execute_application_command,
     execute_application_command_async,
     get_command_capability,
-    run_legacy_controller_fallback,
+    run_controller_compatibility_call,
 )
 
 from .interpretation_command_runner import execute_interpretation_command_responsive
@@ -152,26 +152,26 @@ class DatasetActionHandler:
         """QMainWindow: The application main window reference."""
         return getattr(self.panel, "main_window", None)
 
-    def _update_panel_after_legacy_result(self, result) -> None:
+    def _update_panel_after_command_result(self, result) -> None:
         if result is None:
             self.panel.update_panel()
 
-    def _legacy_controller_value(
+    def _compatibility_controller_value(
         self,
         blocked_title: str,
         fallback: Callable[[], Any],
         *,
         warn_when_unavailable: bool = True,
     ) -> tuple[bool, Any]:
-        """Read legacy controller state only for mock / legacy UI contexts."""
+        """Read controller compatibility state only for mock UI contexts."""
         try:
-            return True, run_legacy_controller_fallback(self.panel, fallback)
-        except LegacyControllerFallbackUnavailableError as exc:
+            return True, run_controller_compatibility_call(self.panel, fallback)
+        except ControllerCompatibilityUnavailableError as exc:
             if warn_when_unavailable:
                 QMessageBox.warning(self.panel, blocked_title, str(exc))
             return False, None
 
-    def _legacy_locked_preflight_blocked(
+    def _compatibility_locked_preflight_blocked(
         self,
         controller: Any,
         *,
@@ -179,7 +179,7 @@ class DatasetActionHandler:
         locked_message: str,
         block_when_unavailable: bool = True,
     ) -> bool:
-        available, is_locked = self._legacy_controller_value(
+        available, is_locked = self._compatibility_controller_value(
             blocked_title,
             lambda: bool(controller.is_locked()),
             warn_when_unavailable=block_when_unavailable,
@@ -191,11 +191,11 @@ class DatasetActionHandler:
             return True
         return False
 
-    def _legacy_filenames_for_smart_parse(self) -> list[str] | None:
+    def _compatibility_filenames_for_smart_parse(self) -> list[str] | None:
         controller = self.controller
         if controller is None:
             return []
-        available, filenames = self._legacy_controller_value(
+        available, filenames = self._compatibility_controller_value(
             "Smart Parse Blocked",
             controller.get_filenames,
         )
@@ -203,7 +203,7 @@ class DatasetActionHandler:
             return None
         return list(filenames or [])
 
-    def _legacy_target_files_from_controller(self, selected_rows) -> list[Any]:
+    def _compatibility_target_files_from_controller(self, selected_rows) -> list[Any]:
         controller = self.controller
         if controller is None:
             QMessageBox.warning(
@@ -212,7 +212,7 @@ class DatasetActionHandler:
                 "Dataset controller unavailable.",
             )
             return []
-        available, data_list = self._legacy_controller_value(
+        available, data_list = self._compatibility_controller_value(
             "Add Labels Blocked",
             controller.get_loaded_data_list,
         )
@@ -223,7 +223,7 @@ class DatasetActionHandler:
         ]
         return [data_list[i] for i in self._last_target_file_indices]
 
-    def _legacy_smart_filter_suggestions(
+    def _compatibility_smart_filter_suggestions(
         self,
         raw_file,
         target_count: int,
@@ -231,14 +231,14 @@ class DatasetActionHandler:
         controller = self.controller
         if controller is None:
             return []
-        available, suggestions = self._legacy_controller_value(
+        available, suggestions = self._compatibility_controller_value(
             "Smart Filter Blocked",
             lambda: controller.get_smart_filter_suggestions(raw_file, target_count),
             warn_when_unavailable=False,
         )
         if not available:
             logger.warning(
-                "Skipped legacy smart-filter suggestions in real Study context.",
+                "Skipped compatibility smart-filter suggestions in real Study context.",
             )
             return []
         return [int(item) for item in suggestions or []]
@@ -264,7 +264,7 @@ class DatasetActionHandler:
             )
             return
 
-        if scan_capability is None and self._legacy_locked_preflight_blocked(
+        if scan_capability is None and self._compatibility_locked_preflight_blocked(
             controller,
             blocked_title="Interpretation Blocked",
             locked_message="Dataset is locked. Please clear or reset before importing.",
@@ -312,7 +312,7 @@ class DatasetActionHandler:
                         QMessageBox.warning(
                             self.panel,
                             "Interpretation Blocked",
-                            LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                            CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                         )
                         return
                     QMessageBox.information(
@@ -569,7 +569,7 @@ class DatasetActionHandler:
             return False
 
         if capability is None:
-            return not self._legacy_locked_preflight_blocked(
+            return not self._compatibility_locked_preflight_blocked(
                 controller,
                 blocked_title=blocked_title,
                 locked_message=(
@@ -1023,7 +1023,7 @@ class DatasetActionHandler:
     def on_import_finished(self, success_count, errors):
         """Handle the import-finished callback from the controller.
 
-        Shows warnings for failures. Successful legacy imports already emit
+        Shows warnings for failures. Successful compatibility imports already emit
         ``data_changed``, and that observer event owns the panel refresh.
 
         Args:
@@ -1071,7 +1071,7 @@ class DatasetActionHandler:
             return
 
         if smart_parse_capability is None:
-            available, is_locked = self._legacy_controller_value(
+            available, is_locked = self._compatibility_controller_value(
                 "Smart Parse Blocked",
                 lambda: bool(controller.is_locked()),
             )
@@ -1081,7 +1081,7 @@ class DatasetActionHandler:
                 QMessageBox.warning(self.panel, "Blocked", "Dataset is locked.")
                 return
 
-            available, has_data = self._legacy_controller_value(
+            available, has_data = self._compatibility_controller_value(
                 "Smart Parse Blocked",
                 lambda: bool(controller.has_data()),
             )
@@ -1109,7 +1109,7 @@ class DatasetActionHandler:
                 QMessageBox.warning(
                     self.panel,
                     "Smart Parse Blocked",
-                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return
             elif result.failed:
@@ -1117,7 +1117,7 @@ class DatasetActionHandler:
                 return
             else:
                 count = int(result.diagnostics.get("success_count", 0))
-            self._update_panel_after_legacy_result(result)
+            self._update_panel_after_command_result(result)
 
             QMessageBox.information(self.panel, "Success", f"Updated {count} files.")
 
@@ -1128,7 +1128,7 @@ class DatasetActionHandler:
             refresh=False,
         )
         if result is None:
-            return self._legacy_filenames_for_smart_parse()
+            return self._compatibility_filenames_for_smart_parse()
         if result.failed:
             QMessageBox.warning(
                 self.panel,
@@ -1211,7 +1211,7 @@ class DatasetActionHandler:
                     file_mapping=file_map,
                     selected_event_names=selected_event_names,
                 )
-            elif is_timestamp:  # Legacy
+            elif is_timestamp:  # Compatibility timestamp format
                 label_fname = next(iter(label_map.keys()))
                 file_map = {d.get_filepath(): label_fname for d in target_files}
                 plan = self._build_label_import_plan(
@@ -1239,7 +1239,7 @@ class DatasetActionHandler:
                 QMessageBox.warning(
                     self.panel,
                     "Label Import Blocked",
-                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return
             elif result.failed:
@@ -1249,7 +1249,7 @@ class DatasetActionHandler:
                 count = int(result.diagnostics.get("success_count", 0))
 
             if count > 0:
-                self._update_panel_after_legacy_result(result)
+                self._update_panel_after_command_result(result)
                 recipe_message = (
                     self._offer_label_recipe_save(result) if result is not None else ""
                 )
@@ -1368,7 +1368,7 @@ class DatasetActionHandler:
         if table_targets is not None:
             return table_targets
 
-        return self._legacy_target_files_from_controller(selected_rows)
+        return self._compatibility_target_files_from_controller(selected_rows)
 
     def _target_files_from_table_rows(self, selected_rows):
         target_files = []
@@ -1491,7 +1491,7 @@ class DatasetActionHandler:
                     return [int(item) for item in suggestions]
                 return []
 
-        return self._legacy_smart_filter_suggestions(raw_file, target_count)
+        return self._compatibility_smart_filter_suggestions(raw_file, target_count)
 
     def _target_index_for_filter_suggestion(self, raw_file, target_files) -> int | None:
         try:
@@ -1566,13 +1566,13 @@ class DatasetActionHandler:
                 QMessageBox.warning(
                     self.panel,
                     "Metadata Update Blocked",
-                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
                 return
-            self._update_panel_after_legacy_result(result)
+            self._update_panel_after_command_result(result)
 
     def _remove_files(self, rows):
         remove_capability = get_command_capability(
@@ -1607,10 +1607,10 @@ class DatasetActionHandler:
                 QMessageBox.warning(
                     self.panel,
                     "Remove Files Blocked",
-                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
                 return
-            self._update_panel_after_legacy_result(result)
+            self._update_panel_after_command_result(result)

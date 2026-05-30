@@ -752,11 +752,11 @@ def test_product_success_legacy_fallback_test_guard_flags_integration_fallback(
     path.parent.mkdir(parents=True)
     path.write_text(
         """
-from XBrainLab.ui.application_capabilities import run_legacy_controller_fallback
+from XBrainLab.ui.application_capabilities import run_controller_compatibility_call
 
 
 def test_product_action():
-    run_legacy_controller_fallback(widget, lambda: controller.start_training())
+    run_controller_compatibility_call(widget, lambda: controller.start_training())
 """,
         encoding="utf-8",
     )
@@ -765,7 +765,7 @@ def test_product_action():
 
     assert len(violations) == 2
     assert "tests/integration/ui/test_demo.py" in violations[0]
-    assert "legacy fallback product-success evidence" in violations[0]
+    assert "controller compatibility product-success evidence" in violations[0]
 
 
 def test_product_success_legacy_fallback_test_guard_flags_controller_lookup(
@@ -779,7 +779,7 @@ from XBrainLab.ui import application_capabilities
 
 
 def test_product_action(study):
-    return application_capabilities.get_legacy_controller_from_study(
+    return application_capabilities.get_controller_for_compatibility_context(
         widget,
         study,
         "training",
@@ -791,7 +791,7 @@ def test_product_action(study):
     violations = check_product_success_legacy_fallback_tests(tmp_path)
 
     assert len(violations) == 1
-    assert "get_legacy_controller_from_study" in violations[0]
+    assert "get_controller_for_compatibility_context" in violations[0]
 
 
 def test_product_success_legacy_fallback_test_guard_allows_unit_compatibility_test(
@@ -801,11 +801,11 @@ def test_product_success_legacy_fallback_test_guard_allows_unit_compatibility_te
     path.parent.mkdir(parents=True)
     path.write_text(
         """
-from XBrainLab.ui.application_capabilities import run_legacy_controller_fallback
+from XBrainLab.ui.application_capabilities import run_controller_compatibility_call
 
 
 def test_legacy_compat():
-    return run_legacy_controller_fallback(object(), lambda: "legacy-ok")
+    return run_controller_compatibility_call(object(), lambda: "legacy-ok")
 """,
         encoding="utf-8",
     )
@@ -1249,7 +1249,7 @@ def run(self):
     result = execute_application_command(self, SomeCommand())
     if result.failed:
         return
-    self._update_panel_after_legacy_result(result)
+    self._update_panel_after_command_result(result)
 """,
     )
 
@@ -1358,7 +1358,7 @@ def test_post_command_controller_echo_guard_flags_service_success_echo(tmp_path)
 def select_model(self):
     result = execute_application_command(self, ConfigureTrainingCommand())
     if result is None:
-        run_legacy_controller_fallback(
+        run_controller_compatibility_call(
             self,
             lambda: self.controller.set_model_holder(holder),
         )
@@ -1382,7 +1382,7 @@ def test_post_command_controller_echo_guard_allows_legacy_branch(tmp_path):
 def select_model(self):
     result = execute_application_command(self, ConfigureTrainingCommand())
     if result is None:
-        run_legacy_controller_fallback(
+        run_controller_compatibility_call(
             self,
             lambda: self.controller.set_model_holder(holder),
         )
@@ -1402,7 +1402,7 @@ def test_controller_fallback_guard_allows_named_legacy_wrapper(tmp_path):
 def run(self):
     result = execute_application_command(self, SomeCommand())
     if result is None:
-        self._run_legacy_preprocess_fallback(
+        self._run_preprocess_compatibility_call(
             "Filtering Blocked",
             lambda: self.controller.apply_filter(1.0, 40.0, [50.0]),
         )
@@ -1447,7 +1447,7 @@ def update_panel(self):
 
     assert len(violations) == 1
     assert "get_loaded_data_list" in violations[0]
-    assert "run_legacy_controller_fallback" in violations[0]
+    assert "run_controller_compatibility_call" in violations[0]
 
 
 def test_controller_render_fallback_guard_flags_model_holder_echo_in_missing_result(
@@ -1468,7 +1468,7 @@ def select_model(self):
 
     assert len(violations) == 1
     assert "get_model_holder" in violations[0]
-    assert "run_legacy_controller_fallback" in violations[0]
+    assert "run_controller_compatibility_call" in violations[0]
 
 
 def test_controller_render_fallback_guard_allows_explicit_legacy_wrapper(tmp_path):
@@ -1478,7 +1478,7 @@ def test_controller_render_fallback_guard_allows_explicit_legacy_wrapper(tmp_pat
 def update_panel(self):
     result = execute_application_command(self, QueryStateCommand(), refresh=False)
     if result is None:
-        rows = run_legacy_controller_fallback(
+        rows = run_controller_compatibility_call(
             self,
             self.controller.get_loaded_data_list,
         )
@@ -1660,7 +1660,7 @@ def test_capability_readiness_guard_allows_explicit_legacy_helper(tmp_path):
 def start_training(self):
     train_capability = get_command_capability(self, CommandName.TRAIN)
     if train_capability is None:
-        ok, running = run_legacy_controller_fallback(
+        ok, running = run_controller_compatibility_call(
             self,
             lambda: self.controller.is_training(),
         )
@@ -1673,14 +1673,14 @@ def start_training(self):
     assert check_ui_capability_gated_controller_readiness(tmp_path) == []
 
 
-def test_capability_readiness_guard_allows_local_legacy_value_helper(tmp_path):
+def test_capability_readiness_guard_allows_local_compatibility_value_helper(tmp_path):
     _write_ui_file(
         tmp_path,
         """
 def update_sidebar(self):
     scan_capability = get_command_capability(self, CommandName.SCAN_SOURCE)
     if scan_capability is None:
-        available, is_locked = self._legacy_controller_value(
+        available, is_locked = self._compatibility_controller_value(
             lambda: self.controller.is_locked(),
         )
         if available and is_locked:
@@ -1871,7 +1871,7 @@ def apply_loader(self, loader):
 
     assert len(violations) == 1
     assert "loader.apply" in violations[0]
-    assert "legacy loader adapter" in violations[0]
+    assert "compatibility loader adapter" in violations[0]
 
 
 def test_direct_loader_apply_guard_allows_legacy_adapter(tmp_path):
@@ -1938,7 +1938,7 @@ def test_direct_controller_mutation_guard_allows_legacy_fallback_call(tmp_path):
         tmp_path,
         """
 def run(self):
-    run_legacy_controller_fallback(
+    run_controller_compatibility_call(
         self,
         lambda: self.controller.start_training(),
     )
@@ -1953,7 +1953,7 @@ def test_direct_controller_mutation_guard_allows_named_legacy_wrapper_call(tmp_p
         tmp_path,
         """
 def run(self):
-    self._run_legacy_preprocess_fallback(
+    self._run_preprocess_compatibility_call(
         "Filtering Blocked",
         lambda: self.controller.apply_filter(1.0, 40.0, [50.0]),
     )
@@ -1991,7 +1991,7 @@ def _run_legacy_label_import(self):
 
     assert len(violations) == 1
     assert "_run_legacy_label_import" in violations[0]
-    assert "run_legacy_controller_fallback" in violations[0]
+    assert "run_controller_compatibility_call" in violations[0]
 
 
 def test_legacy_mutation_helper_guard_allows_wrapped_call(tmp_path):
@@ -1999,7 +1999,7 @@ def test_legacy_mutation_helper_guard_allows_wrapped_call(tmp_path):
         tmp_path,
         """
 def run(self):
-    run_legacy_controller_fallback(
+    run_controller_compatibility_call(
         self,
         lambda: self._run_legacy_label_import(),
     )
@@ -2017,7 +2017,7 @@ def test_legacy_fallback_scope_guard_flags_product_method_gate(tmp_path):
         tmp_path,
         """
 def run(self):
-    return run_legacy_controller_fallback(
+    return run_controller_compatibility_call(
         self,
         lambda: self.controller.get_loaded_data_list(),
     )
@@ -2027,7 +2027,7 @@ def run(self):
     violations = check_ui_legacy_fallback_helper_scope(tmp_path)
 
     assert len(violations) == 1
-    assert "run_legacy_controller_fallback" in violations[0]
+    assert "run_controller_compatibility_call" in violations[0]
     assert "explicit legacy/fallback helper" in violations[0]
 
 
@@ -2039,7 +2039,7 @@ def run(self):
     return self._legacy_loaded_rows()
 
 def _legacy_loaded_rows(self):
-    return run_legacy_controller_fallback(
+    return run_controller_compatibility_call(
         self,
         lambda: self.controller.get_loaded_data_list(),
     )
@@ -2201,7 +2201,7 @@ def test_controller_study_get_controller_guard_flags_legacy_helper(tmp_path):
         tmp_path,
         """
 def _legacy_training_controller_for_bridges(self):
-    return run_legacy_controller_fallback(
+    return run_controller_compatibility_call(
         self,
         lambda: self.controller.study.get_controller("training"),
     )

@@ -1,5 +1,7 @@
 """Loaded-label placement step helpers for the Data Import wizard."""
 
+# pyright: reportAttributeAccessIssue=false
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
@@ -760,13 +762,9 @@ class LabelPlacementStepMixin(DataImportWizardHostProtocol):
         value_summary = self._label_value_count_summary()
         if value_summary:
             return (
-                f"{field}: {value_summary}. "
-                "Class names can be confirmed below when values are known."
+                f"{field}: {value_summary}. Use the preview below to verify placement."
             )
-        return (
-            f"{field} values will be imported as {use_as.lower()}. "
-            "Class names can be confirmed below when values are known."
-        )
+        return f"{field} values will be imported as {use_as.lower()}."
 
     def _target_event_status_text(self) -> str:
         if not self._label_carrier_items:

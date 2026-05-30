@@ -35,10 +35,10 @@ from XBrainLab.ui.application_capabilities import (
     execute_application_command,
     execute_application_shutdown_command,
 )
-from XBrainLab.ui.core.worker import Worker
-from XBrainLab.ui.legacy_controller_bootstrap import (
-    get_legacy_workflow_controllers_for_panel_bootstrap,
+from XBrainLab.ui.controller_compatibility_bootstrap import (
+    get_compatibility_workflow_controllers_for_panel_bootstrap,
 )
+from XBrainLab.ui.core.worker import Worker
 from XBrainLab.ui.refresh_coordinator import refresh_after_navigation
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.window_placement import (
@@ -678,7 +678,7 @@ class MainWindow(QMainWindow):
     def init_panels(self):
         """Create the first panel now and defer hidden panels until first use."""
         self._workflow_controllers = (
-            get_legacy_workflow_controllers_for_panel_bootstrap(self.study)
+            get_compatibility_workflow_controllers_for_panel_bootstrap(self.study)
         )
 
         for spec in _PANEL_SPECS:
@@ -717,7 +717,7 @@ class MainWindow(QMainWindow):
 
         controllers = self._workflow_controllers
         if controllers is None:
-            controllers = get_legacy_workflow_controllers_for_panel_bootstrap(
+            controllers = get_compatibility_workflow_controllers_for_panel_bootstrap(
                 self.study,
             )
             self._workflow_controllers = controllers
@@ -805,7 +805,7 @@ class MainWindow(QMainWindow):
 
         # Feedback to Chat
         if self.agent_manager and self.agent_manager.chat_panel:
-            # We use the legacy or proper method to append message
+            # We use the compatibility or proper method to append message
             # Ideally via chat_controller but for Direct UI debug feedback:
             self.agent_manager.chat_panel.append_message(
                 "System",

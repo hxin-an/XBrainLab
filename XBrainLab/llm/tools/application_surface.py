@@ -221,14 +221,14 @@ class ToolCommandResult:
         )
 
     @classmethod
-    def from_legacy_result(
+    def from_compatibility_result(
         cls,
         tool_name: str,
         raw_result: Any,
         availability: ToolAvailability | None = None,
         state: dict[str, Any] | None = None,
     ) -> ToolCommandResult:
-        """Wrap a legacy string/object tool result with stable semantics."""
+        """Wrap a compatibility string/object tool result with stable semantics."""
         message = str(raw_result) if raw_result is not None else ""
         ok = legacy_tool_result_succeeded(message)
         error_type = None if ok else legacy_tool_error_type(message)
@@ -354,7 +354,7 @@ def normalize_tool_result(
             capability=capability,
         )
 
-    return ToolCommandResult.from_legacy_result(
+    return ToolCommandResult.from_compatibility_result(
         tool_name,
         raw_result,
         availability=availability,

@@ -1,10 +1,10 @@
-"""Legacy controller bootstrap boundary for workflow panel construction."""
+"""Controller compatibility bootstrap boundary for workflow panel construction."""
 
 from collections.abc import Callable
 from typing import Any
 
 
-class LegacyWorkflowControllers:
+class CompatibilityWorkflowControllers:
     """Lazy controller bundle kept only for panel constructor compatibility."""
 
     def __init__(
@@ -42,17 +42,17 @@ class LegacyWorkflowControllers:
         return self._controller("visualization")
 
 
-def get_legacy_workflow_controllers_for_panel_bootstrap(
+def get_compatibility_workflow_controllers_for_panel_bootstrap(
     study: Any,
-) -> LegacyWorkflowControllers:
+) -> CompatibilityWorkflowControllers:
     """Return temporary workflow controllers for panel bootstrap compatibility.
 
     Product action, readiness, and refresh truth must come from ApplicationService
     commands, snapshots, and refresh coordinators. This helper is the named UI
     quarantine for panel constructors that still accept controllers as observer or
-    legacy adapters.
+    compatibility adapters.
     """
     get_controller = getattr(study, "get_controller", None)
-    return LegacyWorkflowControllers(
+    return CompatibilityWorkflowControllers(
         get_controller if callable(get_controller) else None,
     )

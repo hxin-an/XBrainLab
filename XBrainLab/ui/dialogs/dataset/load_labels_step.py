@@ -1,5 +1,7 @@
 """Load Labels step helpers for the Data Import wizard."""
 
+# pyright: reportAttributeAccessIssue=false
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,6 +15,8 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QVBoxLayout,
 )
+
+from XBrainLab.ui.dialogs.dataset.wizard_state import WizardStateChange
 
 if TYPE_CHECKING:
     from XBrainLab.ui.dialogs.dataset.wizard_host_protocol import (
@@ -224,7 +228,7 @@ class LoadLabelsStepMixin(DataImportWizardHostProtocol):
         self._exclude_carriers_from_source(source)
         self._skip_labels = False
         self._refresh_label_source_rows()
-        self._refresh_label_matching_after_source_change()
+        self._notify_wizard_state_changed(WizardStateChange.LABEL_SOURCES)
         self.label_sources_label.setText("Removed label source.")
         self.label_sources_label.setVisible(True)
         self._sync_scroll_policy()
@@ -234,8 +238,7 @@ class LoadLabelsStepMixin(DataImportWizardHostProtocol):
         if not carrier:
             return
         changed = False
-        if not self._is_label_carrier_excluded(carrier):
-            self._excluded_label_carriers.append(carrier)
+        if self._wizard_state.label_sources.exclude_carrier(carrier):
             changed = True
         if self._remove_empty_label_sources_after_carrier_exclusion(carrier):
             changed = True
@@ -243,7 +246,7 @@ class LoadLabelsStepMixin(DataImportWizardHostProtocol):
             return
         self._skip_labels = False
         self._refresh_label_source_rows()
-        self._refresh_label_matching_after_source_change()
+        self._notify_wizard_state_changed(WizardStateChange.LABEL_SOURCES)
         self.label_sources_label.setText("Removed label file.")
         self.label_sources_label.setVisible(True)
         self._sync_scroll_policy()
@@ -306,8 +309,8 @@ class LoadLabelsStepMixin(DataImportWizardHostProtocol):
 
     def _remove_label_carrier_without_refresh(self, carrier_path: str) -> None:
         carrier = str(carrier_path).strip()
-        if carrier and not self._is_label_carrier_excluded(carrier):
-            self._excluded_label_carriers.append(carrier)
+        if carrier:
+            self._wizard_state.label_sources.exclude_carrier(carrier)
 
     def _refresh_load_labels_static_state(self) -> None:
         has_bids_events = self._has_bids_events()

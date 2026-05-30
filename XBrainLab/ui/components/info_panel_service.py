@@ -10,7 +10,7 @@ from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
     execute_application_command,
-    get_legacy_controller_from_study,
+    get_controller_for_compatibility_context,
 )
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 
@@ -40,7 +40,7 @@ class InfoPanelService(QObject):
             observe_controller_events: Whether this service should subscribe
                 directly to controller observer events. MainWindow product
                 runtime delegates aggregate refresh to the UI refresh
-                coordinator; standalone / legacy contexts can keep direct
+                coordinator; standalone / compatibility contexts can keep direct
                 observation enabled.
 
         """
@@ -53,7 +53,7 @@ class InfoPanelService(QObject):
 
     def _setup_bridges(self):
         """Connect observer bridges to dataset and preprocess controllers."""
-        dataset_controller = get_legacy_controller_from_study(
+        dataset_controller = get_controller_for_compatibility_context(
             self,
             self.study,
             "dataset",
@@ -66,7 +66,7 @@ class InfoPanelService(QObject):
             )
             self.dataset_bridge.connect_to(self.notify_all)
 
-        preprocess_controller = get_legacy_controller_from_study(
+        preprocess_controller = get_controller_for_compatibility_context(
             self,
             self.study,
             "preprocess",
@@ -170,7 +170,7 @@ class InfoPanelService(QObject):
             return [], []
 
         loaded = []
-        dataset_controller = get_legacy_controller_from_study(
+        dataset_controller = get_controller_for_compatibility_context(
             self,
             self.study,
             "dataset",
@@ -179,7 +179,7 @@ class InfoPanelService(QObject):
             loaded = dataset_controller.get_loaded_data_list()
 
         preprocessed = []
-        preprocess_controller = get_legacy_controller_from_study(
+        preprocess_controller = get_controller_for_compatibility_context(
             self,
             self.study,
             "preprocess",

@@ -55,11 +55,11 @@ UI_CONTROLLER_FALLBACK_METHODS = (
     "update_metadata",
 )
 UI_CONTROLLER_FALLBACK_WRAPPERS = (
-    "run_legacy_controller_fallback",
-    "_legacy_controller_value",
-    "_legacy_locked_preflight_blocked",
-    "_legacy_preprocessed_data_list_for_render",
-    "_run_legacy_preprocess_fallback",
+    "run_controller_compatibility_call",
+    "_compatibility_controller_value",
+    "_compatibility_locked_preflight_blocked",
+    "_compatibility_preprocessed_data_list_for_render",
+    "_run_preprocess_compatibility_call",
 )
 UI_POST_COMMAND_LOCAL_REFRESH_METHODS = (
     "check_ready_to_train",
@@ -167,8 +167,8 @@ PRODUCT_SUCCESS_BACKEND_FACADE_TEST_DIRS = (
     Path("tests/integration/ui"),
 )
 PRODUCT_SUCCESS_LEGACY_FALLBACK_SYMBOLS = (
-    "get_legacy_controller_from_study",
-    "run_legacy_controller_fallback",
+    "get_controller_for_compatibility_context",
+    "run_controller_compatibility_call",
 )
 PRODUCT_SUCCESS_CONTROLLER_LOOKUP_ASSERTIONS = (
     "assert_any_call",
@@ -834,7 +834,7 @@ def check_backend_facade_test_usage(root_dir: Path) -> list[str]:
 
 
 def check_product_success_legacy_fallback_tests(root_dir: Path) -> list[str]:
-    """Return product-success tests that still use legacy fallback helpers."""
+    """Return product-success tests that still use controller compatibility helpers."""
     violations: list[str] = []
 
     for relative_dir in PRODUCT_SUCCESS_BACKEND_FACADE_TEST_DIRS:
@@ -851,10 +851,10 @@ def check_product_success_legacy_fallback_tests(root_dir: Path) -> list[str]:
             visitor.visit(tree)
             violations.extend(
                 f"{py_file.relative_to(root_dir)}:{getattr(node, 'lineno', 0)} uses "
-                f"{_legacy_fallback_symbol_name(node)} as legacy fallback "
+                f"{_legacy_fallback_symbol_name(node)} as controller compatibility "
                 "product-success evidence; rewrite the test to exercise "
                 "ApplicationService / Command API, or move compatibility "
-                "coverage into explicit legacy-only unit tests."
+                "coverage into explicit compatibility-only unit tests."
                 for node in visitor.violations
             )
     return violations
@@ -1525,7 +1525,7 @@ def _legacy_fallback_symbol_name(node: ast.AST) -> str:
         return ", ".join(names) if names else "*"
     if isinstance(node, ast.Call):
         return _call_name(node.func)
-    return "legacy fallback helper"
+    return "controller compatibility helper"
 
 
 def check_ui_controller_fallbacks(root_dir: Path) -> list[str]:
@@ -1553,7 +1553,7 @@ def check_ui_controller_fallbacks(root_dir: Path) -> list[str]:
                 (
                     f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
                     f"{_call_name(call.func)} directly in {test_source!r}; use "
-                    "run_legacy_controller_fallback() for mock/legacy-only fallback."
+                    "run_controller_compatibility_call() for mock/compatibility-only fallback."
                 )
                 for call in _forbidden_fallback_calls(node.body)
             )
@@ -1595,7 +1595,7 @@ def check_ui_controller_render_fallbacks(root_dir: Path) -> list[str]:
                     f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
                     f"controller.{_call_name(call.func)}() directly in "
                     f"{test_source!r}; render fallback reads must go through "
-                    "run_legacy_controller_fallback() so real Study paths do "
+                    "run_controller_compatibility_call() so real Study paths do "
                     "not display stale controller state."
                 )
                 for call in _forbidden_render_fallback_calls(node.body)
@@ -1644,7 +1644,7 @@ class _ControllerRenderFallbackVisitor(ast.NodeVisitor):
 
 
 def check_ui_direct_controller_mutations(root_dir: Path) -> list[str]:
-    """Return UI controller mutations outside explicit legacy fallback paths."""
+    """Return UI controller mutations outside explicit controller compatibility paths."""
     violations: list[str] = []
     ui_dir = root_dir / "XBrainLab" / "ui"
     if not ui_dir.exists():
@@ -1669,7 +1669,7 @@ def check_ui_direct_controller_mutations(root_dir: Path) -> list[str]:
                 f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
                 f"controller.{_call_name(call.func)}() directly; product UI "
                 "mutations must go through ApplicationService, with controller "
-                "mutation limited to run_legacy_controller_fallback() or an "
+                "mutation limited to run_controller_compatibility_call() or an "
                 "explicit legacy/fallback helper."
                 for call in visitor.violations
             )
@@ -1678,7 +1678,11 @@ def check_ui_direct_controller_mutations(root_dir: Path) -> list[str]:
 
 def _is_legacy_controller_mutation_helper(function_name: str) -> bool:
     lower_name = function_name.lower()
-    return "legacy" in lower_name or "fallback" in lower_name
+    return (
+        "legacy" in lower_name
+        or "fallback" in lower_name
+        or "compatibility" in lower_name
+    )
 
 
 class _DirectControllerMutationVisitor(ast.NodeVisitor):
@@ -1721,9 +1725,9 @@ def check_ui_legacy_mutation_helper_calls(root_dir: Path) -> list[str]:
         visitor.visit(tree)
         violations.extend(
             f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
-            f"{_call_name(call.func)}() outside run_legacy_controller_fallback(); "
+            f"{_call_name(call.func)}() outside run_controller_compatibility_call(); "
             "legacy/fallback helpers that mutate controllers must remain behind "
-            "the explicit mock/legacy gate."
+            "the explicit mock/compatibility gate."
             for call in visitor.violations
         )
     return violations
@@ -1750,7 +1754,7 @@ class _LegacyMutationHelperCallVisitor(ast.NodeVisitor):
         self._legacy_gate_depth = 0
 
     def visit_Call(self, node: ast.Call) -> None:
-        if _call_name(node.func) == "run_legacy_controller_fallback":
+        if _call_name(node.func) == "run_controller_compatibility_call":
             self._legacy_gate_depth += 1
             self.generic_visit(node)
             self._legacy_gate_depth -= 1
@@ -1763,7 +1767,7 @@ class _LegacyMutationHelperCallVisitor(ast.NodeVisitor):
 
 
 def check_ui_legacy_fallback_helper_scope(root_dir: Path) -> list[str]:
-    """Return direct legacy fallback gates outside explicit legacy helpers."""
+    """Return direct controller compatibility gates outside explicit legacy helpers."""
     violations: list[str] = []
     ui_dir = root_dir / "XBrainLab" / "ui"
     if not ui_dir.exists():
@@ -1786,8 +1790,8 @@ def check_ui_legacy_fallback_helper_scope(root_dir: Path) -> list[str]:
             visitor.visit(node)
             violations.extend(
                 f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
-                "run_legacy_controller_fallback() from a product method; move "
-                "mock/legacy compatibility into an explicit legacy/fallback "
+                "run_controller_compatibility_call() from a product method; move "
+                "mock/compatibility compatibility into an explicit legacy/fallback "
                 "helper so product command paths stay visually separate."
                 for call in visitor.violations
             )
@@ -1809,7 +1813,7 @@ class _LegacyFallbackGateVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
-        if _call_name(node.func) == "run_legacy_controller_fallback":
+        if _call_name(node.func) == "run_controller_compatibility_call":
             self.violations.append(node)
             return
         self.generic_visit(node)
@@ -1851,7 +1855,7 @@ def check_ui_direct_backend_service_execute(root_dir: Path) -> list[str]:
             "BackendFacade(...).service.execute() or ApplicationService.execute() "
             "directly; UI command/query execution must go through "
             "execute_application_command() so the shared Study detection, "
-            "mock/legacy boundary, and refresh policy stay centralized."
+            "mock/compatibility boundary, and refresh policy stay centralized."
             for call in visitor.violations
         )
     return violations
@@ -1978,14 +1982,15 @@ def check_ui_direct_loader_apply(root_dir: Path) -> list[str]:
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            if "legacy" in node.name.lower():
+            lower_name = node.name.lower()
+            if "legacy" in lower_name or "compatibility" in lower_name:
                 continue
             visitor = _DirectLoaderApplyVisitor()
             visitor.visit(node)
             violations.extend(
                 f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
                 "loader.apply() directly; isolate raw loader mutation behind a "
-                "legacy loader adapter or ApplicationService command."
+                "compatibility loader adapter or ApplicationService command."
                 for call in visitor.violations
             )
     return violations
@@ -2350,7 +2355,7 @@ def check_ui_post_command_controller_echoes(root_dir: Path) -> list[str]:
                     f"controller.{_call_name(call.func)}() after "
                     "execute_application_command(); service-backed success UI "
                     "must trust CommandResult and selected user inputs, with "
-                    "controller echo reads limited to explicit legacy fallback "
+                    "controller echo reads limited to explicit controller compatibility "
                     "branches."
                     for call in _post_command_controller_echo_calls(
                         node.body,
@@ -2706,7 +2711,7 @@ class _PostCommandLocalRefreshVisitor(ast.NodeVisitor):
 
     def visit_If(self, node: ast.If) -> None:
         if _is_missing_result_guard(node.test):
-            if not _is_legacy_result_refresh_helper(self.function_name):
+            if not _is_command_result_refresh_helper(self.function_name):
                 for statement in node.body:
                     self.visit(statement)
             for statement in node.orelse:
@@ -2799,8 +2804,8 @@ def _is_missing_capability_guard(node: ast.AST) -> bool:
     return False
 
 
-def _is_legacy_result_refresh_helper(function_name: str) -> bool:
-    return function_name.endswith("_after_legacy_result")
+def _is_command_result_refresh_helper(function_name: str) -> bool:
+    return function_name.endswith("_after_command_result")
 
 
 def _is_none_failure_compare(node: ast.Compare) -> bool:

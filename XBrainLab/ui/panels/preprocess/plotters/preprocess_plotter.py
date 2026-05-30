@@ -13,8 +13,8 @@ from scipy.signal import welch
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
-    LegacyControllerFallbackUnavailableError,
-    run_legacy_controller_fallback,
+    ControllerCompatibilityUnavailableError,
+    run_controller_compatibility_call,
 )
 from XBrainLab.ui.core.worker import Worker
 from XBrainLab.ui.panels.preprocess.data_query import query_preprocess_render_lists
@@ -153,7 +153,9 @@ class PreprocessPlotter:
 
         return f, pxx, f_orig, pxx_orig
 
-    def _legacy_data_lists_for_render(self) -> tuple[list[Any], list[Any]] | None:
+    def _compatibility_data_lists_for_render(
+        self,
+    ) -> tuple[list[Any], list[Any]] | None:
         def fallback() -> tuple[list[Any], list[Any]] | None:
             if not self.controller or not self.controller.has_data():
                 return None
@@ -164,8 +166,8 @@ class PreprocessPlotter:
             return data_list, orig_list
 
         try:
-            return run_legacy_controller_fallback(self, fallback)
-        except LegacyControllerFallbackUnavailableError:
+            return run_controller_compatibility_call(self, fallback)
+        except ControllerCompatibilityUnavailableError:
             return None
 
     def _original_data_list_for_render(self) -> list[Any]:
@@ -173,10 +175,10 @@ class PreprocessPlotter:
         if queried_lists is not None:
             return queried_lists[1]
 
-        legacy_lists = self._legacy_data_lists_for_render()
-        if legacy_lists is None:
+        compatibility_lists = self._compatibility_data_lists_for_render()
+        if compatibility_lists is None:
             return []
-        return legacy_lists[1]
+        return compatibility_lists[1]
 
     def plot_sample_data(
         self,
@@ -197,10 +199,10 @@ class PreprocessPlotter:
             if queried_lists is not None:
                 data_list, orig_list = queried_lists
             else:
-                legacy_lists = self._legacy_data_lists_for_render()
-                if legacy_lists is None:
+                compatibility_lists = self._compatibility_data_lists_for_render()
+                if compatibility_lists is None:
                     return
-                data_list, orig_list = legacy_lists
+                data_list, orig_list = compatibility_lists
         elif original_data_list is None:
             orig_list = self._original_data_list_for_render()
 

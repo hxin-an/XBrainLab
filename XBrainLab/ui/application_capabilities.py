@@ -22,15 +22,15 @@ from XBrainLab.ui.refresh_coordinator import (
 )
 
 _FallbackResult = TypeVar("_FallbackResult")
-LEGACY_FALLBACK_UNAVAILABLE_MESSAGE = (
+CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE = (
     "XBrainLab could not safely complete this action from the current window "
     "state. Refresh the workflow and try again."
 )
 get_application_service: Callable[[Study], Any] | None = None
 
 
-class LegacyControllerFallbackUnavailableError(RuntimeError):
-    """Raised when product runtime attempts a legacy controller mutation."""
+class ControllerCompatibilityUnavailableError(RuntimeError):
+    """Raised when product runtime attempts a controller compatibility mutation."""
 
 
 def find_study(context: Any) -> Any | None:
@@ -96,7 +96,7 @@ def execute_application_command(
 ) -> CommandResult | None:
     """Execute an ApplicationService command for real Study-backed UI paths.
 
-    Returns ``None`` when the caller is backed by a mock or legacy non-Study
+    Returns ``None`` when the caller is backed by a mock or compatibility non-Study
     object. Product UI callers should treat that as blocked for state-changing
     commands; read-only compatibility adapters are handled separately.
     """
@@ -143,7 +143,7 @@ def execute_application_command_async(
     but expensive work is offloaded from the GUI thread. Result handling and UI
     refresh are delivered through Qt signals on the receiver thread.
 
-    Returns ``False`` for mock/legacy contexts so callers can show an explicit
+    Returns ``False`` for mock/compatibility contexts so callers can show an explicit
     blocked state for state-changing commands or use read-only compatibility
     adapters where that is still intentional.
     """
@@ -253,23 +253,25 @@ def _application_service_for(study: Study):
     return runtime_get_application_service(study)
 
 
-def run_legacy_controller_fallback(
+def run_controller_compatibility_call(
     context: Any,
     fallback: Callable[[], _FallbackResult],
 ) -> _FallbackResult:
-    """Run controller fallback only for mock or legacy non-Study UI contexts."""
+    """Run controller fallback only for mock or compatibility non-Study UI contexts."""
     study = find_study(context)
     if study is None or not isinstance(study, Study) or isinstance(study, Mock):
         return fallback()
-    raise LegacyControllerFallbackUnavailableError(LEGACY_FALLBACK_UNAVAILABLE_MESSAGE)
+    raise ControllerCompatibilityUnavailableError(
+        CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+    )
 
 
-def get_legacy_controller_from_study(
+def get_controller_for_compatibility_context(
     context: Any,
     study: Any,
     controller_name: str,
 ) -> Any | None:
-    """Return a controller only for mock / legacy UI contexts.
+    """Return a controller only for mock / compatibility UI contexts.
 
     Product MainWindow wiring injects controllers into panels. This helper keeps
     older tests and standalone contexts working without allowing real Study UI
@@ -279,9 +281,9 @@ def get_legacy_controller_from_study(
     if not callable(getter):
         return None
     try:
-        return run_legacy_controller_fallback(
+        return run_controller_compatibility_call(
             context,
             lambda: getter(controller_name),
         )
-    except LegacyControllerFallbackUnavailableError:
+    except ControllerCompatibilityUnavailableError:
         return None

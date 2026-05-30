@@ -1,11 +1,12 @@
-"""Typed lazy adapters from ApplicationService to existing workflow controllers."""
+"""Typed lazy command adapters from ApplicationService to workflow controllers."""
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+from contextlib import AbstractContextManager
 from typing import Any, Protocol, cast
 
 from XBrainLab.backend.study import Study
-from XBrainLab.backend.utils.logger import logger
 
 
 class _ObservableControllerPort(Protocol):
@@ -17,47 +18,82 @@ class _DatasetControllerPort(_ObservableControllerPort, Protocol):
     imported_paths: Any
 
     def clean_dataset(self) -> Any: ...
-    def import_files(self, paths: list[str]) -> Any: ...
-    def get_loaded_data_list(self) -> Any: ...
-    def apply_labels_batch(self, *args: Any, **kwargs: Any) -> Any: ...
-    def update_metadata(self, *args: Any, **kwargs: Any) -> Any: ...
-    def apply_smart_parse(self, *args: Any, **kwargs: Any) -> Any: ...
-    def remove_files(self, *args: Any, **kwargs: Any) -> Any: ...
-    def apply_channel_selection(self, channels: list[str]) -> Any: ...
-    def get_runtime_diagnostics(self) -> Any: ...
-    def get_event_info(self) -> Any: ...
-    def get_smart_filter_suggestions(self, *args: Any, **kwargs: Any) -> Any: ...
+    def import_files(self, paths: list[str]) -> tuple[int, list[str]]: ...
+    def get_loaded_data_list(self) -> list[Any]: ...
+    def apply_labels_batch(
+        self,
+        target_files: Sequence[Any],
+        label_map: Mapping[str, Any],
+        file_mapping: Mapping[str, str],
+        mapping: Mapping[str, Any],
+        selected_event_names: Sequence[str],
+    ) -> int: ...
+    def update_metadata(
+        self,
+        index: int,
+        subject: str | None = None,
+        session: str | None = None,
+    ) -> None: ...
+    def apply_smart_parse(self, results: Mapping[str, tuple[str, str]]) -> int: ...
+    def remove_files(self, indices: Sequence[int]) -> None: ...
+    def apply_channel_selection(self, channels: list[str]) -> bool: ...
+    def get_runtime_diagnostics(self) -> dict[str, Any]: ...
+    def get_event_info(self) -> dict[str, Any]: ...
+    def get_smart_filter_suggestions(
+        self,
+        *,
+        target_count: int | None = None,
+    ) -> list[dict[str, Any]]: ...
 
 
 class _PreprocessControllerPort(_ObservableControllerPort, Protocol):
-    def get_runtime_diagnostics(self) -> Any: ...
+    def get_runtime_diagnostics(self) -> dict[str, Any]: ...
     def is_epoched(self) -> bool: ...
-    def get_channel_names(self) -> Any: ...
-    def apply_filter(self, *args: Any, **kwargs: Any) -> Any: ...
-    def apply_resample(self, rate: float) -> Any: ...
-    def apply_normalization(self, method: str) -> Any: ...
-    def apply_rereference(self, channels: str | list[str]) -> Any: ...
-    def apply_epoching(self, *args: Any, **kwargs: Any) -> Any: ...
-    def batch_notifications(self) -> Any: ...
-    def apply_montage(self, *args: Any, **kwargs: Any) -> Any: ...
+    def get_channel_names(self) -> list[str]: ...
+    def apply_filter(
+        self,
+        l_freq: float | None,
+        h_freq: float | None,
+        notch_freqs: Sequence[float] | None = None,
+    ) -> bool: ...
+    def apply_resample(self, rate: float) -> bool: ...
+    def apply_normalization(self, method: str) -> bool: ...
+    def apply_rereference(self, channels: str | list[str]) -> bool: ...
+    def apply_epoching(
+        self,
+        baseline: tuple[float | None, float | None] | None,
+        selected_events: Mapping[str, int],
+        tmin: float,
+        tmax: float,
+    ) -> bool: ...
+    def batch_notifications(self) -> AbstractContextManager[None]: ...
+    def apply_montage(
+        self,
+        mapped_channels: list[str],
+        mapped_positions: list[tuple[float, float, float]],
+    ) -> None: ...
 
 
 class _TrainingControllerPort(_ObservableControllerPort, Protocol):
-    def set_training_option(self, option: Any) -> Any: ...
-    def set_model_holder(self, holder: Any) -> Any: ...
-    def start_training(self, *args: Any, **kwargs: Any) -> Any: ...
-    def stop_training(self, *args: Any, **kwargs: Any) -> Any: ...
+    def set_training_option(self, option: Any) -> None: ...
+    def set_model_holder(self, holder: Any) -> None: ...
+    def start_training(
+        self,
+        *,
+        append: bool = True,
+        interactive: bool = True,
+    ) -> None: ...
+    def stop_training(self) -> None: ...
     def clear_history(self) -> Any: ...
     def apply_data_splitting(self, generator: Any) -> Any: ...
     def clean_datasets(self, *args: Any, **kwargs: Any) -> Any: ...
     def is_training(self) -> bool: ...
     def get_formatted_history(self) -> list[dict[str, Any]]: ...
-    def get_missing_requirements(self) -> list[str]: ...
 
 
 class _EvaluationControllerPort(_ObservableControllerPort, Protocol):
-    def get_pooled_eval_result(self, *args: Any, **kwargs: Any) -> Any: ...
-    def get_model_summary_str(self, *args: Any, **kwargs: Any) -> Any: ...
+    def get_pooled_eval_result(self, plan: Any) -> tuple[Any, Any, dict[str, Any]]: ...
+    def get_model_summary_str(self, plan: Any, record: Any | None = None) -> str: ...
     def get_plans(self) -> list[Any]: ...
 
 
@@ -88,59 +124,6 @@ class LazyControllerAdapter:
 
     def notify(self, event: str, *args: Any, **kwargs: Any) -> Any:
         return self._observable_controller().notify(event, *args, **kwargs)
-
-
-class _TrainingStateReadModel:
-    """Lightweight training state read model that avoids loading training modules."""
-
-    def __init__(self, study: Study) -> None:
-        self._study = study
-
-    def is_training(self) -> bool:
-        training_manager = getattr(self._study, "training_manager", None)
-        if training_manager is None:
-            return False
-        try:
-            return bool(training_manager.is_training())
-        except Exception:
-            logger.debug("Failed to read training state", exc_info=True)
-            return False
-
-    def get_formatted_history(self) -> list[dict[str, Any]]:
-        if getattr(self._study, "trainer", None) is None:
-            return []
-        controller = cast(
-            _TrainingControllerPort,
-            self._study.get_controller("training"),
-        )
-        return list(controller.get_formatted_history())
-
-    def get_missing_requirements(self) -> list[str]:
-        missing: list[str] = []
-        if not list(getattr(self._study, "datasets", []) or []):
-            missing.append("Data Splitting")
-        if getattr(self._study, "model_holder", None) is None:
-            missing.append("Model Selection")
-        if getattr(self._study, "training_option", None) is None:
-            missing.append("Training Settings")
-        return missing
-
-
-class _EvaluationStateReadModel:
-    """Lightweight evaluation state read model for plan availability."""
-
-    def __init__(self, study: Study) -> None:
-        self._study = study
-
-    def get_plans(self) -> list[Any]:
-        trainer = getattr(self._study, "trainer", None)
-        if trainer is None:
-            return []
-        try:
-            return list(trainer.get_training_plan_holders())
-        except Exception:
-            logger.debug("Failed to read training plans", exc_info=True)
-            return []
 
 
 class DatasetControllerAdapter(LazyControllerAdapter):
@@ -177,29 +160,53 @@ class DatasetControllerAdapter(LazyControllerAdapter):
     def get_loaded_data_list(self) -> Any:
         return self._controller().get_loaded_data_list()
 
-    def apply_labels_batch(self, *args: Any, **kwargs: Any) -> Any:
-        return self._controller().apply_labels_batch(*args, **kwargs)
+    def apply_labels_batch(
+        self,
+        target_files: Sequence[Any],
+        label_map: Mapping[str, Any],
+        file_mapping: Mapping[str, str],
+        mapping: Mapping[str, Any],
+        selected_event_names: Sequence[str],
+    ) -> int:
+        return self._controller().apply_labels_batch(
+            target_files,
+            label_map,
+            file_mapping,
+            mapping,
+            selected_event_names,
+        )
 
-    def update_metadata(self, *args: Any, **kwargs: Any) -> Any:
-        return self._controller().update_metadata(*args, **kwargs)
+    def update_metadata(
+        self,
+        index: int,
+        subject: str | None = None,
+        session: str | None = None,
+    ) -> None:
+        return self._controller().update_metadata(index, subject, session)
 
-    def apply_smart_parse(self, *args: Any, **kwargs: Any) -> Any:
-        return self._controller().apply_smart_parse(*args, **kwargs)
+    def apply_smart_parse(self, results: Mapping[str, tuple[str, str]]) -> int:
+        return self._controller().apply_smart_parse(results)
 
-    def remove_files(self, *args: Any, **kwargs: Any) -> Any:
-        return self._controller().remove_files(*args, **kwargs)
+    def remove_files(self, indices: Sequence[int]) -> None:
+        return self._controller().remove_files(indices)
 
     def apply_channel_selection(self, channels: list[str]) -> Any:
         return self._controller().apply_channel_selection(channels)
 
-    def get_runtime_diagnostics(self) -> Any:
+    def get_runtime_diagnostics(self) -> dict[str, Any]:
         return self._controller().get_runtime_diagnostics()
 
-    def get_event_info(self) -> Any:
+    def get_event_info(self) -> dict[str, Any]:
         return self._controller().get_event_info()
 
-    def get_smart_filter_suggestions(self, *args: Any, **kwargs: Any) -> Any:
-        return self._controller().get_smart_filter_suggestions(*args, **kwargs)
+    def get_smart_filter_suggestions(
+        self,
+        *,
+        target_count: int | None = None,
+    ) -> list[dict[str, Any]]:
+        return self._controller().get_smart_filter_suggestions(
+            target_count=target_count,
+        )
 
 
 class PreprocessControllerAdapter(LazyControllerAdapter):
@@ -211,17 +218,22 @@ class PreprocessControllerAdapter(LazyControllerAdapter):
     def _controller(self) -> _PreprocessControllerPort:
         return cast(_PreprocessControllerPort, self._resolve_controller())
 
-    def get_runtime_diagnostics(self) -> Any:
+    def get_runtime_diagnostics(self) -> dict[str, Any]:
         return self._controller().get_runtime_diagnostics()
 
     def is_epoched(self) -> bool:
         return bool(self._controller().is_epoched())
 
-    def get_channel_names(self) -> Any:
+    def get_channel_names(self) -> list[str]:
         return self._controller().get_channel_names()
 
-    def apply_filter(self, *args: Any, **kwargs: Any) -> Any:
-        return self._controller().apply_filter(*args, **kwargs)
+    def apply_filter(
+        self,
+        l_freq: float | None,
+        h_freq: float | None,
+        notch_freqs: Sequence[float] | None = None,
+    ) -> bool:
+        return self._controller().apply_filter(l_freq, h_freq, notch_freqs)
 
     def apply_resample(self, rate: float) -> Any:
         return self._controller().apply_resample(rate)
@@ -232,14 +244,29 @@ class PreprocessControllerAdapter(LazyControllerAdapter):
     def apply_rereference(self, channels: str | list[str]) -> Any:
         return self._controller().apply_rereference(channels)
 
-    def apply_epoching(self, *args: Any, **kwargs: Any) -> Any:
-        return self._controller().apply_epoching(*args, **kwargs)
+    def apply_epoching(
+        self,
+        baseline: tuple[float | None, float | None] | None,
+        selected_events: Mapping[str, int],
+        tmin: float,
+        tmax: float,
+    ) -> bool:
+        return self._controller().apply_epoching(
+            baseline,
+            selected_events,
+            tmin,
+            tmax,
+        )
 
-    def batch_notifications(self) -> Any:
+    def batch_notifications(self) -> AbstractContextManager[None]:
         return self._controller().batch_notifications()
 
-    def apply_montage(self, *args: Any, **kwargs: Any) -> Any:
-        return self._controller().apply_montage(*args, **kwargs)
+    def apply_montage(
+        self,
+        mapped_channels: list[str],
+        mapped_positions: list[tuple[float, float, float]],
+    ) -> None:
+        return self._controller().apply_montage(mapped_channels, mapped_positions)
 
 
 class TrainingControllerAdapter(LazyControllerAdapter):
@@ -247,7 +274,6 @@ class TrainingControllerAdapter(LazyControllerAdapter):
 
     def __init__(self, study: Study) -> None:
         super().__init__(study, "training")
-        self._read_model = _TrainingStateReadModel(study)
 
     def _controller(self) -> _TrainingControllerPort:
         return cast(_TrainingControllerPort, self._resolve_controller())
@@ -258,11 +284,21 @@ class TrainingControllerAdapter(LazyControllerAdapter):
     def set_model_holder(self, holder: Any) -> Any:
         return self._controller().set_model_holder(holder)
 
-    def start_training(self, *args: Any, **kwargs: Any) -> Any:
-        return self._controller().start_training(*args, **kwargs)
+    def start_training(self, *, append: bool = True, interactive: bool = True) -> None:
+        return self._controller().start_training(
+            append=append,
+            interactive=interactive,
+        )
 
-    def stop_training(self, *args: Any, **kwargs: Any) -> Any:
-        return self._controller().stop_training(*args, **kwargs)
+    def stop_training(self, *, wait_timeout: float | None = None) -> bool:
+        controller = self._controller()
+        was_running = bool(controller.is_training())
+        if not was_running:
+            return False
+        if wait_timeout is not None:
+            return bool(self._study.stop_training(wait_timeout=wait_timeout))
+        controller.stop_training()
+        return True
 
     def clear_history(self) -> Any:
         return self._controller().clear_history()
@@ -274,13 +310,10 @@ class TrainingControllerAdapter(LazyControllerAdapter):
         return self._controller().clean_datasets(*args, **kwargs)
 
     def is_training(self) -> bool:
-        return self._read_model.is_training()
+        return bool(self._controller().is_training())
 
     def get_formatted_history(self) -> list[dict[str, Any]]:
-        return self._read_model.get_formatted_history()
-
-    def get_missing_requirements(self) -> list[str]:
-        return self._read_model.get_missing_requirements()
+        return list(self._controller().get_formatted_history())
 
 
 class EvaluationControllerAdapter(LazyControllerAdapter):
@@ -288,19 +321,18 @@ class EvaluationControllerAdapter(LazyControllerAdapter):
 
     def __init__(self, study: Study) -> None:
         super().__init__(study, "evaluation")
-        self._read_model = _EvaluationStateReadModel(study)
 
     def _controller(self) -> _EvaluationControllerPort:
         return cast(_EvaluationControllerPort, self._resolve_controller())
 
-    def get_pooled_eval_result(self, *args: Any, **kwargs: Any) -> Any:
-        return self._controller().get_pooled_eval_result(*args, **kwargs)
+    def get_pooled_eval_result(self, plan: Any) -> tuple[Any, Any, dict[str, Any]]:
+        return self._controller().get_pooled_eval_result(plan)
 
-    def get_model_summary_str(self, *args: Any, **kwargs: Any) -> Any:
-        return self._controller().get_model_summary_str(*args, **kwargs)
+    def get_model_summary_str(self, plan: Any, record: Any | None = None) -> str:
+        return self._controller().get_model_summary_str(plan, record)
 
     def get_plans(self) -> list[Any]:
-        return self._read_model.get_plans()
+        return list(self._controller().get_plans())
 
 
 class VisualizationControllerAdapter(LazyControllerAdapter):

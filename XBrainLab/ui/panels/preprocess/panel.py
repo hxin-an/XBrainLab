@@ -5,9 +5,9 @@ from typing import Any
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from XBrainLab.ui.application_capabilities import (
-    LegacyControllerFallbackUnavailableError,
-    get_legacy_controller_from_study,
-    run_legacy_controller_fallback,
+    ControllerCompatibilityUnavailableError,
+    get_controller_for_compatibility_context,
+    run_controller_compatibility_call,
 )
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.panels.preprocess.data_query import query_preprocess_render_lists
@@ -37,13 +37,13 @@ class PreprocessPanel(BasePanel):
         """
         # 1. Controller Resolution
         if controller is None and parent and hasattr(parent, "study"):
-            controller = get_legacy_controller_from_study(
+            controller = get_controller_for_compatibility_context(
                 parent,
                 parent.study,
                 "preprocess",
             )
         if dataset_controller is None and parent and hasattr(parent, "study"):
-            dataset_controller = get_legacy_controller_from_study(
+            dataset_controller = get_controller_for_compatibility_context(
                 parent,
                 parent.study,
                 "dataset",
@@ -109,7 +109,7 @@ class PreprocessPanel(BasePanel):
         if controller is None:
             data_list = []
         elif queried_lists is None:
-            data_list, original_data_list = self._legacy_data_lists_for_render(
+            data_list, original_data_list = self._compatibility_data_lists_for_render(
                 controller
             )
         else:
@@ -183,7 +183,10 @@ class PreprocessPanel(BasePanel):
     def _query_data_lists_for_render(self) -> tuple[list[Any], list[Any]] | None:
         return query_preprocess_render_lists(self)
 
-    def _legacy_data_lists_for_render(self, controller) -> tuple[list[Any], list[Any]]:
+    def _compatibility_data_lists_for_render(
+        self,
+        controller,
+    ) -> tuple[list[Any], list[Any]]:
         def fallback() -> tuple[list[Any], list[Any]]:
             data_list = controller.get_preprocessed_data_list()
             study = getattr(controller, "study", None)
@@ -193,6 +196,6 @@ class PreprocessPanel(BasePanel):
             return data_list, original_data_list
 
         try:
-            return run_legacy_controller_fallback(self, fallback)
-        except LegacyControllerFallbackUnavailableError:
+            return run_controller_compatibility_call(self, fallback)
+        except ControllerCompatibilityUnavailableError:
             return [], []

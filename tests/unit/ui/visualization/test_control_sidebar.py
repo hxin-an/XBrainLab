@@ -193,7 +193,7 @@ def test_sidebar_set_montage_surfaces_command_failure(mock_panel, qtbot):
         mock_warning.assert_called_once()
 
 
-def test_sidebar_set_montage_legacy_result_blocks_controller_fallback(
+def test_sidebar_set_montage_command_result_blocks_controller_fallback(
     mock_panel,
     qtbot,
 ):

@@ -304,12 +304,12 @@ def test_import_command_success_refreshes_dataset_table_without_stale_controller
     with (
         patch.object(
             test_app.dataset_panel,
-            "_legacy_loaded_data_list_for_render",
+            "_compatibility_loaded_data_list_for_render",
             side_effect=AssertionError("stale loaded-data render fallback was read"),
         ) as stale_render,
         patch.object(
             test_app.dataset_panel.sidebar,
-            "_legacy_sidebar_state",
+            "_compatibility_sidebar_state",
             side_effect=AssertionError("stale sidebar controller state was read"),
         ) as stale_sidebar,
         patch(

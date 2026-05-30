@@ -20,13 +20,13 @@ from XBrainLab.backend.application.commands import (
 )
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
-    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
-    LegacyControllerFallbackUnavailableError,
+    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+    ControllerCompatibilityUnavailableError,
     blocked_reason,
     execute_application_command,
     get_command_capability,
-    get_legacy_controller_from_study,
-    run_legacy_controller_fallback,
+    get_controller_for_compatibility_context,
+    run_controller_compatibility_call,
 )
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.styles.theme import Theme
@@ -64,9 +64,9 @@ class DatasetPanel(BasePanel):
             parent: Parent widget (typically the main window).
 
         """
-        # 1. Controller Resolution (Legacy/Test support)
+        # 1. Controller Resolution (Compatibility/Test support)
         if controller is None and parent and hasattr(parent, "study"):
-            controller = get_legacy_controller_from_study(
+            controller = get_controller_for_compatibility_context(
                 parent,
                 parent.study,
                 "dataset",
@@ -182,7 +182,7 @@ class DatasetPanel(BasePanel):
                 return
 
     def apply_loader(self, loader):
-        """Apply a legacy data loader only for mock or legacy UI contexts.
+        """Apply a compatibility data loader only for mock or compatibility UI contexts.
 
         Args:
             loader: A data loader instance that supports ``apply()``
@@ -190,7 +190,7 @@ class DatasetPanel(BasePanel):
 
         """
         try:
-            total_files = self._legacy_apply_loader(loader)
+            total_files = self._compatibility_apply_loader(loader)
         except Exception as exc:
             logger.error("Failed to apply data", exc_info=True)
             QMessageBox.critical(self, "Error", f"Failed to apply data: {exc}")
@@ -204,14 +204,14 @@ class DatasetPanel(BasePanel):
             f"Dataset updated. Total files: {total_files}",
         )
 
-    def _legacy_apply_loader(self, loader) -> int | None:
+    def _compatibility_apply_loader(self, loader) -> int | None:
         try:
-            return run_legacy_controller_fallback(
+            return run_controller_compatibility_call(
                 self,
-                lambda: self._apply_legacy_loader(loader),
+                lambda: self._apply_compatibility_loader(loader),
             )
-        except LegacyControllerFallbackUnavailableError:
-            logger.warning("Blocked legacy loader apply in real Study context.")
+        except ControllerCompatibilityUnavailableError:
+            logger.warning("Blocked compatibility loader apply in real Study context.")
             QMessageBox.warning(
                 self,
                 "Import EEG Data",
@@ -220,11 +220,13 @@ class DatasetPanel(BasePanel):
             )
             return None
 
-    def _apply_legacy_loader(self, loader) -> int:
+    def _apply_compatibility_loader(self, loader) -> int:
         # Kept for mock/unit-test compatibility; product data entry uses commands.
         controller = self.controller
         if controller is None or getattr(controller, "study", None) is None:
-            raise RuntimeError("Legacy loader adapter requires a dataset controller.")
+            raise RuntimeError(
+                "Compatibility loader adapter requires a dataset controller."
+            )
         loader.apply(controller.study, force_update=True)
         self.update_panel()
         return len(loader)
@@ -248,7 +250,7 @@ class DatasetPanel(BasePanel):
         if controller is None:
             data_list = []
         elif queried_data_list is None:
-            data_list = self._legacy_loaded_data_list_for_render(controller)
+            data_list = self._compatibility_loaded_data_list_for_render(controller)
         else:
             data_list = queried_data_list
         metadata_capability = get_command_capability(self, CommandName.UPDATE_METADATA)
@@ -384,7 +386,7 @@ class DatasetPanel(BasePanel):
             "available": True,
             "count": count,
             "labels": labels,
-            "source": "legacy",
+            "source": "compatibility",
             "scanned": True,
         }
 
@@ -401,13 +403,13 @@ class DatasetPanel(BasePanel):
         data_list = result.diagnostics.get("loaded_data_list")
         return list(data_list) if isinstance(data_list, list) else []
 
-    def _legacy_loaded_data_list_for_render(self, controller) -> list[Any]:
+    def _compatibility_loaded_data_list_for_render(self, controller) -> list[Any]:
         try:
-            return run_legacy_controller_fallback(
+            return run_controller_compatibility_call(
                 self,
                 controller.get_loaded_data_list,
             )
-        except LegacyControllerFallbackUnavailableError:
+        except ControllerCompatibilityUnavailableError:
             logger.warning(
                 "Blocked stale dataset controller render fallback in real "
                 "Study context.",
@@ -466,7 +468,7 @@ class DatasetPanel(BasePanel):
                 QMessageBox.warning(
                     self,
                     "Metadata blocked",
-                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return
             if result.failed:
@@ -481,7 +483,7 @@ class DatasetPanel(BasePanel):
                 QMessageBox.warning(
                     self,
                     "Metadata blocked",
-                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return
             if result.failed:

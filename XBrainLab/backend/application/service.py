@@ -59,6 +59,7 @@ from .lifecycle_service import LifecycleCommandService
 from .preprocess_service import PreprocessCommandService
 from .results import ChangedState, CommandResult, ErrorType
 from .state import ApplicationStateSnapshot, ErrorSnapshot
+from .state_read_models import EvaluationStateReadModel, TrainingStateReadModel
 from .state_service import QueryStateCommandService, StateSnapshotService
 
 HandlerResult = str | tuple[str, dict[str, Any]]
@@ -344,6 +345,8 @@ class ApplicationService:
         self.training = TrainingControllerAdapter(self.study)
         self.evaluation = EvaluationControllerAdapter(self.study)
         self.visualization = VisualizationControllerAdapter(self.study)
+        self.training_state = TrainingStateReadModel(self.study)
+        self.evaluation_state = EvaluationStateReadModel(self.study)
         self._last_error: ErrorSnapshot | None = None
         self.interpretation = _LazyDataInterpretationCommandService(self.dataset)
         self.data_compatibility = _LazyDataCompatibilityCommandService(
@@ -369,7 +372,9 @@ class ApplicationService:
             dataset=self.dataset,
             preprocess=self.preprocess,
             training=self.training,
+            training_state=self.training_state,
             evaluation=self.evaluation,
+            evaluation_state=self.evaluation_state,
             visualization=self.visualization,
             dataset_generation=self.dataset_generation,
             training_commands=self.training_commands,

@@ -13,10 +13,10 @@ from XBrainLab.backend.application import QueryStateCommand
 from XBrainLab.backend.training.record.key import RecordKey, TrainRecordKey
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
-    LegacyControllerFallbackUnavailableError,
+    ControllerCompatibilityUnavailableError,
     execute_application_command,
-    get_legacy_controller_from_study,
-    run_legacy_controller_fallback,
+    get_controller_for_compatibility_context,
+    run_controller_compatibility_call,
 )
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.refresh_coordinator import refresh_after_observer
@@ -72,19 +72,19 @@ class TrainingPanel(BasePanel):
         """
         # 1. Controller Resolution
         if controller is None and parent and hasattr(parent, "study"):
-            controller = get_legacy_controller_from_study(
+            controller = get_controller_for_compatibility_context(
                 parent,
                 parent.study,
                 "training",
             )
         if dataset_controller is None and parent and hasattr(parent, "study"):
-            dataset_controller = get_legacy_controller_from_study(
+            dataset_controller = get_controller_for_compatibility_context(
                 parent,
                 parent.study,
                 "dataset",
             )
         if preprocess_controller is None and parent and hasattr(parent, "study"):
-            preprocess_controller = get_legacy_controller_from_study(
+            preprocess_controller = get_controller_for_compatibility_context(
                 parent,
                 parent.study,
                 "preprocess",
@@ -388,7 +388,7 @@ class TrainingPanel(BasePanel):
         # 1. Update History Table
         plans = self._history_from_application_query()
         if plans is None:
-            plans = self._legacy_history_for_render()
+            plans = self._compatibility_history_for_render()
         if plans is not None:
             if not plans:
                 self._clear_training_display()
@@ -436,15 +436,15 @@ class TrainingPanel(BasePanel):
         rows = diagnostics.get("rows")
         return list(rows) if isinstance(rows, list) else []
 
-    def _legacy_history_for_render(self):
+    def _compatibility_history_for_render(self):
         if self.controller is None:
             return []
         try:
-            return run_legacy_controller_fallback(
+            return run_controller_compatibility_call(
                 self,
                 self.controller.get_formatted_history,
             )
-        except LegacyControllerFallbackUnavailableError:
+        except ControllerCompatibilityUnavailableError:
             return []
 
     # check_ready_to_train moved to Sidebar

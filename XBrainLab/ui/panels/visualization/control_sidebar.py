@@ -18,13 +18,13 @@ from XBrainLab.backend.application import (
     VisualizeCommand,
 )
 from XBrainLab.ui.application_capabilities import (
-    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
-    LegacyControllerFallbackUnavailableError,
+    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+    ControllerCompatibilityUnavailableError,
     blocked_reason,
     execute_application_command,
     execute_application_command_async,
     get_command_capability,
-    run_legacy_controller_fallback,
+    run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.dialogs.visualization import (
@@ -129,7 +129,7 @@ class ControlSidebar(QWidget):
 
     # --- Actions ---
 
-    def _on_update_after_legacy_result(self, result) -> None:
+    def _on_update_after_command_result(self, result) -> None:
         if result is None and self.panel and hasattr(self.panel, "on_update"):
             self.panel.on_update()
 
@@ -145,9 +145,9 @@ class ControlSidebar(QWidget):
             return
 
         if capability is None:
-            has_epoch_data = self._legacy_has_epoch_data_for_montage()
+            has_epoch_data = self._compatibility_has_epoch_data_for_montage()
             if has_epoch_data is None:
-                self._show_legacy_fallback_warning("Montage blocked")
+                self._show_compatibility_fallback_warning("Montage blocked")
                 return
             if not has_epoch_data:
                 QMessageBox.warning(self, "Warning", "No epoch data available.")
@@ -168,8 +168,8 @@ class ControlSidebar(QWidget):
 
         try:
             chs = self._montage_channel_names(channel_query)
-        except LegacyControllerFallbackUnavailableError:
-            self._show_legacy_fallback_warning("Montage blocked")
+        except ControllerCompatibilityUnavailableError:
+            self._show_compatibility_fallback_warning("Montage blocked")
             return
         if not chs:
             QMessageBox.warning(
@@ -199,7 +199,7 @@ class ControlSidebar(QWidget):
                     ),
                 )
                 if result is None:
-                    self._show_legacy_fallback_warning("Montage blocked")
+                    self._show_compatibility_fallback_warning("Montage blocked")
                     return
                 elif result.failed:
                     QMessageBox.warning(
@@ -212,11 +212,11 @@ class ControlSidebar(QWidget):
                 QMessageBox.information(self, "Success", "Montage set")
 
                 # Notify parent to refresh view
-                self._on_update_after_legacy_result(result)
+                self._on_update_after_command_result(result)
 
     def _montage_channel_names(self, query_result) -> list[str]:
         if query_result is None:
-            return self._legacy_montage_channel_names()
+            return self._compatibility_montage_channel_names()
         diagnostics = getattr(query_result, "diagnostics", {}) or {}
         state = diagnostics.get("state")
         epoch = state.get("epoch") if isinstance(state, dict) else {}
@@ -225,21 +225,21 @@ class ControlSidebar(QWidget):
             return []
         return [str(name) for name in names]
 
-    def _legacy_has_epoch_data_for_montage(self) -> bool | None:
-        """Return epoch availability only for mock / legacy UI contexts."""
+    def _compatibility_has_epoch_data_for_montage(self) -> bool | None:
+        """Return epoch availability only for mock / compatibility UI contexts."""
         try:
             return bool(
-                run_legacy_controller_fallback(
+                run_controller_compatibility_call(
                     self,
                     self.controller.has_epoch_data,
                 ),
             )
-        except LegacyControllerFallbackUnavailableError:
+        except ControllerCompatibilityUnavailableError:
             return None
 
-    def _legacy_montage_channel_names(self) -> list[str]:
-        """Return montage channel names only for mock / legacy UI contexts."""
-        return run_legacy_controller_fallback(
+    def _compatibility_montage_channel_names(self) -> list[str]:
+        """Return montage channel names only for mock / compatibility UI contexts."""
+        return run_controller_compatibility_call(
             self,
             self.controller.get_channel_names,
         )
@@ -278,8 +278,8 @@ class ControlSidebar(QWidget):
             return
         try:
             dialog_params = self._saliency_dialog_params(query_result)
-        except LegacyControllerFallbackUnavailableError:
-            self._show_legacy_fallback_warning("Saliency blocked")
+        except ControllerCompatibilityUnavailableError:
+            self._show_compatibility_fallback_warning("Saliency blocked")
             return
 
         win = SaliencySettingDialog(
@@ -296,7 +296,7 @@ class ControlSidebar(QWidget):
                     on_error=self._on_saliency_configuration_error,
                 )
                 if not started:
-                    self._show_legacy_fallback_warning("Saliency blocked")
+                    self._show_compatibility_fallback_warning("Saliency blocked")
                     return
 
     def _on_saliency_configured(self, result) -> None:
@@ -319,7 +319,7 @@ class ControlSidebar(QWidget):
 
     def _saliency_dialog_params(self, query_result) -> dict | None:
         if query_result is None:
-            return self._legacy_saliency_dialog_params()
+            return self._compatibility_saliency_dialog_params()
         diagnostics = getattr(query_result, "diagnostics", {}) or {}
         if diagnostics.get("payload_type") != "saliency_summary":
             return None
@@ -343,9 +343,9 @@ class ControlSidebar(QWidget):
                     return text
         return "Select a model and training settings before configuring saliency."
 
-    def _legacy_saliency_dialog_params(self) -> dict | None:
-        """Return saliency params only for mock / legacy UI contexts."""
-        return run_legacy_controller_fallback(
+    def _compatibility_saliency_dialog_params(self) -> dict | None:
+        """Return saliency params only for mock / compatibility UI contexts."""
+        return run_controller_compatibility_call(
             self,
             self.controller.get_saliency_params,
         )
@@ -365,9 +365,9 @@ class ControlSidebar(QWidget):
         trainers = self._saliency_export_trainers()
         if trainers is None:
             try:
-                trainers = self._legacy_export_trainers()
-            except LegacyControllerFallbackUnavailableError:
-                self._show_legacy_fallback_warning("Export Saliency Blocked")
+                trainers = self._compatibility_export_trainers()
+            except ControllerCompatibilityUnavailableError:
+                self._show_compatibility_fallback_warning("Export Saliency Blocked")
                 return
 
         if not trainers:
@@ -399,10 +399,10 @@ class ControlSidebar(QWidget):
             return []
         return list(trainers)
 
-    def _legacy_export_trainers(self):
+    def _compatibility_export_trainers(self):
         if self.panel and hasattr(self.panel, "get_trainers"):
-            return run_legacy_controller_fallback(self, self.panel.get_trainers)
-        return run_legacy_controller_fallback(self, self.controller.get_trainers)
+            return run_controller_compatibility_call(self, self.panel.get_trainers)
+        return run_controller_compatibility_call(self, self.controller.get_trainers)
 
     @staticmethod
     def _saliency_export_block_reason(result) -> str | None:
@@ -417,5 +417,5 @@ class ControlSidebar(QWidget):
             return None
         return "Saliency output is not ready to export."
 
-    def _show_legacy_fallback_warning(self, title: str) -> None:
-        QMessageBox.warning(self, title, LEGACY_FALLBACK_UNAVAILABLE_MESSAGE)
+    def _show_compatibility_fallback_warning(self, title: str) -> None:
+        QMessageBox.warning(self, title, CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE)

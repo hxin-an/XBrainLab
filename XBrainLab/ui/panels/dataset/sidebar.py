@@ -22,12 +22,12 @@ from XBrainLab.backend.application.commands import (
     ResetSessionCommand,
 )
 from XBrainLab.ui.application_capabilities import (
-    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
-    LegacyControllerFallbackUnavailableError,
+    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+    ControllerCompatibilityUnavailableError,
     blocked_reason,
     execute_application_command,
     get_command_capability,
-    run_legacy_controller_fallback,
+    run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.styles.stylesheets import Stylesheets
@@ -52,7 +52,7 @@ class DatasetSidebar(QWidget):
     Hosts an aggregate info panel, primary import buttons, channel selection,
     and a clear-dataset button. Metadata parsing and external labels live in
     the Data Import wizard; the old post-load label button is retained only as
-    hidden compatibility wiring for tests and legacy adapters.
+    hidden compatibility wiring for tests and compatibility adapters.
 
     Attributes:
         panel: The parent ``DatasetPanel`` reference.
@@ -91,7 +91,7 @@ class DatasetSidebar(QWidget):
         """QMainWindow: The application main window reference."""
         return self.panel.main_window
 
-    def _update_panel_after_legacy_result(self, result) -> None:
+    def _update_panel_after_command_result(self, result) -> None:
         if result is None:
             self.panel.update_panel()
 
@@ -206,28 +206,28 @@ class DatasetSidebar(QWidget):
 
         layout.addStretch()
 
-    def _legacy_controller_value(
+    def _compatibility_controller_value(
         self,
         fallback: Callable[[], Any],
         *,
         blocked_title: str | None = None,
     ) -> tuple[bool, Any]:
-        """Read legacy controller state only for mock / legacy UI contexts."""
+        """Read controller compatibility state only for mock UI contexts."""
         try:
-            return True, run_legacy_controller_fallback(self, fallback)
-        except LegacyControllerFallbackUnavailableError as exc:
+            return True, run_controller_compatibility_call(self, fallback)
+        except ControllerCompatibilityUnavailableError as exc:
             if blocked_title is not None:
                 QMessageBox.warning(self, blocked_title, str(exc))
             return False, None
 
-    def _legacy_sidebar_state(self) -> tuple[bool, bool, bool]:
-        """Return legacy lock/data state when no command capability is available."""
-        available, is_locked = self._legacy_controller_value(
+    def _compatibility_sidebar_state(self) -> tuple[bool, bool, bool]:
+        """Return compatibility state when no command capability is available."""
+        available, is_locked = self._compatibility_controller_value(
             lambda: bool(self.controller.is_locked()),
         )
         if not available:
             return False, False, False
-        available, has_data = self._legacy_controller_value(
+        available, has_data = self._compatibility_controller_value(
             lambda: bool(self.controller.has_data()),
         )
         if not available:
@@ -257,9 +257,9 @@ class DatasetSidebar(QWidget):
                 self,
                 CommandName.IMPORT_LABELS,
             )
-            legacy_state_available = True
-            legacy_is_locked = False
-            legacy_has_data = False
+            compatibility_state_available = True
+            compatibility_is_locked = False
+            compatibility_has_data = False
             if any(
                 capability is None
                 for capability in (
@@ -271,10 +271,10 @@ class DatasetSidebar(QWidget):
                 )
             ):
                 (
-                    legacy_state_available,
-                    legacy_is_locked,
-                    legacy_has_data,
-                ) = self._legacy_sidebar_state()
+                    compatibility_state_available,
+                    compatibility_is_locked,
+                    compatibility_has_data,
+                ) = self._compatibility_sidebar_state()
 
             if scan_capability is not None:
                 self.import_btn.setEnabled(scan_capability.enabled)
@@ -299,7 +299,7 @@ class DatasetSidebar(QWidget):
                     if scan_capability.enabled
                     else source_tooltip,
                 )
-            elif not legacy_state_available:
+            elif not compatibility_state_available:
                 self.import_btn.setEnabled(False)
                 self.import_folder_btn.setEnabled(False)
                 self.import_bids_btn.setEnabled(False)
@@ -312,7 +312,7 @@ class DatasetSidebar(QWidget):
                 self.import_bids_btn.setToolTip(
                     "Data interpretation availability is unavailable right now.",
                 )
-            elif legacy_is_locked:
+            elif compatibility_is_locked:
                 self.import_btn.setEnabled(True)
                 self.import_folder_btn.setEnabled(True)
                 self.import_bids_btn.setEnabled(True)
@@ -349,12 +349,12 @@ class DatasetSidebar(QWidget):
                         "Recipe reload is not available right now.",
                     ),
                 )
-            elif not legacy_state_available:
+            elif not compatibility_state_available:
                 self.reload_recipe_btn.setEnabled(False)
                 self.reload_recipe_btn.setToolTip(
                     "Recipe reload availability is unavailable right now.",
                 )
-            elif legacy_is_locked:
+            elif compatibility_is_locked:
                 self.reload_recipe_btn.setEnabled(True)
                 self.reload_recipe_btn.setToolTip(
                     "Dataset is locked. Reset before reloading a recipe.",
@@ -375,12 +375,12 @@ class DatasetSidebar(QWidget):
                         "Load raw data before selecting channels.",
                     ),
                 )
-            elif not legacy_state_available:
+            elif not compatibility_state_available:
                 self.chan_select_btn.setEnabled(False)
                 self.chan_select_btn.setToolTip(
                     "Channel selection availability is unavailable right now.",
                 )
-            elif legacy_is_locked:
+            elif compatibility_is_locked:
                 self.chan_select_btn.setEnabled(True)
                 self.chan_select_btn.setToolTip(
                     "Dataset is locked. Click to see details.",
@@ -399,12 +399,12 @@ class DatasetSidebar(QWidget):
                         "Load raw data before applying smart parse.",
                     ),
                 )
-            elif not legacy_state_available:
+            elif not compatibility_state_available:
                 self.smart_parse_btn.setEnabled(False)
                 self.smart_parse_btn.setToolTip(
                     "Smart parse availability is unavailable right now.",
                 )
-            elif legacy_is_locked:
+            elif compatibility_is_locked:
                 self.smart_parse_btn.setEnabled(True)
                 self.smart_parse_btn.setToolTip(
                     "Dataset is locked. Click to see details.",
@@ -425,17 +425,17 @@ class DatasetSidebar(QWidget):
                         "Interpret a data source before adding labels.",
                     ),
                 )
-            elif not legacy_state_available:
+            elif not compatibility_state_available:
                 self.import_label_btn.setEnabled(False)
                 self.import_label_btn.setToolTip(
                     "Label import availability is unavailable right now.",
                 )
-            elif legacy_is_locked:
+            elif compatibility_is_locked:
                 self.import_label_btn.setEnabled(False)
                 self.import_label_btn.setToolTip(
                     "Dataset is locked. Reset before changing labels.",
                 )
-            elif not legacy_has_data:
+            elif not compatibility_has_data:
                 self.import_label_btn.setEnabled(False)
                 self.import_label_btn.setToolTip(
                     "Interpret a data source before adding labels.",
@@ -459,8 +459,8 @@ class DatasetSidebar(QWidget):
             refresh=False,
         )
         if result is None:
-            available, has_data = self._legacy_controller_value(
-                self._legacy_has_clearable_data,
+            available, has_data = self._compatibility_controller_value(
+                self._compatibility_has_clearable_data,
             )
             if not available:
                 return False, "Dataset state is unavailable right now."
@@ -477,10 +477,10 @@ class DatasetSidebar(QWidget):
             return True, "Clear epoched dataset and downstream results."
         return False, "Create epochs before clearing dataset."
 
-    def _legacy_has_clearable_data(self) -> bool:
-        return self._legacy_has_epoch_data()
+    def _compatibility_has_clearable_data(self) -> bool:
+        return self._compatibility_has_epoch_data()
 
-    def _legacy_has_epoch_data(self) -> bool:
+    def _compatibility_has_epoch_data(self) -> bool:
         if self.controller is None:
             return False
         is_epoched = getattr(self.controller, "is_epoched", None)
@@ -489,8 +489,8 @@ class DatasetSidebar(QWidget):
             return False if isinstance(result, Mock) else bool(result)
         return False
 
-    def _legacy_loaded_data_list_for_channel_selection(self) -> list[Any] | None:
-        available, data_list = self._legacy_controller_value(
+    def _compatibility_loaded_data_list_for_channel_selection(self) -> list[Any] | None:
+        available, data_list = self._compatibility_controller_value(
             self.controller.get_loaded_data_list,
             blocked_title="Channel Selection Blocked",
         )
@@ -539,7 +539,7 @@ class DatasetSidebar(QWidget):
             return
 
         if preprocess_capability is None:
-            available, has_data = self._legacy_controller_value(
+            available, has_data = self._compatibility_controller_value(
                 lambda: bool(self.controller.has_data()),
                 blocked_title="Channel Selection Blocked",
             )
@@ -549,7 +549,7 @@ class DatasetSidebar(QWidget):
                 QMessageBox.warning(self, "Warning", "No data loaded.")
                 return
 
-            available, is_locked = self._legacy_controller_value(
+            available, is_locked = self._compatibility_controller_value(
                 lambda: bool(self.controller.is_locked()),
                 blocked_title="Channel Selection Blocked",
             )
@@ -597,7 +597,7 @@ class DatasetSidebar(QWidget):
                         QMessageBox.warning(
                             self,
                             "Channel Selection Blocked",
-                            LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                            CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                         )
                         return
                     elif command_result.failed:
@@ -607,7 +607,7 @@ class DatasetSidebar(QWidget):
                             f"Channel selection failed: {command_result.message}",
                         )
                         return
-                    self._update_panel_after_legacy_result(command_result)
+                    self._update_panel_after_command_result(command_result)
                     QMessageBox.information(
                         self,
                         "Success",
@@ -631,7 +631,7 @@ class DatasetSidebar(QWidget):
         )
         if result is None:
             if preprocess_capability is None:
-                return self._legacy_loaded_data_list_for_channel_selection()
+                return self._compatibility_loaded_data_list_for_channel_selection()
             return []
         if result.failed:
             return []
@@ -680,7 +680,7 @@ class DatasetSidebar(QWidget):
                 QMessageBox.warning(
                     self,
                     "Clear Dataset Blocked",
-                    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return
             elif result.failed:
@@ -690,7 +690,7 @@ class DatasetSidebar(QWidget):
                     f"Failed to clear dataset: {result.message}",
                 )
                 return
-            self._update_panel_after_legacy_result(result)
+            self._update_panel_after_command_result(result)
             QMessageBox.information(self, "Success", "Dataset cleared.")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to clear dataset: {e}")

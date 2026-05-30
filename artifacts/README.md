@@ -32,8 +32,6 @@
 | `ui/app-polish/` | current model selection、data splitting、evaluation metrics UI polish screenshots。 | end-to-end training quality 或完整人工驗收。 |
 | `launcher/` | Windows launcher / startup smoke。 | release approval 或 signed installer。 |
 | `docs-site/` | docs site visual check 截圖。 | 文件內容一定正確。 |
-| `ui/chatpanel-local-pipeline-chain/` | local ChatPanel 從 Data Interpretation 到 dataset 的 command-chain walkthrough。 | long human desktop local-model session。 |
-| `ui/chatpanel-local-training-completion/` | local ChatPanel 訓練、evaluation、visualization、saliency completion walkthrough。 | training quality 或 release approval。 |
 | `ui/visualization-render/` | offscreen VisualizationPanel render / blocked-3D evidence。 | interactive Windows 3D acceptance。 |
 | top-level `ui/*.png` | transient dashboard UI capture outputs, ignored by git. | approved baseline truth；approved references live in `tests/baselines/ui/`. |
 
@@ -52,8 +50,6 @@
 | `ui/app-polish/README.md` | 想看 current training/evaluation side-panel polish screenshots。 |
 | `docs-site/data-import-private-portal/visual-review.md` | 想看 private docs portal 首頁 desktop/mobile visual review。 |
 | `launcher/windows-launcher-walkthrough.md` | 想看 launcher smoke。 |
-| `ui/chatpanel-local-pipeline-chain/chatpanel-local-pipeline-chain-walkthrough.md` | 想看 local ChatPanel tool-chain evidence。 |
-| `ui/chatpanel-local-training-completion/chatpanel-local-training-completion-walkthrough.md` | 想看 local ChatPanel training completion evidence。 |
 | `ui/visualization-render/visualization-render-walkthrough.md` | 想看 VisualizationPanel render evidence。 |
 
 ## 保留 / 清理規則
@@ -153,6 +149,18 @@ entry.
 Historical records may still mention those removed paths because they describe past
 validation runs. They are not current evidence entrances; regenerate or use the
 current families above when judging the active branch.
+
+2026-05-30 local ChatPanel evidence cleanup:
+
+- `ui/chatpanel-local-pipeline-chain/` and
+  `ui/chatpanel-local-training-completion/` are previous-environment artifacts.
+  They were captured when the local model cache was present and the runtime was
+  `gpu-ready`.
+- The active release-candidate environment now reports local model
+  `missing-cache`, so those walkthroughs must not be used as current product
+  evidence or high-value entry points.
+- Keep them only as historical artifacts until they are regenerated on the
+  current worktree and runtime state.
 
 ## 新 artifact 要寫清楚
 

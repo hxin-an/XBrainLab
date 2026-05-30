@@ -40,7 +40,7 @@ class TestNormalizeDialog(unittest.TestCase):
     @patch("XBrainLab.ui.panels.preprocess.sidebar.NormalizeDialog")
     @patch("XBrainLab.ui.panels.preprocess.sidebar.QMessageBox")
     def test_open_normalize(self, MockBox, MockDialog):
-        """Opening normalize blocks instead of mutating the legacy controller."""
+        """Opening normalize blocks instead of mutating the controller compatibility."""
         mock_instance = MockDialog.return_value
         mock_instance.exec.return_value = True
         mock_instance.get_params.return_value = "z score"

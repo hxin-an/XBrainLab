@@ -1,5 +1,7 @@
 """Internal EEG event step helpers for the Data Import wizard."""
 
+# pyright: reportAttributeAccessIssue=false
+
 from __future__ import annotations
 
 from collections.abc import Iterable
