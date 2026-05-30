@@ -1433,9 +1433,9 @@
           "finished_run_count": 1,
           "metrics": {
             "0": {
-              "precision": 1.0,
-              "recall": 1.0,
-              "f1-score": 1.0,
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1-score": 0.0,
               "support": 1
             },
             "1": {
@@ -1445,9 +1445,9 @@
               "support": 0
             },
             "macro_avg": {
-              "precision": 0.5,
-              "recall": 0.5,
-              "f1-score": 0.5,
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1-score": 0.0,
               "support": 1
             }
           }
@@ -2017,6 +2017,21 @@
       "ok": true,
       "hidden_or_empty": [],
       "overlaps": [],
+      "distant_pairs": [],
+      "pair_gaps": {
+        "plan": {
+          "horizontal_gap": 8,
+          "row_delta": 0
+        },
+        "run": {
+          "horizontal_gap": 8,
+          "row_delta": 0
+        },
+        "method": {
+          "horizontal_gap": 8,
+          "row_delta": 0
+        }
+      },
       "rects": {
         "plan": {
           "x": 95,
@@ -2042,9 +2057,29 @@
           "width": 150,
           "height": 21
         }
+      },
+      "label_rects": {
+        "Plan:": {
+          "x": 33,
+          "y": 111,
+          "width": 54,
+          "height": 30
+        },
+        "Run:": {
+          "x": 253,
+          "y": 111,
+          "width": 30,
+          "height": 30
+        },
+        "Method:": {
+          "x": 33,
+          "y": 147,
+          "width": 54,
+          "height": 30
+        }
       }
     }
   },
-  "elapsed_seconds": 9.411,
+  "elapsed_seconds": 8.776,
   "uncaught_exceptions": []
 }

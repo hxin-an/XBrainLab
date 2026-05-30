@@ -455,11 +455,33 @@ def _control_layout_evidence(panel: Any) -> dict[str, Any]:
         for right_name in names[left_index + 1 :]:
             if _rects_intersect(rects[left_name], rects[right_name]):
                 overlaps.append(f"{left_name}/{right_name}")
+    label_rects = _control_label_rects(panel)
+    pair_gaps, distant_pairs = _control_label_pair_gaps(
+        rects,
+        label_rects,
+        {
+            "plan": "Plan:",
+            "run": "Run:",
+            "method": "Method:",
+        },
+    )
+    missing_labels = [
+        f"{name}_label"
+        for name, label_text in {
+            "plan": "Plan:",
+            "run": "Run:",
+            "method": "Method:",
+        }.items()
+        if label_text not in label_rects
+    ]
     return {
-        "ok": not hidden and not overlaps,
-        "hidden_or_empty": hidden,
+        "ok": not hidden and not overlaps and not distant_pairs and not missing_labels,
+        "hidden_or_empty": [*hidden, *missing_labels],
         "overlaps": overlaps,
+        "distant_pairs": distant_pairs,
+        "pair_gaps": pair_gaps,
         "rects": rects,
+        "label_rects": label_rects,
     }
 
 
@@ -481,6 +503,40 @@ def _rects_intersect(left: dict[str, int], right: dict[str, int]) -> bool:
         or left["y"] + left["height"] <= right["y"]
         or right["y"] + right["height"] <= left["y"]
     )
+
+
+def _control_label_rects(panel: Any) -> dict[str, dict[str, int]]:
+    labels = {}
+    for label in panel.findChildren(QLabel):
+        text = label.text().strip()
+        if text in {"Plan:", "Run:", "Method:"} and label.isVisible():
+            labels[text] = _global_widget_rect(label)
+    return labels
+
+
+def _control_label_pair_gaps(
+    rects: dict[str, dict[str, int]],
+    label_rects: dict[str, dict[str, int]],
+    label_by_control: dict[str, str],
+) -> tuple[dict[str, dict[str, int]], list[str]]:
+    pair_gaps: dict[str, dict[str, int]] = {}
+    distant_pairs: list[str] = []
+    for control_name, label_text in label_by_control.items():
+        control_rect = rects.get(control_name)
+        label_rect = label_rects.get(label_text)
+        if not control_rect or not label_rect:
+            continue
+        horizontal_gap = control_rect["x"] - (label_rect["x"] + label_rect["width"])
+        label_center_y = label_rect["y"] + label_rect["height"] // 2
+        control_center_y = control_rect["y"] + control_rect["height"] // 2
+        row_delta = abs(control_center_y - label_center_y)
+        pair_gaps[control_name] = {
+            "horizontal_gap": int(horizontal_gap),
+            "row_delta": int(row_delta),
+        }
+        if horizontal_gap < -2 or horizontal_gap > 48 or row_delta > 12:
+            distant_pairs.append(control_name)
+    return pair_gaps, distant_pairs
 
 
 def _blocked_message_evidence(widget: Any, expected_reason: str) -> dict[str, Any]:
@@ -558,7 +614,8 @@ def validate_visualization_render_payload(
     if not control_layout.get("ok"):
         overlaps = ", ".join(control_layout.get("overlaps") or [])
         hidden = ", ".join(control_layout.get("hidden_or_empty") or [])
-        detail = overlaps or hidden or "unknown layout issue"
+        distant = ", ".join(control_layout.get("distant_pairs") or [])
+        detail = overlaps or hidden or distant or "unknown layout issue"
         return False, f"Visualization controls are not cleanly laid out: {detail}."
 
     final_state = payload.get("final_state") or {}

@@ -1,5 +1,7 @@
 import time
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 
 from PIL import Image
 
@@ -7,6 +9,7 @@ from scripts.dev.capture_visualization_render_walkthrough import (
     BLOCKED_TAB_SPECS,
     RENDER_TAB_SPECS,
     _command_payload,
+    _control_label_pair_gaps,
     _prepare_tiny_trained_state,
     render_markdown,
     validate_visualization_render_payload,
@@ -188,6 +191,48 @@ def test_validate_visualization_payload_rejects_control_overlap(tmp_path):
     assert "plan/run" in reason
 
 
+def test_validate_visualization_payload_rejects_distant_control_label_pair(tmp_path):
+    payload = _payload_with_screenshots(tmp_path)
+    payload["ui_state"]["control_layout"] = {
+        "ok": False,
+        "hidden_or_empty": [],
+        "overlaps": [],
+        "distant_pairs": ["plan"],
+        "pair_gaps": {
+            "plan": {
+                "horizontal_gap": 320,
+                "row_delta": 0,
+            },
+        },
+    }
+
+    ok, reason = validate_visualization_render_payload(payload)
+
+    assert ok is False
+    assert "Visualization controls" in reason
+    assert "plan" in reason
+
+
+def test_control_label_pair_gaps_flags_split_grid_distance():
+    rects = {
+        "plan": {"x": 720, "y": 110, "width": 220, "height": 28},
+        "run": {"x": 720, "y": 150, "width": 180, "height": 28},
+    }
+    label_rects = {
+        "Plan:": {"x": 30, "y": 113, "width": 35, "height": 20},
+        "Run:": {"x": 30, "y": 153, "width": 30, "height": 20},
+    }
+
+    gaps, distant = _control_label_pair_gaps(
+        rects,
+        label_rects,
+        {"plan": "Plan:", "run": "Run:"},
+    )
+
+    assert gaps["plan"]["horizontal_gap"] > 48
+    assert distant == ["plan", "run"]
+
+
 def test_validate_visualization_payload_rejects_uncaught_qt_exception(tmp_path):
     payload = _payload_with_screenshots(tmp_path)
     payload["uncaught_exceptions"] = [
@@ -288,9 +333,9 @@ def test_visualization_training_walkthrough_confirms_training_boundary():
     payload = {"training": {"commands": []}}
 
     ok = _prepare_tiny_trained_state(
-        FakeApp(),
+        cast(Any, FakeApp()),
         service,
-        training_output_dir="/tmp/xbrainlab-viz-test",
+        training_output_dir=Path("/tmp/xbrainlab-viz-test"),
         timeout_seconds=1,
         started_at=time.monotonic(),
         payload=payload,
