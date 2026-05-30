@@ -4,9 +4,20 @@ from typing import Any
 
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib.ticker import FuncFormatter
 from scipy import signal
 
 from .base import Visualizer
+
+
+def _compact_colorbar_tick(value: float, _position: int) -> str:
+    """Return readable colorbar text for tiny saliency magnitudes."""
+    abs_value = abs(value)
+    if abs_value == 0:
+        return "0"
+    if 0.01 <= abs_value < 100:
+        return f"{value:.2f}".rstrip("0").rstrip(".")
+    return f"{value:.1e}"
 
 
 class SaliencySpectrogramMapViz(Visualizer):
@@ -41,7 +52,7 @@ class SaliencySpectrogramMapViz(Visualizer):
         cols = int(np.ceil(visible_label_number / rows))
         fig.subplots_adjust(
             left=0.08,
-            right=0.94,
+            right=0.90,
             bottom=0.12,
             top=0.90,
             wspace=0.55,
@@ -80,6 +91,14 @@ class SaliencySpectrogramMapViz(Visualizer):
             ax.tick_params(axis="x", labelsize=6)
             ax.set_yticks(freqs[np.where(freqs % 10 == 0)])
 
-            fig.colorbar(im, ax=ax, orientation="vertical", fraction=0.046, pad=0.04)
+            colorbar = fig.colorbar(
+                im,
+                ax=ax,
+                orientation="vertical",
+                fraction=0.046,
+                pad=0.04,
+                format=FuncFormatter(_compact_colorbar_tick),
+            )
+            colorbar.ax.tick_params(labelsize=7, pad=1)
             ax.set_title(f"Saliency spectrogram of class {label_name}")
         return fig

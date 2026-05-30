@@ -1,6 +1,14 @@
 {
   "status": "passed",
   "failure_reason": "",
+  "artifact_metadata": {
+    "status": "current release-candidate visualization evidence",
+    "generator": "scripts/dev/capture_visualization_render_walkthrough.py",
+    "environment": "Qt offscreen VisualizationPanel capture with PYVISTA_OFF_SCREEN",
+    "supports": "MainWindow VisualizationPanel 2D saliency renders and headless 3D blocked state",
+    "does_not_support": "interactive 3D render or human Windows click-through acceptance",
+    "next_human_or_runtime_gate": "manual desktop visualization click-through with an interactive OpenGL session"
+  },
   "source_path": "/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif",
   "training_output_dir": "/tmp/xbrainlab-visualization-render-output",
   "dataset_preparation": {
@@ -2037,6 +2045,6 @@
       }
     }
   },
-  "elapsed_seconds": 9.386,
+  "elapsed_seconds": 9.236,
   "uncaught_exceptions": []
 }

@@ -37,6 +37,28 @@ else:
 class LabelPlacementStepMixin(DataImportWizardHostProtocol):
     """Render and state helpers for external label placement rules."""
 
+    def _sync_label_placement_after_label_sources_changed(self) -> None:
+        """Refresh Match Labels state after Load Labels mutates label sources."""
+        if hasattr(self, "label_carrier_tree"):
+            self.label_carrier_tree.clear()
+            self._label_carrier_items.clear()
+            self._label_target_widgets.clear()
+            self._label_choice_widgets.clear()
+            self._label_carrier_remap_widgets.clear()
+            self._populate_label_carrier_tree()
+            self._fit_label_carrier_tree_height()
+        if hasattr(self, "label_pairing_rows_layout"):
+            self._populate_pairing_rows()
+        if hasattr(self, "label_source_mode_combo") and not self._label_carrier_items:
+            self._set_combo_current_data(
+                self.label_source_mode_combo,
+                "internal_events",
+            )
+        self._refresh_event_detail_view()
+        if hasattr(self, "pairing_status_label"):
+            self._refresh_pairing_status()
+        self._refresh_label_source_mode()
+
     def _build_label_values_card(self, layout: QVBoxLayout) -> None:
         self._updating_label_rule = True
         self.rule_label_field_combo = self._rule_combo(

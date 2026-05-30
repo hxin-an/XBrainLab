@@ -228,6 +228,8 @@ def test_render_markdown_records_render_claim_boundary():
     markdown = render_markdown(_base_payload())
 
     assert "# Visualization Render Walkthrough" in markdown
+    assert "generator:" in markdown
+    assert "does_not_support:" in markdown
     assert "Saliency Map" in markdown
     assert "Topographic Map" in markdown
     assert "3D" in markdown

@@ -140,6 +140,14 @@ def run_visualization_render_walkthrough(
     payload: dict[str, Any] = {
         "status": "running",
         "failure_reason": "",
+        "artifact_metadata": {
+            "status": "current release-candidate visualization evidence",
+            "generator": "scripts/dev/capture_visualization_render_walkthrough.py",
+            "environment": "Qt offscreen VisualizationPanel capture with PYVISTA_OFF_SCREEN",
+            "supports": "MainWindow VisualizationPanel 2D saliency renders and headless 3D blocked state",
+            "does_not_support": "interactive 3D render or human Windows click-through acceptance",
+            "next_human_or_runtime_gate": "manual desktop visualization click-through with an interactive OpenGL session",
+        },
         "source_path": str(source_path),
         "training_output_dir": str(training_output_dir),
         "dataset_preparation": dataset_preparation,
@@ -629,8 +637,16 @@ def _validate_screenshot(path: Any, label: str) -> tuple[bool, str]:
 
 def render_markdown(payload: dict[str, Any]) -> str:
     """Render a compact visualization render summary."""
+    metadata = payload.get("artifact_metadata") or {}
     lines = [
         "# Visualization Render Walkthrough",
+        "",
+        f"- artifact status: `{metadata.get('status', 'current visualization evidence')}`",
+        f"- generator: `{metadata.get('generator', 'scripts/dev/capture_visualization_render_walkthrough.py')}`",
+        f"- environment: {metadata.get('environment', '')}",
+        f"- supports: {metadata.get('supports', '')}",
+        f"- does_not_support: {metadata.get('does_not_support', '')}",
+        f"- next_human_or_runtime_gate: {metadata.get('next_human_or_runtime_gate', '')}",
         "",
         f"- status: `{payload['status']}`",
         f"- failure reason: {payload.get('failure_reason') or 'none'}",

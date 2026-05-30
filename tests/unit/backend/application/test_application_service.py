@@ -1788,7 +1788,9 @@ def test_evaluate_command_returns_typed_service_backed_summary():
     plan = MagicMock()
     plan.get_name.return_value = "Plan A"
     plan.get_plans.return_value = [run]
-    service.study.training_manager.trainer = MagicMock()
+    trainer = MagicMock()
+    trainer.get_training_plan_holders.return_value = [plan]
+    service.study.training_manager.trainer = trainer
     service.evaluation.get_plans = MagicMock(return_value=[plan])
 
     result = service.execute(EvaluateCommand())
@@ -2045,7 +2047,7 @@ def test_generate_dataset_blocks_while_training_is_running():
     service.study.data_manager.loaded_data_list = [raw]
     service.study.data_manager.preprocessed_data_list = [raw]
     service.study.data_manager.epoch_data = MagicMock()
-    service.training.is_training = MagicMock(return_value=True)
+    service.study.training_manager.is_training = MagicMock(return_value=True)
 
     result = service.execute(GenerateDatasetCommand())
 
@@ -2057,7 +2059,7 @@ def test_generate_dataset_blocks_while_training_is_running():
 def test_clear_datasets_blocks_while_training_is_running():
     service = ApplicationService(Study())
     service.study.data_manager.datasets = [MagicMock()]
-    service.training.is_training = MagicMock(return_value=True)
+    service.study.training_manager.is_training = MagicMock(return_value=True)
     service.training.clean_datasets = MagicMock()
 
     result = service.execute(ClearDatasetsCommand(confirmed=True))
@@ -2227,6 +2229,7 @@ def test_clear_datasets_and_training_history_commands_route_cleanup():
     trainer = MagicMock()
     trainer.is_running.return_value = False
     plan = MagicMock()
+    trainer.get_training_plan_holders.return_value = [plan]
     service.evaluation.get_plans = MagicMock(return_value=[plan])
     service.study.training_manager.trainer = trainer
     service.training.clear_history = MagicMock()
@@ -2399,6 +2402,25 @@ def test_query_state_returns_typed_dataset_summary():
     assert result.ok is True
     assert result.diagnostics["count"] == 1
     assert result.diagnostics["metadata"][0]["subject"] == "S01"
+
+
+def test_query_state_smart_filter_uses_adapter_target_file_argument():
+    service = ApplicationService(Study())
+    raw = object()
+    service.study.data_manager.loaded_data_list = [raw]
+    dataset_controller = service.study.get_controller("dataset")
+    dataset_controller.get_smart_filter_suggestions = MagicMock(return_value=[7, 8])
+
+    result = service.execute(
+        QueryStateCommand(
+            query="smart_filter_suggestions",
+            params={"target_index": 0, "target_count": 2},
+        ),
+    )
+
+    assert result.ok is True
+    assert result.diagnostics == {"suggestions": [7, 8]}
+    dataset_controller.get_smart_filter_suggestions.assert_called_once_with(raw, 2)
 
 
 def test_new_session_requires_confirmation_and_clears_single_backend_session():

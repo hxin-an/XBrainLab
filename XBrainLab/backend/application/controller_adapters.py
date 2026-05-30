@@ -41,9 +41,9 @@ class _DatasetControllerPort(_ObservableControllerPort, Protocol):
     def get_event_info(self) -> dict[str, Any]: ...
     def get_smart_filter_suggestions(
         self,
-        *,
-        target_count: int | None = None,
-    ) -> list[dict[str, Any]]: ...
+        data: Any,
+        target_count: int,
+    ) -> list[int]: ...
 
 
 class _PreprocessControllerPort(_ObservableControllerPort, Protocol):
@@ -201,12 +201,16 @@ class DatasetControllerAdapter(LazyControllerAdapter):
 
     def get_smart_filter_suggestions(
         self,
-        *,
-        target_count: int | None = None,
-    ) -> list[dict[str, Any]]:
-        return self._controller().get_smart_filter_suggestions(
-            target_count=target_count,
-        )
+        data: Any,
+        target_count: int,
+    ) -> list[int]:
+        return [
+            int(item)
+            for item in self._controller().get_smart_filter_suggestions(
+                data,
+                target_count,
+            )
+        ]
 
 
 class PreprocessControllerAdapter(LazyControllerAdapter):

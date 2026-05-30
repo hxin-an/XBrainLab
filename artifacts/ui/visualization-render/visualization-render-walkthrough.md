@@ -1,5 +1,12 @@
 # Visualization Render Walkthrough
 
+- artifact status: `current release-candidate visualization evidence`
+- generator: `scripts/dev/capture_visualization_render_walkthrough.py`
+- environment: Qt offscreen VisualizationPanel capture with PYVISTA_OFF_SCREEN
+- supports: MainWindow VisualizationPanel 2D saliency renders and headless 3D blocked state
+- does_not_support: interactive 3D render or human Windows click-through acceptance
+- next_human_or_runtime_gate: manual desktop visualization click-through with an interactive OpenGL session
+
 - status: `passed`
 - failure reason: none
 - source path: `/tmp/xbrainlab_chatpanel_training_completion/training_completion_raw.fif`
@@ -9,7 +16,7 @@
 - metrics available: `True`
 - saliency available: `True`
 - ready screenshot: `artifacts/ui/visualization-render/visualization-render-saliency-map.png`
-- elapsed seconds: `9.386`
+- elapsed seconds: `9.236`
 - uncaught exceptions: `0`
 
 ## Rendered Tabs
