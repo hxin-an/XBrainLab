@@ -20,10 +20,10 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "launcher"
 DESKTOP_CMD = r"C:\Users\Administrator\Desktop\XBrainLab.cmd"
 POWERSHELL_LAUNCHER = (
-    r"D:\workspace_v2\projects\lab\XBrainLab\scripts\launchers"
+    r"D:\workspace_v2\projects\lab\XBrainLab-integrated-manual\scripts\launchers"
     r"\xbrainlab_wsl_launcher.ps1"
 )
-ACTIVE_WSL_REPO = "/mnt/d/workspace_v2/projects/lab/XBrainLab"
+ACTIVE_WSL_REPO = "/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual"
 JSON_ARTIFACT = "windows-launcher-walkthrough.json"
 MD_ARTIFACT = "windows-launcher-walkthrough.md"
 

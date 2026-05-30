@@ -60,18 +60,18 @@ class TestLocalBackendLoad:
 
         mock_tokenizer = MagicMock()
         mock_model = MagicMock()
+        mock_tokenizer_cls = MagicMock(
+            from_pretrained=MagicMock(return_value=mock_tokenizer)
+        )
+        mock_model_cls = MagicMock(from_pretrained=MagicMock(return_value=mock_model))
 
         with patch.dict(
             "sys.modules",
             {
                 "torch": mock_torch,
                 "transformers": MagicMock(
-                    AutoTokenizer=MagicMock(
-                        from_pretrained=MagicMock(return_value=mock_tokenizer)
-                    ),
-                    AutoModelForCausalLM=MagicMock(
-                        from_pretrained=MagicMock(return_value=mock_model)
-                    ),
+                    AutoTokenizer=mock_tokenizer_cls,
+                    AutoModelForCausalLM=mock_model_cls,
                 ),
             },
         ):
@@ -80,6 +80,10 @@ class TestLocalBackendLoad:
         assert backend.is_loaded is True
         assert backend.tokenizer is not None
         assert backend.model is not None
+        tokenizer_kwargs = mock_tokenizer_cls.from_pretrained.call_args.kwargs
+        model_kwargs = mock_model_cls.from_pretrained.call_args.kwargs
+        assert tokenizer_kwargs["local_files_only"] is True
+        assert model_kwargs["local_files_only"] is True
 
     @patch("XBrainLab.llm.core.backends.local.torch", create=True)
     def test_load_4bit(self, mock_torch):

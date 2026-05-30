@@ -1,6 +1,6 @@
 """Metrics table widget for displaying per-class classification metrics."""
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QModelIndex, Qt
 from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import QHeaderView, QTableWidget, QTableWidgetItem
 
@@ -48,17 +48,32 @@ class MetricsTableWidget(QTableWidget):
         # Dark mode friendly style
         self.setStyleSheet(Stylesheets.METRICS_TABLE)
         palette = self.palette()
-        palette.setColor(QPalette.ColorRole.Base, QColor(Theme.METRICS_TABLE_BG))
-        palette.setColor(
-            QPalette.ColorRole.AlternateBase,
-            QColor(Theme.METRICS_TABLE_ALT_BG),
-        )
-        palette.setColor(QPalette.ColorRole.Text, QColor(Theme.TEXT_PRIMARY))
-        palette.setColor(QPalette.ColorRole.Highlight, QColor(Theme.BLUE_PRESSED))
-        palette.setColor(
-            QPalette.ColorRole.HighlightedText,
-            QColor(Theme.TEXT_PRIMARY),
-        )
+        for group in (
+            QPalette.ColorGroup.Active,
+            QPalette.ColorGroup.Inactive,
+            QPalette.ColorGroup.Disabled,
+        ):
+            palette.setColor(
+                group,
+                QPalette.ColorRole.Base,
+                QColor(Theme.METRICS_TABLE_BG),
+            )
+            palette.setColor(
+                group,
+                QPalette.ColorRole.AlternateBase,
+                QColor(Theme.METRICS_TABLE_ALT_BG),
+            )
+            palette.setColor(group, QPalette.ColorRole.Text, QColor(Theme.TEXT_PRIMARY))
+            palette.setColor(
+                group,
+                QPalette.ColorRole.Highlight,
+                QColor(Theme.BLUE_PRESSED),
+            )
+            palette.setColor(
+                group,
+                QPalette.ColorRole.HighlightedText,
+                QColor(Theme.TEXT_PRIMARY),
+            )
         self.setPalette(palette)
 
     def update_data(self, metrics: dict):
@@ -71,8 +86,7 @@ class MetricsTableWidget(QTableWidget):
         self.setRowCount(0)
 
         if not metrics:
-            self.clearSelection()
-            self.setCurrentCell(-1, -1)
+            self._clear_current_selection()
             return
 
         # Sort keys to ensure order (integers first, then macro_avg)
@@ -86,8 +100,15 @@ class MetricsTableWidget(QTableWidget):
         if "macro_avg" in metrics:
             self._add_row("Macro Avg", metrics["macro_avg"], is_summary=True)
 
+        self._clear_current_selection()
+
+    def _clear_current_selection(self) -> None:
         self.clearSelection()
-        self.setCurrentCell(-1, -1)
+        model_index = QModelIndex()
+        self.setCurrentIndex(model_index)
+        selection_model = self.selectionModel()
+        if selection_model is not None:
+            selection_model.clear()
 
     def _add_row(self, label: str, data: dict, is_summary: bool = False):
         """Append a single row of metrics to the table.

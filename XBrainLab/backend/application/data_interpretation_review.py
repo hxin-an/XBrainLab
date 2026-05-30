@@ -294,7 +294,8 @@ def _action_item(
     }
 
 
-def _target_step_for_text(text: str) -> str:
+def target_step_for_interpretation_text(text: str) -> str:
+    """Return the wizard step that should resolve an interpretation review item."""
     lowered = text.lower()
     if any(token in lowered for token in ("label", "event", "carrier")):
         if (
@@ -313,6 +314,10 @@ def _target_step_for_text(text: str) -> str:
     ):
         return "Review Metadata"
     return "Review and Import"
+
+
+def _target_step_for_text(text: str) -> str:
+    return target_step_for_interpretation_text(text)
 
 
 def _unique_strings(values: Any) -> list[str]:

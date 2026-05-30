@@ -18,7 +18,6 @@ from XBrainLab.backend.application import (
     get_application_service,
 )
 from XBrainLab.backend.dataset import (
-    DatasetGenerator,
     DataSplitter,
     DataSplittingConfig,
     SplitByType,
@@ -35,9 +34,9 @@ from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
 
 EXPECTED_PRODUCT_WALKTHROUGH_SPLIT_SUMMARY = {
     "count": 1,
-    "train_count": 4,
-    "val_count": 1,
-    "test_count": 1,
+    "train_count": 7,
+    "val_count": 2,
+    "test_count": 3,
     "audit": {"ok": True, "dataset_count": 1, "issues": []},
 }
 
@@ -70,16 +69,22 @@ def _write_synthetic_raw_fif(tmp_path):
     sfreq = 128
     ch_names = ["C3", "C4", "Cz", "Pz"]
     info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types="eeg")
-    data = np.random.default_rng(7).normal(size=(len(ch_names), sfreq * 6))
+    data = np.random.default_rng(7).normal(size=(len(ch_names), sfreq * 8))
     raw = mne.io.RawArray(data, info)
     events = np.array(
         [
             [128, 0, 1],
-            [256, 0, 2],
+            [192, 0, 2],
+            [256, 0, 1],
+            [320, 0, 2],
             [384, 0, 1],
-            [512, 0, 2],
+            [448, 0, 2],
+            [512, 0, 1],
+            [576, 0, 2],
             [640, 0, 1],
             [704, 0, 2],
+            [768, 0, 1],
+            [832, 0, 2],
         ],
     )
     raw.set_annotations(
@@ -323,6 +328,7 @@ def test_import_command_success_refreshes_dataset_table_without_stale_controller
         _click(qtbot, test_app.dataset_panel.sidebar.import_btn)
         _wait_for_raw_count(qtbot, test_app.study, 1)
 
+    qtbot.waitUntil(lambda: test_app.dataset_panel.table.rowCount() == 1, timeout=5000)
     loaded_objects = _query_diagnostics(
         test_app.study,
         "data_lists",
@@ -367,6 +373,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         _click(qtbot, test_app.dataset_panel.sidebar.import_btn)
         _wait_for_raw_count(qtbot, test_app.study, 1)
 
+    qtbot.waitUntil(lambda: test_app.dataset_panel.table.rowCount() == 1, timeout=5000)
     assert test_app.dataset_panel.table.rowCount() == 1
 
     _click(qtbot, test_app.nav_btns[1])
@@ -389,7 +396,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
             return True
 
         def get_params(self):
-            return (None, ["left", "right"], 0.0, 0.25)
+            return (None, ["left", "right"], 0.0, 1.3)
 
     with patch(
         "XBrainLab.ui.panels.preprocess.sidebar.FilteringDialog",
@@ -413,9 +420,9 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
     )
     epoch_state = _application_state(test_app.study)["epoch"]
     assert epoch_state["exists"] is True
-    assert epoch_state["epoch_count"] == 6
+    assert epoch_state["epoch_count"] == 12
     assert epoch_state["n_channels"] == 4
-    assert epoch_state["n_times"] == 33
+    assert epoch_state["n_times"] == 167
     assert epoch_state["event_ids"] == {"left": 0, "right": 1}
 
     _click(qtbot, test_app.nav_btns[2])
@@ -444,7 +451,26 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         include_objects=True,
     )
     assert split_context["epoch_available"] is True
-    generator = DatasetGenerator(split_context["epoch_data"], config=split_config)
+    split_payload = {
+        "train_type": split_config.train_type.value,
+        "is_cross_validation": split_config.is_cross_validation,
+        "val_splitters": [
+            {
+                "split_type": ValSplitByType.TRIAL.value,
+                "split_unit": SplitUnit.RATIO.value,
+                "value": "0.25",
+                "is_option": True,
+            },
+        ],
+        "test_splitters": [
+            {
+                "split_type": SplitByType.TRIAL.value,
+                "split_unit": SplitUnit.RATIO.value,
+                "value": "0.25",
+                "is_option": True,
+            },
+        ],
+    }
 
     class FakeSplitDialog:
         def __init__(self, _parent, _controller, **_dialog_context):
@@ -454,7 +480,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
             return True
 
         def get_result(self):
-            return generator
+            return split_payload
 
     class FakeModelDialog:
         def __init__(self, _parent, _controller, **_dialog_context):

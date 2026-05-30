@@ -260,3 +260,76 @@ def test_label_import_record_updates_applied_and_recipe_state() -> None:
     assert snapshot.label_imports == [record]
     assert latest_recipe.label_imports == [record]
     assert latest_recipe.recipe_trace[-1] == "label_import:timestamp:1"
+
+
+def test_internal_event_epoch_handoff_keeps_raw_event_codes_with_aliases() -> None:
+    state = _state()
+    scan = ScanResult(
+        scan_id=state.next_id("scan"),
+        source_path="/tmp/xbrainlab/source",
+        source_kind="file",
+        eeg_files=["/tmp/xbrainlab/source/A01T.gdf"],
+        label_carriers=[],
+    )
+    candidate = InterpretationCandidate(
+        candidate_id=state.next_id("candidate"),
+        scan_id=scan.scan_id,
+        source_path=scan.source_path,
+        source_kind=scan.source_kind,
+        selected_eeg_files=list(scan.eeg_files),
+        event_roles={"internal_events": "event role candidates"},
+        class_map={
+            "769": "Left hand",
+            "770": "Right hand",
+            "771": "Feet",
+        },
+        internal_event_selection={
+            "label_event_codes": ["770", "769", "771"],
+            "class_map": {
+                "769": "Left hand",
+                "770": "Right hand",
+                "771": "Feet",
+            },
+        },
+        choices={"label_carrier": "embedded_events"},
+    )
+    applied = AppliedInterpretation(
+        interpretation_id=state.next_id("interpretation"),
+        candidate_id=candidate.candidate_id,
+        source_path=candidate.source_path,
+        source_kind=candidate.source_kind,
+        loaded_files=list(candidate.selected_eeg_files),
+        validation_decision="safe",
+        event_roles=dict(candidate.event_roles),
+        class_map=dict(candidate.class_map),
+        internal_event_selection=dict(candidate.internal_event_selection),
+    )
+
+    state.record_scan(scan)
+    state.record_preview(
+        candidate,
+        InterpretationPreview(
+            preview_id=state.next_id("preview"),
+            candidate_id=candidate.candidate_id,
+            summary="Found 1 EEG file(s).",
+            file_count=1,
+            label_carrier_count=0,
+            event_roles=dict(candidate.event_roles),
+            class_map=dict(candidate.class_map),
+        ),
+    )
+    state.record_applied(applied)
+    handoff = state.snapshot().epoch_handoff
+
+    assert handoff["label_source"] == "internal_events"
+    assert handoff["default_epoch_events"] == ["769", "770", "771"]
+    assert handoff["event_label_aliases"] == {
+        "769": "Left hand",
+        "770": "Right hand",
+        "771": "Feet",
+    }
+    assert handoff["epoch_targets"] == [
+        {"event": "769", "source": "internal_events", "label": "Left hand"},
+        {"event": "770", "source": "internal_events", "label": "Right hand"},
+        {"event": "771", "source": "internal_events", "label": "Feet"},
+    ]

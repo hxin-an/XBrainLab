@@ -69,6 +69,9 @@
 
 ## Sources And Artifacts
 
+These eval artifacts are carried-over historical evidence unless regenerated from
+`/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`.
+
 - deterministic source: `/mnt/d/workspace_v2/projects/lab/XBrainLab/scripts/agent/evals/run_tool_call_eval.py`
 - deterministic json: `artifacts/agent_evals/latest.json`
 - deterministic markdown: `artifacts/agent_evals/latest.md`

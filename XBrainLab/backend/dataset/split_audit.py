@@ -10,6 +10,8 @@ from typing import Any
 
 import numpy as np
 
+from XBrainLab.backend.utils.logger import logger
+
 from .dataset import Dataset
 
 
@@ -94,6 +96,7 @@ def audit_dataset_splits(
                     )
                 )
 
+        issues.extend(_class_coverage_issues(dataset))
         issues.extend(_group_leakage_issues(dataset, protocol=protocol))
 
     return SplitAuditResult(
@@ -186,6 +189,68 @@ def _dataset_group_summary(dataset: Dataset) -> dict[str, dict[str, list[int]]]:
 
 def _unique_ints(values: np.ndarray) -> list[int]:
     return [int(value) for value in sorted(set(np.asarray(values).tolist()))]
+
+
+def _class_coverage_issues(dataset: Dataset) -> list[SplitAuditIssue]:
+    epoch_data = dataset.get_epoch_data()
+    all_mask = np.ones_like(dataset.train_mask, dtype=bool)
+    try:
+        all_labels = _unique_ints(epoch_data.get_label_list_by_mask(all_mask))
+    except Exception:
+        logger.debug("Failed to read all labels for split audit", exc_info=True)
+        return []
+    if len(all_labels) <= 1:
+        return []
+
+    issues: list[SplitAuditIssue] = []
+    for split_name, mask in (
+        ("train", dataset.train_mask),
+        ("validation", dataset.val_mask),
+        ("test", dataset.test_mask),
+    ):
+        if not np.asarray(mask).any():
+            continue
+        try:
+            present = set(_unique_ints(epoch_data.get_label_list_by_mask(mask)))
+        except Exception:
+            logger.debug(
+                "Failed to read %s labels for split audit",
+                split_name,
+                exc_info=True,
+            )
+            continue
+        missing = [label for label in all_labels if label not in present]
+        if not missing:
+            continue
+        severity = "error" if split_name == "train" else "warning"
+        missing_indices = _indices_for_labels(dataset, labels=missing)
+        issues.append(
+            SplitAuditIssue(
+                dataset_name=dataset.get_name(),
+                severity=severity,
+                message=(
+                    f"{split_name} split is missing class label(s) "
+                    f"{', '.join(str(label) for label in missing)}."
+                ),
+                indices=missing_indices,
+            )
+        )
+    return issues
+
+
+def _indices_for_labels(dataset: Dataset, *, labels: list[int]) -> list[int]:
+    epoch_data = dataset.get_epoch_data()
+    all_mask = np.ones_like(dataset.train_mask, dtype=bool)
+    try:
+        label_values = np.asarray(epoch_data.get_label_list_by_mask(all_mask))
+    except Exception:
+        return []
+    label_set = {int(label) for label in labels}
+    return [
+        int(idx)
+        for idx, value in enumerate(label_values.tolist())
+        if int(value) in label_set
+    ]
 
 
 def _group_leakage_issues(

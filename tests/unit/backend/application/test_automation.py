@@ -92,6 +92,8 @@ def test_mcp_tool_specs_use_same_command_schema():
     visualize_schema = tools[CommandName.VISUALIZE.value]["inputSchema"]
     assert "include_objects" not in visualize_schema["properties"]
     assert "include_averaged_records" not in visualize_schema["properties"]
+    generate_schema = tools[CommandName.GENERATE_DATASET.value]["inputSchema"]
+    assert "generator" not in generate_schema["properties"]
 
 
 def test_mcp_tool_specs_expose_execution_boundary_metadata():
@@ -126,6 +128,7 @@ def test_mcp_tool_specs_expose_execution_boundary_metadata():
         (CommandName.EVALUATE, "include_model_summaries"),
         (CommandName.VISUALIZE, "include_objects"),
         (CommandName.VISUALIZE, "include_averaged_records"),
+        (CommandName.GENERATE_DATASET, "generator"),
     ],
 )
 def test_automation_rejects_ui_only_payload_flags(command_name, field_name):
@@ -154,12 +157,13 @@ def test_legacy_compatibility_commands_are_not_primary_mcp_workflow():
         assert spec.legacy_compatibility is True
         assert spec.primary_workflow is False
         assert "Legacy compatibility" in spec.description
-        assert "scan_source" in spec.preferred_commands
+        assert "review_interpretation" in spec.preferred_commands
+        assert "apply_interpretation" in spec.preferred_commands
 
         metadata = tools[command_name]["x_xbrainlab"]
         assert metadata["legacy_compatibility"] is True
         assert metadata["primary_workflow"] is False
-        assert "scan_source" in metadata["preferred_commands"]
+        assert "review_interpretation" in metadata["preferred_commands"]
 
 
 def test_build_command_from_payload_validates_required_and_unknown_arguments():

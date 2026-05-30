@@ -89,7 +89,7 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
         for index in range(dialog.review_tree.columnCount())
     ] == ["Target step", "Issue", "Impact", "Next action"]
     assert dialog.confirmation_label.text() == ""
-    assert "Review metadata" in review_text
+    assert "Review import choices" in review_text
     assert "Confirm session metadata." not in review_text
     assert "After import" not in review_text
     assert "Training uses this recipe trace." not in review_text
@@ -2104,36 +2104,10 @@ def test_data_interpretation_preview_dialog_can_open_at_resume_step(qtbot):
     assert dialog.next_button.text() == "Next: Match Labels"
 
 
-def test_load_labels_next_rescans_in_place_when_handler_is_available(
+def test_load_labels_next_returns_sources_for_outer_review_rerun(
     qtbot,
     monkeypatch,
 ):
-    calls: list[list[str]] = []
-
-    def rescan_handler(label_sources: list[str]) -> dict[str, object]:
-        calls.append(label_sources)
-        return {
-            "scan_result": {
-                "source_path": "/tmp/source",
-                "eeg_files": ["/tmp/source/A01T.gdf"],
-                "label_sources": list(label_sources),
-                "label_carriers": ["/tmp/external-labels/A01T.mat"],
-            },
-            "preview": {
-                "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
-                "label_carrier_preview": [
-                    {
-                        "path": "/tmp/external-labels/A01T.mat",
-                        "name": "A01T.mat",
-                        "format": "MAT",
-                        "label_candidates": ["classlabel"],
-                        "selected_label_field": "classlabel",
-                    }
-                ],
-            },
-            "validation_decision": {"decision": "needs_confirmation"},
-        }
-
     dialog = DataInterpretationPreviewDialog(
         parent=None,
         scan_result={
@@ -2142,7 +2116,6 @@ def test_load_labels_next_rescans_in_place_when_handler_is_available(
         },
         preview={"summary": "Found 1 EEG file(s)."},
         validation_decision={"decision": "safe"},
-        label_rescan_handler=rescan_handler,
     )
     qtbot.addWidget(dialog)
     dialog.show()
@@ -2158,12 +2131,12 @@ def test_load_labels_next_rescans_in_place_when_handler_is_available(
     dialog.next_button.click()
     qtbot.wait(0)
 
-    assert dialog.result() == QDialog.DialogCode.Rejected
-    assert calls == [["/tmp/external-labels"]]
-    assert dialog.step_stack.currentIndex() == 2
-    assert _visible_group_titles(dialog) == ["Review Metadata"]
-    assert dialog.get_result().get("label_sources_changed") is None
-    assert dialog.scan_result["label_carriers"] == ["/tmp/external-labels/A01T.mat"]
+    assert dialog.result() == QDialog.DialogCode.Accepted
+    result = dialog.get_result()
+    assert result["label_sources_changed"] is True
+    assert result["label_sources"] == ["/tmp/external-labels"]
+    assert result["resume_step"] == "Review Metadata"
+    assert dialog.scan_result.get("label_carriers") is None
 
 
 def test_data_interpretation_preview_dialog_rejects_duplicate_label_sources(
@@ -2739,6 +2712,7 @@ def test_bids_preset_surfaces_scope_labels_metadata_and_review(qtbot):
         if label.text().strip()
     )
     assert "Needs review" in action_text
+    assert "Confirm class names in Match Labels." in action_text
     assert any(
         button.text() == "Open Match Labels"
         for button in dialog.review_actions_panel.findChildren(QPushButton)
@@ -3007,6 +2981,56 @@ def test_review_and_import_metadata_summary_uses_manual_edits(qtbot):
     assert "Metadata complete" in review_text
     assert "Missing subject" not in review_text
     assert "Missing session" not in review_text
+
+
+def test_review_and_import_drops_stale_metadata_action_after_manual_edits(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s).",
+            "metadata_preview": [
+                {
+                    "file": "A01T.gdf",
+                    "subject": {"value": "", "decision": "needs_confirmation"},
+                    "session": {"value": "", "decision": "needs_confirmation"},
+                    "task": {"value": "mi", "decision": "safe"},
+                    "run": {"value": "01", "decision": "safe"},
+                },
+            ],
+            "action_items": [
+                {
+                    "target_step": "Review Metadata",
+                    "issue": "Review metadata",
+                    "impact": "Subject metadata is missing.",
+                    "next_action": "Review the metadata table.",
+                },
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(1040, 760)
+    dialog.show()
+    qtbot.wait(0)
+    _show_step(dialog, "Review Metadata")
+    qtbot.wait(0)
+
+    item = dialog.file_tree.topLevelItem(0)
+    assert item is not None
+    item.setText(1, "A01")
+    item.setText(2, "T")
+
+    _show_step(dialog, "Review and Import")
+    qtbot.wait(0)
+    review_text = _visible_step_text(dialog, "Review and Import")
+
+    assert "Metadata complete" in review_text
+    assert "Review metadata" not in review_text
+    assert "Subject metadata is missing" not in review_text
 
 
 def test_review_and_import_groups_repeated_file_action_items(qtbot):

@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-05-14`
+最後更新：`2026-05-30`
 
 這頁只回答一件事：**現在能相信什麼，還不能宣稱什麼，下一步該做什麼。**
 完整階段安排看 [Roadmap](planning/roadmap.md)，下一輪施工看 [Now](planning/now.md)。
@@ -16,8 +16,8 @@ XBrainLab 正在收斂成 Windows 本地 EEG / BCI 桌面工具。主線已經�
 
 | 區域 | 目前狀態 | 邊界 |
 | --- | --- | --- |
-| Backend | `ApplicationService / Command API` 已是主要 command spine；UI / assistant / MCP product runtime 不再把 `BackendFacade` 當入口。 | Phase 1A 還要驗證完整 product workflow、UI refresh path 和剩餘 legacy compatibility 邊界。 |
-| UI | PyQt 主流程、Data Interpretation wizard、training / evaluation / visualization surface 都有 baseline。 | automated walkthrough 不等於 human Windows desktop acceptance。 |
+| Backend | `ApplicationService / Command API` 已是主要 command spine；UI / assistant / MCP product runtime 不再把 `BackendFacade` 當入口，service lazy wrappers 已改成明確 command handler。 | Phase 1A 還要以 release-candidate gate 持續防止新的 legacy / duplicate refresh truth。 |
+| UI | PyQt 主流程、Data Interpretation wizard、training / evaluation / visualization surface 都有 baseline；evaluation / visualization baseline 已更新到目前 approved reference。 | automated walkthrough 不等於 human Windows desktop acceptance。 |
 | Data Interpretation | `scan -> preview -> validate -> apply -> recipe` baseline 已存在；Data Import wizard 已補強 Tier 1/Tier 2 label-source、BIDS-like events、internal event evidence、external label placement、structured review coverage，並把 reviewed label placement 寫成 epoch 建議。 | 還不是 full BIDS / arbitrary import system；P300/SSVEP/clinical/XDF/LSL/MOABB/proprietary converters 不能誇大。Epoch 目前消費 import 建議，不代表 epoch/preprocess 全流程已做完整 UX 重作。 |
 | Agent / MCP | tool surface 和 MCP adapter 已開始走同一套 command / capability / state snapshot。 | 這是 product baseline，不是完整 thesis benchmark 或 MCP client certification。 |
 | Packaging | Windows launcher / startup smoke 有 evidence。 | 還不是 signed installer，也不是 release approval。 |
@@ -31,8 +31,9 @@ XBrainLab 正在收斂成 Windows 本地 EEG / BCI 桌面工具。主線已經�
 - product runtime 不應偷偷 fallback 到 legacy controller mutation。
 - UI refresh 不應每個頁面自己猜狀態。
 - 測試不應把舊 fallback 當作成功條件。
-- `BackendFacade` 已降為 legacy compatibility wrapper；product runtime 要直接使用
-  `ApplicationService / Command API` 或薄 command adapter。
+- `BackendFacade` module 已物理移除；product runtime 要直接使用
+  `ApplicationService / Command API` 或薄 command adapter，不能重新加入 facade
+  wrapper。
 
 ## 可以宣稱
 
@@ -56,9 +57,10 @@ XBrainLab 正在收斂成 Windows 本地 EEG / BCI 桌面工具。主線已經�
 | Gate | 最近結果 | 用途 |
 | --- | --- | --- |
 | `mkdocs build --strict` | PASS | 文件站可建。 |
-| `git diff --check` | PASS | diff 格式乾淨。 |
-| backend / agent / MCP focused tests | 最近曾通過 targeted suites。 | 支撐 command spine / tool surface baseline，不取代產品驗收。 |
-| GitHub PR checks | 最近 head 曾全綠。 | 支撐 branch 可 review，不等於產品完成。 |
+| fast quality dashboard | PASS at `2026-05-30 13:55:04 UTC+08:00` | lint、type、architecture、startup、UI baseline、UI product walkthrough、UI unit、real-data IO。 |
+| full UI unit suite | `1235 passed` | 支撐目前 UI regression baseline，不取代人工 UX approval。 |
+| pipeline smoke | `2 passed` | 支撐 tiny train/evaluate loop。 |
+| Windows launcher walkthrough | PASS | 自動化 launcher command / bounded startup evidence，不是 signed installer 或真人 click-through。 |
 
 ## 先看哪裡
 

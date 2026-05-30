@@ -80,6 +80,7 @@ def _base_payload():
                 "blocked_reason": (
                     "3D rendering requires an interactive OpenGL desktop session."
                 ),
+                "message_evidence": {"ok": True},
                 "plotter_created": False,
             },
         ],
@@ -97,7 +98,15 @@ def _base_payload():
                 "montage_available": True,
             },
         },
-        "ui_state": {"current_panel": "Visualization"},
+        "ui_state": {
+            "current_panel": "Visualization",
+            "control_layout": {
+                "ok": True,
+                "hidden_or_empty": [],
+                "overlaps": [],
+                "rects": {},
+            },
+        },
         "elapsed_seconds": 12.0,
     }
 
@@ -161,6 +170,34 @@ def test_validate_visualization_payload_requires_3d_blocked_reason(tmp_path):
 
     assert ok is False
     assert "3D Plot" in reason
+
+
+def test_validate_visualization_payload_rejects_control_overlap(tmp_path):
+    payload = _payload_with_screenshots(tmp_path)
+    payload["ui_state"]["control_layout"] = {
+        "ok": False,
+        "hidden_or_empty": [],
+        "overlaps": ["plan/run"],
+    }
+
+    ok, reason = validate_visualization_render_payload(payload)
+
+    assert ok is False
+    assert "Visualization controls" in reason
+    assert "plan/run" in reason
+
+
+def test_validate_visualization_payload_rejects_clipped_3d_message(tmp_path):
+    payload = _payload_with_screenshots(tmp_path)
+    payload["blocked_renders"][0]["message_evidence"] = {
+        "ok": False,
+        "clipped_by_hint": True,
+    }
+
+    ok, reason = validate_visualization_render_payload(payload)
+
+    assert ok is False
+    assert "3D Plot blocked reason" in reason
 
 
 def test_validate_visualization_payload_rejects_missing_screenshot_file(tmp_path):

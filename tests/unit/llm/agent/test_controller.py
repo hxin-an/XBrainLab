@@ -54,6 +54,10 @@ def _assert_confirmation_prompt(
     )
 
 
+def _allow_prompt_tools(ctrl: Any) -> None:
+    ctrl._check_prompt_tool_exposure = MagicMock(return_value=None)
+
+
 @pytest.fixture
 def _mock_qt():
     """Patch Qt imports so controller module loads without a running QApp."""
@@ -339,6 +343,7 @@ class TestHandleToolResultLogic:
 # --- _process_tool_calls ---
 class TestProcessToolCalls:
     def test_success_finalizes(self, ctrl):
+        _allow_prompt_tools(ctrl)
         ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "ok"))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl._finalize_turn_after_tool = MagicMock()
@@ -350,6 +355,7 @@ class TestProcessToolCalls:
         ctrl._finalize_turn_after_tool.assert_called_once()
 
     def test_failure_retries(self, ctrl):
+        _allow_prompt_tools(ctrl)
         ctrl._execute_tool_no_loop = MagicMock(return_value=(False, "err"))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl._generate_response = MagicMock()
@@ -361,6 +367,7 @@ class TestProcessToolCalls:
         ctrl._generate_response.assert_called_once()
 
     def test_max_failures_stops(self, ctrl):
+        _allow_prompt_tools(ctrl)
         ctrl._tool_failure_count = 2
         ctrl._execute_tool_no_loop = MagicMock(return_value=(False, "err"))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
@@ -678,6 +685,7 @@ class TestOnUserConfirmed:
 class TestProcessToolCallsConfirmation:
     def test_confirmation_required_pauses_execution(self, ctrl):
         """Tool with requires_confirmation should emit signal and pause."""
+        _allow_prompt_tools(ctrl)
         mock_tool = MagicMock()
         mock_tool.requires_confirmation = True
         mock_tool.description = "Clear data"
@@ -705,6 +713,7 @@ class TestProcessToolCallsConfirmation:
         """ApplicationService autonomy policy can require HITL dynamically."""
         from XBrainLab.llm.tools.application_surface import ToolAvailability
 
+        _allow_prompt_tools(ctrl)
         mock_tool = MagicMock()
         mock_tool.requires_confirmation = False
         mock_tool.description = "Apply data interpretation"
@@ -745,6 +754,7 @@ class TestProcessToolCallsConfirmation:
 
     def test_no_confirmation_executes_directly(self, ctrl):
         """Tool without requires_confirmation should execute normally."""
+        _allow_prompt_tools(ctrl)
         mock_tool = MagicMock()
         mock_tool.requires_confirmation = False
         ctrl.registry.get_tool.return_value = mock_tool
@@ -777,10 +787,18 @@ class TestPipelineGate:
         mock_tool = MagicMock()
         ctrl.registry.get_tool.return_value = mock_tool
 
-        success, result = ctrl._execute_tool_no_loop(
-            "apply_bandpass_filter",
-            {},
-        )
+        with (
+            patch("XBrainLab.llm.agent.controller.compute_pipeline_stage") as stage,
+            patch("XBrainLab.llm.agent.controller.STAGE_CONFIG") as stage_config,
+        ):
+            stage.return_value = "test-stage"
+            stage_config.get.side_effect = lambda key, default=None: (
+                {"tools": ["apply_bandpass_filter"]} if key == "test-stage" else default
+            )
+            success, result = ctrl._execute_tool_no_loop(
+                "apply_bandpass_filter",
+                {},
+            )
 
         assert not success
         assert result.ok is False
@@ -790,6 +808,26 @@ class TestPipelineGate:
         payload = result.to_payload()
         assert payload["ok"] is False
         assert payload["capability"]["command_name"] == "preprocess"
+
+    def test_unlisted_stage_tool_is_rejected_before_legacy_execution(self, ctrl):
+        """Registry tools that are absent from the stage prompt are hard-blocked."""
+        from XBrainLab.backend.study import Study
+
+        ctrl.study = Study()
+        mock_tool = MagicMock()
+        mock_tool.execute.side_effect = AssertionError("legacy path should not run")
+        ctrl.registry.get_tool.return_value = mock_tool
+
+        success, result = ctrl._execute_tool_no_loop(
+            "load_data",
+            {"file_paths": ["/tmp/sample.gdf"]},
+        )
+
+        assert not success
+        assert result.ok is False
+        assert result.command_name is None
+        assert "not exposed in the current assistant workflow stage" in result.message
+        mock_tool.execute.assert_not_called()
 
     def test_allowed_mapped_tool_missing_params_does_not_use_legacy_tool(self, ctrl):
         """Real Study mapped tools must not bypass ApplicationService on bad args."""
@@ -874,7 +912,15 @@ class TestPipelineGate:
         mock_tool = MagicMock()
         ctrl.registry.get_tool.return_value = mock_tool
 
-        success, result = ctrl._execute_tool_no_loop("start_training", {})
+        with (
+            patch("XBrainLab.llm.agent.controller.compute_pipeline_stage") as stage,
+            patch("XBrainLab.llm.agent.controller.STAGE_CONFIG") as stage_config,
+        ):
+            stage.return_value = "test-stage"
+            stage_config.get.side_effect = lambda key, default=None: (
+                {"tools": ["start_training"]} if key == "test-stage" else default
+            )
+            success, result = ctrl._execute_tool_no_loop("start_training", {})
 
         assert not success
         assert result.ok is False
@@ -890,10 +936,18 @@ class TestPipelineGate:
         mock_tool.execute.side_effect = AssertionError("legacy path should not run")
         ctrl.registry.get_tool.return_value = mock_tool
 
-        success, result = ctrl._execute_tool_no_loop(
-            "set_model",
-            {"model_name": "EEGNet"},
-        )
+        with (
+            patch("XBrainLab.llm.agent.controller.compute_pipeline_stage") as stage,
+            patch("XBrainLab.llm.agent.controller.STAGE_CONFIG") as stage_config,
+        ):
+            stage.return_value = "test-stage"
+            stage_config.get.side_effect = lambda key, default=None: (
+                {"tools": ["set_model"]} if key == "test-stage" else default
+            )
+            success, result = ctrl._execute_tool_no_loop(
+                "set_model",
+                {"model_name": "EEGNet"},
+            )
 
         assert success is True
         assert result.ok is True
@@ -931,6 +985,7 @@ class TestExecutionMode:
 
     def test_single_mode_finalizes_on_success(self, ctrl):
         """In single mode, a successful tool call finalizes immediately."""
+        _allow_prompt_tools(ctrl)
         ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "ok"))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl._finalize_turn_after_tool = MagicMock()
@@ -947,6 +1002,7 @@ class TestExecutionMode:
         """In multi mode, a successful tool call triggers another generation."""
         from XBrainLab.llm.agent.controller import LLMController
 
+        _allow_prompt_tools(ctrl)
         ctrl.set_execution_mode(LLMController.MODE_MULTI)
         ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "ok"))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
@@ -964,6 +1020,7 @@ class TestExecutionMode:
         """Multi mode stops after reaching the max successful tool count."""
         from XBrainLab.llm.agent.controller import LLMController
 
+        _allow_prompt_tools(ctrl)
         ctrl.set_execution_mode(LLMController.MODE_MULTI)
         ctrl._successful_tool_count = ctrl._max_successful_tools - 1
         ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "ok"))

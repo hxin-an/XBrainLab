@@ -76,9 +76,11 @@ class DataManager:
         # Here we assume manager logic.
         self.clean_raw_data(force_update)
 
-        # Copy to preprocessed (Initial state)
+        # Keep initial preprocessing state as references. Individual preprocessing
+        # operations already copy before mutation, so this avoids an expensive
+        # eager MNE data clone during import/startup.
         self.set_preprocessed_data_list(
-            preprocessed_data_list=deepcopy(loaded_data_list),
+            preprocessed_data_list=list(loaded_data_list),
             force_update=force_update,
         )
         self.loaded_data_list = loaded_data_list
@@ -141,7 +143,7 @@ class DataManager:
 
         if self.loaded_data_list:
             self.set_preprocessed_data_list(
-                deepcopy(self.loaded_data_list),
+                list(self.loaded_data_list),
                 force_update=force_update,
             )
         logger.info("Reset preprocess to loaded data")

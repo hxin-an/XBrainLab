@@ -45,6 +45,7 @@ class EpochStateSnapshot:
     epoch_count: int | None = None
     n_channels: int | None = None
     n_times: int | None = None
+    sfreq: float | None = None
     event_names: list[str] = field(default_factory=list)
     event_ids: dict[str, int] | None = None
     channel_names: list[str] = field(default_factory=list)
@@ -68,6 +69,7 @@ class TrainingStateSnapshot:
 
     has_model: bool = False
     model_name: str | None = None
+    model_params: dict[str, Any] = field(default_factory=dict)
     has_training_option: bool = False
     training_option: dict[str, Any] = field(default_factory=dict)
     has_trainer: bool = False

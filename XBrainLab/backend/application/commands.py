@@ -11,6 +11,7 @@ class CommandName(str, Enum):
     """Names understood by :class:`ApplicationService`."""
 
     SCAN_SOURCE = "scan_source"
+    REVIEW_INTERPRETATION = "review_interpretation"
     PREVIEW_INTERPRETATION = "preview_interpretation"
     VALIDATE_INTERPRETATION = "validate_interpretation"
     APPLY_INTERPRETATION = "apply_interpretation"
@@ -101,6 +102,20 @@ class PreviewInterpretationCommand:
     @property
     def name(self) -> CommandName:
         return CommandName.PREVIEW_INTERPRETATION
+
+
+@dataclass(frozen=True)
+class ReviewInterpretationCommand:
+    """Scan, preview, and validate a Data Interpretation candidate."""
+
+    source_path: str
+    source_hint: str = "auto"
+    label_sources: list[str] = field(default_factory=list)
+    choices: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def name(self) -> CommandName:
+        return CommandName.REVIEW_INTERPRETATION
 
 
 @dataclass(frozen=True)
@@ -257,7 +272,7 @@ class GenerateDatasetCommand:
     val_ratio: float = 0.2
     split_strategy: str = "subject"
     training_mode: str = "individual"
-    generator: Any | None = None
+    split_config: dict[str, Any] = field(default_factory=dict)
 
     @property
     def name(self) -> CommandName:
@@ -433,6 +448,7 @@ class NewSessionCommand:
 
 Command = (
     ScanSourceCommand
+    | ReviewInterpretationCommand
     | PreviewInterpretationCommand
     | ValidateInterpretationCommand
     | ApplyInterpretationCommand

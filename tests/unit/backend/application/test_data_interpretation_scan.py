@@ -212,3 +212,32 @@ def test_scan_source_path_merges_external_label_sources(tmp_path: Path):
     assert scan.label_carrier_sources[str(external_events.resolve())] == (
         str(label_dir.resolve())
     )
+
+
+def test_scan_source_path_skips_symbolic_links(tmp_path: Path):
+    eeg_file = tmp_path / "A01T.gdf"
+    eeg_file.write_bytes(b"not loaded during scan")
+    link_path = tmp_path / "linked.gdf"
+    try:
+        link_path.symlink_to(eeg_file)
+    except OSError:
+        return
+
+    scan = scan_source_path(scan_id="scan-1", source_path=str(tmp_path))
+
+    assert scan.eeg_files == [str(eeg_file.resolve())]
+    assert any("Skipped symbolic link" in warning for warning in scan.warnings)
+
+
+def test_scan_source_path_warns_when_folder_depth_budget_is_reached(tmp_path: Path):
+    current = tmp_path
+    for index in range(10):
+        current = current / f"level-{index}"
+        current.mkdir()
+    deep_eeg = current / "A01T.gdf"
+    deep_eeg.write_bytes(b"not loaded during scan")
+
+    scan = scan_source_path(scan_id="scan-1", source_path=str(tmp_path))
+
+    assert str(deep_eeg.resolve()) not in scan.eeg_files
+    assert any("deeper than" in warning for warning in scan.warnings)

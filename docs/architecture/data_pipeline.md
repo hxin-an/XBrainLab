@@ -60,8 +60,8 @@ EEG file
 - loader 註冊：程式碼有對應 reader。
 - checked-in fixture import：repo 內小檔案可被測試讀取。
 - command import：`ApplicationService.execute(LoadDataCommand(...))` 可走同一格式。
-- legacy facade compatibility：`BackendFacade.load_data()` 仍可包同一 command path，但不是
-  product runtime 入口。
+- legacy command compatibility：`LoadDataCommand` / `AttachLabelsCommand` /
+  `ImportLabelsCommand` 只保留舊入口相容，不是 product runtime 的主要資料匯入流程。
 - dataset generation：能套 labels / preprocess / epoch / split。
 - training smoke：能跑到一個小訓練閉環。
 - thesis-grade reproducibility：尚未完成。
@@ -88,14 +88,15 @@ GDF 有一個目前比較重要的特殊處理：
 
 ## Label / Event Layer
 
-label import 目前集中在 `LabelImportService`。
+label import 的底層套用仍集中在 `LabelImportService`，但產品主流程先經過
+Data Import 的 scan / preview / validate / apply recipe。
 
 它支援兩種主要模式：
 
 | 模式 | 說明 |
 | --- | --- |
 | batch mapping | data file path 對 label file path。 |
-| legacy sequential | 一串 labels 依每個檔案 epoch/event count 分配。 |
+| sequence mapping | 已 review 的 per-file label sequence 依目標 EEG event order 套用。 |
 
 `ApplicationService.execute(AttachLabelsCommand(...))` 目前會：
 
@@ -105,8 +106,8 @@ label import 目前集中在 `LabelImportService`。
 4. 呼叫 `LabelImportService.apply_labels_batch()`。
 5. 成功後 reset preprocess，因為 label/event 變更會讓下游狀態失效。
 
-`BackendFacade.attach_labels(mapping)` 保留 legacy compatibility wrapper，但 product runtime
-不應把它當成 label workflow 入口。
+`AttachLabelsCommand` / `ImportLabelsCommand` 是 legacy command compatibility；product
+runtime 不應把它們當成 Data Import wizard 的替代入口。
 
 這裡的風險是：label/event 正確性不是 import 成功就能保證。它需要 event count、event ID mapping、timestamp/sequence mode 都對上。
 
@@ -244,8 +245,8 @@ normal training run does not silently run SmoothGrad / VarGrad work at the end.
 ## 目前可信結論
 
 - 多格式 loader 註冊清楚，且有 real-data IO integration coverage。
-- `ApplicationService / Command API` 能跑多格式 import path；`BackendFacade` 只剩 legacy
-  compatibility wrapper。
+- `ApplicationService / Command API` 能跑多格式 import path；`BackendFacade` module 已移除，
+  guard 會擋 product runtime 重新引入。
 - checked-in GDF+MAT fixtures 已有 dataset generation 和 one-epoch training smoke tests。
 - public fixtures 的 cross-source training smoke 屬於 local-only evidence，不能當成 checked-in baseline。
 - pipeline 已有工程 smoke，但還不是 thesis validation。

@@ -33,6 +33,7 @@ from .commands import (
     RemoveFilesCommand,
     ResetPreprocessCommand,
     ResetSessionCommand,
+    ReviewInterpretationCommand,
     SaliencyCommand,
     ScanSourceCommand,
     StopTrainingCommand,
@@ -68,6 +69,134 @@ class _LazyStudyController:
         if self._controller_instance is None:
             self._controller_instance = self.study.get_controller(self.controller_name)
         return self._controller_instance
+
+    def _call(self, method_name: str, *args: Any, **kwargs: Any) -> Any:
+        method = getattr(self._controller(), method_name)
+        return method(*args, **kwargs)
+
+    def _get_attr(self, attribute_name: str, default: Any = None) -> Any:
+        return getattr(self._controller(), attribute_name, default)
+
+    def _set_attr(self, attribute_name: str, value: Any) -> None:
+        setattr(self._controller(), attribute_name, value)
+
+    @property
+    def loaded(self) -> Any:
+        return self._get_attr("loaded", [])
+
+    @loaded.setter
+    def loaded(self, value: Any) -> None:
+        self._set_attr("loaded", value)
+
+    @property
+    def imported_paths(self) -> Any:
+        return self._get_attr("imported_paths", [])
+
+    @imported_paths.setter
+    def imported_paths(self, value: Any) -> None:
+        self._set_attr("imported_paths", value)
+
+    def notify(self, event: str, *args: Any, **kwargs: Any) -> Any:
+        return self._call("notify", event, *args, **kwargs)
+
+    def clean_dataset(self) -> Any:
+        return self._call("clean_dataset")
+
+    def import_files(self, paths: list[str]) -> Any:
+        return self._call("import_files", paths)
+
+    def get_loaded_data_list(self) -> Any:
+        return self._call("get_loaded_data_list")
+
+    def apply_labels_batch(self, *args: Any, **kwargs: Any) -> Any:
+        return self._call("apply_labels_batch", *args, **kwargs)
+
+    def update_metadata(self, *args: Any, **kwargs: Any) -> Any:
+        return self._call("update_metadata", *args, **kwargs)
+
+    def apply_smart_parse(self, *args: Any, **kwargs: Any) -> Any:
+        return self._call("apply_smart_parse", *args, **kwargs)
+
+    def remove_files(self, *args: Any, **kwargs: Any) -> Any:
+        return self._call("remove_files", *args, **kwargs)
+
+    def apply_channel_selection(self, channels: list[str]) -> Any:
+        return self._call("apply_channel_selection", channels)
+
+    def get_runtime_diagnostics(self) -> Any:
+        return self._call("get_runtime_diagnostics")
+
+    def get_event_info(self) -> Any:
+        return self._call("get_event_info")
+
+    def get_smart_filter_suggestions(self, *args: Any, **kwargs: Any) -> Any:
+        return self._call("get_smart_filter_suggestions", *args, **kwargs)
+
+    def is_epoched(self) -> bool:
+        return bool(self._call("is_epoched"))
+
+    def get_channel_names(self) -> Any:
+        return self._call("get_channel_names")
+
+    def apply_filter(self, *args: Any, **kwargs: Any) -> Any:
+        return self._call("apply_filter", *args, **kwargs)
+
+    def apply_resample(self, rate: float) -> Any:
+        return self._call("apply_resample", rate)
+
+    def apply_normalization(self, method: str) -> Any:
+        return self._call("apply_normalization", method)
+
+    def apply_rereference(self, channels: str | list[str]) -> Any:
+        return self._call("apply_rereference", channels)
+
+    def apply_epoching(self, *args: Any, **kwargs: Any) -> Any:
+        return self._call("apply_epoching", *args, **kwargs)
+
+    def batch_notifications(self) -> Any:
+        return self._call("batch_notifications")
+
+    def apply_montage(self, *args: Any, **kwargs: Any) -> Any:
+        return self._call("apply_montage", *args, **kwargs)
+
+    def set_training_option(self, option: Any) -> Any:
+        return self._call("set_training_option", option)
+
+    def set_model_holder(self, holder: Any) -> Any:
+        return self._call("set_model_holder", holder)
+
+    def start_training(self, *args: Any, **kwargs: Any) -> Any:
+        return self._call("start_training", *args, **kwargs)
+
+    def stop_training(self) -> Any:
+        return self._call("stop_training")
+
+    def clear_history(self) -> Any:
+        return self._call("clear_history")
+
+    def apply_data_splitting(self, generator: Any) -> Any:
+        return self._call("apply_data_splitting", generator)
+
+    def clean_datasets(self, *args: Any, **kwargs: Any) -> Any:
+        return self._call("clean_datasets", *args, **kwargs)
+
+    def get_pooled_eval_result(self, *args: Any, **kwargs: Any) -> Any:
+        return self._call("get_pooled_eval_result", *args, **kwargs)
+
+    def get_model_summary_str(self, *args: Any, **kwargs: Any) -> Any:
+        return self._call("get_model_summary_str", *args, **kwargs)
+
+    def get_trainers(self) -> Any:
+        return self._call("get_trainers")
+
+    def set_saliency_params(self, params: Any) -> Any:
+        return self._call("set_saliency_params", params)
+
+    def get_saliency_params(self) -> Any:
+        return self._call("get_saliency_params")
+
+    def get_averaged_record(self, trainer: Any) -> Any:
+        return self._call("get_averaged_record", trainer)
 
     def is_training(self) -> bool:
         if self.controller_name != "training":
@@ -112,9 +241,6 @@ class _LazyStudyController:
             missing.append("Training Settings")
         return missing
 
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._controller(), name)
-
 
 class _LazyDataInterpretationCommandService:
     """Defer Data Interpretation imports until an interpretation command runs."""
@@ -147,8 +273,29 @@ class _LazyDataInterpretationCommandService:
         if self._service_instance is not None:
             self._service_instance.clear()
 
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._service(), name)
+    def handle_scan_source(self, command: Command) -> CommandResult:
+        return self._service().handle_scan_source(command)
+
+    def handle_review_interpretation(self, command: Command) -> CommandResult:
+        return self._service().handle_review_interpretation(command)
+
+    def handle_preview_interpretation(self, command: Command) -> CommandResult:
+        return self._service().handle_preview_interpretation(command)
+
+    def handle_validate_interpretation(self, command: Command) -> CommandResult:
+        return self._service().handle_validate_interpretation(command)
+
+    def handle_apply_interpretation(self, command: Command) -> CommandResult:
+        return self._service().handle_apply_interpretation(command)
+
+    def handle_save_interpretation_recipe(self, command: Command) -> CommandResult:
+        return self._service().handle_save_interpretation_recipe(command)
+
+    def handle_reload_interpretation_recipe(self, command: Command) -> CommandResult:
+        return self._service().handle_reload_interpretation_recipe(command)
+
+    def record_label_import_for_recipe(self, *args: Any, **kwargs: Any) -> Any:
+        return self._service().record_label_import_for_recipe(*args, **kwargs)
 
 
 class _LazyDataCompatibilityCommandService:
@@ -171,8 +318,14 @@ class _LazyDataCompatibilityCommandService:
             )
         return self._service_instance
 
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._service(), name)
+    def handle_load_data(self, command: Command) -> CommandResult:
+        return self._service().handle_load_data(command)
+
+    def handle_attach_labels(self, command: Command) -> CommandResult:
+        return self._service().handle_attach_labels(command)
+
+    def handle_import_labels(self, command: Command) -> CommandResult:
+        return self._service().handle_import_labels(command)
 
 
 class _LazyDatasetGenerationCommandService:
@@ -228,8 +381,11 @@ class _LazyDatasetGenerationCommandService:
             return {}
         return self._service().dataset_split_summary(datasets)
 
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._service(), name)
+    def handle_generate_dataset(self, command: Command) -> CommandResult:
+        return self._service().handle_generate_dataset(command)
+
+    def handle_clear_datasets(self, command: Command) -> CommandResult:
+        return self._service().handle_clear_datasets(command)
 
 
 class _LazyTrainingCommandService:
@@ -277,6 +433,13 @@ class _LazyTrainingCommandService:
         return getattr(target_model, "__name__", str(target_model))
 
     @staticmethod
+    def model_params_snapshot(model_holder: Any) -> dict[str, Any]:
+        params = getattr(model_holder, "model_params_map", None)
+        if not isinstance(params, dict):
+            return {}
+        return dict(params)
+
+    @staticmethod
     def training_option_snapshot(option: Any) -> dict[str, Any]:
         if option is None:
             return {}
@@ -293,8 +456,17 @@ class _LazyTrainingCommandService:
             "output_dir": getattr(option, "output_dir", None),
         }
 
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._service(), name)
+    def handle_configure_training(self, command: Command) -> CommandResult:
+        return self._service().handle_configure_training(command)
+
+    def handle_train(self, command: Command) -> CommandResult:
+        return self._service().handle_train(command)
+
+    def handle_stop_training(self, command: Command) -> CommandResult:
+        return self._service().handle_stop_training(command)
+
+    def handle_clear_training_history(self, command: Command) -> CommandResult:
+        return self._service().handle_clear_training_history(command)
 
 
 class _LazyAnalysisCommandService:
@@ -326,8 +498,17 @@ class _LazyAnalysisCommandService:
             )
         return self._service_instance
 
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._service(), name)
+    def handle_evaluate(self, command: Command) -> CommandResult:
+        return self._service().handle_evaluate(command)
+
+    def handle_visualize(self, command: Command) -> CommandResult:
+        return self._service().handle_visualize(command)
+
+    def handle_saliency(self, command: Command) -> CommandResult:
+        return self._service().handle_saliency(command)
+
+    def handle_apply_montage(self, command: Command) -> CommandResult:
+        return self._service().handle_apply_montage(command)
 
 
 class ApplicationService:
@@ -476,6 +657,10 @@ class ApplicationService:
         """Return the target service lazily so read-only commands stay light."""
         routes = {
             CommandName.SCAN_SOURCE: ("interpretation", "handle_scan_source"),
+            CommandName.REVIEW_INTERPRETATION: (
+                "interpretation",
+                "handle_review_interpretation",
+            ),
             CommandName.PREVIEW_INTERPRETATION: (
                 "interpretation",
                 "handle_preview_interpretation",
@@ -553,6 +738,23 @@ class ApplicationService:
                 source_path=source_path,
                 source_hint=source_hint,
                 label_sources=list(label_sources or []),
+            ),
+        )
+
+    def review_interpretation(
+        self,
+        source_path: str,
+        source_hint: str = "auto",
+        label_sources: list[str] | None = None,
+        choices: dict[str, Any] | None = None,
+    ) -> CommandResult:
+        """Scan, preview, and validate a data interpretation."""
+        return self.execute(
+            ReviewInterpretationCommand(
+                source_path=source_path,
+                source_hint=source_hint,
+                label_sources=list(label_sources or []),
+                choices=dict(choices or {}),
             ),
         )
 

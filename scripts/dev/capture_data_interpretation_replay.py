@@ -3,16 +3,19 @@
 
 Expected usage in WSL/headless environments:
 
-    xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py
+    xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py \
+        --output-dir artifacts/ui
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import shutil
 import sys
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -43,16 +46,14 @@ from XBrainLab.ui.dialogs.dataset import DataInterpretationPreviewDialog
 from XBrainLab.ui.main_window import MainWindow
 
 ROOT = Path(__file__).resolve().parents[2]
-ARTIFACTS_DIR = ROOT / "artifacts" / "ui"
+DEFAULT_ARTIFACTS_DIR = (
+    Path(tempfile.gettempdir()) / "xbrainlab_data_interpretation_replay_artifacts"
+)
 SOURCE_DIR = Path(tempfile.gettempdir()) / "xbrainlab_data_interpretation_replay"
 SOURCE_PATH = SOURCE_DIR / "sub-01_task-mi_run-1_raw.fif"
 SECOND_SOURCE_PATH = SOURCE_DIR / "sub-01_task-mi_run-2_raw.fif"
 LABEL_PATH = SOURCE_DIR / "events.tsv"
 LABEL_SIDECAR_PATH = SOURCE_DIR / "events.json"
-PREVIEW_SCREENSHOT = ARTIFACTS_DIR / "data-interpretation-preview.png"
-REMAP_SCREENSHOT = ARTIFACTS_DIR / "data-interpretation-remap.png"
-APPLIED_SCREENSHOT = ARTIFACTS_DIR / "data-interpretation-applied.png"
-REPLAY_JSON = ARTIFACTS_DIR / "data-interpretation-replay.json"
 WINDOW_SIZE = QSize(1280, 800)
 GEOMETRY_WIDTH_TOLERANCE_PX = 2
 VISIBLE_INTERNAL_MARKERS = (
@@ -67,6 +68,37 @@ VISIBLE_TRACE_TOKEN_PATTERN = re.compile(
     r"\b(?:scan|candidate|metadata|metadata_override|choices|label_import|"
     r"label_carrier|class_map|recipe):[A-Za-z0-9_.<>/-]+",
 )
+
+
+@dataclass
+class ReplayArtifactPaths:
+    """Mutable replay artifact target paths for CLI and tests."""
+
+    directory: Path
+
+    @property
+    def preview_screenshot(self) -> Path:
+        return self.directory / "data-interpretation-preview.png"
+
+    @property
+    def remap_screenshot(self) -> Path:
+        return self.directory / "data-interpretation-remap.png"
+
+    @property
+    def applied_screenshot(self) -> Path:
+        return self.directory / "data-interpretation-applied.png"
+
+    @property
+    def replay_json(self) -> Path:
+        return self.directory / "data-interpretation-replay.json"
+
+
+ARTIFACT_PATHS = ReplayArtifactPaths(DEFAULT_ARTIFACTS_DIR)
+
+
+def set_artifact_dir(output_dir: Path) -> None:
+    """Set replay output paths; tests should use tmp paths by default."""
+    ARTIFACT_PATHS.directory = output_dir
 
 
 def write_synthetic_raw_fif() -> Path:
@@ -676,7 +708,7 @@ def tree_state_for_step(
 def capture_replay(app: QApplication) -> int:
     """Run the replay and write JSON / screenshot artifacts."""
     result: dict[str, int] = {"code": 1}
-    ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+    ARTIFACT_PATHS.directory.mkdir(parents=True, exist_ok=True)
     source_path = write_synthetic_raw_fif()
     study = Study()
     service = ApplicationService(study)
@@ -717,7 +749,7 @@ def capture_replay(app: QApplication) -> int:
             show_dialog_step(dialog, "Review and Import", app)
             dialog.repaint()
             app.processEvents()
-            capture_widget(dialog, PREVIEW_SCREENSHOT)
+            capture_widget(dialog, ARTIFACT_PATHS.preview_screenshot)
             ok_button = dialog.apply_button
 
             dialog_state = {
@@ -773,7 +805,7 @@ def capture_replay(app: QApplication) -> int:
                     ok_button.isVisible() if ok_button is not None else False
                 ),
                 "save_recipe_checked": dialog.save_recipe_check.isChecked(),
-                "screenshot": PREVIEW_SCREENSHOT.name,
+                "screenshot": ARTIFACT_PATHS.preview_screenshot.name,
             }
             dialog.close()
 
@@ -842,7 +874,7 @@ def capture_replay(app: QApplication) -> int:
             show_dialog_step(remap_dialog, "Review and Import", app)
             remap_dialog.repaint()
             app.processEvents()
-            capture_widget(remap_dialog, REMAP_SCREENSHOT)
+            capture_widget(remap_dialog, ARTIFACT_PATHS.remap_screenshot)
             remap_ok_button = remap_dialog.apply_button
             remap_dialog_state = {
                 "title": remap_dialog.windowTitle(),
@@ -886,7 +918,7 @@ def capture_replay(app: QApplication) -> int:
                     if remap_ok_button is not None
                     else False
                 ),
-                "screenshot": REMAP_SCREENSHOT.name,
+                "screenshot": ARTIFACT_PATHS.remap_screenshot.name,
             }
             remap_dialog.close()
 
@@ -907,7 +939,7 @@ def capture_replay(app: QApplication) -> int:
             app.processEvents()
             window.repaint()
             app.processEvents()
-            capture_widget(window, APPLIED_SCREENSHOT)
+            capture_widget(window, ARTIFACT_PATHS.applied_screenshot)
 
             replay = {
                 "workflow": "data_interpretation_ui_replay",
@@ -963,7 +995,7 @@ def capture_replay(app: QApplication) -> int:
                             right_boundary=window.dataset_panel.sidebar,
                         ),
                         "visible_panel_text": visible_texts(window.dataset_panel),
-                        "screenshot": APPLIED_SCREENSHOT.name,
+                        "screenshot": ARTIFACT_PATHS.applied_screenshot.name,
                     },
                     "empty_dataset_sidebar": empty_sidebar_state,
                 },
@@ -981,7 +1013,7 @@ def capture_replay(app: QApplication) -> int:
             }
             ensure_replay_geometry_passed(geometry_review)
             ensure_visible_text_review_passed(visible_text_review)
-            REPLAY_JSON.write_text(
+            ARTIFACT_PATHS.replay_json.write_text(
                 json.dumps(replay, indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
@@ -998,8 +1030,29 @@ def capture_replay(app: QApplication) -> int:
     return result["code"]
 
 
-def main() -> int:
-    app = QApplication(sys.argv)
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Capture Data Interpretation replay screenshots and JSON.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_ARTIFACTS_DIR,
+        help=(
+            "Directory for replay artifacts. Defaults to a tmp directory so "
+            "validation does not dirty tracked artifacts."
+        ),
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    output_dir = args.output_dir
+    if not output_dir.is_absolute():
+        output_dir = ROOT / output_dir
+    set_artifact_dir(output_dir)
+    app = QApplication([sys.argv[0]])
     app.setStyle("Fusion")
     return capture_replay(app)
 

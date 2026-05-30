@@ -501,6 +501,13 @@ class DataInterpretationSessionState:
         internal_event_selection = dict(
             getattr(source, "internal_event_selection", {}) or {}
         )
+        internal_event_codes = DataInterpretationSessionState._sorted_event_names(
+            {
+                str(name)
+                for name in internal_event_selection.get("label_event_codes", [])
+                if str(name).strip()
+            }
+        )
         selected_event_names = DataInterpretationSessionState._sorted_event_names(
             {
                 str(name)
@@ -508,15 +515,16 @@ class DataInterpretationSessionState:
                 for name in item.get("selected_event_names", [])
                 if str(name).strip()
             }
-            | {
-                str(name)
-                for name in internal_event_selection.get("label_event_codes", [])
-                if str(name).strip()
-            }
+            | set(internal_event_codes)
         )
         class_map = {
             str(key): str(value)
             for key, value in getattr(source, "class_map", {}).items()
+        }
+        event_label_aliases = {
+            event_code: str(class_map.get(event_code) or event_code).strip()
+            for event_code in internal_event_codes
+            if str(class_map.get(event_code) or event_code).strip()
         }
         has_label_imports = bool(label_imports)
         has_internal_selection = (
@@ -529,13 +537,13 @@ class DataInterpretationSessionState:
             for key, value in getattr(source, "run_event_mappings", {}).items()
         }
         label_source = DataInterpretationSessionState._epoch_label_source(source)
-        default_epoch_events = (
-            DataInterpretationSessionState._class_names_from_map(class_map)
-            if applied is not None
-            and class_map
-            and (has_label_imports or has_internal_selection)
-            else selected_event_names
-        )
+        default_epoch_events = selected_event_names
+        if applied is not None and class_map and has_label_imports:
+            default_epoch_events = DataInterpretationSessionState._class_names_from_map(
+                class_map
+            )
+        elif applied is not None and has_internal_selection:
+            default_epoch_events = internal_event_codes
         supervised_blockers = DataInterpretationSessionState._epoch_supervised_blockers(
             applied=applied,
             carrier_plan=carrier_plan,
@@ -543,6 +551,11 @@ class DataInterpretationSessionState:
             internal_event_selection=internal_event_selection,
         )
         supervised_ready = bool(default_epoch_events) and not supervised_blockers
+        epoch_targets = DataInterpretationSessionState._epoch_targets_from_events(
+            default_epoch_events,
+            label_source=label_source,
+            event_label_aliases=event_label_aliases,
+        )
         handoff: dict[str, Any] = {
             "ready": bool(applied is not None and not supervised_blockers),
             "supervised_ready": supervised_ready,
@@ -552,13 +565,12 @@ class DataInterpretationSessionState:
             "placement_modes": placement_modes,
             "class_map": class_map,
             "default_epoch_events": default_epoch_events,
-            "epoch_targets": [
-                {"event": event_name, "source": label_source}
-                for event_name in default_epoch_events
-            ],
+            "epoch_targets": epoch_targets,
             "selected_event_names": selected_event_names,
             "run_event_mappings": run_event_mappings,
         }
+        if event_label_aliases:
+            handoff["event_label_aliases"] = event_label_aliases
         bids = getattr(source, "bids", {}) or {}
         if isinstance(bids, dict) and bids:
             handoff["bids"] = dict(bids)
@@ -639,6 +651,22 @@ class DataInterpretationSessionState:
             if value and value not in result:
                 result.append(value)
         return result
+
+    @staticmethod
+    def _epoch_targets_from_events(
+        events: list[str],
+        *,
+        label_source: str,
+        event_label_aliases: dict[str, str],
+    ) -> list[dict[str, str]]:
+        targets: list[dict[str, str]] = []
+        for event_name in events:
+            target = {"event": event_name, "source": label_source}
+            alias = str(event_label_aliases.get(event_name) or "").strip()
+            if alias and alias != event_name:
+                target["label"] = alias
+            targets.append(target)
+        return targets
 
     @staticmethod
     def _label_mapping_for_recipe(mapping: Any) -> dict[str, str]:

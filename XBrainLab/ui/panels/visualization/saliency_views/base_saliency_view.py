@@ -1,10 +1,19 @@
+import logging
+import threading
+from collections.abc import Callable
+from contextlib import suppress
+
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QThreadPool
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
+from XBrainLab.ui.core.worker import Worker
 from XBrainLab.ui.styles.theme import Theme
+
+logger = logging.getLogger(__name__)
+_MATPLOTLIB_RENDER_LOCK = threading.Lock()
 
 
 class BaseSaliencyView(QWidget):
@@ -21,6 +30,8 @@ class BaseSaliencyView(QWidget):
         self.controller = (
             parent.controller if parent and hasattr(parent, "controller") else None
         )
+        self._plot_generation = 0
+        self._plot_worker: Worker | None = None
 
         self.init_ui()
 
@@ -48,13 +59,24 @@ class BaseSaliencyView(QWidget):
 
     def show_error(self, message):
         """Display an error message overlaid on the view."""
+        self._cancel_pending_render()
+        self._display_error(message)
+
+    def _display_error(self, message):
         if self.canvas is not None:
             self.canvas.hide()
+        self.error_label.setStyleSheet(
+            f"color: {Theme.ACCENT_ERROR}; font-size: 14px; font-weight: bold;",
+        )
         self.error_label.setText(f"Error: {message}")
         self.error_label.show()
 
     def show_message(self, message):
         """Display a neutral placeholder message over the view."""
+        self._cancel_pending_render()
+        self._display_message(message)
+
+    def _display_message(self, message):
         if self.canvas is not None:
             self.canvas.hide()
         self.error_label.setStyleSheet(
@@ -74,7 +96,15 @@ class BaseSaliencyView(QWidget):
         if self.fig is None or self.canvas is None:
             return
         self.fig.clear()
-        self.canvas.draw_idle()
+        self._draw_canvas_now()
+
+    def _draw_canvas_now(self) -> None:
+        if self.canvas is None:
+            return
+        # Qt can destroy the backing widget while saliency tabs are being
+        # replaced. Treat late canvas draws as stale rather than crashing.
+        with suppress(RuntimeError):
+            self.canvas.draw()
 
     def update_view(self, result, params):
         """Update the view with calculation results.
@@ -90,9 +120,13 @@ class BaseSaliencyView(QWidget):
     def _release_canvas(self) -> None:
         if self.canvas is None:
             return
-        self.main_layout.removeWidget(self.canvas)
-        self.canvas.setParent(None)
-        self.canvas.deleteLater()
+        canvas = self.canvas
+        self.main_layout.removeWidget(canvas)
+        if hasattr(canvas, "_draw_pending"):
+            canvas._draw_pending = False
+        canvas.setParent(None)
+        canvas.hide()
+        canvas.close()
         self.canvas = None
 
     def _replace_figure(self, figure: Figure) -> None:
@@ -102,9 +136,75 @@ class BaseSaliencyView(QWidget):
         Theme.apply_matplotlib_dark_theme(self.fig)
         self.canvas = FigureCanvas(self.fig)
         self.main_layout.insertWidget(0, self.canvas)
+        self.error_label.hide()
+
+    def _render_figure_async(
+        self,
+        render_fn: Callable[[], Figure | None],
+        *,
+        error_context: str,
+    ) -> None:
+        """Render a figure off the UI thread and install the latest result."""
+        self._plot_generation += 1
+        generation = self._plot_generation
+        self.clear_plot()
+        self._display_message("Rendering saliency...")
+
+        def _locked_render() -> Figure | None:
+            with _MATPLOTLIB_RENDER_LOCK:
+                return render_fn()
+
+        worker = Worker(_locked_render)
+        self._plot_worker = worker
+        worker.signals.result.connect(
+            lambda result, token=generation: self._handle_plot_result(token, result),
+        )
+        worker.signals.error.connect(
+            lambda error, token=generation, context=error_context: (
+                self._handle_plot_error(token, context, error)
+            ),
+        )
+        worker.signals.finished.connect(
+            lambda token=generation, finished_worker=worker: self._finish_plot_render(
+                token,
+                finished_worker,
+            ),
+        )
+        thread_pool = QThreadPool.globalInstance()
+        if thread_pool is None:
+            self._plot_worker = None
+            self._display_error("Background render worker is unavailable.")
+            return
+        thread_pool.start(worker)
+
+    def _handle_plot_result(self, generation: int, figure: Figure | None) -> None:
+        if generation != self._plot_generation:
+            if figure is not None:
+                plt.close(figure)
+            return
+        if figure is None:
+            self._display_error("No Data Available")
+            return
+        self._replace_figure(figure)
+
+    def _handle_plot_error(self, generation: int, context: str, error: tuple) -> None:
+        if generation != self._plot_generation:
+            return
+        _, value, formatted_traceback = error
+        logger.error("Error rendering %s: %s\n%s", context, value, formatted_traceback)
+        self._display_error(str(value))
+
+    def _finish_plot_render(self, generation: int, worker: Worker) -> None:
+        if generation == self._plot_generation and self._plot_worker is worker:
+            self._plot_worker = None
+
+    def _cancel_pending_render(self) -> None:
+        self._plot_generation += 1
+        self._plot_worker = None
 
     def closeEvent(self, event):  # noqa: N802
         """Release matplotlib figure and canvas widgets to prevent leaks."""
+        self._cancel_pending_render()
         self._close_current_figure()
         self._release_canvas()
         super().closeEvent(event)

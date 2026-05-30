@@ -8,7 +8,7 @@ import inspect
 import os
 from typing import Any
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QModelIndex, Qt
 from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -110,11 +110,36 @@ class ModelSelectionDialog(BaseDialog):
         self.params_table.setMinimumHeight(180)
         self.params_table.setStyleSheet(Stylesheets.METRICS_TABLE)
         palette = self.params_table.palette()
-        palette.setColor(QPalette.ColorRole.Highlight, QColor(Theme.BLUE_PRESSED))
-        palette.setColor(
-            QPalette.ColorRole.HighlightedText,
-            QColor(Theme.TEXT_PRIMARY),
-        )
+        for group in (
+            QPalette.ColorGroup.Active,
+            QPalette.ColorGroup.Inactive,
+            QPalette.ColorGroup.Disabled,
+        ):
+            palette.setColor(
+                group,
+                QPalette.ColorRole.Base,
+                QColor(Theme.METRICS_TABLE_BG),
+            )
+            palette.setColor(
+                group,
+                QPalette.ColorRole.AlternateBase,
+                QColor(Theme.METRICS_TABLE_ALT_BG),
+            )
+            palette.setColor(
+                group,
+                QPalette.ColorRole.Text,
+                QColor(Theme.TEXT_PRIMARY),
+            )
+            palette.setColor(
+                group,
+                QPalette.ColorRole.Highlight,
+                QColor(Theme.BLUE_PRESSED),
+            )
+            palette.setColor(
+                group,
+                QPalette.ColorRole.HighlightedText,
+                QColor(Theme.TEXT_PRIMARY),
+            )
         self.params_table.setPalette(palette)
         header = self.params_table.horizontalHeader()
         if header is not None:
@@ -201,7 +226,10 @@ class ModelSelectionDialog(BaseDialog):
         if not self.params_table:
             return
         self.params_table.clearSelection()
-        self.params_table.setCurrentCell(-1, -1)
+        self.params_table.setCurrentIndex(QModelIndex())
+        selection_model = self.params_table.selectionModel()
+        if selection_model is not None:
+            selection_model.clear()
 
     def load_pretrained_weight(self):
         """Open a file dialog to load or clear pretrained model weights."""

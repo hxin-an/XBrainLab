@@ -40,6 +40,7 @@ exclude_docs: |
   development/**
   getting-started/**
   reference/**
+  agent_goals/**
   contributing.md
   architecture/overview.md
 
@@ -59,14 +60,22 @@ nav:
       - Agent 目標: target/agent.md
   - 目前架構:
       - 架構總覽: architecture/README.md
+      - Data Pipeline: architecture/data_pipeline.md
       - UI 現況: architecture/ui.md
       - Backend 現況: architecture/backend.md
       - Agent 現況: architecture/agent.md
+      - Validation Architecture: architecture/validation.md
   - 驗證:
       - 驗證策略: validation/README.md
+      - Thesis Protocol: validation/thesis_protocol.md
   - 產品回饋:
       - UI/UX 觀察: records/product_feedback.md
       - 2026-05-31 Lab Meeting: records/lab_meeting_2026-05-31.md
+      - Implementation Log: records/implementation_log.md
+      - Worklog: records/worklog.md
+  - 研究:
+      - EEG Import / Label Design: research/bci_eeg_import_label_design_source.md
+      - Tool-Call Agent Practices: research/tool_call_agent_best_practices.md
 plugins:
   - search
   - mkdocstrings:

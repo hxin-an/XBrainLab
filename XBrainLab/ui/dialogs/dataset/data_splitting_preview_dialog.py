@@ -5,6 +5,7 @@ validation and testing split units, amounts, and manual selection support.
 """
 
 import threading
+from typing import Any
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (
@@ -465,10 +466,36 @@ class DataSplittingPreviewDialog(BaseDialog):
             worker.join(timeout=join_timeout)
 
     def get_result(self):
-        """Return the finalized DatasetGenerator.
+        """Return the finalized split configuration payload.
 
         Returns:
-            The DatasetGenerator with prepared split results, or None.
+            A serializable split configuration accepted by GenerateDatasetCommand,
+            or None when the preview did not produce a generator.
 
         """
-        return self.dataset_generator
+        if self.dataset_generator is None:
+            return None
+        return self._split_config_payload()
+
+    def _split_config_payload(self) -> dict[str, Any]:
+        return {
+            "train_type": self.config.train_type.value,
+            "is_cross_validation": bool(self.config.is_cross_validation),
+            "val_splitters": [
+                self._splitter_payload(splitter) for splitter in self.val_splitter_list
+            ],
+            "test_splitters": [
+                self._splitter_payload(splitter) for splitter in self.test_splitter_list
+            ],
+        }
+
+    @staticmethod
+    def _splitter_payload(splitter: DataSplitter) -> dict[str, Any]:
+        split_unit = getattr(splitter, "split_unit", None)
+        split_type = getattr(splitter, "split_type", None)
+        return {
+            "split_type": getattr(split_type, "value", str(split_type)),
+            "split_unit": getattr(split_unit, "value", str(split_unit)),
+            "value": str(getattr(splitter, "value_var", "") or ""),
+            "is_option": bool(getattr(splitter, "is_option", True)),
+        }

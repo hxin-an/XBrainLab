@@ -35,8 +35,8 @@ def test_init_ui(sidebar):
     assert isinstance(sidebar.clear_btn, QPushButton)
 
 
-def test_add_labels_is_visible_while_smart_parse_stays_in_wizard(sidebar):
-    assert sidebar.import_label_btn.isHidden() is False
+def test_add_labels_compatibility_button_stays_hidden(sidebar):
+    assert sidebar.import_label_btn.isHidden() is True
     assert sidebar.import_label_btn.text() == "Add labels"
     assert sidebar.smart_parse_btn.isHidden()
 

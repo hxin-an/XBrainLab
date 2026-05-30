@@ -5,9 +5,11 @@ import re
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QSizePolicy,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -119,47 +121,70 @@ class VisualizationPanel(BasePanel):
 
         # 1. Unified Control Bar
         ctrl_bar = QGroupBox("VISUALIZATION CONTROLS")
-        ctrl_layout = QHBoxLayout(ctrl_bar)
+        ctrl_layout = QGridLayout(ctrl_bar)
         ctrl_layout.setContentsMargins(10, 15, 10, 10)
+        ctrl_layout.setHorizontalSpacing(10)
+        ctrl_layout.setVerticalSpacing(8)
+        ctrl_layout.setColumnStretch(1, 1)
 
         # Plan Selector
-        ctrl_layout.addWidget(QLabel("Plan:"))
+        ctrl_layout.addWidget(QLabel("Plan:"), 0, 0)
         self.plan_combo = QComboBox()
         self.plan_combo.addItem("Select a plan")
+        self.plan_combo.setMinimumWidth(130)
+        self.plan_combo.setMaximumWidth(260)
+        self.plan_combo.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.plan_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
+        )
         self.plan_combo.setStyleSheet(Stylesheets.COMBO_BOX)
         self.plan_combo.currentTextChanged.connect(self.on_plan_changed)
-        ctrl_layout.addWidget(self.plan_combo)
-
-        ctrl_layout.addSpacing(15)
+        ctrl_layout.addWidget(self.plan_combo, 0, 1)
 
         # Run Selector
-        ctrl_layout.addWidget(QLabel("Run:"))
+        ctrl_layout.addWidget(QLabel("Run:"), 1, 0)
         self.run_combo = QComboBox()
+        self.run_combo.setMinimumWidth(110)
+        self.run_combo.setMaximumWidth(220)
+        self.run_combo.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.run_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
+        )
         self.run_combo.setStyleSheet(Stylesheets.COMBO_BOX)
         self.run_combo.currentTextChanged.connect(self.on_update)
-        ctrl_layout.addWidget(self.run_combo)
-
-        ctrl_layout.addSpacing(15)
+        ctrl_layout.addWidget(self.run_combo, 1, 1)
 
         # Method Selector
-        ctrl_layout.addWidget(QLabel("Method:"))
+        ctrl_layout.addWidget(QLabel("Method:"), 2, 0)
         self.method_combo = QComboBox()
         self.method_combo.addItem("Gradient")
         self.method_combo.addItem("Gradient * Input")
         self.method_combo.addItems(supported_saliency_methods)
+        self.method_combo.setMinimumWidth(130)
+        self.method_combo.setMaximumWidth(260)
+        self.method_combo.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.method_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
+        )
         self.method_combo.setStyleSheet(Stylesheets.COMBO_BOX)
         self.method_combo.currentTextChanged.connect(self.on_update)
-        ctrl_layout.addWidget(self.method_combo)
-
-        ctrl_layout.addSpacing(15)
+        ctrl_layout.addWidget(self.method_combo, 2, 1)
 
         # Absolute Checkbox
-        self.abs_check = QCheckBox("Absolute Value")
+        self.abs_check = QCheckBox("Absolute")
+        self.abs_check.setToolTip("Use absolute saliency values")
         self.abs_check.setStyleSheet(Stylesheets.CHECKBOX_MUTED)
         self.abs_check.stateChanged.connect(self.on_update)
-        ctrl_layout.addWidget(self.abs_check)
-
-        ctrl_layout.addStretch()
+        ctrl_layout.addWidget(self.abs_check, 3, 1)
         left_layout.addWidget(ctrl_bar)
 
         # 2. Plots Group
@@ -436,10 +461,6 @@ class VisualizationPanel(BasePanel):
                 absolute,
                 eval_record,
             )
-
-            # Force UI update to ensure plot appears immediately
-            if current_widget:
-                current_widget.repaint()
 
     def update_info(self):
         """Update the Sidebar Info Panel and refresh combos."""

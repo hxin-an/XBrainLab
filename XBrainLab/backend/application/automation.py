@@ -38,6 +38,7 @@ from .commands import (
     RemoveFilesCommand,
     ResetPreprocessCommand,
     ResetSessionCommand,
+    ReviewInterpretationCommand,
     SaliencyCommand,
     SaveInterpretationRecipeCommand,
     ScanSourceCommand,
@@ -91,6 +92,7 @@ class AutomationPayloadError(ValueError):
 
 COMMAND_TYPES: dict[CommandName, type[Any]] = {
     CommandName.SCAN_SOURCE: ScanSourceCommand,
+    CommandName.REVIEW_INTERPRETATION: ReviewInterpretationCommand,
     CommandName.PREVIEW_INTERPRETATION: PreviewInterpretationCommand,
     CommandName.VALIDATE_INTERPRETATION: ValidateInterpretationCommand,
     CommandName.APPLY_INTERPRETATION: ApplyInterpretationCommand,
@@ -122,6 +124,7 @@ COMMAND_TYPES: dict[CommandName, type[Any]] = {
 
 COMMAND_TAXONOMY: dict[CommandName, str] = {
     CommandName.SCAN_SOURCE: "data_interpretation",
+    CommandName.REVIEW_INTERPRETATION: "data_interpretation",
     CommandName.PREVIEW_INTERPRETATION: "data_interpretation",
     CommandName.VALIDATE_INTERPRETATION: "data_interpretation",
     CommandName.APPLY_INTERPRETATION: "data_interpretation",
@@ -160,9 +163,7 @@ LEGACY_COMPATIBILITY_COMMANDS: frozenset[CommandName] = frozenset(
 )
 
 LEGACY_PREFERRED_COMMANDS: tuple[str, ...] = (
-    CommandName.SCAN_SOURCE.value,
-    CommandName.PREVIEW_INTERPRETATION.value,
-    CommandName.VALIDATE_INTERPRETATION.value,
+    CommandName.REVIEW_INTERPRETATION.value,
     CommandName.APPLY_INTERPRETATION.value,
     CommandName.SAVE_INTERPRETATION_RECIPE.value,
 )
@@ -170,8 +171,8 @@ LEGACY_PREFERRED_COMMANDS: tuple[str, ...] = (
 LEGACY_COMMAND_DESCRIPTIONS: dict[CommandName, str] = {
     CommandName.LOAD_DATA: (
         "Legacy compatibility: directly load raw EEG files. Prefer Data "
-        "Interpretation scan_source -> preview_interpretation -> "
-        "validate_interpretation -> apply_interpretation for new imports."
+        "Interpretation review_interpretation -> apply_interpretation for "
+        "new imports."
     ),
     CommandName.ATTACH_LABELS: (
         "Legacy compatibility: attach label files to already-loaded raw data. "
@@ -388,8 +389,14 @@ def _ui_only_command_fields(command_name: CommandName) -> frozenset[str]:
 def _field_hidden_from_automation(command_type: type[Any], field_name: str) -> bool:
     if command_type is EvaluateCommand:
         return field_name in _ui_only_command_fields(CommandName.EVALUATE)
-    return command_type is VisualizeCommand and field_name in _ui_only_command_fields(
-        CommandName.VISUALIZE,
+    if command_type is VisualizeCommand:
+        return field_name in _ui_only_command_fields(CommandName.VISUALIZE)
+    return (
+        command_type is GenerateDatasetCommand
+        and field_name
+        in _ui_only_command_fields(
+            CommandName.GENERATE_DATASET,
+        )
     )
 
 

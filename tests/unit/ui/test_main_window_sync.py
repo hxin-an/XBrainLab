@@ -109,6 +109,36 @@ def test_switch_page_delegates_navigation_refresh(main_window):
     refresh.assert_called_once_with(main_window, 4)
 
 
+def test_switch_page_status_uses_backend_state_when_agent_absent(main_window):
+    """Main status bar should not claim no data after backend state has data."""
+    result = SimpleNamespace(
+        failed=False,
+        diagnostics={
+            "state": {
+                "active_training": {"is_running": False},
+                "evaluation": {"finished_runs": 0},
+                "active_dataset": {
+                    "has_datasets": False,
+                    "has_epoch_data": False,
+                    "has_preprocessed_data": False,
+                    "has_raw_data": True,
+                },
+            },
+        },
+    )
+
+    with patch(
+        "XBrainLab.ui.main_window.execute_application_command",
+        return_value=result,
+    ) as execute:
+        main_window.switch_page(0)
+
+    execute.assert_called_once()
+    assert main_window.statusBar().currentMessage() == (
+        "EEG data loaded · Preprocess data"
+    )
+
+
 def test_update_info_panel_uses_info_service(main_window):
     """Shared refresh should update registered AggregateInfoPanel instances."""
     main_window.info_service = MagicMock()

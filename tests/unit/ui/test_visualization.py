@@ -38,24 +38,25 @@ class TestSaliency3DEngine:
             result = engine.update_scalars(0)
             assert result is None
 
-    def test_on_download_complete_error(self):
-        with patch(
-            "XBrainLab.backend.visualization.saliency_3d_engine.Saliency3DEngine._load_models"
+    def test_missing_3d_models_do_not_start_network_download(self, tmp_path):
+        from XBrainLab.backend.visualization.saliency_3d_engine import (
+            Saliency3DEngine,
+        )
+
+        with (
+            patch(
+                "XBrainLab.backend.visualization.saliency_3d_engine.os.path.dirname",
+                return_value=str(tmp_path),
+            ),
+            patch.object(Saliency3DEngine, "_init_meshes") as init_meshes,
+            patch(
+                "XBrainLab.backend.visualization.saliency_3d_engine.logger",
+            ) as logger,
         ):
-            from XBrainLab.backend.visualization.saliency_3d_engine import (
-                Saliency3DEngine,
-            )
-
             engine = Saliency3DEngine()
-            with (
-                patch.object(engine, "_init_meshes") as init_meshes,
-                patch(
-                    "XBrainLab.backend.visualization.saliency_3d_engine.logger",
-                ) as logger,
-            ):
-                engine._on_download_complete("Error: connection timeout")
 
-        logger.error.assert_called_once_with("Error: connection timeout")
+        assert "not installed" in engine.model_error
+        logger.warning.assert_called_once()
         init_meshes.assert_not_called()
 
     def test_resolves_original_event_code_to_gradient_class_index(self):
@@ -261,10 +262,18 @@ class TestSaliencyMapWidget:
         new_fig = Figure(figsize=(4, 3), dpi=100)
         visualizer.get_plt.return_value = new_fig
 
-        with patch(
-            "XBrainLab.ui.panels.visualization.saliency_views.map_view.VisualizerType"
-        ) as visualizer_type:
+        with (
+            patch(
+                "XBrainLab.ui.panels.visualization.saliency_views.map_view.VisualizerType"
+            ) as visualizer_type,
+            patch(
+                "XBrainLab.ui.panels.visualization.saliency_views.base_saliency_view.QThreadPool"
+            ) as thread_pool,
+        ):
             visualizer_type.SaliencyMap.value.return_value = visualizer
+            thread_pool.globalInstance.return_value.start.side_effect = (
+                lambda worker: worker.run()
+            )
             w.update_plot(plan, trainer, "Gradient", False, None)
 
         plan.get_eval_record.assert_called_once_with()
@@ -274,6 +283,41 @@ class TestSaliencyMapWidget:
         assert w.canvas is not None
         assert w.canvas.parent() is w
         assert not w.error_label.isVisible()
+
+    def test_update_plot_schedules_visualizer_render_on_worker(self, qtbot):
+        from XBrainLab.ui.panels.visualization.saliency_views.map_view import (
+            SaliencyMapWidget,
+        )
+
+        w = SaliencyMapWidget()
+        qtbot.addWidget(w)
+
+        plan = MagicMock()
+        eval_rec = MagicMock()
+        plan.get_eval_record.return_value = eval_rec
+
+        trainer = MagicMock()
+        epoch = MagicMock()
+        trainer.get_dataset.return_value.get_epoch_data.return_value = epoch
+        started_workers = []
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.visualization.saliency_views.map_view.VisualizerType"
+            ) as visualizer_type,
+            patch(
+                "XBrainLab.ui.panels.visualization.saliency_views.base_saliency_view.QThreadPool"
+            ) as thread_pool,
+        ):
+            thread_pool.globalInstance.return_value.start.side_effect = (
+                lambda worker: started_workers.append(worker)
+            )
+
+            w.update_plot(plan, trainer, "Gradient", False, None)
+
+        assert len(started_workers) == 1
+        visualizer_type.SaliencyMap.value.assert_not_called()
+        assert w.error_label.text() == "Rendering saliency..."
 
     def test_close_releases_figure_and_canvas(self, qtbot):
         from PyQt6.QtGui import QCloseEvent
@@ -307,6 +351,7 @@ class TestSaliencyMapWidget:
         old_fig = w.fig
         old_canvas = w.canvas
         assert old_canvas is not None
+        old_canvas._draw_pending = True
         new_fig = Figure(figsize=(5, 4), dpi=100)
 
         with patch.object(base_saliency_view.plt, "close") as close_figure:
@@ -316,6 +361,7 @@ class TestSaliencyMapWidget:
         assert w.fig is new_fig
         assert w.canvas is not old_canvas
         assert old_canvas.parent() is None
+        assert old_canvas._draw_pending is False
 
 
 # ============ SaliencySpectrogramWidget ============
@@ -397,6 +443,8 @@ class TestSaliency3DPlotWidget:
             w.show_error("test error")
 
     def test_show_message(self, qtbot):
+        from PyQt6.QtWidgets import QLabel, QSizePolicy
+
         with patch(
             "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
         ):
@@ -407,6 +455,11 @@ class TestSaliency3DPlotWidget:
             w = Saliency3DPlotWidget(parent=None)
             qtbot.addWidget(w)
             w.show_message("test message")
+            labels = w.findChildren(QLabel)
+            assert labels[-1].wordWrap()
+            assert labels[-1].sizePolicy().horizontalPolicy() == (
+                QSizePolicy.Policy.Expanding
+            )
 
     def test_clear_plot(self, qtbot):
         with patch(
@@ -515,12 +568,17 @@ class TestSaliency3DPlotWidget:
         with patch(
             "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
         ) as pyvistaqt:
+            from PyQt6.QtWidgets import QWidget
+
             from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view import (
                 Saliency3DPlotWidget,
             )
 
             w = Saliency3DPlotWidget(parent=None)
             qtbot.addWidget(w)
+            interactor_widget = QWidget()
+            interactor_widget.interactor = MagicMock()
+            pyvistaqt.QtInteractor.return_value = interactor_widget
 
             eval_record = MagicMock()
             plan = MagicMock()
@@ -542,9 +600,17 @@ class TestSaliency3DPlotWidget:
                     "_active_qt_platform_name",
                     return_value="",
                 ),
+                patch(
+                    "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.Saliency3D.prepare_engine",
+                    return_value=(MagicMock(), 1),
+                ),
             ):
                 w.update_plot(plan, trainer, "Gradient", False, eval_record)
 
+            qtbot.waitUntil(
+                lambda: pyvistaqt.QtInteractor.call_count == 1,
+                timeout=1000,
+            )
             pyvistaqt.QtInteractor.assert_called_once()
 
     def test_update_plot_blocks_wayland_when_runtime_probe_fails(

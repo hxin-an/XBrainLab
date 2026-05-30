@@ -29,6 +29,7 @@ class SaliencyTopographicMapWidget(BaseSaliencyView):
 
     def show_warning(self, msg):
         """Show a warning message (yellow/orange)."""
+        self._cancel_pending_render()
         if self.canvas is not None:
             self.canvas.hide()
         self.error_label.setText(msg)
@@ -46,7 +47,6 @@ class SaliencyTopographicMapWidget(BaseSaliencyView):
             return
 
         try:
-            self.clear_plot()
             epoch_data = trainer.get_dataset().get_epoch_data()
 
             # Montage Check
@@ -57,14 +57,16 @@ class SaliencyTopographicMapWidget(BaseSaliencyView):
                 )
                 return
 
-            visualizer = VisualizerType.SaliencyTopoMap.value(eval_record, epoch_data)
-            new_fig = visualizer.get_plt(method=method, absolute=absolute)
-
-            if new_fig:
-                self._replace_figure(new_fig)
-            else:
-                self.show_error("No Data Available")
+            self._render_figure_async(
+                lambda: self._render_plot(eval_record, epoch_data, method, absolute),
+                error_context="topographic saliency map",
+            )
 
         except Exception as e:
-            logger.error("Error plotting topomap: %s", e, exc_info=True)
+            logger.error("Error preparing topomap: %s", e, exc_info=True)
             self.show_error(str(e))
+
+    @staticmethod
+    def _render_plot(eval_record, epoch_data, method, absolute):
+        visualizer = VisualizerType.SaliencyTopoMap.value(eval_record, epoch_data)
+        return visualizer.get_plt(method=method, absolute=absolute)

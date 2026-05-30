@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from XBrainLab.backend.model_requirements import minimum_samples_for_model
+
 from .commands import CommandName
 from .state import ApplicationStateSnapshot
 
@@ -82,6 +84,14 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         reasons=[],
         can_auto_execute=True,
         decision_boundary="read_only_discovery",
+        continue_allowed_after_success=True,
+    )
+    capabilities[CommandName.REVIEW_INTERPRETATION.value] = CommandCapability(
+        command_name=CommandName.REVIEW_INTERPRETATION.value,
+        enabled=True,
+        reasons=[],
+        can_auto_execute=True,
+        decision_boundary="semantic_review",
         continue_allowed_after_success=True,
     )
     capabilities[CommandName.PREVIEW_INTERPRETATION.value] = CommandCapability(
@@ -287,6 +297,8 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         train_reasons.append("Select a model before training.")
     if not active_training.has_training_option:
         train_reasons.append("Configure training options before training.")
+    train_reasons.extend(_dataset_split_blockers(state))
+    train_reasons.extend(_model_epoch_blockers(state))
     capabilities[CommandName.TRAIN.value] = _cap(
         CommandName.TRAIN,
         train_reasons,
@@ -493,6 +505,59 @@ def _raw_edit_blockers(state: ApplicationStateSnapshot) -> list[str]:
 
 def _has_preprocess_operations(state: ApplicationStateSnapshot) -> bool:
     return bool(state.preprocessed.operations)
+
+
+def _dataset_split_blockers(state: ApplicationStateSnapshot) -> list[str]:
+    audit = state.dataset.split_summary.get("audit")
+    if not isinstance(audit, dict):
+        return []
+    issues = audit.get("issues")
+    if not isinstance(issues, list):
+        return []
+    reasons: list[str] = []
+    for issue in issues:
+        if not isinstance(issue, dict):
+            continue
+        if str(issue.get("severity", "")).lower() != "error":
+            continue
+        message = str(issue.get("message", "")).strip()
+        if message:
+            reasons.append(f"Resolve dataset split audit before training: {message}")
+    return reasons
+
+
+def _model_epoch_blockers(state: ApplicationStateSnapshot) -> list[str]:
+    if not (
+        state.active_dataset.has_epoch_data
+        and state.active_dataset.has_datasets
+        and state.active_training.has_model
+        and state.active_training.has_training_option
+    ):
+        return []
+    samples = state.epoch.n_times
+    sfreq = state.epoch.sfreq
+    if samples is None or sfreq is None:
+        return []
+    requirement = minimum_samples_for_model(
+        state.training.model_name,
+        sfreq=sfreq,
+        model_params=state.training.model_params,
+    )
+    if requirement is None:
+        return []
+    if requirement.unsupported_reason:
+        return [requirement.unsupported_reason]
+    if samples >= requirement.min_samples:
+        return []
+    duration = float(samples) / float(sfreq)
+    return [
+        (
+            f"{requirement.model_name} needs at least {requirement.min_samples} "
+            f"samples ({requirement.min_duration_seconds:.2f}s at {float(sfreq):g}Hz); "
+            f"current epoch has {samples} samples ({duration:.2f}s). "
+            "Increase the epoch window, lower sampling rate, or choose another model."
+        )
+    ]
 
 
 def _supervised_label_blockers(state: ApplicationStateSnapshot) -> list[str]:

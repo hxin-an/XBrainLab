@@ -16,6 +16,7 @@ from .commands import (
     LabelImportPlan,
     PreviewInterpretationCommand,
     ReloadInterpretationRecipeCommand,
+    ReviewInterpretationCommand,
     SaveInterpretationRecipeCommand,
     ScanSourceCommand,
     ValidateInterpretationCommand,
@@ -82,6 +83,46 @@ class DataInterpretationCommandService:
             {
                 "payload_type": "scan_result",
                 "scan_result": scan.to_dict(),
+            },
+        )
+
+    def handle_review_interpretation(self, command: Command) -> HandlerResult:
+        """Scan, preview, and validate one Data Interpretation candidate."""
+        if not isinstance(command, ReviewInterpretationCommand):
+            raise TypeError("Invalid command for review_interpretation")
+        scan_id = self.state.next_id("scan")
+        scan = scan_source_path(
+            scan_id=scan_id,
+            source_path=command.source_path,
+            source_hint=command.source_hint,
+            label_sources=command.label_sources,
+        )
+        self.state.record_scan(scan)
+
+        candidate_id = self.state.next_id("candidate")
+        preview_id = self.state.next_id("preview")
+        candidate = build_interpretation_candidate(
+            candidate_id=candidate_id,
+            scan=scan,
+            choices=command.choices,
+        )
+        preview = build_interpretation_preview(
+            preview_id=preview_id,
+            candidate=candidate,
+            scan=scan,
+        )
+        self.state.record_preview(candidate, preview)
+
+        decision = validate_interpretation_candidate(candidate)
+        self.state.record_validation(candidate.candidate_id, decision)
+        return (
+            f"Interpretation review: {decision.decision}.",
+            {
+                "payload_type": "interpretation_review",
+                "scan_result": scan.to_dict(),
+                "candidate": candidate.to_dict(),
+                "preview": preview.to_dict(),
+                "validation_decision": decision.to_dict(),
             },
         )
 

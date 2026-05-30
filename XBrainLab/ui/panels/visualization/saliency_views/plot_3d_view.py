@@ -2,11 +2,12 @@ import contextlib
 import os
 import subprocess
 import sys
+from typing import Any, cast
 
 import pyvistaqt
 from PyQt6 import sip
 from PyQt6.QtCore import Qt, QThreadPool, QTimer
-from PyQt6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QApplication, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.core.worker import Worker
@@ -46,6 +47,8 @@ class Saliency3DPlotWidget(QWidget):
         super().__init__(parent)
         self._runtime_probe_worker = None
         self._pending_3d_request = None
+        self._engine_worker = None
+        self._engine_request_id = 0
         self.init_ui()
 
     def init_ui(self):
@@ -59,31 +62,46 @@ class Saliency3DPlotWidget(QWidget):
 
         # Initial Placeholder
         lbl = QLabel("Select a plan and method to visualize")
+        lbl.setWordWrap(True)
         lbl.setStyleSheet(f"color: {Theme.TEXT_MUTED}; font-size: 14px;")
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.plot_layout.addWidget(lbl)
 
         layout.addWidget(self.plot_container, stretch=1)
 
-        self.plotter_widget = None
+        self.plotter_widget: Any = None
 
     def show_error(self, msg):
         self.clear_plot()
-        lbl = QLabel(f"Error: {msg}")
+        lbl = self._message_label(f"Error: {msg}")
         lbl.setStyleSheet(
             f"color: {Theme.ACCENT_ERROR}; font-size: 14px; font-weight: bold;",
         )
-        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.plot_layout.addWidget(lbl)
+        self.plot_layout.addWidget(lbl, stretch=1)
 
     def show_message(self, msg):
         self.clear_plot()
-        lbl = QLabel(msg)
+        lbl = self._message_label(msg)
         lbl.setStyleSheet(
             f"color: {Theme.WARNING}; font-size: 16px; font-weight: bold;",
         )
-        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.plot_layout.addWidget(lbl)
+        self.plot_layout.addWidget(lbl, stretch=1)
+
+    @staticmethod
+    def _message_label(text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setWordWrap(True)
+        lbl.setContentsMargins(16, 16, 16, 16)
+        lbl.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+        )
+        lbl.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+        lbl.setMinimumWidth(0)
+        lbl.setMinimumHeight(80)
+        return lbl
 
     def clear_plot(self):
         plotter = self.plotter_widget
@@ -155,31 +173,108 @@ class Saliency3DPlotWidget(QWidget):
                 self.show_message(reason)
                 return
 
-            # Instantiate QtInteractor for 3D plotting.
-            self.plotter_widget = pyvistaqt.QtInteractor(self.plot_container)
-            self.plot_layout.addWidget(self.plotter_widget)
-
-            # Force initialization of the interactor to prevent _FakeEventHandler error
-            if hasattr(self.plotter_widget, "interactor"):
-                self.plotter_widget.interactor.Initialize()
-
-            # Defer the actual plotting to ensure the widget is ready and interactor is
-            # initialized
-            QTimer.singleShot(
-                100,
-                lambda: self._do_3d_plot_if_alive(
-                    eval_record,
-                    epoch_data,
-                    selected_event,
-                    method=method,
-                    absolute=absolute,
-                ),
+            self._start_3d_engine_worker(
+                eval_record,
+                epoch_data,
+                selected_event,
+                method=method,
+                absolute=absolute,
             )
 
         except Exception as e:
             logger.error("Error initializing 3D plot: %s", e, exc_info=True)
             if not self._qt_object_deleted(self):
                 self.show_error(str(e))
+
+    def _start_3d_engine_worker(
+        self,
+        eval_record,
+        epoch_data,
+        selected_event,
+        *,
+        method="Gradient",
+        absolute=False,
+    ) -> None:
+        self._engine_request_id += 1
+        request_id = self._engine_request_id
+        self.show_message("Preparing 3D view...")
+        worker = Worker(
+            Saliency3D.prepare_engine,
+            eval_record,
+            epoch_data,
+            selected_event,
+            method=method,
+            absolute=absolute,
+        )
+        self._engine_worker = worker
+        worker.signals.result.connect(
+            lambda result, rid=request_id: self._on_3d_engine_ready(
+                rid,
+                result,
+                eval_record,
+                epoch_data,
+                selected_event,
+                method=method,
+                absolute=absolute,
+            ),
+        )
+        worker.signals.error.connect(
+            lambda error, rid=request_id: self._on_3d_engine_error(rid, error),
+        )
+        thread_pool = QThreadPool.globalInstance()
+        if thread_pool is None:
+            self._engine_worker = None
+            self.show_message("3D engine could not start. Use a 2D saliency view.")
+            return
+        thread_pool.start(worker)
+
+    def _on_3d_engine_ready(
+        self,
+        request_id,
+        result,
+        eval_record,
+        epoch_data,
+        selected_event,
+        *,
+        method="Gradient",
+        absolute=False,
+    ) -> None:
+        if self._qt_object_deleted(self) or request_id != self._engine_request_id:
+            return
+        self._engine_worker = None
+        prepared_engine, prepared_channel_count = result
+        app = QApplication.instance()
+        if app is not None:
+            with contextlib.suppress(Exception):
+                prepared_engine.moveToThread(app.thread())
+        self.clear_plot()
+        self.plotter_widget = cast(
+            QWidget,
+            pyvistaqt.QtInteractor(self.plot_container),
+        )
+        self.plot_layout.addWidget(self.plotter_widget)
+        interactor = getattr(self.plotter_widget, "interactor", None)
+        if interactor is not None:
+            interactor.Initialize()
+        QTimer.singleShot(
+            100,
+            lambda: self._do_3d_plot_if_alive(
+                eval_record,
+                epoch_data,
+                selected_event,
+                method=method,
+                absolute=absolute,
+                prepared_engine=prepared_engine,
+                prepared_channel_count=prepared_channel_count,
+            ),
+        )
+
+    def _on_3d_engine_error(self, request_id, error: tuple) -> None:
+        if self._qt_object_deleted(self) or request_id != self._engine_request_id:
+            return
+        self._engine_worker = None
+        message = error[1] if len(error) > 1 else error
+        self.show_error(str(message))
 
     def _do_3d_plot_if_alive(
         self,
@@ -189,6 +284,8 @@ class Saliency3DPlotWidget(QWidget):
         *,
         method="Gradient",
         absolute=False,
+        prepared_engine=None,
+        prepared_channel_count=None,
     ) -> None:
         """Run delayed 3D plotting only while the Qt widget still exists."""
         if self._qt_object_deleted(self) or self._qt_object_deleted(
@@ -201,6 +298,8 @@ class Saliency3DPlotWidget(QWidget):
             selected_event,
             method=method,
             absolute=absolute,
+            prepared_engine=prepared_engine,
+            prepared_channel_count=prepared_channel_count,
         )
 
     def _do_3d_plot(
@@ -211,6 +310,8 @@ class Saliency3DPlotWidget(QWidget):
         *,
         method="Gradient",
         absolute=False,
+        prepared_engine=None,
+        prepared_channel_count=None,
     ):
         try:
             if self._qt_object_deleted(self) or self._qt_object_deleted(
@@ -227,6 +328,8 @@ class Saliency3DPlotWidget(QWidget):
                 method=method,
                 absolute=absolute,
                 plotter=self.plotter_widget,
+                prepared_engine=prepared_engine,
+                prepared_channel_count=prepared_channel_count,
             )
             init_error = getattr(saliency, "init_error", "")
             if init_error:

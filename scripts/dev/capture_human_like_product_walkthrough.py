@@ -484,7 +484,7 @@ def _run_walkthrough_steps(
     )
     epoch = execute_recorded(
         service,
-        CreateEpochCommand(t_min=0.0, t_max=1.0, event_ids=["left", "right"]),
+        CreateEpochCommand(t_min=0.0, t_max=1.3, event_ids=None),
         command_results,
     )
     dataset = execute_recorded(
@@ -706,7 +706,12 @@ def run_chatpanel_walkthrough(
     tool_transcript: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Drive user-visible ChatPanel states without starting a local model."""
+    if window.agent_manager is None:
+        window.init_agent()
+        app.processEvents()
     manager = window.agent_manager
+    if manager is None:
+        raise RuntimeError("Agent manager was not initialized.")
     panel = manager.chat_panel
     dock = manager.chat_dock
     if panel is None or dock is None:
@@ -908,11 +913,52 @@ def interpretation_dialog_geometry(
 ) -> dict[str, Any]:
     """Return table/tree geometry evidence for Data Interpretation review panes."""
     return {
-        "metadata": tree_state(dialog.file_tree),
-        "label_carriers": tree_state(dialog.label_carrier_tree),
-        "events": tree_state(dialog.event_tree),
-        "review_summary": tree_state(dialog.review_tree),
+        "metadata": tree_state_for_visible_dialog_step(
+            dialog,
+            "Review Metadata",
+            dialog.file_tree,
+        ),
+        "label_carriers": tree_state_for_visible_dialog_step(
+            dialog,
+            "Match Labels",
+            dialog.label_carrier_tree,
+        ),
+        "events": tree_state_for_visible_dialog_step(
+            dialog,
+            "Match Labels",
+            dialog.event_tree,
+        ),
+        "review_summary": tree_state_for_visible_dialog_step(
+            dialog,
+            "Review and Import",
+            dialog.review_tree,
+        ),
     }
+
+
+def tree_state_for_visible_dialog_step(
+    dialog: DataInterpretationPreviewDialog,
+    step_title: str,
+    tree,
+) -> dict[str, Any]:
+    """Measure wizard tree geometry while the owning step is visible."""
+    app = QApplication.instance()
+    current_index = dialog.step_stack.currentIndex()
+    try:
+        step_titles = getattr(dialog, "_step_titles", [])
+        if step_title in step_titles:
+            dialog._go_to_step(step_titles.index(step_title))
+        if app is not None:
+            app.processEvents()
+        dialog._fit_all_tree_columns_to_viewport()
+        if app is not None:
+            app.processEvents()
+        return tree_state(tree)
+    finally:
+        dialog._go_to_step(current_index)
+        if app is not None:
+            app.processEvents()
+        dialog._fit_all_tree_columns_to_viewport()
 
 
 def data_interpretation_decision_probe(

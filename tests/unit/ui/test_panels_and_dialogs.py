@@ -71,7 +71,12 @@ class TestDataSplittingPreviewDialog:
                 dlg.timer.stop()
 
             result = dlg.get_result()
-            assert result is MockGen.return_value
+            assert result == {
+                "train_type": "Full Data",
+                "is_cross_validation": False,
+                "val_splitters": [],
+                "test_splitters": [],
+            }
 
 
 # ============ TrainingManagerWindow ============

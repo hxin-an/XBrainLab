@@ -28,21 +28,20 @@ from XBrainLab.backend.application import (
     ValidateInterpretationCommand,
     VisualizeCommand,
 )
-from XBrainLab.backend.dataset import (
-    DatasetGenerator,
-    DataSplitter,
-    DataSplittingConfig,
-    SplitByType,
-    SplitUnit,
-    TrainingType,
-    ValSplitByType,
-)
 
-EXPECTED_SYNTHETIC_SPLIT_SUMMARY = {
+EXPECTED_SYNTHETIC_SPLIT_25_25_SUMMARY = {
     "count": 1,
-    "train_count": 4,
-    "val_count": 1,
-    "test_count": 1,
+    "train_count": 7,
+    "val_count": 2,
+    "test_count": 3,
+    "audit": {"ok": True, "dataset_count": 1, "issues": []},
+}
+
+EXPECTED_SYNTHETIC_SPLIT_20_20_SUMMARY = {
+    "count": 1,
+    "train_count": 8,
+    "val_count": 2,
+    "test_count": 2,
     "audit": {"ok": True, "dataset_count": 1, "issues": []},
 }
 
@@ -50,7 +49,7 @@ EXPECTED_SYNTHETIC_SPLIT_SUMMARY = {
 def _write_synthetic_raw_fif(tmp_path):
     sfreq = 128
     n_channels = 4
-    duration = 6
+    duration = 8
     ch_names = [f"EEG{i}" for i in range(n_channels)]
     info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types="eeg")
     data = np.random.default_rng(42).normal(
@@ -60,11 +59,17 @@ def _write_synthetic_raw_fif(tmp_path):
     events = np.array(
         [
             [128, 0, 1],
-            [256, 0, 2],
+            [192, 0, 2],
+            [256, 0, 1],
+            [320, 0, 2],
             [384, 0, 1],
-            [512, 0, 2],
+            [448, 0, 2],
+            [512, 0, 1],
+            [576, 0, 2],
             [640, 0, 1],
             [704, 0, 2],
+            [768, 0, 1],
+            [832, 0, 2],
         ],
     )
     annotations = mne.annotations_from_events(
@@ -158,7 +163,7 @@ def test_application_service_load_epoch_dataset_workflow(tmp_path):
     epoch_result = service.execute(
         CreateEpochCommand(
             t_min=0.0,
-            t_max=0.25,
+            t_max=1.3,
             event_ids=["left", "right"],
         ),
     )
@@ -166,7 +171,7 @@ def test_application_service_load_epoch_dataset_workflow(tmp_path):
     assert epoch_result.ok is True
     assert epoch_result.changed_state.epoch_changed is True
     assert epoch_result.state.epoch.available is True
-    assert epoch_result.state.epoch.epoch_count == 6
+    assert epoch_result.state.epoch.epoch_count == 12
     assert epoch_result.state.dataset.available is False
     policy_after_epoch = service.get_capabilities()
     assert policy_after_epoch.get(CommandName.LOAD_DATA).available is False
@@ -194,10 +199,11 @@ def test_application_service_load_epoch_dataset_workflow(tmp_path):
     assert dataset_result.changed_state.datasets_changed is True
     assert dataset_result.state.dataset.available is True
     assert (
-        dataset_result.state.dataset.count == EXPECTED_SYNTHETIC_SPLIT_SUMMARY["count"]
+        dataset_result.state.dataset.count
+        == EXPECTED_SYNTHETIC_SPLIT_25_25_SUMMARY["count"]
     )
     assert dataset_result.state.dataset.split_summary == (
-        EXPECTED_SYNTHETIC_SPLIT_SUMMARY
+        EXPECTED_SYNTHETIC_SPLIT_25_25_SUMMARY
     )
     assert service.get_capabilities().get(CommandName.TRAIN).available is False
 
@@ -281,31 +287,23 @@ def test_application_service_accepts_dialog_generator_split_and_updates_readines
         service.execute(
             CreateEpochCommand(
                 t_min=0.0,
-                t_max=0.25,
+                t_max=1.3,
                 event_ids=["left", "right"],
             ),
         ).ok
         is True
     )
 
-    dialog_like_config = DataSplittingConfig(
-        train_type=TrainingType.FULL,
-        is_cross_validation=False,
-        val_splitter_list=[
-            DataSplitter(
-                split_type=ValSplitByType.TRIAL,
-                value_var="0.2",
-                split_unit=SplitUnit.RATIO,
-            ),
+    dialog_like_config = {
+        "train_type": "Full Data",
+        "is_cross_validation": False,
+        "val_splitters": [
+            {"split_type": "By Trial", "split_unit": "Ratio", "value": "0.2"},
         ],
-        test_splitter_list=[
-            DataSplitter(
-                split_type=SplitByType.TRIAL,
-                value_var="0.2",
-                split_unit=SplitUnit.RATIO,
-            ),
+        "test_splitters": [
+            {"split_type": "By Trial", "split_unit": "Ratio", "value": "0.2"},
         ],
-    )
+    }
     context_result = service.execute(
         QueryStateCommand(
             query="dataset_generation_context",
@@ -316,21 +314,19 @@ def test_application_service_accepts_dialog_generator_split_and_updates_readines
     assert context_result.ok is True
     assert context_result.diagnostics["payload_type"] == "dataset_generation_context"
     assert context_result.diagnostics["epoch_available"] is True
-    generator = DatasetGenerator(
-        context_result.diagnostics["epoch_data"],
-        dialog_like_config,
+    dataset_result = service.execute(
+        GenerateDatasetCommand(split_config=dialog_like_config),
     )
-
-    dataset_result = service.execute(GenerateDatasetCommand(generator=generator))
 
     assert dataset_result.ok is True
     assert dataset_result.diagnostics["split_audit"]["ok"] is True
     assert dataset_result.state.dataset.available is True
     assert (
-        dataset_result.state.dataset.count == EXPECTED_SYNTHETIC_SPLIT_SUMMARY["count"]
+        dataset_result.state.dataset.count
+        == EXPECTED_SYNTHETIC_SPLIT_20_20_SUMMARY["count"]
     )
     assert dataset_result.state.dataset.split_summary == (
-        EXPECTED_SYNTHETIC_SPLIT_SUMMARY
+        EXPECTED_SYNTHETIC_SPLIT_20_20_SUMMARY
     )
 
     assert service.execute(ConfigureTrainingCommand(model_name="EEGNet")).ok is True
@@ -479,15 +475,16 @@ def test_data_interpretation_to_dataset_workflow_is_non_mocked(tmp_path):
 
     assert preprocess_result.ok is True
     assert epoch_result.ok is True
-    assert epoch_result.state.epoch.epoch_count == 6
+    assert epoch_result.state.epoch.epoch_count == 12
     assert dataset_result.ok is True
     assert dataset_result.diagnostics["split_audit"]["ok"] is True
     assert dataset_result.state.dataset.available is True
     assert (
-        dataset_result.state.dataset.count == EXPECTED_SYNTHETIC_SPLIT_SUMMARY["count"]
+        dataset_result.state.dataset.count
+        == EXPECTED_SYNTHETIC_SPLIT_25_25_SUMMARY["count"]
     )
     assert dataset_result.state.dataset.split_summary == (
-        EXPECTED_SYNTHETIC_SPLIT_SUMMARY
+        EXPECTED_SYNTHETIC_SPLIT_25_25_SUMMARY
     )
 
 

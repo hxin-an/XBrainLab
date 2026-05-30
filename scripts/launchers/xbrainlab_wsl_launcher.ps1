@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $Workspace = "workspace" + "_v2"
-$Repo = ("/mnt/d", $Workspace, "projects", "lab", "XBrainLab") -join "/"
+$Repo = ("/mnt/d", $Workspace, "projects", "lab", "XBrainLab-integrated-manual") -join "/"
 $LogDir = Join-Path $env:LOCALAPPDATA "XBrainLab\logs"
 New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
 

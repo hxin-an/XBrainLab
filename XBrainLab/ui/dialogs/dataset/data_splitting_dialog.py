@@ -645,10 +645,10 @@ class DataSplittingDialog(BaseDialog):
             return  # Allow user to retry instead of rejecting
 
     def get_result(self):
-        """Return the split result from the preview dialog.
+        """Return the split configuration payload from the preview dialog.
 
         Returns:
-            The finalized DatasetGenerator or None if not confirmed.
+            A serializable split configuration or None if not confirmed.
 
         """
         return self.split_result

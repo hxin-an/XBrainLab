@@ -233,6 +233,39 @@ def test_dataset_generation_service_maps_command_training_modes_without_facade(
     assert payload["split_audit"]["ok"] is True
 
 
+def test_dataset_generation_service_empty_split_payload_fails_through_audit() -> None:
+    service, study, training = _service()
+    training.next_datasets = [
+        _Dataset(
+            train=[True, True, True, True],
+            val=[False, False, False, False],
+            test=[False, False, False, False],
+        ),
+    ]
+
+    with pytest.raises(ApplicationError) as exc_info:
+        service.handle_generate_dataset(
+            GenerateDatasetCommand(
+                split_config={
+                    "train_type": "Full Data",
+                    "is_cross_validation": False,
+                    "val_splitters": [],
+                    "test_splitters": [],
+                },
+            ),
+        )
+
+    assert study.generated_config is not None
+    assert study.generated_config.val_splitter_list == []
+    assert study.generated_config.test_splitter_list == []
+    error = exc_info.value
+    assert error.error_type == ErrorType.DATA_MISMATCH
+    assert any(
+        "split is empty" in issue["message"]
+        for issue in error.diagnostics["split_audit"]["issues"]
+    )
+
+
 def test_dataset_generation_service_rolls_back_failed_split_audit() -> None:
     service, study, training = _service()
     previous_dataset = object()
@@ -251,7 +284,7 @@ def test_dataset_generation_service_rolls_back_failed_split_audit() -> None:
 
     with pytest.raises(ApplicationError) as exc_info:
         service.handle_generate_dataset(
-            GenerateDatasetCommand(generator=object(), split_strategy="trial"),
+            GenerateDatasetCommand(split_strategy="trial"),
         )
 
     error = exc_info.value

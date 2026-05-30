@@ -142,8 +142,16 @@ def test_training_panel_split_data_success(mock_main_window, mock_controller, qt
         # Setup Dialog Mock
         instance = MockDialog.return_value
         instance.exec.return_value = True
-        mock_generator = MagicMock()
-        instance.get_result.return_value = mock_generator
+        instance.get_result.return_value = {
+            "train_type": "Individual",
+            "is_cross_validation": False,
+            "val_splitters": [
+                {"split_type": "By Trial", "split_unit": "Ratio", "value": "0.2"},
+            ],
+            "test_splitters": [
+                {"split_type": "By Trial", "split_unit": "Ratio", "value": "0.2"},
+            ],
+        }
 
         panel.sidebar.split_data()
 

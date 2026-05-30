@@ -26,7 +26,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application import QueryStateCommand
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.ui.application_capabilities import execute_application_command
 from XBrainLab.ui.core.worker import Worker
 from XBrainLab.ui.legacy_controller_bootstrap import (
     get_legacy_workflow_controllers_for_panel_bootstrap,
@@ -108,8 +110,6 @@ _PANEL_SPECS: tuple[_PanelSpec, ...] = (
 _STARTUP_PREWARM_MODULES: tuple[str, ...] = (
     "XBrainLab.backend.application.service",
     "XBrainLab.backend.load_data.raw_data_loader",
-    "XBrainLab.backend.training",
-    "XBrainLab.backend.training.evaluator",
 )
 
 
@@ -639,9 +639,35 @@ class MainWindow(QMainWindow):
         if self.agent_manager is None:
             status_bar = self.statusBar()
             if status_bar is not None:
-                status_bar.showMessage(
-                    "No EEG data open · Scan a data source to begin",
-                )
+                status_bar.showMessage(self._backend_status_bar_hint())
+
+    def _backend_status_bar_hint(self) -> str:
+        """Return a user-facing workflow hint without requiring the AI dock."""
+        result = execute_application_command(
+            self,
+            QueryStateCommand(query="state"),
+            refresh=False,
+        )
+        if result is None or result.failed:
+            logger.debug("Failed to read backend status bar hint", exc_info=True)
+            return "Workflow status unavailable"
+        state = result.diagnostics.get("state", {})
+        active_training = state.get("active_training", {})
+        active_dataset = state.get("active_dataset", {})
+        evaluation = state.get("evaluation", {})
+        if active_training.get("is_running"):
+            return "Training in progress"
+        if evaluation.get("finished_runs", 0) > 0:
+            return "Training complete · Review results"
+        if active_dataset.get("has_datasets"):
+            return "Dataset ready · Train model"
+        if active_dataset.get("has_epoch_data"):
+            return "Epochs ready · Generate dataset"
+        if active_dataset.get("has_preprocessed_data"):
+            return "Preprocessed data ready · Create epochs"
+        if active_dataset.get("has_raw_data"):
+            return "EEG data loaded · Preprocess data"
+        return "No EEG data open · Scan a data source to begin"
 
     def init_panels(self):
         """Create the first panel now and defer hidden panels until first use."""

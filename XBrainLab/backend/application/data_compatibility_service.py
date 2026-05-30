@@ -126,7 +126,7 @@ class DataCompatibilityCommandService:
         selected_event_names = self._selected_event_names(plan.selected_event_names)
         mode = str(plan.mode or "batch").lower()
         file_mapping: dict[str, str] = {}
-        if mode in {"batch", "timestamp"}:
+        if mode in {"batch", "timestamp", "sequence"}:
             file_mapping = dict(plan.file_mapping)
             if not file_mapping and len(plan.label_map) == 1:
                 label_name = next(iter(plan.label_map))
@@ -143,23 +143,6 @@ class DataCompatibilityCommandService:
                 file_mapping,
                 plan.mapping,
                 selected_event_names,
-            )
-        elif mode == "legacy":
-            labels = next(iter(plan.label_map.values()), None)
-            if labels is None:
-                raise PreconditionError("labels are required for legacy import.")
-            label_name = next(iter(plan.label_map), "")
-            file_mapping = {
-                self._data_filepath(target): str(label_name)
-                for target in target_files
-                if label_name
-            }
-            count = self.dataset.apply_labels_legacy(
-                target_files,
-                labels,
-                plan.mapping,
-                selected_event_names,
-                force_import=plan.force_import,
             )
         else:
             raise ValueError(f"Unknown label import mode: {plan.mode}")

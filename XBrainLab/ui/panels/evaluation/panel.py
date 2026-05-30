@@ -154,6 +154,7 @@ class EvaluationPanel(BasePanel):
         if plans is None:
             plans = self._legacy_plans_for_render()
         if plans:
+            self._show_evaluation_controls_available()
             for i, plan in enumerate(plans):
                 self.model_combo.addItem(f"Fold {i + 1}: {plan.get_name()}", plan)
 
@@ -300,14 +301,44 @@ class EvaluationPanel(BasePanel):
             return []
 
     def _show_no_data_available(self) -> None:
+        message = self._evaluation_empty_state_message()
         self.model_combo.blockSignals(True)
         self.model_combo.clear()
-        self.model_combo.addItem("No Data Available")
+        self.model_combo.setEnabled(False)
+        self.model_combo.setToolTip(message)
         self.model_combo.blockSignals(False)
+        self.run_combo.blockSignals(True)
         self.run_combo.clear()
+        self.run_combo.setEnabled(False)
+        self.run_combo.setToolTip(message)
+        self.run_combo.blockSignals(False)
+        self.chk_percentage.setEnabled(False)
         self._clear_metric_views()
         self.summary_text.clear()
+        self.no_data_label.setText(message)
         self.plot_stack.setCurrentIndex(1)
+        self.bottom_tabs.setVisible(False)
+
+    def _show_evaluation_controls_available(self) -> None:
+        self.model_combo.setEnabled(True)
+        self.model_combo.setToolTip("")
+        self.run_combo.setEnabled(True)
+        self.run_combo.setToolTip("")
+        self.chk_percentage.setEnabled(True)
+        self.bottom_tabs.setVisible(True)
+
+    def _evaluation_empty_state_message(self) -> str:
+        result = getattr(self, "last_application_query", None)
+        if result is not None and getattr(result, "failed", False):
+            message = str(getattr(result, "message", "")).strip()
+            if message:
+                return message
+        diagnostics = getattr(result, "diagnostics", {}) if result is not None else {}
+        if isinstance(diagnostics, dict):
+            blocked_reason = str(diagnostics.get("blocked_reason", "")).strip()
+            if blocked_reason:
+                return blocked_reason
+        return "No evaluation results available yet."
 
     def _clear_metric_views(self) -> None:
         self.matrix_widget.update_plot(None)

@@ -37,20 +37,16 @@ class SaliencyMapWidget(BaseSaliencyView):
             return
 
         try:
-            # 1. Clear State
-            self.clear_plot()
-
             epoch_data = trainer.get_dataset().get_epoch_data()
-
-            # 3. Visualize
-            visualizer = VisualizerType.SaliencyMap.value(eval_record, epoch_data)
-            new_fig = visualizer.get_plt(method=method, absolute=absolute)
-
-            if new_fig:
-                self._replace_figure(new_fig)
-            else:
-                self.show_error("No Data Available")
-
+            self._render_figure_async(
+                lambda: self._render_plot(eval_record, epoch_data, method, absolute),
+                error_context="saliency map",
+            )
         except Exception as e:
-            logger.error("Error plotting saliency map: %s", e, exc_info=True)
+            logger.error("Error preparing saliency map: %s", e, exc_info=True)
             self.show_error(str(e))
+
+    @staticmethod
+    def _render_plot(eval_record, epoch_data, method, absolute):
+        visualizer = VisualizerType.SaliencyMap.value(eval_record, epoch_data)
+        return visualizer.get_plt(method=method, absolute=absolute)

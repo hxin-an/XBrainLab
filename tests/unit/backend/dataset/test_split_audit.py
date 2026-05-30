@@ -72,6 +72,20 @@ def test_audit_dataset_splits_detects_overlap():
     assert result.issues[0].indices == [1]
 
 
+def test_audit_dataset_splits_blocks_missing_class_coverage():
+    dataset = _dataset(
+        [True, False, False, False, False, False],
+        [False, True, False, True, False, False],
+        [False, False, True, False, True, False],
+    )
+
+    result = audit_dataset_splits([dataset])
+
+    assert result.ok is False
+    messages = [issue.message for issue in result.issues]
+    assert "train split is missing class label(s) 1." in messages
+
+
 def test_audit_dataset_splits_detects_subject_wise_leakage():
     dataset = _dataset(
         [True, False, False, False, False, False],

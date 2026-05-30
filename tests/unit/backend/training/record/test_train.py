@@ -298,6 +298,20 @@ def test_train_record_test_confusion_figure(train_record, eval_record):
     plt.close("all")
 
 
+def test_train_record_empty_figures_do_not_leave_open_matplotlib_handles(
+    train_record,
+):
+    plt.close("all")
+
+    assert train_record.get_loss_figure() is None
+    assert train_record.get_acc_figure() is None
+    assert train_record.get_auc_figure() is None
+    assert train_record.get_lr_figure() is None
+    assert train_record.get_confusion_figure() is None
+
+    assert plt.get_fignums() == []
+
+
 @pytest.mark.parametrize(
     "func_name", ["get_acc", "get_auc", "get_kappa", "get_eval_record"]
 )

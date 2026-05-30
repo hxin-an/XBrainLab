@@ -5,8 +5,7 @@ import os
 
 import numpy as np
 import pyvista as pv
-import requests
-from PyQt6.QtCore import QObject, QThread, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal
 
 from XBrainLab.backend.utils.logger import logger
 
@@ -47,49 +46,6 @@ def channel_convex_hull(ch_pos):
     return surf
 
 
-class ModelDownloadThread(QThread):
-    """Background thread that downloads a single 3-D model file.
-
-    Attributes:
-        download_finished: Signal emitted with the destination path on success
-            or an error string prefixed with ``"Error: "`` on failure.
-        url: Remote URL to download from.
-        dest_path: Local filesystem path to save the file to.
-
-    """
-
-    download_finished = pyqtSignal(str)  # formatted path or error
-
-    def __init__(self, url, dest_path):
-        """Initialise the download thread.
-
-        Args:
-            url: Remote URL of the model file.
-            dest_path: Local path where the file will be written.
-
-        """
-        super().__init__()
-        self.url = url
-        self.dest_path = dest_path
-
-    def run(self):
-        try:
-            logger.info("Downloading %s...", os.path.basename(self.dest_path))
-            with requests.get(self.url, stream=True, timeout=60) as r:
-                r.raise_for_status()
-                with open(self.dest_path, "wb") as f:
-                    f.writelines(r.iter_content(chunk_size=8192))
-            logger.info("Downloaded %s", self.dest_path)
-            self.download_finished.emit(self.dest_path)
-        except Exception as e:
-            logger.error("Download failed: %s", e)
-            self.download_finished.emit(f"Error: {e}")
-
-
-# Robustness: Keep separate references to prevent premature QThread destruction
-SALIENCY_DOWNLOAD_THREADS = set()
-
-
 class Saliency3DEngine(QObject):
     """Backend engine for 3-D saliency visualisation.
 
@@ -105,7 +61,7 @@ class Saliency3DEngine(QObject):
         saliency_cap: Triangulated cap mesh derived from channel positions.
         pos_on_3d: ``(N, 3)`` array of electrode positions in 3-D model space.
         saliency: ``(channels, time)`` saliency matrix for the current event.
-        download_threads: Active :class:`ModelDownloadThread` instances.
+        model_error: User-facing reason if required local meshes are unavailable.
 
     """
 
@@ -126,22 +82,16 @@ class Saliency3DEngine(QObject):
 
         self.pos_on_3d = None
         self.saliency = None
+        self.model_error = ""
 
-        self.download_threads = []
-
-        # Load models asynchronously
         self._load_models()
 
     def _load_models(self):
-        """Locate 3-D model files and download missing ones in background threads."""
+        """Locate local 3-D model files without performing network downloads."""
         current_dir = os.path.dirname(os.path.abspath(__file__))
         model_dir = os.path.join(current_dir, "3Dmodel")
 
-        if not os.path.exists(model_dir):
-            os.makedirs(model_dir)
-
         fn_ply = ["brain.ply", "head.ply"]
-        gitrepo_loc = "https://raw.githubusercontent.com/CECNL/XBrainLab/main/XBrainLab/backend/visualization/3Dmodel/"
 
         missing_files = []
         for fn in fn_ply:
@@ -151,55 +101,14 @@ class Saliency3DEngine(QObject):
 
         if missing_files:
             missing_list = [f[0] for f in missing_files]
-            msg = f"Missing 3D models: {missing_list}. Starting background download..."
-            logger.info(msg)
-            for fn, path in missing_files:
-                thread = ModelDownloadThread(gitrepo_loc + fn, path)
-                thread.download_finished.connect(self._on_download_complete)
-
-                # Robustness: Prevent QThread: Destroyed by keeping global ref
-                SALIENCY_DOWNLOAD_THREADS.add(thread)
-                # Use QThread's native finished signal (0 args) for cleanup
-                # Fix B023: bind thread=thread
-                thread.finished.connect(
-                    lambda t=thread: SALIENCY_DOWNLOAD_THREADS.discard(t),
-                )
-
-                self.download_threads.append(thread)
-                thread.start()
-        else:
-            self._init_meshes(model_dir)
-
-    def _on_download_complete(self, result):
-        """Handle a finished download and attempt to initialise meshes.
-
-        Args:
-            result: Destination file path on success, or an error string
-                beginning with ``"Error: "`` on failure.
-
-        """
-        if "Error" in result:
-            logger.error(result)
+            self.model_error = (
+                "3D head model assets are not installed: "
+                + ", ".join(missing_list)
+                + ". Install the local 3Dmodel assets before opening 3D saliency."
+            )
+            logger.warning(self.model_error)
             return
-
-        # Check if all downloads finished?
-        # For simplicity, try to load whenever one finishes, or wait for all.
-        # Minimalist approach: Try loading models again.
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        model_dir = os.path.join(current_dir, "3Dmodel")
-
-        # Check if bot exist now
-        head_path = os.path.join(model_dir, "head.ply")
-        brain_path = os.path.join(model_dir, "brain.ply")
-
-        # Ensure sizes valid (SIM102 combined if)
-        if (
-            os.path.exists(head_path)
-            and os.path.exists(brain_path)
-            and os.path.getsize(head_path) > 1024
-            and os.path.getsize(brain_path) > 1024
-        ):
-            self._init_meshes(model_dir)
+        self._init_meshes(model_dir)
 
     def _init_meshes(self, model_dir):
         """Read head and brain PLY meshes from *model_dir*.
@@ -282,6 +191,8 @@ class Saliency3DEngine(QObject):
         pos_on_3d = []
         # trans Cz to [0, 0, 0]
         # Note: These values are tuned for the specific head model
+        if self.model_error:
+            raise RuntimeError(self.model_error)
         if self.head_mesh is None:
             raise RuntimeError("Head mesh not loaded")
 

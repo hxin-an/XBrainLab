@@ -113,16 +113,25 @@ class PreprocessCommandService:
         if event_ids is None and defaults:
             return defaults
         explicit_targets: list[str] = []
-        if isinstance(event_ids, list | dict):
+        aliases = self._event_label_aliases(handoff)
+        if isinstance(event_ids, (list, dict)):
             explicit_targets = [str(item) for item in event_ids]
         if explicit_targets and defaults:
-            missing = [item for item in explicit_targets if item not in set(defaults)]
+            allowed = set(defaults) | set(aliases)
+            missing = [item for item in explicit_targets if item not in allowed]
             if missing and bool(handoff.get("supervised_ready")):
                 raise PreconditionError(
                     "Epoch target is not in the reviewed import labels: "
                     + ", ".join(str(item) for item in missing)
                     + ".",
                 )
+            if isinstance(event_ids, list):
+                return [aliases.get(str(item), str(item)) for item in event_ids]
+            if isinstance(event_ids, dict):
+                return {
+                    aliases.get(str(key), str(key)): int(value)
+                    for key, value in event_ids.items()
+                }
         return event_ids
 
     def _epoch_handoff(self) -> dict[str, Any]:
@@ -135,6 +144,19 @@ class PreprocessCommandService:
         interpretation = getattr(state, "interpretation", None)
         handoff = getattr(interpretation, "epoch_handoff", None)
         return dict(handoff) if isinstance(handoff, dict) else {}
+
+    @staticmethod
+    def _event_label_aliases(handoff: dict[str, Any]) -> dict[str, str]:
+        raw_aliases = handoff.get("event_label_aliases")
+        if not isinstance(raw_aliases, dict):
+            return {}
+        aliases: dict[str, str] = {}
+        for event_name, label_name in raw_aliases.items():
+            event_text = str(event_name).strip()
+            label_text = str(label_name).strip()
+            if event_text and label_text and event_text != label_text:
+                aliases[label_text] = event_text
+        return aliases
 
     def _handle_standard_preprocess(self, command: PreprocessCommand) -> HandlerResult:
         low_freq = command.low_freq if command.low_freq is not None else 4

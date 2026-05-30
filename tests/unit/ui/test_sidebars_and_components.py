@@ -21,6 +21,19 @@ def _command_result(**diagnostics):
     )
 
 
+def _split_config_payload() -> dict[str, object]:
+    return {
+        "train_type": "Individual",
+        "is_cross_validation": False,
+        "val_splitters": [
+            {"split_type": "By Trial", "split_unit": "Ratio", "value": "0.2"},
+        ],
+        "test_splitters": [
+            {"split_type": "By Trial", "split_unit": "Ratio", "value": "0.2"},
+        ],
+    }
+
+
 def _make_panel_mock():
     p = MagicMock()
     p.controller = MagicMock()
@@ -937,7 +950,7 @@ class TestTrainingSidebar:
         sidebar.panel.dataset_controller.get_epoch_data.return_value = MagicMock()
         sidebar.panel.controller.has_datasets.return_value = False
         sidebar.panel.controller.get_trainer.return_value = None
-        generator = MagicMock()
+        generator = _split_config_payload()
         with (
             patch(
                 "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog"
@@ -973,7 +986,7 @@ class TestTrainingSidebar:
             QueryStateCommand,
         )
 
-        generator = MagicMock()
+        generator = _split_config_payload()
         sidebar.panel.controller.has_data = MagicMock(return_value=True)
         sidebar.panel.dataset_controller.has_data.return_value = True
         sidebar.panel.dataset_controller.get_epoch_data.return_value = MagicMock()
@@ -1101,7 +1114,7 @@ class TestTrainingSidebar:
         sidebar.panel.main_window.study = study
         sidebar.panel.controller.has_datasets.return_value = True
         sidebar.panel.controller.get_trainer.return_value = None
-        generator = MagicMock()
+        generator = _split_config_payload()
         async_commands = []
 
         def fake_async(_panel, command, *, on_result, **_kwargs):
@@ -1167,7 +1180,7 @@ class TestTrainingSidebar:
         sidebar.panel.main_window.study = study
         sidebar.panel.controller.has_datasets.return_value = False
         sidebar.panel.controller.get_trainer.return_value = None
-        generator = MagicMock()
+        generator = _split_config_payload()
         async_commands = []
 
         def fake_async(_panel, command, *, on_result, **_kwargs):
@@ -1239,7 +1252,7 @@ class TestTrainingSidebar:
         sidebar.panel.controller.get_dataset_generator.side_effect = AssertionError(
             "split dialog generator should come from QueryStateCommand",
         )
-        generator = MagicMock()
+        generator = _split_config_payload()
 
         query_result = _command_result(
             payload_type="dataset_generation_context",
@@ -1341,7 +1354,7 @@ class TestTrainingSidebar:
         study.data_manager.preprocessed_data_list = [raw]
         study.data_manager.epoch_data = MagicMock(name="service_epoch_data")
         sidebar.panel.main_window.study = study
-        generator = MagicMock()
+        generator = _split_config_payload()
 
         query_result = _command_result(
             payload_type="dataset_generation_context",
@@ -1409,7 +1422,7 @@ class TestTrainingSidebar:
         study.data_manager.preprocessed_data_list = [raw]
         study.data_manager.epoch_data = MagicMock(name="service_epoch_data")
         sidebar.panel.main_window.study = study
-        generator = MagicMock()
+        generator = _split_config_payload()
 
         query_result = _command_result(
             payload_type="dataset_generation_context",

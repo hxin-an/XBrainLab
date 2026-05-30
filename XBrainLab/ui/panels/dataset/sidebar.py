@@ -50,9 +50,9 @@ class DatasetSidebar(QWidget):
     """Sidebar for ``DatasetPanel`` containing information and action controls.
 
     Hosts an aggregate info panel, primary import buttons, channel selection,
-    and a clear-dataset button. Metadata parsing lives in the Data Import
-    wizard; label attachment remains visible so skipped labels can be added
-    after import.
+    and a clear-dataset button. Metadata parsing and external labels live in
+    the Data Import wizard; the old post-load label button is retained only as
+    hidden compatibility wiring for tests and legacy adapters.
 
     Attributes:
         panel: The parent ``DatasetPanel`` reference.
@@ -61,7 +61,7 @@ class DatasetSidebar(QWidget):
         import_folder_btn: Button to import a folder.
         import_bids_btn: Button to import a BIDS EEG folder.
         reload_recipe_btn: Button to reload a saved import recipe.
-        import_label_btn: Button to attach external labels to loaded data.
+        import_label_btn: Hidden compatibility button for old label attachment.
         smart_parse_btn: Hidden compatibility button to auto-extract metadata.
         chan_select_btn: Button to open channel selection dialog.
         clear_btn: Button to clear the entire dataset.
@@ -187,6 +187,7 @@ class DatasetSidebar(QWidget):
         self.import_label_btn.setToolTip("Attach labels to the loaded EEG data")
         self.import_label_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
         self.import_label_btn.clicked.connect(self.panel.action_handler.import_label)
+        self.import_label_btn.setVisible(False)
         exec_layout.addWidget(self.import_label_btn)
 
         self.chan_select_btn = QPushButton("Channel Selection")

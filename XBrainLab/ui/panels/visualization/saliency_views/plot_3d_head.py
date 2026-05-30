@@ -28,6 +28,8 @@ class Saliency3D:
         method="Gradient",
         absolute=False,
         plotter=None,
+        prepared_engine: Saliency3DEngine | None = None,
+        prepared_channel_count: int | None = None,
     ):
         # set parameters
         self.selected_event_name = selected_event_name
@@ -38,22 +40,23 @@ class Saliency3D:
         self.init_error = ""
 
         # Initialize Backend Engine
-        self.engine: Saliency3DEngine | None = None
-        try:
-            self.engine = Saliency3DEngine(mesh_scale_scalar=mesh_scale_scalar)
-            self.channel_count = self.engine.process_data(
-                eval_record,
-                epoch_data,
-                selected_event_name,
-                method=method,
-                absolute=absolute,
-            )
-        except Exception as exc:
-            logger.exception("Failed to initialize Saliency3D engine")
-            # Handle failure gracefully
-            self.init_error = str(exc)
-            self.engine = None
-            self.channel_count = 0
+        self.engine: Saliency3DEngine | None = prepared_engine
+        if prepared_engine is not None:
+            self.channel_count = int(prepared_channel_count or 0)
+        else:
+            try:
+                self.engine, self.channel_count = self.prepare_engine(
+                    eval_record,
+                    epoch_data,
+                    selected_event_name,
+                    method=method,
+                    absolute=absolute,
+                )
+            except Exception as exc:
+                logger.exception("Failed to initialize Saliency3D engine")
+                self.init_error = str(exc)
+                self.engine = None
+                self.channel_count = 0
 
         self.param = {
             "timestamp": 1,
@@ -82,6 +85,25 @@ class Saliency3D:
 
         if self.engine:
             self.update()
+
+    @staticmethod
+    def prepare_engine(
+        eval_record,
+        epoch_data,
+        selected_event_name,
+        *,
+        method="Gradient",
+        absolute=False,
+    ) -> tuple[Saliency3DEngine, int]:
+        engine = Saliency3DEngine(mesh_scale_scalar=mesh_scale_scalar)
+        channel_count = engine.process_data(
+            eval_record,
+            epoch_data,
+            selected_event_name,
+            method=method,
+            absolute=absolute,
+        )
+        return engine, int(channel_count)
 
     def _setup_scene(self):
         # Access engine meshes

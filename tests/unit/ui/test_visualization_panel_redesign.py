@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QGridLayout, QGroupBox, QWidget
 
 from XBrainLab.backend.application.results import ChangedState, CommandResult, ErrorType
 from XBrainLab.backend.study import Study
@@ -86,6 +86,23 @@ def test_visualization_panel_layout_and_sidebar(qtbot):
     assert panel.sidebar.btn_montage.text() == "Set Montage"
     assert panel.sidebar.btn_saliency.text() == "Saliency Settings"
     assert panel.sidebar.btn_export.isHidden()
+
+
+def test_visualization_controls_use_wrapping_grid(qtbot):
+    panel, _ctrl = _make_panel(qtbot)
+
+    control_group = next(
+        group
+        for group in panel.findChildren(QGroupBox)
+        if group.title() == "VISUALIZATION CONTROLS"
+    )
+    layout = control_group.layout()
+
+    assert isinstance(layout, QGridLayout)
+    assert layout.itemAtPosition(0, 1).widget() is panel.plan_combo
+    assert layout.itemAtPosition(1, 1).widget() is panel.run_combo
+    assert layout.itemAtPosition(2, 1).widget() is panel.method_combo
+    assert layout.itemAtPosition(3, 1).widget() is panel.abs_check
 
 
 def test_visualization_panel_defers_service_queries_until_opened(

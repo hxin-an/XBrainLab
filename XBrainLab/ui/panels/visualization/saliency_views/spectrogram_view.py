@@ -36,22 +36,19 @@ class SaliencySpectrogramWidget(BaseSaliencyView):
             return
 
         try:
-            self.clear_plot()
             epoch_data = trainer.get_dataset().get_epoch_data()
-
-            # Visualizer
-            visualizer = VisualizerType.SaliencySpectrogramMap.value(
-                eval_record,
-                epoch_data,
+            self._render_figure_async(
+                lambda: self._render_plot(eval_record, epoch_data, method),
+                error_context="saliency spectrogram",
             )
-            # Spectrogram ignores 'absolute' param usually
-            new_fig = visualizer.get_plt(method=method)
-
-            if new_fig:
-                self._replace_figure(new_fig)
-            else:
-                self.show_error("No Data Available")
-
         except Exception as e:
-            logger.error("Error plotting spectrogram: %s", e, exc_info=True)
+            logger.error("Error preparing spectrogram: %s", e, exc_info=True)
             self.show_error(str(e))
+
+    @staticmethod
+    def _render_plot(eval_record, epoch_data, method):
+        visualizer = VisualizerType.SaliencySpectrogramMap.value(
+            eval_record,
+            epoch_data,
+        )
+        return visualizer.get_plt(method=method)

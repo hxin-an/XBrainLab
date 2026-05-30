@@ -174,12 +174,14 @@ class LocalBackend(BaseBackend):
                 self.config.model_name,
                 cache_dir=self.config.cache_dir,
                 trust_remote_code=trust_remote_code,
+                local_files_only=True,
             )
 
             # Load model with optional quantization
             model_kwargs = {
                 "cache_dir": self.config.cache_dir,
                 "trust_remote_code": trust_remote_code,
+                "local_files_only": True,
             }
             if spec and spec.attn_implementation:
                 model_kwargs["attn_implementation"] = spec.attn_implementation

@@ -121,6 +121,7 @@ class StateSnapshotService:
             epoch_count=self._epoch_count(epoch_data),
             n_channels=self._epoch_n_channels(epoch_data),
             n_times=self._epoch_n_times(epoch_data),
+            sfreq=self._epoch_sfreq(epoch_data),
             event_names=self._epoch_event_names(epoch_data),
             event_ids=self._epoch_event_ids(epoch_data),
             channel_names=self._epoch_channel_names(epoch_data),
@@ -136,6 +137,7 @@ class StateSnapshotService:
         training = TrainingStateSnapshot(
             has_model=model_holder is not None,
             model_name=self.training_commands.model_name(model_holder),
+            model_params=self.training_commands.model_params_snapshot(model_holder),
             has_training_option=training_option is not None,
             training_option=self.training_commands.training_option_snapshot(
                 training_option,
@@ -506,6 +508,18 @@ class StateSnapshotService:
         if shape and len(shape) >= 3:
             return shape[2]
         return None
+
+    @staticmethod
+    def _epoch_sfreq(epoch_data: Any) -> float | None:
+        if epoch_data is None:
+            return None
+        value = getattr(epoch_data, "sfreq", None)
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def _epoch_channel_names(epoch_data: Any) -> list[str]:

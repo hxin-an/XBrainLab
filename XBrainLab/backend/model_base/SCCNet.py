@@ -6,6 +6,8 @@ import numpy as np
 import torch
 from torch import nn
 
+from XBrainLab.backend.model_requirements import minimum_samples_for_model
+
 
 class SCCNet(nn.Module):
     """Spatio-spectral feature learning network for EEG classification.
@@ -61,18 +63,17 @@ class SCCNet(nn.Module):
         self.n_class = n_classes
         self.octsf = math.floor(self.sf * 0.1)
 
-        # Validate minimum samples requirement
-        # SCCNet requires: Conv2 padding + AvgPool(sf/2)
-        min_samples = int(self.sf / 2) + 1
-        epoch_duration = samples / sfreq
-        min_duration = min_samples / sfreq
-        if samples < min_samples:
+        requirement = minimum_samples_for_model("SCCNet", sfreq=sfreq)
+        if requirement is not None and samples < requirement.min_samples:
+            epoch_duration = samples / sfreq
             raise ValueError(
                 f"Epoch duration is too short for SCCNet. "
                 f"Current: {samples} samples ({epoch_duration:.3f}s at {sfreq}Hz). "
-                f"Minimum required: {min_samples} samples ({min_duration:.3f}s). "
+                f"Minimum required: {requirement.min_samples} samples "
+                f"({requirement.min_duration_seconds:.3f}s). "
                 f"Please increase epoch length (tmax-tmin) to at least "
-                f"{min_duration:.2f}s or use a lower sampling frequency.",
+                f"{requirement.min_duration_seconds:.2f}s or use a lower "
+                "sampling frequency.",
             )
 
         # (1, n_ch, kernelsize=(n_ch,1))

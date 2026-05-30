@@ -69,7 +69,7 @@ protocol 是支撐工作流可信度，不是主要 thesis accuracy。
 
 `scripts/dev/update_quality_dashboard.py` 的預設 profile 是 `fast`。
 
-截至 `2026-05-01`，fast dashboard 包含：
+截至 `2026-05-30`，fast dashboard 包含：
 
 | Check key | 名稱 | 類別 | 支撐內容 |
 | --- | --- | --- | --- |
@@ -80,7 +80,8 @@ protocol 是支撐工作流可信度，不是主要 thesis accuracy。
 | `ui_baseline_capture` | UI Baseline Capture | ui | capture 核心 UI screenshots，並比對 approved baselines。 |
 | `ui_dialog_acceptance` | UI Dialog Acceptance | ui | dialog-level acceptance tests。 |
 | `ui_unit_suite` | UI Unit Suite | ui | UI unit suite。 |
-| `io_integration` | Real-Data IO Integration | io | real-data import / facade IO integration。 |
+| `io_integration` | Real-Data IO Integration | io | real-data import / ApplicationService IO integration。 |
+| `ui_product_walkthrough` | UI Product Walkthrough | ui | human-like product route smoke and screenshot evidence boundary。 |
 
 `--include-slow-checks` 會額外加入 `Mypy Type Check`，但它不是預設 fast dashboard 契約的一部分。
 
@@ -103,7 +104,7 @@ fast dashboard clean 必須同時滿足：
 1. `artifacts/quality/latest.json` 的 `overall_status` 是 `pass`。
 2. `checks[*].status` 全部是 `pass`。
 3. `artifacts/quality/latest.md` summary table 沒有 `FAIL` 或 `WARN`。
-4. `workspace` 是 active repo：`/mnt/d/workspace_v2/projects/lab/XBrainLab`。
+4. `workspace` 是本次 release-candidate worktree：`/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`。
 5. `generated_at` 是本次驗證時間，不是舊 artifact。
 
 這可以支撐日常工程健康判斷，但不能證明 model quality、scientific reproducibility 或 thesis claim。
@@ -234,17 +235,26 @@ poetry run python scripts/dev/inspect_local_assistant_runtime.py \
 
 這些 checks 只能支撐 local runtime smoke，不等於 thesis-grade tool-call eval。
 
-## 2026-05-02 現況
+## 2026-05-30 現況
 
 目前 `docs/validation/README.md` 記錄的 refresh 狀態：
 
 - latest fast dashboard artifact：`artifacts/quality/latest.*`
-- generated at：`2026-05-02 12:29:06 UTC+08:00`
-- workspace：`/mnt/d/workspace_v2/projects/lab/XBrainLab`
+- generated at：`2026-05-30 13:55:04 UTC+08:00`
+- workspace：`/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`
 - overall：`PASS`
 - UI baseline capture：`7 UI artifacts match approved references`
-- max UI mean diff：`0.114`
-- max UI changed ratio：`0.66%`
+- max UI mean diff：`0.069`
+- max UI changed ratio：`0.06%`
+
+同一輪 release-candidate follow-up validation：
+
+- UI unit validation：`1235 passed`。
+- Real-data IO integration：`31 passed, 8 warnings`。
+- pipeline smoke：`2 passed`。
+- Windows launcher walkthrough：`passed`，但這仍不是真人 desktop click-through 或 signed installer。
+- `poetry run basedpyright`：`0 errors, 0 warnings, 0 notes`。
+- `poetry run mkdocs build --strict`：通過。
 
 同一輪 chat product blocker 修復已記錄：
 

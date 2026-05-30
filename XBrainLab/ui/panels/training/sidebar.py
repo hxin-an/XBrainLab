@@ -337,9 +337,9 @@ class TrainingSidebar(QWidget):
                     )
                     return
 
-            generator = win.get_result()
-            if generator:
-                command = GenerateDatasetCommand(generator=generator)
+            split_config = win.get_result()
+            if split_config:
+                command = GenerateDatasetCommand(split_config=dict(split_config))
 
                 def _handle_generate_result(result) -> None:
                     if result.failed:

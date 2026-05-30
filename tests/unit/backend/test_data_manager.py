@@ -62,6 +62,7 @@ class TestSetLoadedDataList:
         dm.set_loaded_data_list(raw_data, force_update=True)
         assert len(dm.loaded_data_list) == 1
         assert len(dm.preprocessed_data_list) == 1
+        assert dm.preprocessed_data_list[0] is raw_data[0]
 
     def test_epoch_data_none_for_raw(self, dm, raw_data):
         dm.set_loaded_data_list(raw_data, force_update=True)
@@ -118,6 +119,7 @@ class TestPreprocess:
         dm.set_loaded_data_list(raw_data, force_update=True)
         dm.preprocess(RenamePreprocessor)
         assert dm.preprocessed_data_list[0].get_subject_name() == "modified"
+        assert dm.loaded_data_list[0].get_subject_name() != "modified"
 
     def test_preprocess_validates_subclass(self, dm, raw_data):
         dm.set_loaded_data_list(raw_data, force_update=True)

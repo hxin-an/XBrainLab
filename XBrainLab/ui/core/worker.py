@@ -66,10 +66,22 @@ class Worker(QRunnable):
             # Emit error signal
             logger.error("Worker task failed", exc_info=True)
             exctype, value = sys.exc_info()[:2]
-            self.signals.error.emit((exctype, value, traceback.format_exc()))
+            self._safe_emit("error", (exctype, value, traceback.format_exc()))
         else:
             # Return the result of the processing
-            self.signals.result.emit(result)
+            self._safe_emit("result", result)
         finally:
             # Done
-            self.signals.finished.emit()
+            self._safe_emit("finished")
+
+    def _safe_emit(self, signal_name: str, *args) -> None:
+        """Emit a worker signal unless Qt already destroyed the receiver wrapper."""
+        try:
+            signal = getattr(self.signals, signal_name)
+            signal.emit(*args)
+        except RuntimeError:
+            logger.debug(
+                "Skipped worker %s signal because Qt deleted the signal wrapper.",
+                signal_name,
+                exc_info=True,
+            )

@@ -244,6 +244,68 @@ def test_preprocess_service_uses_data_import_epoch_defaults() -> None:
     ]
 
 
+def test_preprocess_service_uses_raw_event_defaults_for_internal_labels() -> None:
+    preprocess = _PreprocessController()
+    dataset = _DatasetController()
+    service = PreprocessCommandService(
+        preprocess=preprocess,
+        dataset=dataset,
+        get_state=lambda: SimpleNamespace(
+            interpretation=SimpleNamespace(
+                epoch_handoff={
+                    "supervised_ready": True,
+                    "label_source": "internal_events",
+                    "default_epoch_events": ["769", "770"],
+                    "event_label_aliases": {
+                        "769": "Left hand",
+                        "770": "Right hand",
+                    },
+                }
+            )
+        ),
+    )
+
+    service.handle_create_epoch(CreateEpochCommand(t_min=-0.2, t_max=1.0))
+
+    assert preprocess.events == [
+        ("epoch", (None, ["769", "770"], -0.2, 1.0)),
+    ]
+
+
+def test_preprocess_service_accepts_display_aliases_for_internal_labels() -> None:
+    preprocess = _PreprocessController()
+    dataset = _DatasetController()
+    service = PreprocessCommandService(
+        preprocess=preprocess,
+        dataset=dataset,
+        get_state=lambda: SimpleNamespace(
+            interpretation=SimpleNamespace(
+                epoch_handoff={
+                    "supervised_ready": True,
+                    "label_source": "internal_events",
+                    "default_epoch_events": ["769", "770"],
+                    "event_label_aliases": {
+                        "769": "Left hand",
+                        "770": "Right hand",
+                    },
+                }
+            )
+        ),
+    )
+
+    service.handle_create_epoch(
+        CreateEpochCommand(
+            t_min=-0.2,
+            t_max=1.0,
+            event_ids=["Left hand", "Right hand"],
+        ),
+    )
+
+    assert preprocess.events == [
+        ("epoch", (None, ["769", "770"], -0.2, 1.0)),
+    ]
+
+
 def test_preprocess_service_rejects_epoch_targets_outside_import_handoff() -> None:
     preprocess = _PreprocessController()
     dataset = _DatasetController()

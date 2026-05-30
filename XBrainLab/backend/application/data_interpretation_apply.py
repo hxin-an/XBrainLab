@@ -6,7 +6,7 @@ import contextlib
 import csv
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import numpy as np
 
@@ -169,7 +169,7 @@ class DataInterpretationApplyService:
         elif event_code_applicable:
             mode = "event_code"
         else:
-            mode = "legacy"
+            mode = "sequence"
 
         target_files = list(self.dataset.get_loaded_data_list() or [])
         if not target_files:
@@ -217,11 +217,19 @@ class DataInterpretationApplyService:
                 label_map = self._load_reviewed_label_map(applicable, mode)
                 selected_event_names = (
                     self._selected_event_names_for_sequence_plans(applicable)
-                    if mode == "legacy"
+                    if mode == "sequence"
                     else None
                 )
                 count = 0
-            if mode in {"timestamp", "anchored"}:
+            if mode == "timestamp":
+                count = self._apply_reviewed_timestamp_label_map(
+                    mapped_target_files,
+                    applicable,
+                    label_map,
+                    file_mapping,
+                    mapping,
+                )
+            elif mode == "anchored":
                 count = self.dataset.apply_labels_batch(
                     mapped_target_files,
                     label_map,
@@ -229,7 +237,7 @@ class DataInterpretationApplyService:
                     mapping,
                     None,
                 )
-            elif mode == "legacy":
+            elif mode == "sequence":
                 count = self._apply_reviewed_sequence_label_map(
                     mapped_target_files,
                     label_map,
@@ -438,6 +446,12 @@ class DataInterpretationApplyService:
             and "internal_events" not in candidate.event_roles
         ):
             return []
+        selected_events = self._internal_epoch_event_codes(candidate)
+        event_label_aliases = {
+            event_code: str(candidate.class_map.get(event_code) or event_code).strip()
+            for event_code in selected_events
+            if str(candidate.class_map.get(event_code) or event_code).strip()
+        }
         records: list[dict[str, Any]] = []
         hint = {
             "source": "Labels inside EEG files",
@@ -449,9 +463,8 @@ class DataInterpretationApplyService:
             "granularity": "trial_or_event",
             "class_map": dict(candidate.class_map),
             "event_roles": dict(candidate.event_roles),
-            "recommended_events": [
-                str(value) for value in candidate.class_map.values()
-            ],
+            "event_label_aliases": event_label_aliases,
+            "recommended_events": selected_events,
         }
         for data in list(self.dataset.get_loaded_data_list() or []):
             setter = getattr(data, "set_runtime_detail", None)
@@ -462,6 +475,22 @@ class DataInterpretationApplyService:
                 {"file": self._safe_data_filepath(data), "source": hint["source"]}
             )
         return records
+
+    @staticmethod
+    def _internal_epoch_event_codes(candidate: InterpretationCandidate) -> list[str]:
+        selection = dict(candidate.internal_event_selection or {})
+        values = selection.get("label_event_codes")
+        if not isinstance(values, (list, tuple, set)):
+            values = candidate.class_map.keys()
+
+        def sort_key(value: str) -> tuple[int, int | str]:
+            text = str(value).strip()
+            return (0, int(text)) if text.isdigit() else (1, text.casefold())
+
+        return sorted(
+            {str(item).strip() for item in values if str(item).strip()},
+            key=sort_key,
+        )
 
     @staticmethod
     def _load_reviewed_label_map(
@@ -485,6 +514,91 @@ class DataInterpretationApplyService:
                 or None,
             )
         return label_map
+
+    def _apply_reviewed_timestamp_label_map(
+        self,
+        target_files: list[Any],
+        label_plans: list[dict[str, Any]],
+        label_map: dict[str, Any],
+        file_mapping: dict[str, str],
+        mapping: dict[Any, str],
+    ) -> int:
+        plan_by_path = {
+            str(plan.get("path") or "").strip(): plan for plan in label_plans
+        }
+        success_count = 0
+        for target in target_files:
+            data_path = self._data_filepath(target)
+            carrier_path = file_mapping.get(data_path)
+            if not carrier_path or carrier_path not in label_map:
+                continue
+            plan = plan_by_path.get(carrier_path, {})
+            labels = label_map[carrier_path]
+            if self._plan_uses_sample_index(plan):
+                labels = self._timestamp_rows_from_sample_index(
+                    labels,
+                    sfreq=self._target_sample_frequency(target),
+                )
+            success_count += int(
+                self.dataset.apply_labels_batch(
+                    [target],
+                    {carrier_path: labels},
+                    {data_path: carrier_path},
+                    mapping,
+                    None,
+                )
+            )
+        return success_count
+
+    @staticmethod
+    def _plan_uses_sample_index(plan: dict[str, Any]) -> bool:
+        return str(plan.get("time_model") or "").strip().lower() == "sample_index"
+
+    @staticmethod
+    def _timestamp_rows_from_sample_index(labels: Any, *, sfreq: float) -> list[Any]:
+        if sfreq <= 0:
+            raise ValueError(
+                "EEG sample frequency is required for sample-index labels.",
+            )
+        if not isinstance(labels, list):
+            return labels
+        converted: list[Any] = []
+        for item in labels:
+            if not isinstance(item, dict):
+                converted.append(item)
+                continue
+            row = dict(item)
+            try:
+                row["onset"] = float(row["onset"]) / sfreq
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(
+                    "Sample-index label row has no numeric sample.",
+                ) from exc
+            if "duration" in row and row["duration"] not in (None, ""):
+                try:
+                    row["duration"] = float(row["duration"]) / sfreq
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(
+                        "Sample-index label row has non-numeric duration.",
+                    ) from exc
+            converted.append(row)
+        return converted
+
+    @staticmethod
+    def _target_sample_frequency(target: Any) -> float:
+        getter = getattr(target, "get_sfreq", None)
+        if callable(getter):
+            value = getter()
+            if value:
+                return float(cast(Any, value))
+        get_mne = getattr(target, "get_mne", None)
+        if callable(get_mne):
+            mne_obj = get_mne()
+            info = getattr(mne_obj, "info", {}) or {}
+            value = info.get("sfreq") if isinstance(info, dict) else None
+            if value:
+                return float(cast(Any, value))
+        raise ValueError("EEG sample frequency is required for sample-index labels.")
 
     def _record_epoch_hints(
         self,
@@ -590,12 +704,12 @@ class DataInterpretationApplyService:
             if not carrier_path or carrier_path not in label_map:
                 continue
             success_count += int(
-                self.dataset.apply_labels_legacy(
+                self.dataset.apply_labels_batch(
                     [target],
-                    label_map[carrier_path],
+                    {carrier_path: label_map[carrier_path]},
+                    {data_path: carrier_path},
                     mapping,
                     selected_event_names,
-                    force_import=False,
                 ),
             )
         return success_count
@@ -765,7 +879,7 @@ class DataInterpretationApplyService:
             and placement_method != "event_code"
             and bool(str(plan.get("selected_label_field") or "").strip())
             and bool(str(plan.get("selected_anchor") or "").strip())
-            and time_model in {"seconds", "relative_time"}
+            and time_model in {"seconds", "relative_time", "sample_index"}
         )
 
     @staticmethod

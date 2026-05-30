@@ -18,8 +18,6 @@ from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
 
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = ROOT / "artifacts" / "ui" / "data-import-wizard-steps"
-REVIEW_STATES_DIR = OUTPUT_DIR / "review-import-states"
-BIDS_PRESET_DIR = OUTPUT_DIR / "bids-preset"
 WINDOW_SIZE = QSize(1220, 1320)
 
 
@@ -27,8 +25,6 @@ def main() -> int:
     instance = QApplication.instance()
     app = instance if isinstance(instance, QApplication) else QApplication(sys.argv)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    REVIEW_STATES_DIR.mkdir(parents=True, exist_ok=True)
-    BIDS_PRESET_DIR.mkdir(parents=True, exist_ok=True)
     captures = [
         ("01-choose-eeg-data.png", _main_dialog(), "Choose EEG Data"),
         ("02-load-labels-many.png", _many_labels_dialog(), "Load Labels"),
@@ -53,43 +49,6 @@ def main() -> int:
     ]
     for filename, dialog, step_title in captures:
         path = OUTPUT_DIR / filename
-        _show_step(dialog, step_title, app)
-        _capture(dialog, path)
-        dialog.close()
-
-    bids_preset_captures = [
-        ("01-choose-eeg-data.png", _bids_events_dialog(), "Choose EEG Data"),
-        ("02-load-labels.png", _bids_events_dialog(), "Load Labels"),
-        ("03-review-metadata.png", _bids_events_dialog(), "Review Metadata"),
-        ("04-match-labels.png", _bids_events_dialog(), "Match Labels"),
-        ("05-review-and-import.png", _bids_events_dialog(), "Review and Import"),
-    ]
-    for filename, dialog, step_title in bids_preset_captures:
-        path = BIDS_PRESET_DIR / filename
-        _show_step(dialog, step_title, app)
-        _capture(dialog, path)
-        dialog.close()
-
-    review_state_captures = [
-        ("no-confirm.png", _review_import_state_dialog("safe"), "Review and Import"),
-        (
-            "needs-confirm.png",
-            _review_import_state_dialog("confirm"),
-            "Review and Import",
-        ),
-        (
-            "needs-review.png",
-            _review_import_state_dialog("review"),
-            "Review and Import",
-        ),
-        (
-            "confirm-and-review.png",
-            _review_import_state_dialog("both"),
-            "Review and Import",
-        ),
-    ]
-    for filename, dialog, step_title in review_state_captures:
-        path = REVIEW_STATES_DIR / filename
         _show_step(dialog, step_title, app)
         _capture(dialog, path)
         dialog.close()

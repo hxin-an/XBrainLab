@@ -25,6 +25,9 @@ from .data_interpretation_metadata import (
     metadata_for_file as _metadata_for_file,
 )
 
+_MAX_SCAN_DEPTH = 8
+_MAX_SCAN_FILES = 5000
+
 
 @dataclass(frozen=True)
 class ScanResult:
@@ -48,6 +51,23 @@ class ScanResult:
         return _serialize(self)
 
 
+@dataclass
+class _ScanBudget:
+    """Shared limits for one bounded filesystem scan."""
+
+    max_depth: int = _MAX_SCAN_DEPTH
+    max_files: int = _MAX_SCAN_FILES
+    files_collected: int = 0
+    warnings: list[str] = dc_field(default_factory=list)
+    _warning_keys: set[str] = dc_field(default_factory=set)
+
+    def warn_once(self, key: str, message: str) -> None:
+        if key in self._warning_keys:
+            return
+        self._warning_keys.add(key)
+        self.warnings.append(message)
+
+
 def scan_source_path(
     *,
     scan_id: str,
@@ -66,10 +86,12 @@ def scan_source_path(
     source_kind = _source_kind(resolved, source_hint)
     scan_root = resolved.parent if resolved.is_file() else resolved
     skipped_nested_bids_roots: list[Path] = []
+    scan_budget = _ScanBudget()
     files = _candidate_files(
         resolved,
         skip_nested_bids_roots=source_kind != "bids",
         skipped_bids_roots=skipped_nested_bids_roots,
+        budget=scan_budget,
     )
     eeg_files = sorted(
         str(item)
@@ -105,6 +127,7 @@ def scan_source_path(
         format_capabilities,
     )
     warnings.extend(_nested_bids_warnings(skipped_nested_bids_roots))
+    warnings.extend(scan_budget.warnings)
     warnings.extend(source_warnings)
     blocked_reasons = _scan_blocked_reasons(eeg_files, format_capabilities)
 
@@ -143,13 +166,59 @@ def _candidate_files(
     *,
     skip_nested_bids_roots: bool = False,
     skipped_bids_roots: list[Path] | None = None,
+    budget: _ScanBudget | None = None,
+    depth: int = 0,
 ) -> list[Path]:
+    budget = budget or _ScanBudget()
     if path.is_file():
+        if path.is_symlink():
+            budget.warn_once(
+                f"symlink:{path}",
+                f"Skipped symbolic link during source scan: {path}.",
+            )
+            return []
+        if budget.files_collected >= budget.max_files:
+            budget.warn_once(
+                "file-limit",
+                (
+                    "Source scan stopped after "
+                    f"{budget.max_files} files. Choose a narrower folder if "
+                    "expected files are missing."
+                ),
+            )
+            return []
+        budget.files_collected += 1
         return [path.resolve()]
+    if depth >= budget.max_depth:
+        budget.warn_once(
+            f"depth:{path}",
+            (
+                "Source scan skipped folders deeper than "
+                f"{budget.max_depth} levels: {path}."
+            ),
+        )
+        return []
     result: list[Path] = []
-    for item in path.iterdir():
+    for item in sorted(path.iterdir(), key=lambda value: value.name.lower()):
+        if budget.files_collected >= budget.max_files:
+            budget.warn_once(
+                "file-limit",
+                (
+                    "Source scan stopped after "
+                    f"{budget.max_files} files. Choose a narrower folder if "
+                    "expected files are missing."
+                ),
+            )
+            break
+        if item.is_symlink():
+            budget.warn_once(
+                f"symlink:{item}",
+                f"Skipped symbolic link during source scan: {item}.",
+            )
+            continue
         if item.is_file():
             result.append(item.resolve())
+            budget.files_collected += 1
             continue
         if not item.is_dir():
             continue
@@ -162,6 +231,8 @@ def _candidate_files(
                 item,
                 skip_nested_bids_roots=skip_nested_bids_roots,
                 skipped_bids_roots=skipped_bids_roots,
+                budget=budget,
+                depth=depth + 1,
             )
         )
     return result
@@ -224,11 +295,13 @@ def _label_carriers_from_sources(
         resolved = source.resolve()
         if resolved not in normalized:
             normalized.append(resolved)
+        label_budget = _ScanBudget()
         carriers = [
             item
-            for item in _candidate_files(resolved)
+            for item in _candidate_files(resolved, budget=label_budget)
             if _is_label_carrier(item) or _is_bids_events_file(item)
         ]
+        warnings.extend(label_budget.warnings)
         if not carriers:
             warnings.append(
                 "Label source did not contain a supported label/event file: "
@@ -294,15 +367,17 @@ def _looks_like_bids(path: Path) -> bool:
     if (path / "dataset_description.json").exists():
         return True
     bids_datatype_dirs = {"eeg", "ieeg", "meg", "beh"}
-    return any(
-        item.is_dir()
-        and item.name.startswith("sub-")
-        and any(
-            child.is_dir() and child.name.lower() in bids_datatype_dirs
-            for child in item.rglob("*")
-        )
-        for item in path.iterdir()
-    )
+    for item in path.iterdir():
+        if item.is_symlink() or not item.is_dir() or not item.name.startswith("sub-"):
+            continue
+        if any((item / datatype).is_dir() for datatype in bids_datatype_dirs):
+            return True
+        for child in item.iterdir():
+            if child.is_symlink() or not child.is_dir():
+                continue
+            if any((child / datatype).is_dir() for datatype in bids_datatype_dirs):
+                return True
+    return False
 
 
 def _scan_warnings(

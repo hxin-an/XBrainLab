@@ -18,7 +18,7 @@ from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
 from XBrainLab.backend.application import CommandName, get_application_service
 from XBrainLab.llm.core.config import LLMConfig
-from XBrainLab.llm.pipeline_state import (  # noqa: F401
+from XBrainLab.llm.pipeline_state import (
     STAGE_CONFIG,
     PipelineStage,
     compute_pipeline_stage,
@@ -1103,6 +1103,10 @@ class LLMController(QObject):
         command_name: str,
     ) -> ToolAvailability | str | None:
         """Return a backend policy block record, or ``None`` if available."""
+        stage_block = self._check_prompt_tool_exposure(command_name)
+        if stage_block is not None:
+            return stage_block
+
         try:
             availability = get_tool_availability(self.study, command_name)
         except CapabilityPolicyUnavailable:
@@ -1114,6 +1118,36 @@ class LLMController(QObject):
         if availability.enabled:
             return None
         return availability
+
+    def _check_prompt_tool_exposure(self, command_name: str) -> ToolAvailability | None:
+        """Reject tool execution when the current prompt would not expose it."""
+        try:
+            stage = compute_pipeline_stage(self.study)
+            config = STAGE_CONFIG.get(stage)
+            if config is None:
+                config = STAGE_CONFIG.get(PipelineStage.EMPTY, {"tools": []})
+        except Exception:
+            logger.debug("Stage tool exposure check failed", exc_info=True)
+            return None
+
+        allowed_tools = set(config.get("tools", []))
+        if command_name in allowed_tools:
+            return None
+
+        stage_label = str(
+            getattr(stage, "label", getattr(stage, "value", "current workflow stage"))
+        )
+        return ToolAvailability(
+            tool_name=command_name,
+            enabled=False,
+            reasons=(
+                f"Tool is not exposed in the current assistant workflow stage "
+                f"({stage_label}). Use the listed workflow tools for this stage.",
+            ),
+            command_name=None,
+            read_only=command_name in READ_ONLY_TOOLS,
+            can_auto_execute=False,
+        )
 
     def _check_requested_intent_boundary(
         self,

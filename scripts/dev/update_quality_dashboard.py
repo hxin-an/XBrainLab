@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -51,6 +52,28 @@ class CheckResult:
     output_excerpt: str
 
 
+@dataclass(frozen=True)
+class GitState:
+    """Small reproducibility snapshot for dashboard evidence."""
+
+    branch: str
+    commit: str
+    dirty: bool
+    status_summary: list[str]
+    dirty_count: int = 0
+    status_truncated: bool = False
+
+    def as_report_dict(self) -> dict[str, object]:
+        return {
+            "branch": self.branch,
+            "commit": self.commit,
+            "dirty": self.dirty,
+            "status_summary": self.status_summary,
+            "dirty_count": self.dirty_count,
+            "status_truncated": self.status_truncated,
+        }
+
+
 def configure_headless_env(*, ui: bool) -> dict[str, str]:
     """Return a process env suitable for unattended workspace checks."""
     env = os.environ.copy()
@@ -90,6 +113,60 @@ def summarize_tail(output: str, fallback: str) -> str:
         if stripped:
             return stripped
     return fallback
+
+
+def _git_output(args: list[str]) -> str:
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        return "unknown"
+    completed = subprocess.run(  # noqa: S603
+        [git_executable, *args],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        return "unknown"
+    return completed.stdout.strip() or "unknown"
+
+
+def collect_git_state() -> GitState:
+    """Return branch/commit/dirty metadata for the generated dashboard."""
+    branch = _git_output(["branch", "--show-current"])
+    commit = _git_output(["rev-parse", "--short=12", "HEAD"])
+    status_output = _git_output(["status", "--short"])
+    full_status = [] if status_output == "unknown" else status_output.splitlines()
+    return GitState(
+        branch=branch,
+        commit=commit,
+        dirty=bool(full_status),
+        status_summary=full_status[:40],
+        dirty_count=len(full_status),
+        status_truncated=len(full_status) > 40,
+    )
+
+
+def workspace_traceability_check(git_state: GitState) -> CheckResult:
+    """Return a non-command check that marks dirty release evidence as not clean."""
+    status = "warn" if git_state.dirty else "pass"
+    summary = (
+        f"Dirty worktree has {git_state.dirty_count} changed path(s); "
+        "commit and rerun before claiming release-candidate clean evidence."
+        if git_state.dirty
+        else f"Clean worktree at {git_state.commit}."
+    )
+    return CheckResult(
+        key="workspace_traceability",
+        label="Workspace Traceability",
+        category="quality",
+        command="git status --short",
+        status=status,
+        duration_seconds=0.0,
+        returncode=0,
+        summary=summary,
+        output_excerpt="\n".join(git_state.status_summary),
+    )
 
 
 def compute_overall_status(checks: list[CheckResult]) -> str:
@@ -275,8 +352,42 @@ def validate_ui_baseline(returncode: int, output: str) -> tuple[str, str]:
 
 def validate_pytest_like(returncode: int, output: str) -> tuple[str, str]:
     """Interpret runner output that still ends in a pytest summary line."""
+    exception_summary = extract_unhandled_exception_summary(output)
+    if exception_summary:
+        return "fail", exception_summary
     summary = extract_pytest_summary(output)
     return ("pass", summary) if returncode == 0 else ("fail", summary)
+
+
+def extract_unhandled_exception_summary(output: str) -> str | None:
+    """Detect uncaught exceptions in wrappers that can still exit with code 0."""
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    markers = (
+        "Traceback (most recent call last):",
+        "Fatal Python error:",
+        "Segmentation fault",
+    )
+    marker_index = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if any(marker in line for marker in markers)
+        ),
+        None,
+    )
+    if marker_index is None:
+        return None
+
+    tail = lines[marker_index:]
+    exception_line = next(
+        (
+            line
+            for line in reversed(tail)
+            if re.match(r"^[A-Za-z_][A-Za-z0-9_]*(Error|Exception):", line)
+        ),
+        tail[0],
+    )
+    return f"Unhandled exception output: {exception_line}"
 
 
 def validate_text_command(
@@ -297,11 +408,28 @@ def ensure_quality_dir() -> None:
     QUALITY_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def latest_is_fresh(max_age_minutes: int) -> bool:
+def latest_is_fresh(
+    max_age_minutes: int,
+    *,
+    profile: str = "fast",
+    git_state: GitState | None = None,
+) -> bool:
     """Return True when the latest report is newer than the requested age."""
     if max_age_minutes <= 0 or not LATEST_JSON.exists():
         return False
     payload = json.loads(LATEST_JSON.read_text(encoding="utf-8"))
+    if payload.get("workspace") != str(ROOT):
+        return False
+    if payload.get("profile", "fast") != profile:
+        return False
+    current_git = git_state or collect_git_state()
+    payload_git = payload.get("git") if isinstance(payload.get("git"), dict) else {}
+    if payload_git.get("commit") != current_git.commit:
+        return False
+    if bool(payload_git.get("dirty")) != current_git.dirty:
+        return False
+    if int(payload_git.get("dirty_count") or 0) != current_git.dirty_count:
+        return False
     generated_at = datetime.fromisoformat(payload["generated_at"])
     age_seconds = (datetime.now(UTC) - generated_at).total_seconds()
     return age_seconds < max_age_minutes * 60
@@ -327,12 +455,32 @@ def render_markdown(report: dict) -> str:
         f"- Profile: `{profile}`",
         f"- Overall status: `{report['overall_status'].upper()}`",
         f"- Workspace: `{report['workspace']}`",
-        "",
-        "## Summary",
-        "",
-        "| Check | Status | Duration | Summary |",
-        "| --- | --- | ---: | --- |",
     ]
+    git = report.get("git")
+    if isinstance(git, dict):
+        lines.extend(
+            [
+                f"- Git branch: `{git.get('branch', 'unknown')}`",
+                f"- Git commit: `{git.get('commit', 'unknown')}`",
+                f"- Dirty worktree: `{'yes' if git.get('dirty') else 'no'}`",
+            ]
+        )
+        status_summary = git.get("status_summary") or []
+        dirty_count = int(git.get("dirty_count") or len(status_summary))
+        if status_summary:
+            truncated = " (truncated)" if git.get("status_truncated") else ""
+            lines.append(f"- Dirty summary: `{dirty_count}` path(s){truncated}")
+            for item in status_summary[:12]:
+                lines.append(f"  - `{item}`")
+    lines.extend(
+        [
+            "",
+            "## Summary",
+            "",
+            "| Check | Status | Duration | Summary |",
+            "| --- | --- | ---: | --- |",
+        ]
+    )
     for check in checks:
         lines.append(
             f"| {check['label']} | `{status_icons[check['status']]}` | `{check['duration_seconds']:.2f}s` | {check['summary']} |"
@@ -535,18 +683,26 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     """Refresh the dashboard unless it is still fresh enough."""
     args = parse_args(argv or sys.argv[1:])
-    if latest_is_fresh(args.skip_if_fresh_minutes):
+    profile = "full" if args.include_slow_checks else "fast"
+    git_state = collect_git_state()
+    if latest_is_fresh(
+        args.skip_if_fresh_minutes,
+        profile=profile,
+        git_state=git_state,
+    ):
         print(
             f"Quality dashboard is fresh enough; skipping refresh (threshold: {args.skip_if_fresh_minutes} minutes)."
         )
         return 0
 
     checks = build_checks_for_mode(include_slow_checks=args.include_slow_checks)
+    checks.insert(0, workspace_traceability_check(git_state))
     generated_at = datetime.now(UTC).isoformat()
     report = {
         "generated_at": generated_at,
-        "profile": "full" if args.include_slow_checks else "fast",
+        "profile": profile,
         "workspace": str(ROOT),
+        "git": git_state.as_report_dict(),
         "overall_status": compute_overall_status(checks),
         "checks": [asdict(check) for check in checks],
     }

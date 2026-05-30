@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import re
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +33,15 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.dialogs.dataset.review_presenter import (
+    ReviewRow,
+    build_review_rows,
+    compact_review_rows,
+    is_metadata_review_row,
+    merge_review_rows,
+    metadata_required_fields_complete,
+    target_step_for_review_text,
+)
 from XBrainLab.ui.dialogs.dataset.smart_parser_dialog import SmartParserDialog
 from XBrainLab.ui.styles.theme import Theme
 from XBrainLab.ui.table_sizing import scaled_column_widths
@@ -293,15 +301,12 @@ class DataInterpretationPreviewDialog(BaseDialog):
         preview: dict[str, Any] | None = None,
         validation_decision: dict[str, Any] | None = None,
         initial_step: str | None = None,
-        label_rescan_handler: Callable[[list[str]], dict[str, Any] | None]
-        | None = None,
     ):
         self.scan_result = dict(scan_result or {})
         self.preview = dict(preview or {})
         self.validation_decision = dict(validation_decision or {})
         self._initial_step = str(initial_step or "")
         self._resume_step_after_accept = ""
-        self._label_rescan_handler = label_rescan_handler
         self.workflow_steps_label: QLabel
         self.step_labels: list[QLabel]
         self.summary_label: QLabel
@@ -5007,7 +5012,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         is_local_review_item = target_step == "Review and Import"
         if impact:
             details.append(impact)
-        if is_local_review_item and next_action:
+        if next_action and next_action not in details:
             details.append(next_action)
         for detail in details:
             detail_label = QLabel(detail)
@@ -5084,96 +5089,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
     def _go_next_step(self) -> None:
         if self._label_sources_need_rescan_before_matching():
-            if self._label_rescan_handler is not None:
-                if self._rescan_label_sources_in_place():
-                    self._go_to_step(self._step_titles.index("Review Metadata"))
-                return
             self._resume_step_after_accept = "Review Metadata"
             self.accept()
             return
         self._go_to_step(self.step_stack.currentIndex() + 1)
-
-    def _rescan_label_sources_in_place(self) -> bool:
-        if self._label_rescan_handler is None:
-            return False
-        label_sources = list(self._extra_label_sources)
-        self.next_button.setEnabled(False)
-        self.back_button.setEnabled(False)
-        self.label_sources_label.setText("Refreshing label files...")
-        self.label_sources_label.setVisible(True)
-        try:
-            payload = self._label_rescan_handler(label_sources)
-        finally:
-            self.next_button.setEnabled(True)
-            self.back_button.setEnabled(self.step_stack.currentIndex() > 0)
-        if not payload:
-            self.label_sources_label.setText("Label files were not refreshed.")
-            self.label_sources_label.setVisible(True)
-            return False
-        self._apply_label_rescan_payload(payload, label_sources)
-        return True
-
-    def _apply_label_rescan_payload(
-        self,
-        payload: dict[str, Any],
-        label_sources: list[str],
-    ) -> None:
-        self.scan_result = dict(payload.get("scan_result") or self.scan_result)
-        self.preview = dict(payload.get("preview") or self.preview)
-        self.validation_decision = dict(
-            payload.get("validation_decision") or self.validation_decision
-        )
-        self._initial_label_sources = self._clean_label_sources(
-            self.scan_result.get("label_sources")
-        )
-        if not self._initial_label_sources:
-            self._initial_label_sources = self._clean_label_sources(label_sources)
-        self._extra_label_sources = list(self._initial_label_sources)
-        self._resume_step_after_accept = ""
-        self.summary_label.setText(
-            str(self.preview.get("summary") or "Review the interpreted EEG source.")
-        )
-        self.decision_label.setText(self._decision_text())
-        self._refresh_label_source_rows()
-        self._refresh_label_matching_after_source_change()
-        if label_sources:
-            self._select_loaded_label_source_if_available()
-        self._refresh_review_import_summary()
-        self._refresh_review_step_after_rescan()
-        self._sync_apply_state()
-        self.label_sources_label.setText("Label files refreshed.")
-        self.label_sources_label.setVisible(True)
-        self._sync_scroll_policy()
-
-    def _refresh_review_step_after_rescan(self) -> None:
-        if hasattr(self, "confirmation_label"):
-            self.confirmation_label.setText(self._confirmation_text())
-            final_step = self.step_stack.currentIndex() == len(self._step_titles) - 1
-            self.confirmation_label.setVisible(
-                final_step and bool(self.confirmation_label.text())
-            )
-        if hasattr(self, "save_recipe_check"):
-            apply_allowed = self._apply_allowed()
-            self.save_recipe_check.setChecked(apply_allowed)
-            self.save_recipe_check.setEnabled(apply_allowed)
-        if hasattr(self, "apply_button"):
-            self.apply_button.setText(
-                "Apply Remap"
-                if self.decision == "blocked" and self._has_remap_options()
-                else "Confirm and Apply"
-                if self.decision == "needs_confirmation"
-                else "Apply Interpretation"
-            )
-            self.apply_button.setEnabled(self._apply_allowed())
-        if hasattr(self, "review_actions_layout"):
-            self._clear_layout(self.review_actions_layout)
-            self._populate_review_action_cards()
-        if hasattr(self, "review_tree"):
-            self.review_tree.clear()
-            self._eeg_file_remap_widgets.clear()
-            self._label_carrier_remap_widgets.clear()
-            self._populate_review_tree()
-            self._fit_review_tree_height()
 
     def _go_previous_step(self) -> None:
         self._go_to_step(self.step_stack.currentIndex() - 1)
@@ -7704,375 +7623,34 @@ class DataInterpretationPreviewDialog(BaseDialog):
         selector.currentIndexChanged.connect(self._sync_apply_state)
         return selector
 
-    def _review_rows(self) -> list[tuple[str, str, str, str]]:
-        action_items = self._action_item_rows(
-            self.preview.get("action_items")
-            or self.validation_decision.get("action_items")
+    def _review_rows(self) -> list[ReviewRow]:
+        rows = build_review_rows(
+            preview=self.preview,
+            validation_decision=self.validation_decision,
+            scan_result=self.scan_result,
         )
-        if action_items:
-            return self._compact_review_rows(action_items)
+        if self._review_metadata_is_complete():
+            rows = [row for row in rows if not is_metadata_review_row(row)]
+        return rows
 
-        rows: list[tuple[str, str, str, str]] = []
-        warnings = self._unique_strings(self.preview.get("warnings"))
-        confirmations = self._unique_strings(
-            [
-                *(self.preview.get("confirmation_items") or []),
-                *(self.validation_decision.get("required_confirmations") or []),
-            ]
-        )
-        blocked = self._unique_strings(
-            self.validation_decision.get("blocked_reasons")
-            or self.preview.get("blocked_reasons")
-        )
-        recipe_reload_summary = self.preview.get("recipe_reload_summary")
-        if isinstance(recipe_reload_summary, dict) and recipe_reload_summary:
-            rows.append(
-                (
-                    "Review and Import",
-                    "Reloaded recipe",
-                    str(
-                        recipe_reload_summary.get("message")
-                        or "Saved recipe choices were reapplied before validation."
-                    ),
-                    "Review any changed files before importing.",
-                )
-            )
-            for diff_row in recipe_reload_summary.get("diff_rows", []) or []:
-                if not isinstance(diff_row, dict):
-                    continue
-                item = str(diff_row.get("item") or "Recipe reload")
-                status = str(diff_row.get("status") or "Review")
-                detail = str(diff_row.get("detail") or "").strip()
-                if detail:
-                    rows.append(("Review and Import", item, detail, status))
-        for label, status, values in (
-            ("Possible issue", "Check", warnings),
-            ("Required choice", "Confirm", confirmations),
-            ("Cannot import yet", "Fix first", blocked),
-        ):
-            rows.extend(
-                (
-                    self._target_step_for_review_text(item),
-                    label,
-                    item,
-                    status,
-                )
-                for item in values
-            )
-        format_capabilities = self.preview.get(
-            "format_capabilities",
-        ) or self.scan_result.get("format_capabilities")
-        rows.extend(self._format_capability_rows(format_capabilities))
-        return self._compact_review_rows(rows)
-
-    @staticmethod
-    def _unique_strings(values: Any) -> list[str]:
-        if not isinstance(values, list):
-            return []
-        result: list[str] = []
-        for value in values:
-            text = str(value)
-            if text and text not in result:
-                result.append(text)
-        return result
-
-    @staticmethod
-    def _action_item_rows(values: Any) -> list[tuple[str, str, str, str]]:
-        if not isinstance(values, list):
-            return []
-        step_order = {
-            "Choose EEG Data": 0,
-            "Load Labels": 1,
-            "Review Metadata": 2,
-            "Match Labels": 3,
-            "Review and Import": 4,
-        }
-        rows: list[tuple[str, str, str, str]] = []
-        for value in values:
-            if not isinstance(value, dict):
-                continue
-            target_step = str(value.get("target_step") or "Review and Import")
-            rows.append(
-                (
-                    target_step,
-                    str(value.get("issue") or "Review item"),
-                    str(value.get("impact") or ""),
-                    str(value.get("next_action") or ""),
-                )
-            )
-        return sorted(rows, key=lambda row: (step_order.get(row[0], 99), row[1]))
-
-    @classmethod
-    def _compact_review_rows(
-        cls,
-        rows: list[tuple[str, str, str, str]],
-    ) -> list[tuple[str, str, str, str]]:
-        metadata_rows: list[tuple[str, str, str, str]] = []
-        compacted: list[tuple[str, str, str, str]] = []
-        metadata_insert_index: int | None = None
-        for row in rows:
-            if cls._is_optional_metadata_review_row(row):
-                continue
-            if cls._is_metadata_review_row(row):
-                if metadata_insert_index is None:
-                    metadata_insert_index = len(compacted)
-                metadata_rows.append(row)
-                continue
-            compacted.append(row)
-        if not metadata_rows:
-            return compacted
-        insert_at = (
-            metadata_insert_index
-            if metadata_insert_index is not None
-            else len(compacted)
-        )
-        compacted.insert(insert_at, cls._metadata_review_action_row(metadata_rows))
-        return compacted
-
-    @classmethod
-    def _is_metadata_review_row(cls, row: tuple[str, str, str, str]) -> bool:
-        target_step, issue, impact, next_action = row
-        del impact
-        text = " ".join((target_step, issue, next_action)).lower()
-        return target_step == "Review Metadata" or "metadata" in text
-
-    @classmethod
-    def _is_optional_metadata_review_row(cls, row: tuple[str, str, str, str]) -> bool:
-        if not cls._is_metadata_review_row(row):
-            return False
-        fields = cls._metadata_fields_in_review_rows([row])
-        return bool(fields) and fields <= {"session", "run"}
-
-    @classmethod
-    def _metadata_review_action_row(
-        cls,
-        rows: list[tuple[str, str, str, str]],
-    ) -> tuple[str, str, str, str]:
-        fields = [
-            field
-            for field in ("subject", "task")
-            if field in cls._metadata_fields_in_review_rows(rows)
-        ]
-        if fields:
-            impact = "Required fields need review: " + ", ".join(fields) + "."
-        else:
-            impact = "Metadata choices need review."
-        files = cls._review_group_files(rows)
-        if files:
-            impact = f"{impact}\n{cls._review_grouped_impact_text(files, [])}"
-        return (
-            "Review Metadata",
-            "Review metadata",
-            impact,
-            "Review the metadata table.",
+    def _review_metadata_is_complete(self) -> bool:
+        _complete_count, missing_fields = self._metadata_completion_counts()
+        return metadata_required_fields_complete(
+            row_count=len(self._metadata_items),
+            missing_fields=missing_fields,
         )
 
     @staticmethod
-    def _metadata_fields_in_review_rows(
-        rows: list[tuple[str, str, str, str]],
-    ) -> set[str]:
-        text = " ".join(" ".join(row) for row in rows).lower()
-        return {
-            field
-            for field in ("subject", "session", "task", "run")
-            if re.search(rf"\b{re.escape(field)}\b", text)
-        }
-
-    @classmethod
-    def _merged_review_rows(
-        cls,
-        rows: list[tuple[str, str, str, str]],
-    ) -> list[tuple[str, str, str, str]]:
-        grouped: dict[
-            tuple[str, str, str, str],
-            list[tuple[str, str, str, str]],
-        ] = {}
-        order: list[tuple[str, str, str, str]] = []
-        for row in rows:
-            target_step, issue, impact, next_action = row
-            key = (
-                target_step,
-                cls._review_text_without_file_refs(issue),
-                cls._review_text_without_file_refs(impact),
-                cls._review_text_without_file_refs(next_action),
-            )
-            if key not in grouped:
-                grouped[key] = []
-                order.append(key)
-            grouped[key].append(row)
-
-        merged: list[tuple[str, str, str, str]] = []
-        for target_step, issue_key, impact_key, next_action_key in order:
-            group_rows = grouped[(target_step, issue_key, impact_key, next_action_key)]
-            files = cls._review_group_files(group_rows)
-            if len(group_rows) <= 1 or len(files) <= 1:
-                merged.extend(group_rows)
-                continue
-            first_target_step, first_issue, _first_impact, first_next_action = (
-                group_rows[0]
-            )
-            merged.append(
-                (
-                    first_target_step,
-                    cls._review_grouped_issue_text(first_issue),
-                    cls._review_grouped_impact_text(
-                        files,
-                        cls._review_group_shared_details(group_rows),
-                    ),
-                    cls._review_grouped_next_action_text(first_next_action),
-                )
-            )
-        return merged
-
-    @classmethod
-    def _review_group_files(
-        cls,
-        rows: list[tuple[str, str, str, str]],
-    ) -> list[str]:
-        files: list[str] = []
-        for row in rows:
-            for value in row[1:]:
-                for file_name in cls._review_file_refs(value):
-                    if file_name not in files:
-                        files.append(file_name)
-        return files
-
-    @classmethod
-    def _review_group_shared_details(
-        cls,
-        rows: list[tuple[str, str, str, str]],
-    ) -> list[str]:
-        details: list[str] = []
-        for _target_step, _issue, impact, _next_action in rows:
-            detail = cls._review_group_detail_text(impact)
-            if detail and detail not in details:
-                details.append(detail)
-        return details[:2]
-
-    @classmethod
-    def _review_group_detail_text(cls, text: str) -> str:
-        if not text or cls._review_file_refs(text):
-            return ""
-        stripped = text.strip()
-        if stripped.lower() in {
-            "check",
-            "confirm",
-            "fix first",
-            "no action needed.",
-        }:
-            return ""
-        return stripped
-
-    @classmethod
-    def _review_text_without_file_refs(cls, text: str) -> str:
-        normalized = cls._review_file_ref_pattern().sub("{file}", str(text).strip())
-        normalized = re.sub(r"\s+", " ", normalized).strip()
-        return normalized.lower()
-
-    @classmethod
-    def _review_file_refs(cls, text: str) -> list[str]:
-        result: list[str] = []
-        for match in cls._review_file_ref_pattern().finditer(str(text)):
-            file_name = Path(match.group(0).replace("\\", "/")).name
-            if file_name and file_name not in result:
-                result.append(file_name)
-        return result
+    def _compact_review_rows(rows: list[ReviewRow]) -> list[ReviewRow]:
+        return compact_review_rows(rows)
 
     @staticmethod
-    def _review_file_ref_pattern() -> re.Pattern[str]:
-        extensions_pattern = "|".join(
-            re.escape(extension)
-            for extension in (
-                "gdf",
-                "edf",
-                "set",
-                "fif",
-                "vhdr",
-                "mat",
-                "csv",
-                "tsv",
-            )
-        )
-        return re.compile(
-            r"(?<![\w.-])(?:[A-Za-z]:)?(?:[\\/][^\s:;,]+)*[\\/]*"
-            rf"[^\\/\s:;,]+\.({extensions_pattern})(?![\w-])",
-            re.IGNORECASE,
-        )
-
-    @staticmethod
-    def _review_grouped_issue_text(issue: str) -> str:
-        text = issue.strip()
-        text = DataInterpretationPreviewDialog._review_file_ref_pattern().sub(
-            "{file}",
-            text,
-        )
-        replacements = {
-            "{file} needs": "Files need",
-            "{file} requires": "Files require",
-            "{file} has": "Files have",
-            "{file} is": "Files are",
-            "{file} was": "Files were",
-            "{file}": "Files",
-        }
-        for old, new in replacements.items():
-            text = text.replace(old, new)
-        return text
-
-    @staticmethod
-    def _review_grouped_next_action_text(next_action: str) -> str:
-        text = next_action.strip()
-        if not text:
-            return text
-        return DataInterpretationPreviewDialog._review_file_ref_pattern().sub(
-            "these files",
-            text,
-        )
-
-    @staticmethod
-    def _review_grouped_impact_text(files: list[str], details: list[str]) -> str:
-        shown = files[:4]
-        text = f"{len(files)} files affected: " + ", ".join(shown)
-        extra_count = len(files) - len(shown)
-        if extra_count > 0:
-            text = f"{text}; +{extra_count} more"
-        if details:
-            text = f"{text}\n" + "\n".join(details)
-        return text
+    def _merged_review_rows(rows: list[ReviewRow]) -> list[ReviewRow]:
+        return merge_review_rows(rows)
 
     @staticmethod
     def _target_step_for_review_text(text: str) -> str:
-        lowered = str(text).lower()
-        if "label" in lowered or "event" in lowered:
-            return "Load Labels"
-        if any(token in lowered for token in ("subject", "session", "task", "run")):
-            return "Review Metadata"
-        if "eeg" in lowered or "source" in lowered:
-            return "Choose EEG Data"
-        return "Review and Import"
-
-    @staticmethod
-    def _format_capability_rows(values: Any) -> list[tuple[str, str, str, str]]:
-        if not isinstance(values, list):
-            return []
-        grouped: dict[tuple[str, str, str], int] = {}
-        for value in values:
-            if not isinstance(value, dict):
-                continue
-            format_name = str(value.get("format") or value.get("name") or "Source")
-            status = str(value.get("status") or "review").replace("_", " ")
-            message = str(value.get("message") or "").strip()
-            grouped[(format_name, status, message)] = (
-                grouped.get((format_name, status, message), 0) + 1
-            )
-        rows: list[tuple[str, str, str, str]] = []
-        for (format_name, status, message), count in grouped.items():
-            detail = f"{format_name}: {status}."
-            if count > 1:
-                detail = f"{detail} {count} matching source(s)."
-            if message:
-                detail = f"{detail} {message}"
-            rows.append(("Review and Import", "Format support", detail, "Check format"))
-        return rows
+        return target_step_for_review_text(text)
 
     @staticmethod
     def _recipe_trace_rows(values: Any) -> list[tuple[str, str, str, str]]:

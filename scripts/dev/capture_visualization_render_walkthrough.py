@@ -182,6 +182,7 @@ def run_visualization_render_walkthrough(
         "plan": panel.plan_combo.currentText(),
         "run": panel.run_combo.currentText(),
         "method": panel.method_combo.currentText(),
+        "control_layout": _control_layout_evidence(panel),
     }
     payload["application_evaluate"] = _command_payload(
         service.execute(EvaluateCommand()),
@@ -342,19 +343,26 @@ def _capture_blocked_tab(
     _process_events(app, 500)
     widget = panel.tabs.currentWidget()
     blocked_reason = _visible_label_text(widget)
+    expected_reason = spec["expected_reason"]
+    message_evidence = _blocked_message_evidence(widget, expected_reason)
     plotter_created = bool(getattr(widget, "plotter_widget", None))
     screenshot_path = output_dir / spec["screenshot"]
     capture_code = _capture_current_window(window, screenshot_path)
-    expected_reason = spec["expected_reason"]
-    ok = capture_code == 0 and expected_reason in blocked_reason and not plotter_created
+    ok = (
+        capture_code == 0
+        and expected_reason in blocked_reason
+        and not plotter_created
+        and message_evidence["ok"]
+    )
     return {
         "tab": tab_name,
         "screenshot": str(screenshot_path),
         "ok": ok,
         "failure_reason": ""
         if ok
-        else f"{tab_name} did not show expected blocked reason.",
+        else f"{tab_name} did not show an unclipped expected blocked reason.",
         "blocked_reason": blocked_reason,
+        "message_evidence": message_evidence,
         "plotter_created": plotter_created,
     }
 
@@ -387,6 +395,100 @@ def _visible_label_text(widget: Any) -> str:
     return " ".join(labels)
 
 
+def _control_layout_evidence(panel: Any) -> dict[str, Any]:
+    widgets = {
+        "plan": getattr(panel, "plan_combo", None),
+        "run": getattr(panel, "run_combo", None),
+        "method": getattr(panel, "method_combo", None),
+        "absolute": getattr(panel, "abs_check", None),
+    }
+    rects = {
+        name: _global_widget_rect(widget) for name, widget in widgets.items() if widget
+    }
+    hidden = [
+        name
+        for name, widget in widgets.items()
+        if not widget
+        or not widget.isVisible()
+        or widget.width() <= 0
+        or widget.height() <= 0
+    ]
+    overlaps: list[str] = []
+    names = list(rects)
+    for left_index, left_name in enumerate(names):
+        for right_name in names[left_index + 1 :]:
+            if _rects_intersect(rects[left_name], rects[right_name]):
+                overlaps.append(f"{left_name}/{right_name}")
+    return {
+        "ok": not hidden and not overlaps,
+        "hidden_or_empty": hidden,
+        "overlaps": overlaps,
+        "rects": rects,
+    }
+
+
+def _global_widget_rect(widget: Any) -> dict[str, int]:
+    rect = widget.rect()
+    top_left = widget.mapToGlobal(rect.topLeft())
+    return {
+        "x": int(top_left.x()),
+        "y": int(top_left.y()),
+        "width": int(rect.width()),
+        "height": int(rect.height()),
+    }
+
+
+def _rects_intersect(left: dict[str, int], right: dict[str, int]) -> bool:
+    return not (
+        left["x"] + left["width"] <= right["x"]
+        or right["x"] + right["width"] <= left["x"]
+        or left["y"] + left["height"] <= right["y"]
+        or right["y"] + right["height"] <= left["y"]
+    )
+
+
+def _blocked_message_evidence(widget: Any, expected_reason: str) -> dict[str, Any]:
+    labels = [
+        label
+        for label in widget.findChildren(QLabel)
+        if not label.isHidden() and expected_reason in label.text()
+    ]
+    if not labels:
+        return {"ok": False, "reason": "expected label not visible"}
+    label = labels[0]
+    rect = label.rect()
+    top_left = label.mapTo(widget, rect.topLeft())
+    label_rect = {
+        "x": int(top_left.x()),
+        "y": int(top_left.y()),
+        "width": int(rect.width()),
+        "height": int(rect.height()),
+    }
+    size_hint = label.sizeHint()
+    clipped_by_bounds = (
+        label_rect["x"] < 0
+        or label_rect["y"] < 0
+        or label_rect["x"] + label_rect["width"] > widget.width()
+        or label_rect["y"] + label_rect["height"] > widget.height()
+    )
+    clipped_by_hint = size_hint.height() > label.height() + 2
+    return {
+        "ok": not clipped_by_bounds and not clipped_by_hint,
+        "reason": "",
+        "label_rect": label_rect,
+        "container_size": {
+            "width": int(widget.width()),
+            "height": int(widget.height()),
+        },
+        "size_hint": {
+            "width": int(size_hint.width()),
+            "height": int(size_hint.height()),
+        },
+        "clipped_by_bounds": clipped_by_bounds,
+        "clipped_by_hint": clipped_by_hint,
+    }
+
+
 def validate_visualization_render_payload(
     payload: dict[str, Any],
 ) -> tuple[bool, str]:
@@ -410,6 +512,15 @@ def validate_visualization_render_payload(
     )
     if "saliency map" not in available_views:
         return False, "ApplicationService did not report saliency map availability."
+
+    control_layout = (payload.get("ui_state") or {}).get("control_layout") or {}
+    if not control_layout:
+        return False, "Visualization control layout evidence is missing."
+    if not control_layout.get("ok"):
+        overlaps = ", ".join(control_layout.get("overlaps") or [])
+        hidden = ", ".join(control_layout.get("hidden_or_empty") or [])
+        detail = overlaps or hidden or "unknown layout issue"
+        return False, f"Visualization controls are not cleanly laid out: {detail}."
 
     final_state = payload.get("final_state") or {}
     if final_state:
@@ -463,6 +574,8 @@ def validate_visualization_render_payload(
             return False, f"{tab} created a PyVista plotter in a blocked runtime."
         if spec["expected_reason"] not in str(render.get("blocked_reason", "")):
             return False, f"{tab} did not show a user-facing blocked reason."
+        if not (render.get("message_evidence") or {}).get("ok"):
+            return False, f"{tab} blocked reason appears clipped or hidden."
         screenshot_ok, screenshot_reason = _validate_screenshot(
             render.get("screenshot"),
             f"{tab} blocked screenshot",

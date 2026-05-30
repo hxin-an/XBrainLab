@@ -58,6 +58,14 @@ class TestModelSelection:
         assert dialog.params_table.palette().color(QPalette.ColorRole.Highlight) == (
             QColor(Theme.BLUE_PRESSED)
         )
+        assert dialog.params_table.palette().color(
+            QPalette.ColorGroup.Inactive,
+            QPalette.ColorRole.Highlight,
+        ) == QColor(Theme.BLUE_PRESSED)
+        assert dialog.params_table.palette().color(
+            QPalette.ColorGroup.Inactive,
+            QPalette.ColorRole.HighlightedText,
+        ) == QColor(Theme.TEXT_PRIMARY)
 
     def test_params_table_stays_visible_for_models_without_editable_params(self, qtbot):
         with patch("inspect.getmembers") as mock_getmembers:

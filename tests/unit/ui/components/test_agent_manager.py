@@ -339,7 +339,7 @@ class TestAgentManagerMethods:
         visible = "\n".join(messages)
 
         assert "Training is not available yet" in visible
-        assert "Generate datasets before training" in visible
+        assert "Tool is not exposed in the current assistant workflow stage" in visible
         assert "Tool Output:" not in visible
         assert "command_name" not in visible
         assert manager.chat_panel.status_label.text() == "No data loaded"

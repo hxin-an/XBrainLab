@@ -7,6 +7,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+def _allow_prompt_tools(ctrl):
+    ctrl._check_prompt_tool_exposure = MagicMock(return_value=None)
+
+
 @pytest.fixture
 def _mock_qt():
     """Patch Qt imports so controller module loads without a running QApp."""
@@ -242,6 +246,7 @@ class TestHandleToolResultLogic:
 # --- _process_tool_calls ---
 class TestProcessToolCalls:
     def test_success_finalizes(self, ctrl):
+        _allow_prompt_tools(ctrl)
         ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "ok"))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl._finalize_turn_after_tool = MagicMock()
@@ -253,6 +258,7 @@ class TestProcessToolCalls:
         ctrl._finalize_turn_after_tool.assert_called_once()
 
     def test_failure_retries(self, ctrl):
+        _allow_prompt_tools(ctrl)
         ctrl._execute_tool_no_loop = MagicMock(return_value=(False, "err"))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl._generate_response = MagicMock()
@@ -264,6 +270,7 @@ class TestProcessToolCalls:
         ctrl._generate_response.assert_called_once()
 
     def test_max_failures_stops(self, ctrl):
+        _allow_prompt_tools(ctrl)
         ctrl._tool_failure_count = 2
         ctrl._execute_tool_no_loop = MagicMock(return_value=(False, "err"))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)

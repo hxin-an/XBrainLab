@@ -37,10 +37,8 @@ class DatasetGenerationCommandService:
     def handle_generate_dataset(self, command: Command) -> HandlerResult:
         if not isinstance(command, GenerateDatasetCommand):
             raise TypeError("Invalid command for generate_dataset")
-        generator = command.generator
-        if generator is None:
-            config = self._build_data_splitting_config(command)
-            generator = self.study.get_datasets_generator(config)
+        config = self._build_data_splitting_config(command)
+        generator = self.study.get_datasets_generator(config)
         previous_datasets = list(getattr(self.study, "datasets", []) or [])
         previous_generator = getattr(self.study, "dataset_generator", None)
         previous_trainer = getattr(self.study, "trainer", None)
@@ -48,7 +46,7 @@ class DatasetGenerationCommandService:
             self.training.apply_data_splitting(generator)
             datasets = list(getattr(self.study, "datasets", []) or [])
             count = len(datasets)
-            protocol = self._split_protocol_for_generation(command, generator)
+            protocol = self._split_protocol_for_config(config, command)
             audit = audit_dataset_splits(
                 cast(list[Any], datasets),
                 protocol=protocol,
@@ -160,6 +158,11 @@ class DatasetGenerationCommandService:
     def _build_data_splitting_config(
         command: GenerateDatasetCommand,
     ) -> DataSplittingConfig:
+        if command.split_config:
+            return DatasetGenerationCommandService._config_from_payload(
+                command.split_config,
+            )
+
         split_strategy = command.split_strategy.lower()
         split_by = {
             "trial": SplitByType.TRIAL,
@@ -202,6 +205,77 @@ class DatasetGenerationCommandService:
         )
 
     @staticmethod
+    def _config_from_payload(payload: dict[str, Any]) -> DataSplittingConfig:
+        train_type = DatasetGenerationCommandService._enum_from_value(
+            TrainingType,
+            payload.get("train_type"),
+            default=TrainingType.IND,
+        )
+        return DataSplittingConfig(
+            train_type=train_type,
+            is_cross_validation=bool(payload.get("is_cross_validation", False)),
+            val_splitter_list=DatasetGenerationCommandService._splitters_from_payload(
+                payload.get("val_splitters"),
+                ValSplitByType,
+            ),
+            test_splitter_list=DatasetGenerationCommandService._splitters_from_payload(
+                payload.get("test_splitters"),
+                SplitByType,
+            ),
+        )
+
+    @staticmethod
+    def _splitters_from_payload(
+        raw_splitters: Any,
+        split_type_enum: type[SplitByType] | type[ValSplitByType],
+    ) -> list[DataSplitter]:
+        if raw_splitters is None:
+            return []
+        if not isinstance(raw_splitters, list):
+            raise ValueError("split_config must include at least one splitter.")
+        if not raw_splitters:
+            return []
+        splitters: list[DataSplitter] = []
+        for raw in raw_splitters:
+            if not isinstance(raw, dict):
+                raise ValueError("split_config splitters must be objects.")
+            split_type = DatasetGenerationCommandService._enum_from_value(
+                split_type_enum,
+                raw.get("split_type"),
+            )
+            split_unit = DatasetGenerationCommandService._enum_from_value(
+                SplitUnit,
+                raw.get("split_unit"),
+            )
+            value = raw.get("value")
+            if value is None:
+                value = raw.get("value_var")
+            splitter = DataSplitter(
+                split_type=split_type,
+                value_var=str(value) if value is not None else None,
+                split_unit=split_unit,
+                is_option=bool(raw.get("is_option", True)),
+            )
+            splitters.append(splitter)
+        return splitters
+
+    @staticmethod
+    def _enum_from_value(
+        enum_type: Any,
+        value: Any,
+        *,
+        default: Any | None = None,
+    ) -> Any:
+        if value is None and default is not None:
+            return default
+        text = str(value or "").strip()
+        for item in enum_type:
+            enum_repr = f"{item.__class__.__name__}.{item.name}"
+            if text in {item.value, item.name, enum_repr}:
+                return item
+        raise ValueError(f"Unknown {enum_type.__name__} value: {value}")
+
+    @staticmethod
     def _split_protocol(split_strategy: str) -> str:
         normalized = str(split_strategy or "trial").strip().lower()
         if normalized in {"subject", "subject-wise", "subjectwise"}:
@@ -210,18 +284,12 @@ class DatasetGenerationCommandService:
             return "session-wise"
         return "trial-wise"
 
-    def _split_protocol_for_generation(
+    def _split_protocol_for_config(
         self,
+        config: DataSplittingConfig,
         command: GenerateDatasetCommand,
-        generator: Any,
     ) -> str:
-        if command.generator is None:
-            return self._split_protocol(command.split_strategy)
-
-        splitters = getattr(generator, "test_splitter_list", None)
-        if splitters is None:
-            config = getattr(generator, "config", None)
-            splitters = getattr(config, "test_splitter_list", None)
+        splitters = list(config.test_splitter_list or [])
         if splitters:
             split_type = getattr(splitters[0], "split_type", None)
             if split_type in {SplitByType.SUBJECT, SplitByType.SUBJECT_IND}:

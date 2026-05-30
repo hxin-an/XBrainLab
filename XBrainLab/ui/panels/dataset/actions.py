@@ -5,13 +5,11 @@ running smart parse, and managing event filtering.
 """
 
 from collections.abc import Callable
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from PyQt6 import sip
-from PyQt6.QtCore import QEventLoop, Qt, QTimer
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFileDialog,
     QInputDialog,
@@ -32,8 +30,8 @@ from XBrainLab.backend.application.commands import (
     QueryStateCommand,
     ReloadInterpretationRecipeCommand,
     RemoveFilesCommand,
+    ReviewInterpretationCommand,
     SaveInterpretationRecipeCommand,
-    ScanSourceCommand,
     UpdateMetadataCommand,
     ValidateInterpretationCommand,
 )
@@ -47,6 +45,8 @@ from XBrainLab.ui.application_capabilities import (
     get_command_capability,
     run_legacy_controller_fallback,
 )
+
+from .interpretation_command_runner import execute_interpretation_command_responsive
 
 DataInterpretationPreviewDialog: Any | None = None
 EventFilterDialog: Any | None = None
@@ -630,79 +630,11 @@ class DatasetActionHandler:
         candidate_id = review_state.candidate_id
         resume_dialog_step = ""
 
-        def refresh_label_sources_in_place(
-            next_label_sources: list[str],
-        ) -> dict[str, Any] | None:
-            nonlocal scan, preview, decision, candidate_id, label_sources
-            label_sources = list(next_label_sources)
-            refreshed_scan_result = self._execute_interpretation_command_responsive(
-                ScanSourceCommand(
-                    source_path=source_path,
-                    source_hint=source_hint,
-                    label_sources=label_sources,
-                ),
-                error_title="Source scan failed",
-            )
-            if refreshed_scan_result is None:
-                return None
-            if refreshed_scan_result.failed:
-                QMessageBox.critical(
-                    self.panel,
-                    "Source scan failed",
-                    refreshed_scan_result.message,
-                )
-                return None
-            scan = self._diagnostic_payload(refreshed_scan_result, "scan_result")
-            refreshed_preview_result = self._execute_interpretation_command_responsive(
-                PreviewInterpretationCommand(choices=choices),
-                error_title="Interpretation preview failed",
-            )
-            if refreshed_preview_result is None:
-                return None
-            if refreshed_preview_result.failed:
-                QMessageBox.critical(
-                    self.panel,
-                    "Interpretation preview failed",
-                    refreshed_preview_result.message,
-                )
-                return None
-            preview = self._diagnostic_payload(refreshed_preview_result, "preview")
-            candidate = self._diagnostic_payload(
-                refreshed_preview_result,
-                "candidate",
-            )
-            candidate_id = self._optional_payload_id(candidate, "candidate_id")
-            refreshed_validation_result = (
-                self._execute_interpretation_command_responsive(
-                    ValidateInterpretationCommand(candidate_id=candidate_id),
-                    error_title="Interpretation validation failed",
-                )
-            )
-            if refreshed_validation_result is None:
-                return None
-            if refreshed_validation_result.failed:
-                QMessageBox.critical(
-                    self.panel,
-                    "Interpretation validation failed",
-                    refreshed_validation_result.message,
-                )
-                return None
-            decision = self._diagnostic_payload(
-                refreshed_validation_result,
-                "validation_decision",
-            )
-            return {
-                "scan_result": scan,
-                "preview": preview,
-                "validation_decision": decision,
-            }
-
         while True:
             dialog_kwargs: dict[str, Any] = {
                 "scan_result": scan,
                 "preview": preview,
                 "validation_decision": decision,
-                "label_rescan_handler": refresh_label_sources_in_place,
             }
             if resume_dialog_step:
                 dialog_kwargs["initial_step"] = resume_dialog_step
@@ -729,55 +661,30 @@ class DatasetActionHandler:
             if next_label_sources != label_sources:
                 label_sources = next_label_sources
                 resume_dialog_step = str(dialog_result.get("resume_step") or "")
-                scan_result = self._execute_interpretation_command_responsive(
-                    ScanSourceCommand(
+                review_result = self._execute_interpretation_command_responsive(
+                    ReviewInterpretationCommand(
                         source_path=source_path,
                         source_hint=source_hint,
                         label_sources=label_sources,
+                        choices=choices,
                     ),
-                    error_title="Source scan failed",
+                    error_title="Interpretation review failed",
                 )
-                if scan_result is None:
+                if review_result is None:
                     return False
-                if scan_result.failed:
+                if review_result.failed:
                     QMessageBox.critical(
                         self.panel,
-                        "Source scan failed",
-                        scan_result.message,
+                        "Interpretation review failed",
+                        review_result.message,
                     )
                     return True
-                scan = self._diagnostic_payload(scan_result, "scan_result")
-                preview_result = self._execute_interpretation_command_responsive(
-                    PreviewInterpretationCommand(choices=choices),
-                    error_title="Interpretation preview failed",
-                )
-                if preview_result is None:
-                    return False
-                if preview_result.failed:
-                    QMessageBox.critical(
-                        self.panel,
-                        "Interpretation preview failed",
-                        preview_result.message,
-                    )
-                    return True
-                candidate = self._diagnostic_payload(preview_result, "candidate")
+                scan = self._diagnostic_payload(review_result, "scan_result")
+                preview = self._diagnostic_payload(review_result, "preview")
+                candidate = self._diagnostic_payload(review_result, "candidate")
                 candidate_id = self._optional_payload_id(candidate, "candidate_id")
-                validation_result = self._execute_interpretation_command_responsive(
-                    ValidateInterpretationCommand(candidate_id=candidate_id),
-                    error_title="Interpretation validation failed",
-                )
-                if validation_result is None:
-                    return False
-                if validation_result.failed:
-                    QMessageBox.critical(
-                        self.panel,
-                        "Interpretation validation failed",
-                        validation_result.message,
-                    )
-                    return True
-                preview = self._diagnostic_payload(preview_result, "preview")
                 decision = self._diagnostic_payload(
-                    validation_result,
+                    review_result,
                     "validation_decision",
                 )
                 continue
@@ -793,39 +700,30 @@ class DatasetActionHandler:
             if not dialog_choices:
                 break
             choices = self._merge_interpretation_choices(choices, dialog_choices)
-            preview_result = self._execute_interpretation_command_responsive(
-                PreviewInterpretationCommand(
-                    scan_id=self._optional_payload_id(scan, "scan_id"),
+            review_result = self._execute_interpretation_command_responsive(
+                ReviewInterpretationCommand(
+                    source_path=source_path,
+                    source_hint=source_hint,
+                    label_sources=label_sources,
                     choices=choices,
                 ),
-                error_title="Interpretation preview failed",
+                error_title="Interpretation review failed",
             )
-            if preview_result is None:
+            if review_result is None:
                 return False
-            if preview_result.failed:
+            if review_result.failed:
                 QMessageBox.critical(
                     self.panel,
-                    "Interpretation preview failed",
-                    preview_result.message,
+                    "Interpretation review failed",
+                    review_result.message,
                 )
                 return True
-            candidate = self._diagnostic_payload(preview_result, "candidate")
+            scan = self._diagnostic_payload(review_result, "scan_result")
+            preview = self._diagnostic_payload(review_result, "preview")
+            candidate = self._diagnostic_payload(review_result, "candidate")
             candidate_id = self._optional_payload_id(candidate, "candidate_id")
-            validation_result = self._execute_interpretation_command_responsive(
-                ValidateInterpretationCommand(candidate_id=candidate_id),
-                error_title="Interpretation validation failed",
-            )
-            if validation_result is None:
-                return False
-            if validation_result.failed:
-                QMessageBox.critical(
-                    self.panel,
-                    "Interpretation validation failed",
-                    validation_result.message,
-                )
-                return True
             decision = self._diagnostic_payload(
-                validation_result,
+                review_result,
                 "validation_decision",
             )
             if str(decision.get("decision")) == "blocked":
@@ -863,6 +761,9 @@ class DatasetActionHandler:
                     part for part in [apply_result.message, recipe_message] if part
                 ),
             )
+            update_info = getattr(self.panel, "update_info", None)
+            if callable(update_info):
+                update_info()
 
         def _handle_apply_error(error: tuple) -> None:
             message = error[1] if len(error) > 1 else error
@@ -893,60 +794,12 @@ class DatasetActionHandler:
         *,
         error_title: str,
     ):
-        """Execute an interpretation command off the UI thread when possible."""
-        result_holder: dict[str, Any] = {}
-        event_loop = QEventLoop()
-
-        def _handle_result(result) -> None:
-            result_holder["result"] = result
-            event_loop.quit()
-
-        def _handle_error(error: tuple) -> None:
-            message = error[1] if len(error) > 1 else error
-            QMessageBox.critical(self.panel, error_title, str(message))
-            result_holder["result"] = None
-            event_loop.quit()
-
-        def _panel_deleted() -> bool:
-            try:
-                return bool(sip.isdeleted(self.panel))
-            except (AttributeError, TypeError, RuntimeError):
-                return False
-
-        def _cancel_wait_if_panel_deleted(*_args) -> None:
-            if "result" not in result_holder:
-                result_holder["result"] = None
-            event_loop.quit()
-
-        started = execute_application_command_async(
+        """Execute an interpretation command through the shared UI runner."""
+        return execute_interpretation_command_responsive(
             self.panel,
             command,
-            on_result=_handle_result,
-            on_error=_handle_error,
-            refresh=False,
-            busy_target=self.panel,
+            error_title=error_title,
         )
-        if not started:
-            return execute_application_command(self.panel, command)
-        destroyed_signal = getattr(self.panel, "destroyed", None)
-        if destroyed_signal is not None:
-            destroyed_signal.connect(_cancel_wait_if_panel_deleted)
-        watchdog = QTimer()
-        watchdog.setInterval(50)
-        watchdog.timeout.connect(
-            lambda: _cancel_wait_if_panel_deleted() if _panel_deleted() else None,
-        )
-        watchdog.start()
-        if "result" not in result_holder:
-            if _panel_deleted():
-                result_holder["result"] = None
-            else:
-                event_loop.exec()
-        watchdog.stop()
-        if destroyed_signal is not None and not _panel_deleted():
-            with suppress(TypeError, RuntimeError):
-                destroyed_signal.disconnect(_cancel_wait_if_panel_deleted)
-        return result_holder.get("result")
 
     def _start_interpretation_review_async(
         self,
@@ -965,21 +818,13 @@ class DatasetActionHandler:
                 str(message),
             )
 
-        def _handle_validation_result(
-            scan_result,
-            preview_result,
-            validation_result,
-        ) -> None:
+        def _handle_review_result(review_result) -> None:
             if self._result_failed(
-                validation_result,
-                "Interpretation validation failed",
+                review_result,
+                "Interpretation review failed",
             ):
                 return
-            review_state = self._review_state_from_results(
-                scan_result,
-                preview_result,
-                validation_result,
-            )
+            review_state = self._review_state_from_review_result(review_result)
             self._continue_data_interpretation_import(
                 source_path=source_path,
                 source_hint=source_hint,
@@ -988,65 +833,16 @@ class DatasetActionHandler:
                 review_state=review_state,
             )
 
-        def _handle_preview_result(scan_result, preview_result) -> None:
-            if self._result_failed(
-                preview_result,
-                "Interpretation preview failed",
-            ):
-                return
-            candidate = self._diagnostic_payload(preview_result, "candidate")
-            candidate_id = self._optional_payload_id(candidate, "candidate_id")
-            validation_command = ValidateInterpretationCommand(
-                candidate_id=candidate_id,
-            )
-            if not execute_application_command_async(
-                self.panel,
-                validation_command,
-                on_result=lambda validation_result: _handle_validation_result(
-                    scan_result,
-                    preview_result,
-                    validation_result,
-                ),
-                on_error=_handle_error,
-                refresh=False,
-                busy_target=self.panel,
-            ):
-                QMessageBox.critical(
-                    self.panel,
-                    "Interpretation unavailable",
-                    "Data Interpretation command service is unavailable.",
-                )
-
-        def _handle_scan_result(scan_result) -> None:
-            if self._result_failed(scan_result, "Source scan failed"):
-                return
-            preview_command = PreviewInterpretationCommand(choices=choices)
-            if not execute_application_command_async(
-                self.panel,
-                preview_command,
-                on_result=lambda preview_result: _handle_preview_result(
-                    scan_result,
-                    preview_result,
-                ),
-                on_error=_handle_error,
-                refresh=False,
-                busy_target=self.panel,
-            ):
-                QMessageBox.critical(
-                    self.panel,
-                    "Interpretation unavailable",
-                    "Data Interpretation command service is unavailable.",
-                )
-
-        scan_command = ScanSourceCommand(
+        review_command = ReviewInterpretationCommand(
             source_path=source_path,
             source_hint=source_hint,
             label_sources=label_sources,
+            choices=choices,
         )
         return execute_application_command_async(
             self.panel,
-            scan_command,
-            on_result=_handle_scan_result,
+            review_command,
+            on_result=_handle_review_result,
             on_error=_handle_error,
             refresh=False,
             busy_target=self.panel,
@@ -1059,47 +855,20 @@ class DatasetActionHandler:
         choices: dict[str, Any],
         label_sources: list[str],
     ) -> _InterpretationReviewState | object:
-        scan_result = execute_application_command(
+        review_result = execute_application_command(
             self.panel,
-            ScanSourceCommand(
+            ReviewInterpretationCommand(
                 source_path=source_path,
                 source_hint=source_hint,
                 label_sources=label_sources,
+                choices=choices,
             ),
         )
-        if scan_result is None:
+        if review_result is None:
             return _INTERPRETATION_UNAVAILABLE
-        if self._result_failed(scan_result, "Source scan failed"):
+        if self._result_failed(review_result, "Interpretation review failed"):
             return _INTERPRETATION_HANDLED
-
-        preview_result = execute_application_command(
-            self.panel,
-            PreviewInterpretationCommand(choices=choices),
-        )
-        if preview_result is None:
-            return _INTERPRETATION_UNAVAILABLE
-        if self._result_failed(preview_result, "Interpretation preview failed"):
-            return _INTERPRETATION_HANDLED
-
-        candidate = self._diagnostic_payload(preview_result, "candidate")
-        candidate_id = self._optional_payload_id(candidate, "candidate_id")
-        validation_result = execute_application_command(
-            self.panel,
-            ValidateInterpretationCommand(candidate_id=candidate_id),
-        )
-        if validation_result is None:
-            return _INTERPRETATION_UNAVAILABLE
-        if self._result_failed(
-            validation_result,
-            "Interpretation validation failed",
-        ):
-            return _INTERPRETATION_HANDLED
-
-        return self._review_state_from_results(
-            scan_result,
-            preview_result,
-            validation_result,
-        )
+        return self._review_state_from_review_result(review_result)
 
     def _review_state_from_results(
         self,
@@ -1117,6 +886,19 @@ class DatasetActionHandler:
                 validation_result,
                 "validation_decision",
             ),
+        )
+
+    def _review_state_from_review_result(
+        self,
+        review_result,
+    ) -> _InterpretationReviewState:
+        candidate = self._diagnostic_payload(review_result, "candidate")
+        return _InterpretationReviewState(
+            scan=self._diagnostic_payload(review_result, "scan_result"),
+            preview=self._diagnostic_payload(review_result, "preview"),
+            candidate=candidate,
+            candidate_id=self._optional_payload_id(candidate, "candidate_id"),
+            decision=self._diagnostic_payload(review_result, "validation_decision"),
         )
 
     def _result_failed(self, result, title: str) -> bool:
@@ -1439,11 +1221,14 @@ class DatasetActionHandler:
                     file_mapping=file_map,
                     selected_event_names=selected_event_names,
                 )
-            else:  # Single Same Length
+            else:  # Single same-length label file
+                label_fname = next(iter(label_map.keys()))
+                file_map = {d.get_filepath(): label_fname for d in target_files}
                 plan = self._build_label_import_plan(
                     label_map,
                     mapping,
-                    mode="legacy",
+                    mode="sequence",
+                    file_mapping=file_map,
                     selected_event_names=selected_event_names,
                 )
             result = execute_application_command(

@@ -9,7 +9,6 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QDialog, QMainWindow, QWidget
 
 
@@ -277,9 +276,7 @@ class TestDatasetActionHandler:
     ):
         from XBrainLab.backend.application import (
             ApplyInterpretationCommand,
-            PreviewInterpretationCommand,
-            ScanSourceCommand,
-            ValidateInterpretationCommand,
+            ReviewInterpretationCommand,
         )
 
         handler.panel.controller = MagicMock()
@@ -294,15 +291,11 @@ class TestDatasetActionHandler:
 
         def fake_execute(_panel, command):
             commands.append(command)
-            if isinstance(command, ScanSourceCommand):
-                return _command_result(scan_result={"source_path": command.source_path})
-            if isinstance(command, PreviewInterpretationCommand):
+            if isinstance(command, ReviewInterpretationCommand):
                 return _command_result(
+                    scan_result={"source_path": command.source_path},
                     preview={"summary": "Found 1 EEG file(s)."},
                     candidate={"candidate_id": "candidate-1"},
-                )
-            if isinstance(command, ValidateInterpretationCommand):
-                return _command_result(
                     validation_decision={
                         "candidate_id": "candidate-1",
                         "decision": "safe",
@@ -323,9 +316,7 @@ class TestDatasetActionHandler:
             handler.import_data()
 
         assert [type(command) for command in commands] == [
-            ScanSourceCommand,
-            PreviewInterpretationCommand,
-            ValidateInterpretationCommand,
+            ReviewInterpretationCommand,
             ApplyInterpretationCommand,
         ]
         assert commands[-1].candidate_id == "candidate-1"
@@ -401,9 +392,7 @@ class TestDatasetActionHandler:
     ):
         from XBrainLab.backend.application import (
             ApplyInterpretationCommand,
-            PreviewInterpretationCommand,
-            ScanSourceCommand,
-            ValidateInterpretationCommand,
+            ReviewInterpretationCommand,
         )
 
         handler.panel.controller = MagicMock()
@@ -418,15 +407,11 @@ class TestDatasetActionHandler:
 
         def fake_execute(_panel, command):
             commands.append(command)
-            if isinstance(command, ScanSourceCommand):
-                return _command_result(scan_result={"source_path": command.source_path})
-            if isinstance(command, PreviewInterpretationCommand):
+            if isinstance(command, ReviewInterpretationCommand):
                 return _command_result(
+                    scan_result={"source_path": command.source_path},
                     preview={"summary": "Found 1 EEG file(s)."},
                     candidate={"candidate_id": "candidate-1"},
-                )
-            if isinstance(command, ValidateInterpretationCommand):
-                return _command_result(
                     validation_decision={
                         "candidate_id": "candidate-1",
                         "decision": "safe",
@@ -444,12 +429,10 @@ class TestDatasetActionHandler:
         ):
             handler.import_folder_source()
 
-        assert isinstance(commands[0], ScanSourceCommand)
+        assert isinstance(commands[0], ReviewInterpretationCommand)
         assert commands[0].source_path == "/tmp/bids-root"
         assert [type(command) for command in commands] == [
-            ScanSourceCommand,
-            PreviewInterpretationCommand,
-            ValidateInterpretationCommand,
+            ReviewInterpretationCommand,
             ApplyInterpretationCommand,
         ]
         handler.panel.controller.import_files.assert_not_called()
@@ -467,9 +450,7 @@ class TestDatasetActionHandler:
     ):
         from XBrainLab.backend.application import (
             ApplyInterpretationCommand,
-            PreviewInterpretationCommand,
-            ScanSourceCommand,
-            ValidateInterpretationCommand,
+            ReviewInterpretationCommand,
         )
 
         handler.panel.controller = MagicMock()
@@ -484,15 +465,11 @@ class TestDatasetActionHandler:
 
         def fake_execute(_panel, command):
             commands.append(command)
-            if isinstance(command, ScanSourceCommand):
-                return _command_result(scan_result={"source_path": command.source_path})
-            if isinstance(command, PreviewInterpretationCommand):
+            if isinstance(command, ReviewInterpretationCommand):
                 return _command_result(
+                    scan_result={"source_path": command.source_path},
                     preview={"summary": "Found 1 EEG file(s)."},
                     candidate={"candidate_id": "candidate-1"},
-                )
-            if isinstance(command, ValidateInterpretationCommand):
-                return _command_result(
                     validation_decision={
                         "candidate_id": "candidate-1",
                         "decision": "safe",
@@ -510,7 +487,7 @@ class TestDatasetActionHandler:
         ):
             handler.import_bids_source()
 
-        assert isinstance(commands[0], ScanSourceCommand)
+        assert isinstance(commands[0], ReviewInterpretationCommand)
         assert commands[0].source_path == "/tmp/bids-root"
         assert commands[0].source_hint == "bids"
         mock_mb.critical.assert_not_called()
@@ -860,9 +837,7 @@ class TestDatasetActionHandler:
     ):
         from XBrainLab.backend.application import (
             ApplyInterpretationCommand,
-            PreviewInterpretationCommand,
-            ScanSourceCommand,
-            ValidateInterpretationCommand,
+            ReviewInterpretationCommand,
         )
 
         handler.panel.controller = MagicMock()
@@ -876,15 +851,11 @@ class TestDatasetActionHandler:
         applied: list[ApplyInterpretationCommand] = []
 
         def fake_execute(_panel, command):
-            if isinstance(command, ScanSourceCommand):
-                return _command_result(scan_result={})
-            if isinstance(command, PreviewInterpretationCommand):
+            if isinstance(command, ReviewInterpretationCommand):
                 return _command_result(
+                    scan_result={},
                     preview={},
                     candidate={"candidate_id": "candidate-1"},
-                )
-            if isinstance(command, ValidateInterpretationCommand):
-                return _command_result(
                     validation_decision={
                         "candidate_id": "candidate-1",
                         "decision": "needs_confirmation",
@@ -918,9 +889,7 @@ class TestDatasetActionHandler:
     ):
         from XBrainLab.backend.application import (
             ApplyInterpretationCommand,
-            PreviewInterpretationCommand,
-            ScanSourceCommand,
-            ValidateInterpretationCommand,
+            ReviewInterpretationCommand,
         )
 
         handler.panel.controller = MagicMock()
@@ -935,20 +904,12 @@ class TestDatasetActionHandler:
 
         def fake_async(_panel, command, *, on_result, **_kwargs):
             async_commands.append(command)
-            if isinstance(command, ScanSourceCommand):
-                on_result(_command_result(scan_result={}))
-                return True
-            if isinstance(command, PreviewInterpretationCommand):
+            if isinstance(command, ReviewInterpretationCommand):
                 on_result(
                     _command_result(
+                        scan_result={},
                         preview={},
                         candidate={"candidate_id": "candidate-1"},
-                    )
-                )
-                return True
-            if isinstance(command, ValidateInterpretationCommand):
-                on_result(
-                    _command_result(
                         validation_decision={
                             "candidate_id": "candidate-1",
                             "decision": "safe",
@@ -976,16 +937,14 @@ class TestDatasetActionHandler:
 
         mock_execute.assert_not_called()
         assert [type(command) for command in async_commands] == [
-            ScanSourceCommand,
-            PreviewInterpretationCommand,
-            ValidateInterpretationCommand,
+            ReviewInterpretationCommand,
             ApplyInterpretationCommand,
         ]
         apply_command = async_commands[-1]
         assert apply_command.candidate_id == "candidate-1"
         assert apply_command.confirmed is False
 
-    def test_interpretation_rescan_helper_uses_async_command_when_available(
+    def test_interpretation_rescan_helper_uses_command_runner(
         self,
         handler,
     ):
@@ -994,19 +953,13 @@ class TestDatasetActionHandler:
         commands = []
         expected_result = _command_result(scan_result={"scan_id": "scan-1"})
 
-        def fake_async(_panel, command, *, on_result, **_kwargs):
+        def fake_sync(_panel, command):
             commands.append(command)
-            on_result(expected_result)
-            return True
+            return expected_result
 
-        with (
-            patch(
-                "XBrainLab.ui.panels.dataset.actions.execute_application_command_async",
-                side_effect=fake_async,
-            ),
-            patch(
-                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-            ) as mock_sync,
+        with patch(
+            "XBrainLab.ui.panels.dataset.interpretation_command_runner.execute_application_command",
+            side_effect=fake_sync,
         ):
             result = handler._execute_interpretation_command_responsive(
                 ScanSourceCommand(source_path="/tmp/eeg"),
@@ -1015,9 +968,8 @@ class TestDatasetActionHandler:
 
         assert result is expected_result
         assert isinstance(commands[0], ScanSourceCommand)
-        mock_sync.assert_not_called()
 
-    def test_interpretation_rescan_helper_returns_when_panel_is_deleted(
+    def test_interpretation_rescan_helper_returns_none_when_runner_unavailable(
         self,
         qtbot,
     ):
@@ -1029,26 +981,17 @@ class TestDatasetActionHandler:
         panel_with_attrs.table = MagicMock()
         handler = DatasetActionHandler(panel)
 
-        def fake_async(_panel, _command, **_kwargs):
-            QTimer.singleShot(0, panel.deleteLater)
-            return True
-
-        with (
-            patch(
-                "XBrainLab.ui.panels.dataset.actions.execute_application_command_async",
-                side_effect=fake_async,
-            ),
-            patch(
-                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-            ) as mock_sync,
-        ):
+        with patch(
+            "XBrainLab.ui.panels.dataset.interpretation_command_runner.execute_application_command",
+            return_value=None,
+        ) as mock_sync:
             result = handler._execute_interpretation_command_responsive(
                 ScanSourceCommand(source_path="/tmp/eeg"),
                 error_title="Source scan failed",
             )
 
         assert result is None
-        mock_sync.assert_not_called()
+        mock_sync.assert_called_once()
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
@@ -1062,9 +1005,7 @@ class TestDatasetActionHandler:
     ):
         from XBrainLab.backend.application import (
             ApplyInterpretationCommand,
-            PreviewInterpretationCommand,
-            ScanSourceCommand,
-            ValidateInterpretationCommand,
+            ReviewInterpretationCommand,
         )
 
         handler.panel.controller = MagicMock()
@@ -1079,28 +1020,22 @@ class TestDatasetActionHandler:
                 "class_map": {"1": "left hand", "2": "right hand"},
             },
         }
-        previews: list[PreviewInterpretationCommand] = []
+        reviews: list[ReviewInterpretationCommand] = []
         applied: list[ApplyInterpretationCommand] = []
 
         def fake_execute(_panel, command):
-            if isinstance(command, ScanSourceCommand):
+            if isinstance(command, ReviewInterpretationCommand):
+                reviews.append(command)
+                candidate_id = f"candidate-{len(reviews)}"
                 return _command_result(
                     scan_result={
                         "scan_id": "scan-1",
                         "source_path": command.source_path,
-                    }
-                )
-            if isinstance(command, PreviewInterpretationCommand):
-                previews.append(command)
-                candidate_id = f"candidate-{len(previews)}"
-                return _command_result(
+                    },
                     preview={"summary": "Found 1 EEG file(s)."},
                     candidate={"candidate_id": candidate_id},
-                )
-            if isinstance(command, ValidateInterpretationCommand):
-                return _command_result(
                     validation_decision={
-                        "candidate_id": command.candidate_id,
+                        "candidate_id": candidate_id,
                         "decision": "needs_confirmation",
                         "required_confirmations": ["Confirm event roles."],
                         "blocked_reasons": [],
@@ -1111,18 +1046,23 @@ class TestDatasetActionHandler:
                 return _command_result(applied_interpretation={})
             raise AssertionError(f"unexpected command: {command!r}")
 
-        with patch(
-            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-            side_effect=fake_execute,
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                side_effect=fake_execute,
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.interpretation_command_runner.execute_application_command",
+                side_effect=fake_execute,
+            ),
         ):
             handler.import_data()
 
-        assert len(previews) == 2
-        assert previews[1].scan_id == "scan-1"
-        assert previews[1].choices["metadata_overrides"] == {
+        assert len(reviews) == 2
+        assert reviews[1].choices["metadata_overrides"] == {
             "sub-01_task-mi.fif": {"session": "session-01"}
         }
-        assert previews[1].choices["class_map"] == {
+        assert reviews[1].choices["class_map"] == {
             "1": "left hand",
             "2": "right hand",
         }
@@ -1142,9 +1082,7 @@ class TestDatasetActionHandler:
     ):
         from XBrainLab.backend.application import (
             ApplyInterpretationCommand,
-            PreviewInterpretationCommand,
-            ScanSourceCommand,
-            ValidateInterpretationCommand,
+            ReviewInterpretationCommand,
         )
 
         handler.panel.controller = MagicMock()
@@ -1189,35 +1127,28 @@ class TestDatasetActionHandler:
 
         def fake_execute(_panel, command):
             commands.append(command)
-            if isinstance(command, ScanSourceCommand):
+            if isinstance(command, ReviewInterpretationCommand):
                 labels = [label_file] if command.label_sources else []
+                review_count = len(
+                    [c for c in commands if isinstance(c, ReviewInterpretationCommand)]
+                )
+                candidate_id = (
+                    "candidate-with-labels"
+                    if command.label_sources
+                    else "candidate-no-labels"
+                )
                 return _command_result(
                     scan_result={
-                        "scan_id": f"scan-{len([c for c in commands if isinstance(c, ScanSourceCommand)])}",
+                        "scan_id": f"scan-{review_count}",
                         "source_path": command.source_path,
                         "eeg_files": [eeg_file],
                         "label_sources": list(command.label_sources),
                         "label_carriers": labels,
-                    }
-                )
-            if isinstance(command, PreviewInterpretationCommand):
-                candidate_id = (
-                    "candidate-with-labels"
-                    if commands
-                    and any(
-                        isinstance(item, ScanSourceCommand) and item.label_sources
-                        for item in commands
-                    )
-                    else "candidate-no-labels"
-                )
-                return _command_result(
+                    },
                     preview={"summary": "Found EEG data."},
                     candidate={"candidate_id": candidate_id},
-                )
-            if isinstance(command, ValidateInterpretationCommand):
-                return _command_result(
                     validation_decision={
-                        "candidate_id": command.candidate_id,
+                        "candidate_id": candidate_id,
                         "decision": "needs_confirmation",
                         "required_confirmations": ["Confirm label matching."],
                         "blocked_reasons": [],
@@ -1227,36 +1158,38 @@ class TestDatasetActionHandler:
                 return _command_result(applied_interpretation={})
             raise AssertionError(f"unexpected command: {command!r}")
 
-        with patch(
-            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-            side_effect=fake_execute,
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                side_effect=fake_execute,
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.interpretation_command_runner.execute_application_command",
+                side_effect=fake_execute,
+            ),
         ):
             handler.import_data()
 
-        scans = [
-            command for command in commands if isinstance(command, ScanSourceCommand)
-        ]
-        previews = [
+        reviews = [
             command
             for command in commands
-            if isinstance(command, PreviewInterpretationCommand)
+            if isinstance(command, ReviewInterpretationCommand)
         ]
         applies = [
             command
             for command in commands
             if isinstance(command, ApplyInterpretationCommand)
         ]
-        assert len(scans) == 2
-        assert scans[0].label_sources == []
-        assert scans[1].label_sources == [label_folder]
+        assert len(reviews) == 3
+        assert reviews[0].label_sources == []
+        assert reviews[1].label_sources == [label_folder]
         second_dialog_kwargs = mock_preview_dialog.call_args_list[1].kwargs
         assert second_dialog_kwargs["initial_step"] == "Review Metadata"
-        assert len(previews) == 3
-        assert previews[-1].choices["metadata_overrides"] == {
+        assert reviews[-1].choices["metadata_overrides"] == {
             "sub-01_task-mi_raw.fif": {"subject": "S01", "task": "mi"}
         }
         assert (
-            previews[-1].choices["label_carrier_choices"][label_file]["label_field"]
+            reviews[-1].choices["label_carrier_choices"][label_file]["label_field"]
             == "trial_type"
         )
         assert applies[-1].candidate_id == "candidate-with-labels"
@@ -1274,10 +1207,8 @@ class TestDatasetActionHandler:
     ):
         from XBrainLab.backend.application import (
             ApplyInterpretationCommand,
-            PreviewInterpretationCommand,
+            ReviewInterpretationCommand,
             SaveInterpretationRecipeCommand,
-            ScanSourceCommand,
-            ValidateInterpretationCommand,
         )
 
         handler.panel.controller = MagicMock()
@@ -1292,15 +1223,11 @@ class TestDatasetActionHandler:
         saved: list[SaveInterpretationRecipeCommand] = []
 
         def fake_execute(_panel, command):
-            if isinstance(command, ScanSourceCommand):
-                return _command_result(scan_result={})
-            if isinstance(command, PreviewInterpretationCommand):
+            if isinstance(command, ReviewInterpretationCommand):
                 return _command_result(
+                    scan_result={},
                     preview={},
                     candidate={"candidate_id": "candidate-1"},
-                )
-            if isinstance(command, ValidateInterpretationCommand):
-                return _command_result(
                     validation_decision={
                         "candidate_id": "candidate-1",
                         "decision": "safe",
@@ -1379,9 +1306,7 @@ class TestDatasetActionHandler:
     ):
         from XBrainLab.backend.application import (
             ApplyInterpretationCommand,
-            PreviewInterpretationCommand,
-            ScanSourceCommand,
-            ValidateInterpretationCommand,
+            ReviewInterpretationCommand,
         )
 
         handler.panel.controller = MagicMock()
@@ -1394,15 +1319,11 @@ class TestDatasetActionHandler:
         }
 
         def fake_execute(_panel, command):
-            if isinstance(command, ScanSourceCommand):
-                return _command_result(scan_result={})
-            if isinstance(command, PreviewInterpretationCommand):
+            if isinstance(command, ReviewInterpretationCommand):
                 return _command_result(
+                    scan_result={},
                     preview={},
                     candidate={"candidate_id": "candidate-1"},
-                )
-            if isinstance(command, ValidateInterpretationCommand):
-                return _command_result(
                     validation_decision={
                         "candidate_id": "candidate-1",
                         "decision": "blocked",
@@ -1435,9 +1356,7 @@ class TestDatasetActionHandler:
     ):
         from XBrainLab.backend.application import (
             ApplyInterpretationCommand,
-            PreviewInterpretationCommand,
-            ScanSourceCommand,
-            ValidateInterpretationCommand,
+            ReviewInterpretationCommand,
         )
 
         first_file = "/mnt/a/sub-01.fif"
@@ -1454,25 +1373,19 @@ class TestDatasetActionHandler:
 
         def fake_execute(_panel, command):
             commands.append(command)
-            if isinstance(command, ScanSourceCommand):
+            if isinstance(command, ReviewInterpretationCommand):
+                assert command.choices["selected_eeg_files"] == [
+                    first_file,
+                    second_file,
+                ]
                 return _command_result(
                     scan_result={
                         "scan_id": "scan-1",
                         "source_path": command.source_path,
                         "eeg_files": [first_file],
                     },
-                )
-            if isinstance(command, PreviewInterpretationCommand):
-                assert command.choices["selected_eeg_files"] == [
-                    first_file,
-                    second_file,
-                ]
-                return _command_result(
                     preview={},
                     candidate={"candidate_id": "candidate-1"},
-                )
-            if isinstance(command, ValidateInterpretationCommand):
-                return _command_result(
                     validation_decision={
                         "candidate_id": "candidate-1",
                         "decision": "blocked",
@@ -1495,7 +1408,7 @@ class TestDatasetActionHandler:
         ):
             handler.import_data()
 
-        assert isinstance(commands[0], ScanSourceCommand)
+        assert isinstance(commands[0], ReviewInterpretationCommand)
         assert commands[0].source_path == first_file
         mock_mb.critical.assert_called_once()
         handler.panel.controller.import_files.assert_not_called()

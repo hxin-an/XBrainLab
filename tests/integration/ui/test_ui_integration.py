@@ -97,7 +97,14 @@ def test_evaluation_page_empty_state_uses_command_blocked_reason(qtbot, study):
         == "PreconditionError"
     )
     assert eval_panel.model_combo.count() == 1
-    assert eval_panel.model_combo.currentText() == "No Data Available"
+    assert (
+        eval_panel.model_combo.currentText()
+        == "Create a training plan before evaluating results."
+    )
+    assert (
+        eval_panel.no_data_label.text()
+        == "Create a training plan before evaluating results."
+    )
     assert eval_panel.run_combo.count() == 0
     assert eval_panel.plot_stack.currentIndex() == 1
     assert eval_panel.bottom_tabs.tabText(0) == "Metrics Summary"

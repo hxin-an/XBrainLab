@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import MagicMock
@@ -35,6 +36,7 @@ from XBrainLab.backend.application import (
     RemoveFilesCommand,
     ResetPreprocessCommand,
     ResetSessionCommand,
+    ReviewInterpretationCommand,
     SaliencyCommand,
     SaveInterpretationRecipeCommand,
     ScanSourceCommand,
@@ -45,7 +47,7 @@ from XBrainLab.backend.application import (
     VisualizeCommand,
     data_interpretation_internal_events,
 )
-from XBrainLab.backend.dataset import SplitByType
+from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.study import Study
 
 
@@ -73,6 +75,92 @@ def test_empty_state_snapshot_and_policy():
     assert policy.get(CommandName.RESET_SESSION).confirmation_required is False
 
 
+def test_train_capability_blocks_short_epoch_for_selected_model():
+    state = ApplicationService(Study()).get_state()
+    ready_for_train = replace(
+        state,
+        epoch=replace(state.epoch, available=True, exists=True, n_times=100, sfreq=250),
+        dataset=replace(
+            state.dataset,
+            available=True,
+            count=1,
+            split_summary={"audit": {"issues": []}},
+        ),
+        training=replace(
+            state.training,
+            has_model=True,
+            model_name="EEGNet",
+            model_params={},
+            has_training_option=True,
+        ),
+        active_dataset=replace(
+            state.active_dataset,
+            has_raw_data=True,
+            has_epoch_data=True,
+            has_datasets=True,
+        ),
+        active_training=replace(
+            state.active_training,
+            has_model=True,
+            has_training_option=True,
+        ),
+    )
+
+    train = build_capability_policy(ready_for_train).get(CommandName.TRAIN)
+
+    assert train.available is False
+    assert any("EEGNet needs at least" in reason for reason in train.reasons)
+
+
+def test_train_capability_blocks_split_audit_errors():
+    state = ApplicationService(Study()).get_state()
+    ready_for_train = replace(
+        state,
+        epoch=replace(state.epoch, available=True, exists=True, n_times=512, sfreq=128),
+        dataset=replace(
+            state.dataset,
+            available=True,
+            count=1,
+            split_summary={
+                "audit": {
+                    "issues": [
+                        {
+                            "severity": "error",
+                            "message": "train split is missing class label(s) 1.",
+                        }
+                    ]
+                }
+            },
+        ),
+        training=replace(
+            state.training,
+            has_model=True,
+            model_name="EEGNet",
+            model_params={},
+            has_training_option=True,
+        ),
+        active_dataset=replace(
+            state.active_dataset,
+            has_raw_data=True,
+            has_epoch_data=True,
+            has_datasets=True,
+        ),
+        active_training=replace(
+            state.active_training,
+            has_model=True,
+            has_training_option=True,
+        ),
+    )
+
+    train = build_capability_policy(ready_for_train).get(CommandName.TRAIN)
+
+    assert train.available is False
+    assert (
+        "Resolve dataset split audit before training: train split is missing "
+        "class label(s) 1."
+    ) in train.reasons
+
+
 def test_capability_policy_covers_all_declared_commands():
     service = ApplicationService(Study())
     policy = service.get_capabilities()
@@ -85,6 +173,7 @@ def test_capability_policy_covers_all_declared_commands():
     assert policy.get(CommandName.CLEAR_DATASETS).available is False
     assert policy.get(CommandName.CLEAR_TRAINING_HISTORY).available is False
     assert policy.get(CommandName.SCAN_SOURCE).available is True
+    assert policy.get(CommandName.REVIEW_INTERPRETATION).available is True
     assert policy.get(CommandName.PREVIEW_INTERPRETATION).available is False
     assert policy.get(CommandName.VALIDATE_INTERPRETATION).available is False
     assert policy.get(CommandName.APPLY_INTERPRETATION).available is False
@@ -154,6 +243,34 @@ def test_data_interpretation_scan_preview_validate_requires_confirmation(tmp_pat
     assert confirmed_apply.diagnostics["label_apply"]["status"] == "failed"
     assert "Label placement is not ready" in confirmed_apply.message
     assert confirmed_apply.state.interpretation.has_applied_interpretation is False
+
+
+def test_data_interpretation_review_command_scans_previews_and_validates(tmp_path):
+    source_dir = tmp_path / "review_command"
+    source_dir.mkdir()
+    eeg_path = source_dir / "A01T.gdf"
+    label_path = source_dir / "A01T.mat"
+    eeg_path.write_bytes(b"not loaded during review")
+    label_path.write_bytes(b"not loaded during review")
+    service = ApplicationService(Study())
+
+    review = service.execute(
+        ReviewInterpretationCommand(source_path=str(source_dir)),
+    )
+
+    assert review.ok is True
+    assert review.command_name == CommandName.REVIEW_INTERPRETATION.value
+    assert review.changed_state.interpretation_changed is True
+    assert review.state.raw.loaded is False
+    assert review.diagnostics["payload_type"] == "interpretation_review"
+    assert review.diagnostics["scan_result"]["eeg_files"] == [str(eeg_path)]
+    assert review.diagnostics["preview"]["label_carrier_count"] == 1
+    assert review.diagnostics["candidate"]["candidate_id"]
+    assert review.diagnostics["validation_decision"]["decision"] in {
+        "safe",
+        "needs_confirmation",
+        "blocked",
+    }
 
 
 def test_data_interpretation_choices_flow_into_recipe(tmp_path):
@@ -595,6 +712,55 @@ def test_apply_interpretation_applies_reviewed_timestamp_label_carrier(tmp_path)
     )
 
 
+def test_apply_interpretation_converts_sample_index_csv_labels_to_seconds(tmp_path):
+    source_dir = tmp_path / "reviewed_csv_sample_index"
+    source_dir.mkdir()
+    eeg_path = source_dir / "A01T.gdf"
+    labels_path = source_dir / "A01T_events.csv"
+    eeg_path.write_bytes(b"not loaded during scan")
+    labels_path.write_text(
+        "sample,duration,label\n128,64,left\n256,64,right\n",
+        encoding="utf-8",
+    )
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    raw.get_filepath.return_value = str(eeg_path)
+    raw.get_filename.return_value = eeg_path.name
+    raw.get_sfreq.return_value = 128.0
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    service.dataset.apply_labels_batch = MagicMock(return_value=1)
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "label_carrier_choices": {
+                    str(labels_path): {
+                        "label_field": "label",
+                        "anchor": "sample",
+                        "duration_field": "duration",
+                        "placement_method": "time_field",
+                        "time_model": "sample_index",
+                        "granularity": "trial",
+                    }
+                },
+                "class_map": {"left": "left hand", "right": "right hand"},
+            },
+        ),
+    )
+    service.execute(ValidateInterpretationCommand())
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert apply_result.ok is True
+    label_map = service.dataset.apply_labels_batch.call_args.args[1]
+    assert label_map[str(labels_path)] == [
+        {"onset": 1.0, "label": "left", "duration": 0.5},
+        {"onset": 2.0, "label": "right", "duration": 0.5},
+    ]
+    assert apply_result.state.interpretation.label_imports[0]["mode"] == "timestamp"
+
+
 def test_apply_interpretation_applies_reviewed_timestamp_label_carriers_by_stem(
     tmp_path,
 ):
@@ -623,7 +789,7 @@ def test_apply_interpretation_applies_reviewed_timestamp_label_carriers_by_stem(
     raw_2.get_filename.return_value = eeg_2.name
     service.dataset.import_files = MagicMock(return_value=(2, []))
     service.dataset.get_loaded_data_list = MagicMock(return_value=[raw_1, raw_2])
-    service.dataset.apply_labels_batch = MagicMock(return_value=2)
+    service.dataset.apply_labels_batch = MagicMock(side_effect=[1, 1])
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -653,16 +819,20 @@ def test_apply_interpretation_applies_reviewed_timestamp_label_carriers_by_stem(
     assert apply_result.ok is True
     assert apply_result.diagnostics["label_apply"]["status"] == "applied"
     assert apply_result.diagnostics["label_apply"]["success_count"] == 2
-    args = service.dataset.apply_labels_batch.call_args.args
-    assert args[0] == [raw_1, raw_2]
-    assert set(args[1]) == {str(events_1), str(events_2)}
-    assert args[1][str(events_1)] == [
+    calls = service.dataset.apply_labels_batch.call_args_list
+    assert len(calls) == 2
+    first_args = calls[0].args
+    second_args = calls[1].args
+    assert first_args[0] == [raw_1]
+    assert second_args[0] == [raw_2]
+    assert first_args[1][str(events_1)] == [
         {"onset": 0.5, "label": "left", "duration": 0.1},
     ]
-    assert args[1][str(events_2)] == [
+    assert second_args[1][str(events_2)] == [
         {"onset": 1.5, "label": "right", "duration": 0.1},
     ]
-    assert args[2] == {str(eeg_1): str(events_1), str(eeg_2): str(events_2)}
+    assert first_args[2] == {str(eeg_1): str(events_1)}
+    assert second_args[2] == {str(eeg_2): str(events_2)}
     assert apply_result.state.interpretation.label_import_count == 1
     assert apply_result.state.interpretation.label_imports[0]["file_mapping"] == {
         str(eeg_1): str(events_1),
@@ -792,7 +962,7 @@ def test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier(
     raw.get_filename.return_value = eeg_path.name
     service.dataset.import_files = MagicMock(return_value=(1, []))
     service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
-    service.dataset.apply_labels_legacy = MagicMock(return_value=1)
+    service.dataset.apply_labels_batch = MagicMock(return_value=1)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -816,14 +986,14 @@ def test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier(
 
     assert apply_result.ok is True
     assert apply_result.diagnostics["label_apply"]["status"] == "applied"
-    assert apply_result.diagnostics["label_apply"]["mode"] == "legacy"
-    args = service.dataset.apply_labels_legacy.call_args.args
+    assert apply_result.diagnostics["label_apply"]["mode"] == "sequence"
+    args = service.dataset.apply_labels_batch.call_args.args
     assert args[0] == [raw]
-    np.testing.assert_array_equal(args[1], np.array([1, 2, 1, 2]))
-    assert args[2] == {1: "left hand", 2: "right hand"}
-    assert apply_result.state.interpretation.label_imports[0]["mode"] == "legacy"
+    np.testing.assert_array_equal(args[1][str(label_path)], np.array([1, 2, 1, 2]))
+    assert args[3] == {1: "left hand", 2: "right hand"}
+    assert apply_result.state.interpretation.label_imports[0]["mode"] == "sequence"
     assert (
-        "label_import:legacy:1"
+        "label_import:sequence:1"
         in apply_result.diagnostics["applied_interpretation"]["recipe_trace"]
     )
 
@@ -856,7 +1026,7 @@ def test_apply_interpretation_blocks_mixed_label_placement_modes(
     service.dataset.import_files = MagicMock(return_value=(1, []))
     service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
     service.dataset.apply_labels_batch = MagicMock(return_value=1)
-    service.dataset.apply_labels_legacy = MagicMock(return_value=1)
+    service.dataset.apply_labels_batch = MagicMock(return_value=1)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -896,7 +1066,6 @@ def test_apply_interpretation_blocks_mixed_label_placement_modes(
     assert "mixed placement modes" in apply_result.diagnostics["label_apply"]["reason"]
     assert apply_result.state.interpretation.has_applied_interpretation is False
     service.dataset.apply_labels_batch.assert_not_called()
-    service.dataset.apply_labels_legacy.assert_not_called()
 
 
 def test_apply_interpretation_blocks_sequence_label_apply_count_mismatch(
@@ -921,7 +1090,7 @@ def test_apply_interpretation_blocks_sequence_label_apply_count_mismatch(
     raw.get_filename.return_value = eeg_path.name
     service.dataset.import_files = MagicMock(return_value=(1, []))
     service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
-    service.dataset.apply_labels_legacy = MagicMock(return_value=0)
+    service.dataset.apply_labels_batch = MagicMock(return_value=0)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -979,7 +1148,7 @@ def test_apply_interpretation_filters_sequence_labels_to_selected_event_codes(
     raw.get_filename.return_value = eeg_path.name
     service.dataset.import_files = MagicMock(return_value=(1, []))
     service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
-    service.dataset.apply_labels_legacy = MagicMock(return_value=1)
+    service.dataset.apply_labels_batch = MagicMock(return_value=1)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -1002,8 +1171,8 @@ def test_apply_interpretation_filters_sequence_labels_to_selected_event_codes(
     apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
 
     assert apply_result.ok is True
-    call = service.dataset.apply_labels_legacy.call_args
-    assert call.args[3] == {"768"}
+    call = service.dataset.apply_labels_batch.call_args
+    assert call.args[4] == {"768"}
     assert apply_result.state.interpretation.label_imports[0][
         "selected_event_names"
     ] == ["768"]
@@ -1256,7 +1425,11 @@ def test_apply_interpretation_records_internal_event_epoch_hint(
     assert epoch_hint["source"] == "Labels inside EEG files"
     assert epoch_hint["placement_method"] == "internal_events"
     assert epoch_hint["class_map"] == {"769": "Left hand", "770": "Right hand"}
-    assert epoch_hint["recommended_events"] == ["Left hand", "Right hand"]
+    assert epoch_hint["recommended_events"] == ["769", "770"]
+    assert epoch_hint["event_label_aliases"] == {
+        "769": "Left hand",
+        "770": "Right hand",
+    }
 
 
 def test_apply_interpretation_applies_reviewed_sequence_label_carriers_by_stem(
@@ -1291,7 +1464,7 @@ def test_apply_interpretation_applies_reviewed_sequence_label_carriers_by_stem(
     raw_2.get_filename.return_value = eeg_2.name
     service.dataset.import_files = MagicMock(return_value=(2, []))
     service.dataset.get_loaded_data_list = MagicMock(return_value=[raw_1, raw_2])
-    service.dataset.apply_labels_legacy = MagicMock(side_effect=[1, 1])
+    service.dataset.apply_labels_batch = MagicMock(side_effect=[1, 1])
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -1323,12 +1496,12 @@ def test_apply_interpretation_applies_reviewed_sequence_label_carriers_by_stem(
     assert apply_result.ok is True
     assert apply_result.diagnostics["label_apply"]["status"] == "applied"
     assert apply_result.diagnostics["label_apply"]["success_count"] == 2
-    calls = service.dataset.apply_labels_legacy.call_args_list
+    calls = service.dataset.apply_labels_batch.call_args_list
     assert len(calls) == 2
     assert calls[0].args[0] == [raw_1]
-    np.testing.assert_array_equal(calls[0].args[1], np.array([1, 2]))
+    np.testing.assert_array_equal(calls[0].args[1][str(label_1)], np.array([1, 2]))
     assert calls[1].args[0] == [raw_2]
-    np.testing.assert_array_equal(calls[1].args[1], np.array([2, 1]))
+    np.testing.assert_array_equal(calls[1].args[1][str(label_2)], np.array([2, 1]))
     assert apply_result.state.interpretation.label_imports[0]["file_mapping"] == {
         str(eeg_1): str(label_1),
         str(eeg_2): str(label_2),
@@ -1363,7 +1536,7 @@ def test_apply_interpretation_blocks_ambiguous_multi_file_sequence_labels(
     raw_2.get_filepath.return_value = str(eeg_2)
     service.dataset.import_files = MagicMock(return_value=(2, []))
     service.dataset.get_loaded_data_list = MagicMock(return_value=[raw_1, raw_2])
-    service.dataset.apply_labels_legacy = MagicMock(return_value=2)
+    service.dataset.apply_labels_batch = MagicMock(return_value=2)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -1392,7 +1565,7 @@ def test_apply_interpretation_blocks_ambiguous_multi_file_sequence_labels(
         "No reviewed label carrier uniquely matches"
         in apply_result.diagnostics["label_apply"]["reason"]
     )
-    service.dataset.apply_labels_legacy.assert_not_called()
+    service.dataset.apply_labels_batch.assert_not_called()
 
 
 def test_apply_interpretation_applies_manually_mapped_generic_sequence_label(
@@ -1425,7 +1598,7 @@ def test_apply_interpretation_applies_manually_mapped_generic_sequence_label(
     raw_2.get_filename.return_value = eeg_2.name
     service.dataset.import_files = MagicMock(return_value=(2, []))
     service.dataset.get_loaded_data_list = MagicMock(return_value=[raw_1, raw_2])
-    service.dataset.apply_labels_legacy = MagicMock(return_value=1)
+    service.dataset.apply_labels_batch = MagicMock(return_value=1)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -1451,7 +1624,7 @@ def test_apply_interpretation_applies_manually_mapped_generic_sequence_label(
     assert apply_result.ok is True
     assert apply_result.diagnostics["label_apply"]["status"] == "applied"
     assert apply_result.diagnostics["label_apply"]["success_count"] == 1
-    call = service.dataset.apply_labels_legacy.call_args
+    call = service.dataset.apply_labels_batch.call_args
     assert call.args[0] == [raw_1]
     assert apply_result.state.interpretation.label_imports[0]["file_mapping"] == {
         str(eeg_1): str(labels)
@@ -1720,6 +1893,7 @@ def test_every_declared_command_returns_result_envelope():
         StopTrainingCommand(),
         ClearTrainingHistoryCommand(),
         ScanSourceCommand(source_path=""),
+        ReviewInterpretationCommand(source_path=""),
         PreviewInterpretationCommand(),
         ValidateInterpretationCommand(),
         ApplyInterpretationCommand(),
@@ -1851,9 +2025,10 @@ def test_generate_dataset_fails_when_split_audit_has_empty_or_leaking_splits():
             [leaking],
         ),
     )
+    service.study.get_datasets_generator = MagicMock(return_value=MagicMock())
 
     result = service.execute(
-        GenerateDatasetCommand(generator=MagicMock(), split_strategy="trial"),
+        GenerateDatasetCommand(split_strategy="trial"),
     )
 
     assert result.failed is True
@@ -1890,7 +2065,7 @@ def test_generate_dataset_rolls_back_partial_apply_failure():
         side_effect=fail_after_partial_mutation,
     )
 
-    result = service.execute(GenerateDatasetCommand(generator=MagicMock()))
+    result = service.execute(GenerateDatasetCommand())
 
     assert result.failed is True
     assert result.state.dataset.available is False
@@ -1916,12 +2091,29 @@ def test_generate_dataset_audits_custom_trial_generator_as_trial_protocol():
             [dataset],
         ),
     )
-    splitter = MagicMock()
-    splitter.split_type = SplitByType.TRIAL
-    generator = MagicMock()
-    generator.test_splitter_list = [splitter]
-
-    result = service.execute(GenerateDatasetCommand(generator=generator))
+    service.study.get_datasets_generator = MagicMock(return_value=MagicMock())
+    result = service.execute(
+        GenerateDatasetCommand(
+            split_config={
+                "train_type": "Individual",
+                "is_cross_validation": False,
+                "val_splitters": [
+                    {
+                        "split_type": "By Trial",
+                        "split_unit": "Ratio",
+                        "value": "0.2",
+                    },
+                ],
+                "test_splitters": [
+                    {
+                        "split_type": "By Trial",
+                        "split_unit": "Ratio",
+                        "value": "0.2",
+                    },
+                ],
+            },
+        ),
+    )
 
     assert result.ok is True
     assert result.diagnostics["protocol"] == "trial-wise"

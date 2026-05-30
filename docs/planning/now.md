@@ -1,12 +1,12 @@
 # XBrainLab Now
 
-最後更新：`2026-05-13`
+最後更新：`2026-05-30`
 
 這頁只放下一輪施工焦點。
 
 ## 目前焦點
 
-**Phase 1A：Backend Command Spine / Legacy / UI Refresh / Test Cleanup。**
+**Release-candidate gate：Backend Command Spine / Legacy / UI Refresh / Test Cleanup / Runtime UX。**
 
 要先做這件事，因為 MVP 前最大的風險不是功能不夠多，而是 UI、backend、assistant、MCP
 各自保存一套 workflow truth。
@@ -28,12 +28,12 @@ P300/SSVEP/clinical/XDF/LSL/MOABB/proprietary converter 等非本輪範圍。
 
 | 工作 | 完成判準 |
 | --- | --- |
-| Legacy product path cleanup | real `Study` runtime 的主要 mutating path 不再 silent fallback 到 legacy controller mutation。 |
-| UI refresh cleanup | command 成功後的頁面更新由 shared refresh route / changed state 驅動，不由各頁自己猜。 |
-| Test cleanup | 測試不再把 legacy fallback 當作預期成功路徑；mock 只隔離外部依賴。 |
+| Legacy product path cleanup | real `Study` runtime 的主要 mutating path 不再 silent fallback 到 legacy controller mutation；service wrappers 不用 generic forwarding 掩蓋 command contract。 |
+| UI refresh cleanup | command 成功後的頁面更新由 shared refresh route / changed state 驅動，不由各頁自己猜；manual-test regression 要補 UI / walkthrough coverage。 |
+| Test cleanup | 測試不再把 legacy fallback 當作預期成功路徑；mock 只隔離外部依賴；non-blocking gate findings 也要清掉才可收尾。 |
 | Validation reality-gap audit | 盤點現有 tests / artifacts / smoke 的 claim boundary，補上 human-observable product smoke，避免 dashboard PASS 但實機 workflow 仍不可用。 |
 | Data Import UX alignment | task-oriented step-panel wizard baseline、Tier 1/Tier 2 label-placement support、BIDS-like review card、fallback format guidance 和 canonical screenshots 已有 focused coverage；後續不再以 debug-style preview 為目標。 |
-| BackendFacade boundary | Product runtime packages use `get_application_service(study)` / `ApplicationService`; `BackendFacade` is legacy compatibility only. |
+| BackendFacade boundary | Product runtime packages use `get_application_service(study)` / `ApplicationService`; `BackendFacade` module is removed and must not be reintroduced. |
 | Architecture guard | 新增或維持 guard，防止 product path 繞過 command spine。 |
 | Docs alignment | `current`、`roadmap`、`architecture` 不互相矛盾。 |
 

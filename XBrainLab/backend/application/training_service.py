@@ -159,6 +159,13 @@ class TrainingCommandService:
         return getattr(target_model, "__name__", str(target_model))
 
     @staticmethod
+    def model_params_snapshot(model_holder: Any) -> dict[str, Any]:
+        params = getattr(model_holder, "model_params_map", None)
+        if not isinstance(params, dict):
+            return {}
+        return dict(params)
+
+    @staticmethod
     def training_option_snapshot(option: Any) -> dict[str, Any]:
         if option is None:
             return {}

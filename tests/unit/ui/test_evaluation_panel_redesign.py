@@ -176,6 +176,14 @@ def test_metrics_table_selection_uses_dark_theme(qtbot):
     assert table.palette().color(QPalette.ColorRole.Highlight) == QColor(
         Theme.BLUE_PRESSED
     )
+    assert table.palette().color(
+        QPalette.ColorGroup.Inactive,
+        QPalette.ColorRole.Highlight,
+    ) == QColor(Theme.BLUE_PRESSED)
+    assert table.palette().color(
+        QPalette.ColorGroup.Inactive,
+        QPalette.ColorRole.HighlightedText,
+    ) == QColor(Theme.TEXT_PRIMARY)
 
 
 def test_metrics_table_has_no_initial_selection_after_refresh(qtbot):
@@ -313,9 +321,14 @@ def test_evaluation_panel_uses_application_query_before_stale_controller_plans(q
         in panel.last_application_query.message
     )
     stale_controller.get_plans.assert_not_called()
-    assert panel.model_combo.count() == 1
-    assert panel.model_combo.itemText(0) == "No Data Available"
+    assert panel.model_combo.count() == 0
+    assert panel.model_combo.isEnabled() is False
+    assert (
+        panel.model_combo.toolTip()
+        == "Create a training plan before evaluating results."
+    )
     assert panel.run_combo.count() == 0
+    assert panel.bottom_tabs.isVisible() is False
 
 
 def test_evaluation_panel_reuses_application_query_until_marked_dirty(
@@ -531,8 +544,9 @@ def test_evaluation_panel_refuses_real_study_query_none_controller_fallback(
 
     stale_controller.get_plans.assert_not_called()
     stale_controller.get_model_summary_str.assert_not_called()
-    assert panel.model_combo.count() == 1
-    assert panel.model_combo.itemText(0) == "No Data Available"
+    assert panel.model_combo.count() == 0
+    assert panel.model_combo.isEnabled() is False
+    assert panel.model_combo.toolTip() == "No evaluation results available yet."
     assert panel.run_combo.count() == 0
 
 
@@ -653,8 +667,9 @@ def test_evaluation_panel_clears_stale_plans_on_preprocess_change(qtbot):
     preprocess_controller.notify("preprocess_changed")
     qtbot.wait(50)
 
-    assert panel.model_combo.count() == 1
-    assert panel.model_combo.itemText(0) == "No Data Available"
+    assert panel.model_combo.count() == 0
+    assert panel.model_combo.isEnabled() is False
+    assert panel.model_combo.toolTip() == "No evaluation results available yet."
     assert panel.run_combo.count() == 0
 
 
@@ -685,8 +700,9 @@ def test_evaluation_panel_clears_stale_plans_on_history_cleared(qtbot):
     training_controller.notify("history_cleared")
     qtbot.wait(50)
 
-    assert panel.model_combo.count() == 1
-    assert panel.model_combo.itemText(0) == "No Data Available"
+    assert panel.model_combo.count() == 0
+    assert panel.model_combo.isEnabled() is False
+    assert panel.model_combo.toolTip() == "No evaluation results available yet."
     assert panel.run_combo.count() == 0
 
 
@@ -710,8 +726,9 @@ def test_evaluation_panel_clears_stale_plans_on_config_changed(qtbot):
     training_controller.notify("config_changed")
     qtbot.wait(50)
 
-    assert panel.model_combo.count() == 1
-    assert panel.model_combo.itemText(0) == "No Data Available"
+    assert panel.model_combo.count() == 0
+    assert panel.model_combo.isEnabled() is False
+    assert panel.model_combo.toolTip() == "No evaluation results available yet."
     assert panel.run_combo.count() == 0
 
 

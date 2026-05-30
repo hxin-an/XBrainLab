@@ -1,11 +1,11 @@
 # XBrainLab 操作筆記
 
-最後更新：`2026-05-09`
+最後更新：`2026-05-30`
 
 ## 工作路徑
 
 ```bash
-cd /mnt/d/workspace_v2/projects/lab/XBrainLab
+cd /mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual
 ```
 
 不要把新工作寫回舊路徑 `/mnt/d/repos/XBrainLab`；它目前只作 archive / reference。
@@ -45,7 +45,7 @@ scripts/launchers/xbrainlab_wsl_launcher.ps1
 
 launcher 會：
 
-- 進入 `/mnt/d/workspace_v2/projects/lab/XBrainLab`。
+- 進入 `/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`。
 - 優先使用 WSL 內的 `poetry run python run.py`。
 - 找不到 `poetry` 時嘗試 `/home/administrator/.local/bin/poetry`，再退到 `python run.py`。
 - 將 log 寫到 Windows：
@@ -71,6 +71,10 @@ poetry run python scripts/dev/capture_windows_launcher_walkthrough.py --output-d
 這會從 Windows `cmd.exe` / PowerShell / `wsl.exe` 驗證 Desktop command、launcher log mirror
 和 bounded startup path，artifact 寫到 `artifacts/launcher/windows-launcher-walkthrough.*`。
 它不是真人桌面 click-through。
+
+目前 release-candidate worktree 已在 `2026-05-30` 重新 capture launcher walkthrough；
+`artifacts/launcher/windows-launcher-walkthrough.md` 顯示 status `passed`，active WSL repo
+是 `/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`。
 
 ## Local LLM Runtime
 

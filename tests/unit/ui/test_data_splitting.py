@@ -9,6 +9,20 @@ import numpy as np
 import pytest
 from PyQt6.QtWidgets import QComboBox, QDialog, QPushButton, QWidget
 
+
+def _split_config_payload() -> dict[str, object]:
+    return {
+        "train_type": "Individual",
+        "is_cross_validation": False,
+        "val_splitters": [
+            {"split_type": "By Trial", "split_unit": "Ratio", "value": "0.2"},
+        ],
+        "test_splitters": [
+            {"split_type": "By Trial", "split_unit": "Ratio", "value": "0.2"},
+        ],
+    }
+
+
 # ============ DrawRegion (pure logic, no Qt) ============
 
 
@@ -202,16 +216,16 @@ class TestDataSplittingDialog:
         dlg.update_preview()
 
     def test_confirm_accepts_preview_result(self, dlg):
-        generator = MagicMock()
+        split_config = _split_config_payload()
         with patch(
             "XBrainLab.ui.dialogs.dataset.data_splitting_dialog.DataSplittingPreviewDialog"
         ) as MockDlg:
             MockDlg.return_value.exec.return_value = True
-            MockDlg.return_value.get_result.return_value = generator
+            MockDlg.return_value.get_result.return_value = split_config
             dlg.confirm()
 
         MockDlg.assert_called_once()
-        assert dlg.get_result() is generator
+        assert dlg.get_result() == split_config
 
     def test_confirm_rejected(self, dlg):
         with patch(

@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-05-25`
+最後更新：`2026-05-30`
 
 這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
@@ -40,6 +40,62 @@ current truth 以這些文件為準：
 - [planning/roadmap.md](../planning/roadmap.md)
 - [architecture/README.md](../architecture/README.md)
 - [validation/README.md](README.md)
+
+## 2026-05-30 Release-Candidate Gate Follow-Up
+
+Manual-test gating on `/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`
+treated non-blocking findings as work to clear, not as deferred polish. The current
+branch fixed and validated these product-quality gaps:
+
+- saliency 2D map / topomap / spectrogram rendering now runs through the UI worker
+  path with generation-token guarding, stale figure cleanup, and visible render /
+  error states instead of blocking the Qt thread;
+- metrics and model-selection tables use dark active/inactive/disabled palettes and
+  clear initial selection, preventing white selected rows from hiding text;
+- training record figure helpers use figure-scoped rendering and close empty
+  figures, preventing matplotlib figure accumulation during repeated visualization;
+- `ApplicationService` lazy service wrappers now expose explicit command handlers
+  instead of generic `__getattr__` forwarding;
+- UI-only `GenerateDatasetCommand.generator` is hidden from automation / MCP schemas
+  and rejected when supplied through automation payloads;
+- Dataset import UI tests were updated to the `ReviewInterpretationCommand` command
+  path, so the focused UI suite no longer protects the old scan/preview/validate
+  sequence as the product behavior;
+- evaluation and visualization approved UI baselines were refreshed after product
+  review of the intentional no-data and wrapped-control layouts.
+
+Validation:
+
+```bash
+QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/update_quality_dashboard.py
+# Overall status: PASS
+# generated_at: 2026-05-30 13:55:04 UTC+08:00
+# workspace: /mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual
+# checks: Ruff, Basedpyright, Architecture Compliance, Startup Smoke,
+# UI Baseline Capture, UI Dialog Acceptance, UI Product Walkthrough,
+# UI Unit Suite, Real-Data IO Integration all PASS
+
+QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/run_tests.py ui
+# 1235 passed
+
+poetry run basedpyright
+# 0 errors, 0 warnings, 0 notes
+
+poetry run mkdocs build --strict
+# PASS
+
+poetry run pytest --capture=sys \
+  tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics \
+  tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet -q
+# 2 passed
+
+QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_windows_launcher_walkthrough.py
+# status: passed
+```
+
+This supports the branch as a stronger release-candidate preflight. It still does
+not claim signed packaging, full human Windows click-through acceptance, arbitrary
+BIDS validator compliance, or scientific model-quality conclusions.
 
 ## 2026-05-25 Mainstream EEG/BCI Format Gate
 
@@ -661,7 +717,7 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
 | --- | --- | --- | --- |
 | Data Interpretation backend lifecycle | Strong behavior tests | `tests/unit/backend/application/test_data_interpretation_service.py` covers scan -> preview -> validate -> apply, external label sources, selected file scope, metadata apply, label import recipe state. `tests/integration/backend/test_application_service_workflow.py` covers non-mocked ApplicationService interpretation -> recipe reload -> dataset workflow. | Strengthened selected-scope and service apply coverage; added relative selected-file normalization coverage. |
 | Scan / candidate / review / recipe contracts | Useful unit contract tests | `test_data_interpretation_scan.py`, `test_data_interpretation_candidate.py`, `test_data_interpretation_review.py`, `test_data_interpretation_recipe.py`, `test_data_interpretation_label_carriers.py`. | Preserves BIDS/file/folder scan behavior, selected scope, external label source provenance, structured action items, recipe reload/remap, label source mode, placement, duration, and class-map source. |
-| Product runtime BackendFacade guard | Strong architecture guard | `tests/architecture_compliance.py` now has a pytest gate that scans `XBrainLab/ui`, `XBrainLab/llm`, and `XBrainLab/mcp` for `BackendFacade` imports / construction. `tests/unit/test_architecture_compliance.py` covers both violation and allowed `get_application_service(study)` cases. | Product runtime packages must enter via `ApplicationService / Command API`; `BackendFacade` remains legacy compatibility only. |
+| Product runtime BackendFacade guard | Strong architecture guard | `tests/architecture_compliance.py` now has a pytest gate that scans `XBrainLab/ui`, `XBrainLab/llm`, and `XBrainLab/mcp` for `BackendFacade` imports / construction. `tests/unit/test_architecture_compliance.py` covers both violation and allowed `get_application_service(study)` cases. | Product runtime packages must enter via `ApplicationService / Command API`; `BackendFacade` module is physically removed and must not return. |
 | UI command route | Mock-heavy but useful command contract tests | `tests/unit/ui/test_ui_misc.py` asserts import file/folder/BIDS/reload route through `ScanSourceCommand`, `PreviewInterpretationCommand`, `ValidateInterpretationCommand`, and `ApplyInterpretationCommand` without controller import fallback. `tests/unit/ui/dataset/test_dataset_sidebar.py` and `test_panel.py` guard real-Study fallback refusal. | Backend/test continuation adds command-route coverage only. The current dirty worktree still contains earlier Load Labels / Match Labels UX edits, so product UI acceptance must be judged separately from these route tests. |
 | Agent / MCP command parity | Useful contract and adapter tests | `tests/unit/llm/tools/test_application_surface.py`, `tests/unit/llm/tools/real/test_real_tools.py`, `tests/unit/llm/tools/test_definitions.py`, `tests/unit/llm/agent/test_tool_call_normalizer.py`, `tests/unit/mcp/test_server.py`, and `tests/integration/mcp/*` cover exposed Data Interpretation command names, confirmation boundary, blocked reasons, schema exposure, and state truth. Broader LLM/root/integration tests that previously patched removed real-tool `BackendFacade` symbols now patch `get_application_service` and assert command objects / command results. | Real agent tools now assert `ApplicationService` command objects instead of patching `BackendFacade`; tool schema, MCP tools/list, and real/mock tool surfaces carry `label_sources` and the shared choice schema. |
 | Real-data fixture validation | Strong integration evidence when fixtures are present | Real-data tests now resolve fixtures under `tests/fixtures/data/`; scripts use the same path. | Replaced obsolete `tests/data/` path references so deleted tracked fixture files do not turn IO/pipeline tests into false skips. The replacement fixture tree must be included in the PR rather than left untracked. |

@@ -5,6 +5,8 @@ import math
 import torch
 from torch import nn
 
+from XBrainLab.backend.model_requirements import minimum_samples_for_model
+
 
 class EEGNet(nn.Module):
     """Compact convolutional neural network for EEG-based BCIs.
@@ -78,20 +80,23 @@ class EEGNet(nn.Module):
         self.n_class = n_classes
         self.half_sf = math.floor(self.sf / 2)
 
-        # Validate minimum samples requirement
-        # EEGNet requires: Conv1(kernel=sf/2) -> AvgPool(4) ->
-        # Conv3(kernel=sf/16) -> AvgPool(8)
-        # Approximate minimum: sf/2 + 4 + (sf/16)*4 + 32
-        min_samples = self.half_sf + 4 + math.floor(self.half_sf / 4) * 4 + 32
-        epoch_duration = samples / sfreq
-        min_duration = min_samples / sfreq
-        if samples < min_samples:
+        requirement = minimum_samples_for_model(
+            "EEGNet",
+            sfreq=sfreq,
+            model_params={"pool_1": pool_1, "pool_2": pool_2},
+        )
+        if requirement is not None and samples < requirement.min_samples:
+            epoch_duration = samples / sfreq
+            if requirement.unsupported_reason:
+                raise ValueError(requirement.unsupported_reason)
             raise ValueError(
                 f"Epoch duration is too short for EEGNet. "
                 f"Current: {samples} samples ({epoch_duration:.3f}s at {sfreq}Hz). "
-                f"Minimum required: {min_samples} samples ({min_duration:.3f}s). "
+                f"Minimum required: {requirement.min_samples} samples "
+                f"({requirement.min_duration_seconds:.3f}s). "
                 f"Please increase epoch length (tmax-tmin) to at least "
-                f"{min_duration:.2f}s or use a lower sampling frequency.",
+                f"{requirement.min_duration_seconds:.2f}s or use a lower "
+                "sampling frequency.",
             )
 
         self.F1 = f1
