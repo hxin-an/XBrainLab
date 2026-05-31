@@ -63,6 +63,8 @@ poetry run pytest --capture=sys \
 
 - dashboard PASS 是 engineering health，不是 thesis claim。
 - mock-heavy unit tests 是 regression floor，不是 real workflow evidence。
+- architecture / refresh / state-truth 類修復，必須有 same-class sweep 和 source guard clean
+  evidence；只跑新增測試只能支撐 checkpoint，不能支撐 complete。
 - 給使用者手測或宣稱 handoff-ready 前，必須跑 required multi-dataset gate。
 - 不同副檔名不等於不同資料集；同一 source family 的轉檔只能算 format coverage，不能算 dataset source diversity。
 - public local-only fixture evidence 不能當作 clean clone always-on CI。
@@ -77,4 +79,5 @@ poetry run pytest --capture=sys \
 - result
 - claim supported
 - claim not supported
+- completion label：`complete` / `checkpoint` / `blocked`
 - follow-up

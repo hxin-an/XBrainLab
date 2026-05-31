@@ -1,6 +1,6 @@
 # Refactor Gate Runbook
 
-最後更新：`2026-05-01`
+最後更新：`2026-05-31`
 
 這份 runbook 用於判斷是否可以開始後端重構。
 
@@ -41,6 +41,14 @@
 修復 architecture / refresh / state-truth 類問題時，不可在第一個局部測試通過後就宣稱完成。
 完成前必須再做一輪同類問題搜尋，並跑完整 source guard。若新增 guard 後抓到現有產品碼
 違規，必須修到 guard clean；不能只讓新測試通過。
+
+完成回報必須使用明確語意：
+
+- `complete`：同類掃描、source guard、focused validation、regression validation、docs/claim boundary 都已處理。
+- `checkpoint`：修了一個 validated slice，但尚未完成同類掃描或 regression gate。
+- `blocked`：已知缺口需要使用者決策、外部資料或無法自動驗證的人工手測。
+
+不能把 `checkpoint` 包裝成 `complete`。如果使用者要求「做到底」，預設目標是 `complete`。
 
 ## 不通過 gate 的情況
 

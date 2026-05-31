@@ -1,6 +1,6 @@
 # XBrainLab Agent Guide
 
-最後更新：`2026-05-03`
+最後更新：`2026-05-31`
 
 這份文件是給任何進入本 repo 的 coding agent 的最短入口。
 
@@ -68,6 +68,23 @@ Milestone 是最低交付門檻，不是工作上限。完成一個 milestone �
 7. 保留 dirty worktree 裡不是你做的改動，不要 reset 或 checkout。
 8. 重要進度、決策、驗證結果寫進文件，不靠聊天回報保存狀態。
 9. tool-call eval 要等 backend / UI / agent / local LLM 主線穩定後再做。
+
+## 完成語意與防止局部結案
+
+如果使用者要求的是一類問題，例如 UI refresh 不乾淨、state truth 分裂、架構 legacy、
+測試品質不足或效能卡頓，不能只修第一個找到的 symptom 就回報完成。除非已完成同類掃描
+和對應 gate，否則只能稱為 checkpoint，不可稱為完成。
+
+回報完成前必須列出：
+
+- same-class sweep：用 `rg`、source guard、或 reviewer/subagent 盤點同一類 call site / workflow。
+- product-code guard：若問題可被靜態規則保護，要新增或更新 guard，並用它掃現有產品碼到 clean。
+- focused validation：跑能證明修復點的最小測試。
+- regression validation：跑能覆蓋相鄰 workflow 的測試，不只跑新增測試。
+- claim boundary：明確列出仍不能宣稱完成、仍需人工手測或仍未覆蓋的部分。
+
+若以上任一項未完成，最終回報必須說「這是已驗證 checkpoint，不是完整完成」，並說明缺口。
+不要用 dashboard PASS、單一 smoke test、或局部 unit test 代替同類問題完成判定。
 
 ## 交付 Milestone
 
