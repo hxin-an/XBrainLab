@@ -699,22 +699,32 @@ class DataInterpretationApplyService:
         mapping: dict[Any, str],
         selected_event_names: set[str] | None,
     ) -> int:
-        success_count = 0
+        applicable_file_mapping: dict[str, str] = {}
         for target in target_files:
             data_path = self._data_filepath(target)
             carrier_path = file_mapping.get(data_path)
-            if not carrier_path or carrier_path not in label_map:
-                continue
-            success_count += int(
-                self.dataset.apply_labels_batch(
-                    [target],
-                    {carrier_path: label_map[carrier_path]},
-                    {data_path: carrier_path},
-                    mapping,
-                    selected_event_names,
-                ),
-            )
-        return success_count
+            if carrier_path and carrier_path in label_map:
+                applicable_file_mapping[data_path] = carrier_path
+        applicable_label_map = {
+            carrier_path: label_map[carrier_path]
+            for carrier_path in applicable_file_mapping.values()
+        }
+        applicable_targets = [
+            target
+            for target in target_files
+            if self._data_filepath(target) in applicable_file_mapping
+        ]
+        if not applicable_targets:
+            return 0
+        return int(
+            self.dataset.apply_labels_batch(
+                applicable_targets,
+                applicable_label_map,
+                applicable_file_mapping,
+                mapping,
+                selected_event_names,
+            ),
+        )
 
     @staticmethod
     def _selected_event_names_for_sequence_plans(

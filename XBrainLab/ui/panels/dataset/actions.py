@@ -758,23 +758,6 @@ class DatasetActionHandler:
                 ),
             )
 
-        def _handle_apply_error(error: tuple) -> None:
-            message = error[1] if len(error) > 1 else error
-            QMessageBox.critical(
-                self.panel,
-                "Interpretation apply failed",
-                str(message),
-            )
-
-        if execute_application_command_async(
-            self.panel,
-            apply_command,
-            on_result=_handle_apply_result,
-            on_error=_handle_apply_error,
-            busy_target=self.panel,
-        ):
-            return True
-
         apply_result = execute_application_command(self.panel, apply_command)
         if apply_result is None:
             return False

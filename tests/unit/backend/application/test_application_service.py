@@ -1522,7 +1522,7 @@ def test_apply_interpretation_applies_reviewed_sequence_label_carriers_by_stem(
     raw_2.get_filename.return_value = eeg_2.name
     service.dataset.import_files = MagicMock(return_value=(2, []))
     service.dataset.get_loaded_data_list = MagicMock(return_value=[raw_1, raw_2])
-    service.dataset.apply_labels_batch = MagicMock(side_effect=[1, 1])
+    service.dataset.apply_labels_batch = MagicMock(return_value=2)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -1555,11 +1555,14 @@ def test_apply_interpretation_applies_reviewed_sequence_label_carriers_by_stem(
     assert apply_result.diagnostics["label_apply"]["status"] == "applied"
     assert apply_result.diagnostics["label_apply"]["success_count"] == 2
     calls = service.dataset.apply_labels_batch.call_args_list
-    assert len(calls) == 2
-    assert calls[0].args[0] == [raw_1]
+    assert len(calls) == 1
+    assert calls[0].args[0] == [raw_1, raw_2]
     np.testing.assert_array_equal(calls[0].args[1][str(label_1)], np.array([1, 2]))
-    assert calls[1].args[0] == [raw_2]
-    np.testing.assert_array_equal(calls[1].args[1][str(label_2)], np.array([2, 1]))
+    np.testing.assert_array_equal(calls[0].args[1][str(label_2)], np.array([2, 1]))
+    assert calls[0].args[2] == {
+        str(eeg_1): str(label_1),
+        str(eeg_2): str(label_2),
+    }
     assert apply_result.state.interpretation.label_imports[0]["file_mapping"] == {
         str(eeg_1): str(label_1),
         str(eeg_2): str(label_2),

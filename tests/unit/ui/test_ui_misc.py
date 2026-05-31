@@ -880,7 +880,7 @@ class TestDatasetActionHandler:
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
-    def test_import_data_applies_interpretation_with_async_command(
+    def test_import_data_reviews_async_but_applies_on_ui_thread(
         self,
         mock_mb,
         mock_fd,
@@ -901,6 +901,7 @@ class TestDatasetActionHandler:
             "save_recipe": False,
         }
         async_commands = []
+        sync_commands = []
 
         def fake_async(_panel, command, *, on_result, **_kwargs):
             async_commands.append(command)
@@ -919,15 +920,19 @@ class TestDatasetActionHandler:
                     )
                 )
                 return True
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        def fake_execute(_panel, command):
+            sync_commands.append(command)
             if isinstance(command, ApplyInterpretationCommand):
-                on_result(_command_result(applied_interpretation={}))
-                return True
+                return _command_result(applied_interpretation={})
             raise AssertionError(f"unexpected command: {command!r}")
 
         with (
             patch(
                 "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-            ) as mock_execute,
+                side_effect=fake_execute,
+            ),
             patch(
                 "XBrainLab.ui.panels.dataset.actions.execute_application_command_async",
                 side_effect=fake_async,
@@ -935,12 +940,13 @@ class TestDatasetActionHandler:
         ):
             handler.import_data()
 
-        mock_execute.assert_not_called()
         assert [type(command) for command in async_commands] == [
             ReviewInterpretationCommand,
+        ]
+        assert [type(command) for command in sync_commands] == [
             ApplyInterpretationCommand,
         ]
-        apply_command = async_commands[-1]
+        apply_command = sync_commands[-1]
         assert apply_command.candidate_id == "candidate-1"
         assert apply_command.confirmed is False
 
