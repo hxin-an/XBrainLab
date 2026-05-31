@@ -1839,6 +1839,50 @@ def _on_training_updated(self):
     assert check_ui_observer_handlers_call_refresh_coordinator(tmp_path) == []
 
 
+def test_observer_handler_refresh_guard_flags_local_render_refresh(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def _setup_bridges(self):
+    self._create_bridge(
+        self.controller,
+        "training_stopped",
+        self._on_training_stopped,
+    )
+
+def _on_training_stopped(self):
+    self.update_loop()
+    refresh_after_observer(self, event_name="training_stopped")
+""",
+    )
+
+    violations = check_ui_observer_handlers_call_refresh_coordinator(tmp_path)
+
+    assert len(violations) == 1
+    assert "_on_training_stopped" in violations[0]
+    assert "local render refresh" in violations[0]
+
+
+def test_observer_handler_refresh_guard_allows_training_updated_live_tick(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def _setup_bridges(self):
+    self._create_bridge(
+        self.controller,
+        "training_updated",
+        self._on_training_updated,
+    )
+
+def _on_training_updated(self):
+    self.update_loop()
+    refresh_after_observer(self, event_name="training_updated")
+""",
+    )
+
+    assert check_ui_observer_handlers_call_refresh_coordinator(tmp_path) == []
+
+
 def test_observer_handler_refresh_guard_allows_import_finished_callback(tmp_path):
     _write_ui_file(
         tmp_path,

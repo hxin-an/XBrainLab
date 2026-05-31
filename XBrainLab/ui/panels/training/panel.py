@@ -229,9 +229,6 @@ class TrainingPanel(BasePanel):
         """Re-evaluate the ready-to-train state when configuration changes."""
         self.log_text.clear()
         self._logged_epoch_signatures_by_record.clear()
-        if hasattr(self, "sidebar"):
-            self.sidebar.check_ready_to_train()
-        self.update_loop()
         refresh_after_observer(self, event_name="config_changed")
 
     def _on_training_started(self):
@@ -240,18 +237,15 @@ class TrainingPanel(BasePanel):
         self.training_completed_shown = False
         self.show_status_message("Training started")
         if hasattr(self, "sidebar"):
-            self.sidebar.on_training_started()
-        self.update_loop(force_active=True, log_epochs=True)
+            self.sidebar.on_training_started(refresh_ready=False)
         refresh_after_observer(self, event_name="training_started")
 
     def _on_training_stopped(self):
         """Event handler: Training has stopped."""
-        self.training_finished()
+        self.training_finished(refresh_ready=False)
         self.log_text.append("Training stopped (event).")
-        # FORCE update to ensure the Table shows "Done" or "Stopped"
-        self.update_loop(log_epochs=True)
         if hasattr(self, "sidebar"):
-            self.sidebar.on_training_stopped()
+            self.sidebar.on_training_stopped(refresh_ready=False)
         refresh_after_observer(self, event_name="training_stopped")
 
     def _on_training_updated(self):
@@ -263,7 +257,6 @@ class TrainingPanel(BasePanel):
         """Event handler: History cleared."""
         self.log_text.clear()
         self._clear_training_display()
-        self.update_loop()  # Will clear table if history is empty
         refresh_after_observer(self, event_name="history_cleared")
 
     def _clear_training_display(self):
@@ -368,9 +361,9 @@ class TrainingPanel(BasePanel):
         self.tab_acc.set_series(epoch_values, train_acc_values, val_acc_values)
         self.tab_loss.set_series(epoch_values, train_loss_values, val_loss_values)
 
-    def training_finished(self):
+    def training_finished(self, *, refresh_ready: bool = True):
         """Report completion without interrupting the workflow."""
-        if hasattr(self, "sidebar"):
+        if refresh_ready and hasattr(self, "sidebar"):
             self.sidebar.check_ready_to_train()
 
         if not self.training_completed_shown:

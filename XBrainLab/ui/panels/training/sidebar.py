@@ -791,12 +791,14 @@ class TrainingSidebar(QWidget):
         except Exception as e:
             QMessageBox.warning(self, "Warning", f"Error clearing history: {e}")
 
-    def on_training_started(self):
+    def on_training_started(self, *, refresh_ready: bool = True):
         """Update button states when training begins."""
         self.btn_stop.setEnabled(True)
-        self.check_ready_to_train()
+        if refresh_ready:
+            self.check_ready_to_train()
 
-    def on_training_stopped(self):
+    def on_training_stopped(self, *, refresh_ready: bool = True):
         """Update button states when training ends."""
         self.btn_stop.setEnabled(False)
-        self.check_ready_to_train()
+        if refresh_ready:
+            self.check_ready_to_train()

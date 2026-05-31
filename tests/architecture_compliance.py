@@ -69,6 +69,14 @@ UI_POST_COMMAND_LOCAL_REFRESH_METHODS = (
     "update_info_panel",
     "update_panel",
 )
+UI_OBSERVER_HANDLER_LOCAL_RENDER_METHODS = (
+    *UI_POST_COMMAND_LOCAL_REFRESH_METHODS,
+    "update_info",
+    "update_loop",
+)
+UI_OBSERVER_HANDLER_LOCAL_RENDER_ALLOWLIST = {
+    ("training_updated", "update_loop"),
+}
 UI_POST_COMMAND_CONTROLLER_ECHO_METHODS = ("get_model_holder",)
 UI_CAPABILITY_GATED_CONTROLLER_READINESS_METHODS = (
     "get_channel_names",
@@ -2514,15 +2522,23 @@ def check_ui_observer_handlers_call_refresh_coordinator(root_dir: Path) -> list[
             handler = functions.get(handler_name)
             if handler is None:
                 continue
-            if _function_calls_refresh_after_observer(handler):
+            if not _function_calls_refresh_after_observer(handler):
+                violations.append(
+                    f"{py_file.relative_to(root_dir)}:{node.lineno} wires "
+                    f"{event_name!r} to {handler_name}(), but that handler does "
+                    "not call refresh_after_observer(); event-specific observer "
+                    "handlers may do local side effects, then must delegate shared "
+                    "refresh scope to the coordinator."
+                )
                 continue
-            violations.append(
-                f"{py_file.relative_to(root_dir)}:{node.lineno} wires "
-                f"{event_name!r} to {handler_name}(), but that handler does "
-                "not call refresh_after_observer(); event-specific observer "
-                "handlers may do local side effects, then must delegate shared "
-                "refresh scope to the coordinator."
-            )
+            for local_call in _observer_handler_local_render_calls(event_name, handler):
+                call_name = _call_name(local_call.func)
+                violations.append(
+                    f"{py_file.relative_to(root_dir)}:{local_call.lineno} "
+                    f"{handler_name}() handles {event_name!r} and calls "
+                    f"{call_name}(); local render refresh must stay in "
+                    "refresh_after_observer()/refresh_coordinator scope."
+                )
     return violations
 
 
@@ -2554,6 +2570,23 @@ def _function_calls_refresh_after_observer(
         and _call_name(child.func) == "refresh_after_observer"
         for child in ast.walk(node)
     )
+
+
+def _observer_handler_local_render_calls(
+    event_name: str,
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> list[ast.Call]:
+    calls: list[ast.Call] = []
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Call):
+            continue
+        call_name = _call_name(child.func)
+        if call_name not in UI_OBSERVER_HANDLER_LOCAL_RENDER_METHODS:
+            continue
+        if (event_name, call_name) in UI_OBSERVER_HANDLER_LOCAL_RENDER_ALLOWLIST:
+            continue
+        calls.append(child)
+    return calls
 
 
 def _observer_bridge_uses_import_finished_simple_refresh(call: ast.Call) -> bool:

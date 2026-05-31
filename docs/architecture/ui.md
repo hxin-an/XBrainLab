@@ -199,10 +199,11 @@ blocked reason copy、command execution、post-command refresh，以及 mock / c
 單純的 observer-driven panel refresh 應使用 `BasePanel._create_refresh_bridge()`，不要直接把
 event handler 接到 `update_panel()`。需要特殊語意的 event，例如 import-finished handler、
 TrainingPanel 的 start/stop/config/history handler 或 live training update loop，仍可接自己的
-handler。TrainingPanel 的 high-level callbacks 會在完成 event-specific UI 更新後呼叫
-`refresh_after_observer()`，讓 aggregate info panel、assistant backend status 和 downstream
-analysis panels 不必等下一個 command result 或 tab switch；`training_updated` 也保留 live
-`update_loop()`，但現在會在 live progress 更新後進入 training-owner coordinator scope。
+handler。TrainingPanel 的 high-level callbacks 只保留不可替代的本地副作用，例如清 log、
+切 stop button、寫 status，render / readiness refresh 則交給 `refresh_after_observer()`，讓
+aggregate info panel、assistant backend status 和 downstream analysis panels 不必等下一個
+command result 或 tab switch；`training_updated` 是 live-tick 例外，仍保留 live `update_loop()`，
+但不 fan-out 到 Evaluation / Visualization。
 `refresh_after_observer()` currently treats `data_changed`, `preprocess_changed`, high-level
 training lifecycle events, and visualization `montage_changed` / `saliency_changed` as known
 state-changing events and maps them through the same panel-scope rules used by command-result
@@ -229,7 +230,7 @@ signal 寫進 backend controller。
 | --- | --- | --- |
 | `DatasetPanel` | `data_changed`、`import_finished` | simple refresh bridge owns success refresh; `DatasetActionHandler.on_import_finished()` only surfaces import warnings |
 | `PreprocessPanel` | `preprocess_changed`、dataset `data_changed` | simple refresh bridge |
-| `TrainingPanel` | `training_started`、`training_stopped`、`config_changed`、`training_updated`、`history_cleared`、dataset `data_changed`、preprocess events | start/stop/config/history handlers update training UI and shared status; `training_updated` uses live `update_loop()` and then enters the training-owner coordinator scope; simple refresh bridge handles dataset/preprocess events |
+| `TrainingPanel` | `training_started`、`training_stopped`、`config_changed`、`training_updated`、`history_cleared`、dataset `data_changed`、preprocess events | start/stop/config/history handlers do event-specific side effects and delegate render refresh to coordinator; `training_updated` uses live `update_loop()` without downstream fan-out; simple refresh bridge handles dataset/preprocess events |
 | `EvaluationPanel` | training `training_stopped`、`history_cleared`、`config_changed`、preprocess `preprocess_changed` | simple refresh bridge |
 | `VisualizationPanel` | training `training_stopped`、`history_cleared`、`config_changed`、preprocess `preprocess_changed`、visualization `montage_changed`、`saliency_changed` | simple refresh bridge |
 

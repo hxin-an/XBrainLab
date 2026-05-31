@@ -856,6 +856,75 @@ def test_training_panel_high_level_events_refresh_coordinator_scope(
     refresh.assert_any_call(panel, event_name="history_cleared")
 
 
+def test_training_lifecycle_observers_do_not_locally_render_before_coordinator(
+    mock_main_window,
+    qtbot,
+):
+    """Lifecycle observer handlers should leave panel rendering to the coordinator."""
+    controller: Any = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+    controller.get_formatted_history = MagicMock(return_value=[])
+
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+
+    with (
+        patch.object(panel, "update_loop") as update_loop,
+        patch.object(panel.sidebar, "check_ready_to_train") as check_ready,
+        patch(
+            "XBrainLab.ui.panels.training.panel.refresh_after_observer",
+            return_value=True,
+        ) as refresh,
+    ):
+        panel._on_config_changed()
+        panel._on_training_started()
+        panel._on_training_stopped()
+        panel._on_history_cleared()
+
+    update_loop.assert_not_called()
+    check_ready.assert_not_called()
+    assert refresh.call_count == 4
+
+
+def test_training_updated_observer_keeps_local_live_tick_refresh(
+    mock_main_window,
+    qtbot,
+):
+    """training_updated is the live-tick exception because coordinator fan-out is off."""
+    controller: Any = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+    controller.get_formatted_history = MagicMock(return_value=[])
+
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+
+    with (
+        patch.object(panel, "update_loop") as update_loop,
+        patch(
+            "XBrainLab.ui.panels.training.panel.refresh_after_observer",
+            return_value=False,
+        ) as refresh,
+    ):
+        panel._on_training_updated()
+
+    update_loop.assert_called_once_with(log_epochs=True)
+    refresh.assert_called_once_with(panel, event_name="training_updated")
+
+
 def test_training_panel_clears_log_on_config_changed(
     mock_main_window,
     qtbot,
