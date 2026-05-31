@@ -195,6 +195,7 @@ class PreviewWidget(QWidget):
 
         freq_layout.addWidget(self.plot_freq)
         self.plot_tabs.addTab(self.tab_freq, "Frequency (PSD)")
+        self.plot_tabs.currentChanged.connect(self._on_plot_param_changed)
 
         plot_layout.addWidget(self.plot_tabs)
 

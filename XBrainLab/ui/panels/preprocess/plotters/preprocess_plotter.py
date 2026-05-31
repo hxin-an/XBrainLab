@@ -42,6 +42,7 @@ class PreprocessPlotter:
         self.controller = controller
         self.threadpool = QThreadPool.globalInstance()
         self._plot_generation = 0
+        self._active_psd_workers: list[Worker] = []
 
     def _get_chan_data(self, obj, ch_idx, start_time=0, duration=5):
         """Helper to retrieve channel data from a data object."""
@@ -153,6 +154,15 @@ class PreprocessPlotter:
 
         return f, pxx, f_orig, pxx_orig
 
+    def _frequency_tab_active(self) -> bool:
+        tabs = getattr(self.widget, "plot_tabs", None)
+        current_index = getattr(tabs, "currentIndex", None)
+        return callable(current_index) and int(current_index()) == 1
+
+    def _discard_psd_worker(self, worker: Worker) -> None:
+        if worker in self._active_psd_workers:
+            self._active_psd_workers.remove(worker)
+
     def _compatibility_data_lists_for_render(
         self,
     ) -> tuple[list[Any], list[Any]] | None:
@@ -213,6 +223,8 @@ class PreprocessPlotter:
             # Use first file
             raw_obj = data_list[0]
             orig_obj = orig_list[0] if orig_list else None
+            if orig_obj is raw_obj:
+                orig_obj = None
 
             chan_idx = self.widget.chan_combo.currentIndex()
             if chan_idx < 0:
@@ -280,7 +292,7 @@ class PreprocessPlotter:
                 self._plot_events(raw_obj, x_curr[0], x_curr[-1])
 
             # --- Frequency Domain (Async) ---
-            if y_curr is not None:
+            if y_curr is not None and self._frequency_tab_active():
                 # Show loading state
                 self.widget.plot_freq.setTitle("Calculating PSD...")
 
@@ -323,7 +335,12 @@ class PreprocessPlotter:
                     self.widget.plot_freq.setTitle(f"{chan_name} (PSD)")
 
                 worker.signals.result.connect(handle_psd_result)
-                self.threadpool.start(worker)  # type: ignore[union-attr]
+                finished_signal = getattr(worker.signals, "finished", None)
+                if hasattr(finished_signal, "connect"):
+                    finished_signal.connect(lambda: self._discard_psd_worker(worker))
+                self._active_psd_workers.append(worker)
+                if self.threadpool is not None:
+                    self.threadpool.start(worker)
 
         except Exception as e:
             logger.error("Plotting failed: %s", e, exc_info=True)

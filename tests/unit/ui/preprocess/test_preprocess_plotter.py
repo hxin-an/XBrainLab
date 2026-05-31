@@ -13,6 +13,8 @@ def mock_widget():
     # Mock PyQtGraph items
     widget.plot_time = MagicMock()
     widget.plot_freq = MagicMock()
+    widget.plot_tabs = MagicMock()
+    widget.plot_tabs.currentIndex.return_value = 0
     widget.clear_plot_data = MagicMock()
 
     # Mock Crosshair items
@@ -90,6 +92,7 @@ def test_plot_sample_data_async_psd(mock_widget, mock_controller):
 
     # Mock ThreadPool to run synchronous for test or just check start call
     plotter.threadpool = MagicMock()
+    mock_widget.plot_tabs.currentIndex.return_value = 1
 
     with patch(
         "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.Worker"
@@ -109,6 +112,7 @@ def test_plot_sample_data_async_psd(mock_widget, mock_controller):
 def test_stale_psd_result_does_not_update_latest_plot(mock_widget, mock_controller):
     plotter = PreprocessPlotter(mock_widget, mock_controller)
     plotter.threadpool = MagicMock()
+    mock_widget.plot_tabs.currentIndex.return_value = 1
     handlers = []
 
     class _Signal:
@@ -137,6 +141,53 @@ def test_stale_psd_result_does_not_update_latest_plot(mock_widget, mock_controll
     handlers[1](psd_result)
     mock_widget.plot_freq.plot.assert_called_once()
     mock_widget.plot_freq.setTitle.assert_called_with("ch1 (PSD)")
+
+
+def test_plot_sample_data_defers_psd_until_frequency_tab(mock_widget, mock_controller):
+    plotter = PreprocessPlotter(mock_widget, mock_controller)
+    plotter.threadpool = MagicMock()
+    mock_widget.plot_tabs.currentIndex.return_value = 0
+
+    with patch(
+        "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.Worker"
+    ) as MockWorker:
+        plotter.plot_sample_data()
+
+    mock_widget.plot_time.plot.assert_called()
+    MockWorker.assert_not_called()
+    plotter.threadpool.start.assert_not_called()
+
+
+def test_plot_sample_data_keeps_psd_worker_until_finished(
+    mock_widget,
+    mock_controller,
+):
+    plotter = PreprocessPlotter(mock_widget, mock_controller)
+    plotter.threadpool = MagicMock()
+    mock_widget.plot_tabs.currentIndex.return_value = 1
+    finish_handlers = []
+
+    class _Signal:
+        def connect(self, callback):
+            finish_handlers.append(callback)
+
+    class _Signals:
+        result = MagicMock()
+        finished = _Signal()
+
+    class _Worker:
+        signals = _Signals()
+
+    worker = _Worker()
+    with patch(
+        "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.Worker",
+        return_value=worker,
+    ):
+        plotter.plot_sample_data()
+
+    assert plotter._active_psd_workers == [worker]
+    finish_handlers[-1]()
+    assert plotter._active_psd_workers == []
 
 
 def test_plot_no_data(mock_widget, mock_controller):
