@@ -1256,6 +1256,78 @@ def run(self):
     assert check_ui_post_command_local_refreshes(tmp_path) == []
 
 
+def test_post_command_refresh_guard_flags_async_result_local_refresh(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def run(self):
+    def _handle_result(result):
+        if result.failed:
+            return
+        self.update_info()
+
+    execute_application_command_async(
+        self,
+        SomeCommand(),
+        on_result=_handle_result,
+    )
+""",
+    )
+
+    violations = check_ui_post_command_local_refreshes(tmp_path)
+
+    assert len(violations) == 1
+    assert "_handle_result" in violations[0]
+    assert "async" in violations[0]
+
+
+def test_post_command_refresh_guard_flags_async_method_callback_refresh(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def run(self):
+    execute_application_command_async(
+        self,
+        SomeCommand(),
+        on_result=self._handle_result,
+    )
+
+def _handle_result(self, result):
+    if result.failed:
+        return
+    self.mark_refresh_dirty()
+""",
+    )
+
+    violations = check_ui_post_command_local_refreshes(tmp_path)
+
+    assert len(violations) == 1
+    assert "_handle_result" in violations[0]
+    assert "mark_refresh_dirty" in violations[0]
+
+
+def test_post_command_refresh_guard_allows_async_read_only_query_refresh_false(
+    tmp_path,
+):
+    _write_ui_file(
+        tmp_path,
+        """
+def run(self):
+    def _handle_result(result):
+        self.update_info()
+
+    execute_application_command_async(
+        self,
+        QueryStateCommand(query="state"),
+        on_result=_handle_result,
+        refresh=False,
+    )
+""",
+    )
+
+    assert check_ui_post_command_local_refreshes(tmp_path) == []
+
+
 def test_post_command_refresh_guard_flags_success_guard_local_refresh(tmp_path):
     _write_ui_file(
         tmp_path,

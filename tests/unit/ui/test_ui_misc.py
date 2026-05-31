@@ -1250,8 +1250,9 @@ class TestDatasetActionHandler:
 
         assert saved
         assert saved[0].recipe_path == "/recipes/import_recipe.json"
-        mock_mb.information.assert_called_once()
-        assert "Recipe saved." in mock_mb.information.call_args.args[2]
+        mock_mb.information.assert_not_called()
+        status_bar = handler.panel.main_window.statusBar.return_value
+        assert "Recipe saved." in status_bar.showMessage.call_args.args[0]
 
     def test_save_interpretation_recipe_uses_backend_capability_before_file_dialog(
         self,
@@ -2275,7 +2276,9 @@ class TestDatasetActionHandler:
 
         assert saved
         assert saved[0].recipe_path == "/recipes/with_labels.json"
-        assert "Recipe saved." in mock_mb.information.call_args.args[2]
+        mock_mb.information.assert_not_called()
+        status_bar = handler.panel.main_window.statusBar.return_value
+        assert "Recipe saved." in status_bar.showMessage.call_args.args[0]
         handler.panel.update_panel.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")

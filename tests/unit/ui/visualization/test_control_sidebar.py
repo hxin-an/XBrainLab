@@ -572,6 +572,8 @@ def test_sidebar_set_saliency_service_success_uses_coordinator_refresh(
     assert async_command.params == {"method": "gradient"}
     mock_panel.controller.set_saliency_params.assert_not_called()
     mock_panel.on_update.assert_not_called()
+    mock_panel.mark_refresh_dirty.assert_not_called()
+    mock_panel.update_info.assert_not_called()
 
 
 def test_sidebar_set_saliency_uses_query_defaults_before_stale_controller(

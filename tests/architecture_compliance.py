@@ -63,9 +63,12 @@ UI_CONTROLLER_FALLBACK_WRAPPERS = (
 )
 UI_POST_COMMAND_LOCAL_REFRESH_METHODS = (
     "check_ready_to_train",
+    "mark_refresh_dirty",
     "notify_update",
     "on_update",
     "refresh_backend_status",
+    "refresh_combos",
+    "update_info",
     "update_info_panel",
     "update_panel",
 )
@@ -2338,6 +2341,14 @@ def check_ui_post_command_local_refreshes(root_dir: Path) -> list[str]:
                         node.name,
                     )
                 )
+        violations.extend(
+            _format_async_command_callback_refresh_violations(
+                py_file,
+                root_dir,
+                tree,
+                source,
+            )
+        )
     return violations
 
 
@@ -2664,6 +2675,56 @@ def _post_command_controller_echo_calls(
         if _contains_service_backed_command(statement):
             command_seen = True
     return violations
+
+
+def _format_async_command_callback_refresh_violations(
+    py_file: Path,
+    root_dir: Path,
+    tree: ast.AST,
+    source: str,
+) -> list[str]:
+    functions = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    violations: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if _call_name(node.func) != "execute_application_command_async":
+            continue
+        if _call_has_refresh_false(node):
+            continue
+        callback_name = _command_async_result_callback_name(node)
+        if not callback_name:
+            continue
+        callback = functions.get(callback_name)
+        if callback is None:
+            continue
+        visitor = _PostCommandLocalRefreshVisitor(source, callback.name)
+        for statement in callback.body:
+            visitor.visit(statement)
+        violations.extend(
+            f"{py_file.relative_to(root_dir)}:{call.lineno} async on_result "
+            f"{callback_name}() calls {_call_name(call.func)}; service-backed "
+            "async success refresh must go through refresh_after_command(), not "
+            "callback-local render refresh."
+            for call in visitor.violations
+        )
+    return violations
+
+
+def _command_async_result_callback_name(call: ast.Call) -> str | None:
+    for keyword in call.keywords:
+        if keyword.arg != "on_result":
+            continue
+        callback = keyword.value
+        if isinstance(callback, ast.Name):
+            return callback.id
+        if isinstance(callback, ast.Attribute):
+            return callback.attr
+    return None
 
 
 def _nested_statement_bodies(statement: ast.stmt) -> list[ast.stmt]:

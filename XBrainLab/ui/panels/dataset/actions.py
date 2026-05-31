@@ -757,9 +757,6 @@ class DatasetActionHandler:
                     part for part in [apply_result.message, recipe_message] if part
                 ),
             )
-            update_info = getattr(self.panel, "update_info", None)
-            if callable(update_info):
-                update_info()
 
         def _handle_apply_error(error: tuple) -> None:
             message = error[1] if len(error) > 1 else error

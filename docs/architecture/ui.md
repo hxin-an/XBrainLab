@@ -117,7 +117,9 @@ no-arg panel refresh、aggregate info refresh 和 assistant backend status refre
 coordinator 邊界。2026-05-12 follow-up 又讓 `execute_application_command()` 在
 `ApplicationService.execute(...)` 執行期間暫停同一個 MainWindow 的 observer-driven refresh；
 command handler 內同步發出的 controller observer event 不會先刷新 UI，成功或失敗後由
-`CommandResult.changed_state` 進入 `refresh_after_command()`。最新 cleanup 又讓 known observer
+`CommandResult.changed_state` 進入 `refresh_after_command()`。Async command 的 `on_result`
+callback 也只能處理 result message、status 或錯誤顯示；不可在 callback 裡呼叫
+`update_panel()`、`update_info()`、`mark_refresh_dirty()` 等本地 render refresh。最新 cleanup 又讓 known observer
 events 使用 coordinator refresh scope：
 `data_changed` 只由 `DatasetPanel` owner bridge 觸發 Dataset / Preprocess / Training refresh，
 `preprocess_changed` 只由 `PreprocessPanel` owner bridge 觸發 Preprocess / Training /

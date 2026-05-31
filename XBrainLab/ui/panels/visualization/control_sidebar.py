@@ -312,10 +312,6 @@ class ControlSidebar(QWidget):
             )
             return
         self._show_status("Saliency parameters set")
-        if self.panel and hasattr(self.panel, "mark_refresh_dirty"):
-            self.panel.mark_refresh_dirty()
-        if self.panel and hasattr(self.panel, "update_info"):
-            self.panel.update_info()
 
     def _on_saliency_configuration_error(self, error: tuple) -> None:
         message = error[1] if len(error) > 1 else error
