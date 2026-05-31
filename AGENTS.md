@@ -118,6 +118,21 @@ poetry run pytest --capture=sys \
   -q
 ```
 
+交給使用者手測或宣稱 handoff-ready 前，必須另外跑多資料集 gate。不同副檔名不等於
+不同資料集；同一資料集轉檔只能算 format coverage，不能取代 dataset source diversity。
+
+```bash
+poetry run python scripts/dev/fetch_public_eeg_fixtures.py
+poetry run python scripts/dev/report_dataset_validation_matrix.py --strict --format json
+poetry run python scripts/dev/report_data_interpretation_format_matrix.py --format json
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/integration/io/test_io_integration.py \
+  tests/integration/io/test_public_bids_fixture.py \
+  tests/integration/pipeline/test_public_cross_source_training_smoke.py -q
+poetry run python scripts/dev/run_public_cross_source_training_smoke.py \
+  --format json --strict
+```
+
 最新已知 fast dashboard clean PASS 的事實，請以 `artifacts/quality/latest.md` 和 `docs/validation/README.md` 為準。
 
 ## 禁用舊入口

@@ -36,6 +36,20 @@ real-data IO：
 poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q
 ```
 
+required multi-dataset handoff gate：
+
+```bash
+poetry run python scripts/dev/fetch_public_eeg_fixtures.py
+poetry run python scripts/dev/report_dataset_validation_matrix.py --strict --format json
+poetry run python scripts/dev/report_data_interpretation_format_matrix.py --format json
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/integration/io/test_io_integration.py \
+  tests/integration/io/test_public_bids_fixture.py \
+  tests/integration/pipeline/test_public_cross_source_training_smoke.py -q
+poetry run python scripts/dev/run_public_cross_source_training_smoke.py \
+  --format json --strict
+```
+
 tiny pipeline smoke：
 
 ```bash
@@ -49,6 +63,8 @@ poetry run pytest --capture=sys \
 
 - dashboard PASS 是 engineering health，不是 thesis claim。
 - mock-heavy unit tests 是 regression floor，不是 real workflow evidence。
+- 給使用者手測或宣稱 handoff-ready 前，必須跑 required multi-dataset gate。
+- 不同副檔名不等於不同資料集；同一 source family 的轉檔只能算 format coverage，不能算 dataset source diversity。
 - public local-only fixture evidence 不能當作 clean clone always-on CI。
 - optional `llm` group 未驗證前，不能宣稱 local LLM runtime ready。
 - tool-call scoring system 尚未建立前，不能宣稱 agent tool-call accuracy。

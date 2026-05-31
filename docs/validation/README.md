@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-05-30`
+最後更新：`2026-05-31`
 
 這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
@@ -29,6 +29,39 @@
 | 1B Data Interpretation | scan / preview / validate / apply tests，加 representative format artifact。 |
 | 1C Tool-Call Baseline | agent tool tests、MCP adapter tests、blocked reason / structured result checks。 |
 | 1D Desktop Acceptance | human Windows click-through notes，加 automated walkthrough screenshot evidence。 |
+
+## Required Multi-Dataset Gate
+
+給使用者手測、宣稱 handoff-ready、或整理 release-candidate preflight 前，
+不同資料集來源是必測項目。只用 `A01T/A02T/A03T`，或只把同一份資料轉成多種副檔名，
+都不夠支撐「主流資料可用」。
+
+必跑 command：
+
+```bash
+poetry run python scripts/dev/fetch_public_eeg_fixtures.py
+poetry run python scripts/dev/report_dataset_validation_matrix.py --strict --format json
+poetry run python scripts/dev/report_data_interpretation_format_matrix.py --format json
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/integration/io/test_io_integration.py \
+  tests/integration/io/test_public_bids_fixture.py \
+  tests/integration/pipeline/test_public_cross_source_training_smoke.py -q
+
+poetry run python scripts/dev/run_public_cross_source_training_smoke.py \
+  --format json --strict
+```
+
+`report_dataset_validation_matrix.py --strict` 會把以下資料集多樣性當成 fail/pass gate：
+
+- checked-in GDF + MAT：`A01T`、`A02T`、`A03T` 都要存在並有對應 label。
+- compact multiformat：FIF、FIF.GZ、epoched FIF、EDF、BDF、BrainVision、EEGLAB SET 都要存在。
+- public event-rich sources：至少 3 個 public event-rich fixtures，且來自至少 3 個 source families。
+- public BIDS EEG：必須有 downloaded tiny BIDS EEG root，包含 `events.tsv` / sidecar path。
+
+這個 gate 能支撐「手測前已跨不同 dataset source 做過 import / label / BIDS / training-smoke
+preflight」。它仍不能支撐 full BIDS validator compliance、任意 proprietary format、
+長時間訓練穩定性、或 scientific model-quality claim。
 
 ## Artifact 解讀
 

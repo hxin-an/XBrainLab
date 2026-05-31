@@ -146,6 +146,7 @@ pipeline evidence 要分層，不要用單一大測試包全部。
 | --- | --- | --- |
 | fast dashboard | repo 今天是否健康？ | lint、type、architecture、startup、UI、real-data IO |
 | real-data IO integration | real EEG formats / fixture paths 是否能進入 IO facade？ | `tests/integration/io/test_io_integration.py` |
+| required multi-dataset gate | handoff 前是否跨不同資料集來源驗證？ | `fetch_public_eeg_fixtures.py`、`report_dataset_validation_matrix.py --strict`、public BIDS / cross-source smoke |
 | tiny E2E pipeline smoke | `dataset -> train -> evaluate` 是否能閉環？ | tiny CPU training smoke，1-2 epoch，metrics 存在 |
 | public fixture pipeline smoke | public event-rich fixtures 是否能走到 training smoke？ | public fixture commands / artifacts |
 | scientific validation | 結果是否可重現且支撐 thesis claim？ | fixed protocol、baselines、statistics、threat analysis |
@@ -153,6 +154,9 @@ pipeline evidence 要分層，不要用單一大測試包全部。
 目前的判讀：
 
 - Real-data IO integration 只證明特定資料或 fixture 能走過預期 IO path。
+- Required multi-dataset gate 是手測 / release-candidate handoff 前的必跑項目；它要求
+  checked-in GDF+MAT、compact multiformat、public event-rich source diversity、以及 public
+  BIDS EEG fixture。只測同一資料集的不同副檔名不算通過。
 - Tiny E2E smoke 只證明小型 train/evaluate loop 沒有 shape、metric、輸出路徑等基本錯誤。
 - 兩者都不能直接當作 scientific validation。
 
@@ -168,6 +172,7 @@ pipeline evidence 要分層，不要用單一大測試包全部。
 | chat product-flow tests | normal input / empty response / worker error / local unavailable 有可見 feedback | 真 local model 長時間穩定性或人工 click-through 完整體驗 |
 | product UI walkthrough tests | assistant layout / panel navigation / synthetic pipeline button path 有 regression protection | 真 Windows launcher 人工驗收或長時間 local model UX |
 | real-data IO tests | 特定 real-data / fixture import paths | 完整 data pipeline reproducibility |
+| required multi-dataset gate | 不同 dataset source 的 import / label / BIDS / public training-smoke preflight | full BIDS validator compliance、所有資料集、model quality |
 | tiny pipeline smoke | 小型 train/evaluate path 能閉環 | model quality 或 thesis reproducibility |
 | split audit artifact tests | split indices schema、index overlap、subject/session group leakage | model quality 或完整 external dataset experiment |
 | quality dashboard | fast engineering health | thesis conclusion |

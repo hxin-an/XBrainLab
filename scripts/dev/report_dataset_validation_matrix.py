@@ -84,6 +84,17 @@ class DatasetLayerRow:
     notes: str
 
 
+@dataclass
+class DatasetMatrixRequirement:
+    """One required dataset breadth check for hand-test/release preflight."""
+
+    key: str
+    label: str
+    ok: bool
+    observed: str
+    required: str
+
+
 def _nonempty_file(path: Path) -> bool:
     return path.exists() and path.is_file() and path.stat().st_size > 0
 
@@ -252,14 +263,102 @@ def build_dataset_validation_rows(
     ]
 
 
+def validate_required_dataset_matrix(
+    repo_root: Path = ROOT,
+) -> list[DatasetMatrixRequirement]:
+    """Return required dataset diversity checks for hand-test preflight.
+
+    These requirements intentionally check source diversity, not only file
+    extension breadth. A single dataset converted into many formats is useful,
+    but it is not enough evidence before handing a branch to a human tester.
+    """
+    tests_data_dir = repo_root / "tests" / "fixtures" / "data"
+    checked_in_stems = [
+        stem
+        for stem in CHECKED_IN_GDF_STEMS
+        if (tests_data_dir / f"{stem}.gdf").exists()
+        and (tests_data_dir / "label" / f"{stem}.mat").exists()
+    ]
+    multiformat_files = [
+        filename
+        for filename in MULTIFORMAT_FILES
+        if (tests_data_dir / "multiformat" / filename).exists()
+    ]
+    public_training_fixtures = [
+        fixture
+        for fixture in PUBLIC_EVENT_RICH_TRAINING_FIXTURES
+        if _nonempty_file(tests_data_dir / "public" / fixture["filename"])
+    ]
+    public_training_source_families = sorted(
+        {str(fixture["source_family"]) for fixture in public_training_fixtures}
+    )
+    public_bids_fixtures = [
+        fixture
+        for fixture in PUBLIC_BIDS_FIXTURES
+        if _nonempty_file(tests_data_dir / "public" / fixture["entrypoint"])
+    ]
+    return [
+        DatasetMatrixRequirement(
+            key="checked_in_gdf_mat",
+            label="Checked-in GDF recordings with external MAT labels",
+            ok=len(checked_in_stems) >= len(CHECKED_IN_GDF_STEMS),
+            observed=", ".join(checked_in_stems) or "none",
+            required=("A01T, A02T, and A03T GDF files with matching label/*.mat files"),
+        ),
+        DatasetMatrixRequirement(
+            key="compact_multiformat",
+            label="Compact multi-format import fixtures",
+            ok=len(multiformat_files) >= len(MULTIFORMAT_FILES),
+            observed=f"{len(multiformat_files)} / {len(MULTIFORMAT_FILES)} files",
+            required=(
+                "FIF, FIF.GZ, epoched FIF, EDF, BDF, BrainVision, and EEGLAB SET"
+            ),
+        ),
+        DatasetMatrixRequirement(
+            key="public_event_rich_sources",
+            label="Public event-rich source diversity",
+            ok=len(public_training_fixtures) >= 3
+            and len(public_training_source_families) >= 3,
+            observed=(
+                f"{len(public_training_fixtures)} fixtures from "
+                f"{len(public_training_source_families)} source families"
+                if public_training_fixtures
+                else "none"
+            ),
+            required=(
+                "at least 3 event-rich fixtures from at least 3 source families; "
+                "run scripts/dev/fetch_public_eeg_fixtures.py when missing"
+            ),
+        ),
+        DatasetMatrixRequirement(
+            key="public_bids_eeg",
+            label="Public BIDS EEG folder fixture",
+            ok=bool(public_bids_fixtures),
+            observed=(
+                ", ".join(
+                    str(fixture["source_family"]) for fixture in public_bids_fixtures
+                )
+                if public_bids_fixtures
+                else "none"
+            ),
+            required=("downloaded MNE-BIDS tiny EEG root with events.tsv and sidecars"),
+        ),
+    ]
+
+
 def build_snapshot(repo_root: Path = ROOT) -> dict[str, object]:
     """Return the current machine-readable dataset validation snapshot."""
     rows = build_dataset_validation_rows(repo_root)
     tests_data_dir = repo_root / "tests" / "fixtures" / "data"
+    requirements = validate_required_dataset_matrix(repo_root)
     return {
         "repo_root": str(repo_root),
         "tests_data_dir": str(tests_data_dir),
         "rows": [asdict(row) for row in rows],
+        "strict_validation": {
+            "ok": all(requirement.ok for requirement in requirements),
+            "requirements": [asdict(requirement) for requirement in requirements],
+        },
         "current_truth": {
             "checked_in_depth": (
                 "checked-in Graz-family fixtures now support import, label attach, "
@@ -283,6 +382,8 @@ def build_snapshot(repo_root: Path = ROOT) -> dict[str, object]:
 def render_markdown(snapshot: dict[str, object]) -> str:
     """Render the dataset validation snapshot in Markdown."""
     rows = cast(list[dict[str, object]], snapshot["rows"])
+    strict_validation = cast(dict[str, object], snapshot["strict_validation"])
+    requirements = cast(list[dict[str, object]], strict_validation["requirements"])
     current_truth = cast(dict[str, object], snapshot["current_truth"])
     lines = [
         "# Dataset Validation Matrix",
@@ -295,6 +396,26 @@ def render_markdown(snapshot: dict[str, object]) -> str:
             "| {layer} | {representative_data} | {reproducibility_class} | "
             "{source_families} | {import_facade} | {label_attach} | "
             "{dataset_generation} | {training_smoke} | {notes} |".format(**row)
+        )
+    lines.extend(
+        [
+            "",
+            "## Required Hand-Test Dataset Gate",
+            "",
+            f"- overall: `{'pass' if strict_validation['ok'] else 'fail'}`",
+            "",
+            "| Requirement | Status | Observed | Required |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    for requirement in requirements:
+        lines.append(
+            "| {label} | {status} | {observed} | {required} |".format(
+                label=requirement["label"],
+                status="pass" if requirement["ok"] else "fail",
+                observed=requirement["observed"],
+                required=requirement["required"],
+            )
         )
     lines.extend(
         [
@@ -318,6 +439,14 @@ def main() -> int:
         default="markdown",
         help="Output format",
     )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help=(
+            "Fail unless the required multi-dataset hand-test matrix is present. "
+            "Use this before handing a branch to manual testing."
+        ),
+    )
     args = parser.parse_args()
 
     snapshot = build_snapshot()
@@ -325,7 +454,8 @@ def main() -> int:
         print(json.dumps(snapshot, indent=2, ensure_ascii=False))
     else:
         print(render_markdown(snapshot))
-    return 0
+    strict_validation = cast(dict[str, object], snapshot["strict_validation"])
+    return 0 if not args.strict or strict_validation["ok"] else 1
 
 
 if __name__ == "__main__":
