@@ -40,6 +40,7 @@ from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 # Dialogs don't import Panel/Sidebar.
 from XBrainLab.ui.dialogs.dataset import DataSplittingDialog
 from XBrainLab.ui.dialogs.training import ModelSelectionDialog, TrainingSettingDialog
+from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 _DATASET_REPLACEMENT_REASON = (
@@ -250,6 +251,12 @@ class TrainingSidebar(QWidget):
 
         # Handled by InfoPanelService
 
+    def _show_status(self, message: str) -> None:
+        panel_status = getattr(self.panel, "show_status_message", None)
+        if callable(panel_status) and panel_status(message):
+            return
+        show_status_message(self, message)
+
     # --- Actions ---
 
     def _configuration_blocked(self, fallback_message: str) -> bool:
@@ -349,11 +356,7 @@ class TrainingSidebar(QWidget):
                             result.message,
                         )
                         return
-                    QMessageBox.information(
-                        self,
-                        "Success",
-                        "Data splitting configuration saved.",
-                    )
+                    self._show_status("Data splitting configuration saved")
                     self._check_ready_after_command_result(result)
 
                 def _handle_generate_error(error: tuple) -> None:
@@ -388,11 +391,7 @@ class TrainingSidebar(QWidget):
                         result.message,
                     )
                     return
-                QMessageBox.information(
-                    self,
-                    "Success",
-                    "Data splitting configuration saved.",
-                )
+                self._show_status("Data splitting configuration saved")
                 self._check_ready_after_command_result(result)
 
     def _compatibility_data_splitting_preflight_blocked(self) -> bool:
@@ -553,11 +552,7 @@ class TrainingSidebar(QWidget):
             elif result.failed:
                 QMessageBox.critical(self, "Model Selection Failed", result.message)
                 return
-            QMessageBox.information(
-                self,
-                "Success",
-                f"Model selected: {selected_model_name}",
-            )
+            self._show_status(f"Model selected: {selected_model_name}")
             self._check_ready_after_command_result(result)
 
     def training_setting(self):
@@ -613,7 +608,7 @@ class TrainingSidebar(QWidget):
                     result.message,
                 )
                 return
-            QMessageBox.information(self, "Success", "Training settings saved.")
+            self._show_status("Training settings saved")
             self._check_ready_after_command_result(result)
 
     def _training_option_snapshot(self) -> dict | None:
@@ -679,6 +674,7 @@ class TrainingSidebar(QWidget):
                     )
                     return
                 self.btn_stop.setEnabled(True)
+                self._show_status("Training started")
                 self._check_ready_after_command_result(result)
                 # Panel should know training started to update log?
                 # Observer in Panel handles "training_started" event.
@@ -729,6 +725,7 @@ class TrainingSidebar(QWidget):
             )
             return
         self.btn_stop.setEnabled(False)
+        self._show_status("Training stop requested")
         # Controller will emit stopped event which panel handles
 
     def clear_history(self):
@@ -790,6 +787,7 @@ class TrainingSidebar(QWidget):
                 return
 
             self._check_ready_after_command_result(result)
+            self._show_status("Training history cleared")
         except Exception as e:
             QMessageBox.warning(self, "Warning", f"Error clearing history: {e}")
 

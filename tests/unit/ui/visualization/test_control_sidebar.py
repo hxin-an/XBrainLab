@@ -86,7 +86,8 @@ def test_sidebar_set_montage(mock_panel, qtbot):
         assert apply_command.positions == [(0.0, 0.0, 0.0)]
         mock_panel.controller.set_montage.assert_not_called()
         mock_panel.on_update.assert_not_called()
-        mock_info.assert_called_once()
+        mock_info.assert_not_called()
+        assert mock_panel.main_window.statusBar().currentMessage() == "Montage set"
 
 
 def test_sidebar_set_montage_blocked_by_backend_capability(qtbot):
@@ -156,7 +157,8 @@ def test_sidebar_set_montage_real_study_uses_application_service(qtbot):
         ["Ch1", "Ch2"],
         [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
     )
-    mock_info.assert_called_once()
+    mock_info.assert_not_called()
+    assert main_window.statusBar().currentMessage() == "Montage set"
 
 
 def test_sidebar_set_montage_surfaces_command_failure(mock_panel, qtbot):

@@ -1553,7 +1553,8 @@ class TestTrainingSidebar:
         sidebar.panel.controller.set_model_holder.assert_not_called()
         sidebar.panel.controller.get_model_holder.assert_not_called()
         mock_critical.assert_not_called()
-        mock_info.assert_called_once_with(sidebar, "Success", "Model selected: EEGNet")
+        mock_info.assert_not_called()
+        sidebar.panel.show_status_message.assert_called_with("Model selected: EEGNet")
 
     def test_select_model_refuses_real_study_controller_fallback(self, sidebar):
         from PyQt6.QtWidgets import QMessageBox
@@ -2046,7 +2047,7 @@ class TestTrainingSidebar:
                 "get_result",
                 return_value=option,
             ),
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch("PyQt6.QtWidgets.QMessageBox.information") as mock_info,
         ):
             sidebar.training_setting()
 
@@ -2055,6 +2056,8 @@ class TestTrainingSidebar:
         assert isinstance(commands[0], QueryStateCommand)
         assert isinstance(commands[1], ConfigureTrainingCommand)
         sidebar.panel.controller.set_training_option.assert_not_called()
+        mock_info.assert_not_called()
+        sidebar.panel.show_status_message.assert_called_with("Training settings saved")
 
     def test_training_setting_refuses_real_study_controller_fallback(self, sidebar):
         from PyQt6.QtWidgets import QMessageBox
@@ -2802,7 +2805,8 @@ class TestDatasetSidebar:
             sb.clear_dataset()
 
         mock_question.assert_called_once()
-        mock_info.assert_called_once_with(sb, "Success", "Dataset cleared.")
+        mock_info.assert_not_called()
+        assert panel.main_window.statusBar().currentMessage() == "Dataset cleared"
         panel.controller.clean_dataset.assert_not_called()
         panel.update_panel.assert_not_called()
 

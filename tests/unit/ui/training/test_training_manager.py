@@ -58,8 +58,8 @@ class TestTrainingManager:
             window.update_loop()
 
             assert window.start_btn.isEnabled()
-            assert window.status_bar.text() == "IDLE"
-            mock_info.assert_called_once()
+            assert window.status_bar.text() == "Training stopped · Review results"
+            mock_info.assert_not_called()
 
     def test_update_table(self, window, mock_trainer):
         # Mock plan holder

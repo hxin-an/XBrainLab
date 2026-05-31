@@ -131,8 +131,10 @@ class TestTrainingManagerWindow:
         window.trainer.set_interrupt.assert_called()
 
     def test_finish_training(self, window):
-        with patch("PyQt6.QtWidgets.QMessageBox.information"):
+        with patch("PyQt6.QtWidgets.QMessageBox.information") as mock_info:
             window.finish_training()
+        mock_info.assert_not_called()
+        assert window.status_bar.text() == "Training stopped · Review results"
 
     def test_plot_loss(self, window):
         with patch("XBrainLab.ui.panels.training.training_manager.PlotFigureWindow"):

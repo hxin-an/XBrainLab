@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QMainWindow, QWidget
 
 from XBrainLab import Study
 from XBrainLab.backend.application import (
@@ -66,7 +66,7 @@ class TestTrainingPanelRealUsage:
         study.set_model_holder(model_holder)
 
         # Create panel
-        parent = cast(Any, QWidget())
+        parent = cast(Any, QMainWindow())
         parent.study = study
         panel = TrainingPanel(parent=parent)
         qtbot.addWidget(panel)
@@ -81,14 +81,17 @@ class TestTrainingPanelRealUsage:
         # Simulate multiple calls to training_finished (like update_loop does)
         with patch("PyQt6.QtWidgets.QMessageBox.information") as mock_msg:
             panel.training_finished()
-            assert mock_msg.call_count == 1, "First call should show message"
+            assert mock_msg.call_count == 0, "Completion should use the status bar"
+            assert parent.statusBar().currentMessage() == (
+                "Training complete · Review results"
+            )
 
             # Simulate update_loop calling it again
             panel.training_finished()
-            assert mock_msg.call_count == 1, "Should not show message again"
+            assert mock_msg.call_count == 0, "Should not show a modal later"
 
             panel.training_finished()
-            assert mock_msg.call_count == 1, "Should still not show message"
+            assert mock_msg.call_count == 0, "Should still not show a modal"
 
     def test_update_loop_type_safety(self, qtbot, real_training_option):
         """Verify that update_loop handles type conversions correctly."""

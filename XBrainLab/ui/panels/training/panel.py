@@ -20,6 +20,7 @@ from XBrainLab.ui.application_capabilities import (
 )
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.refresh_coordinator import refresh_after_observer
+from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
 
@@ -237,6 +238,7 @@ class TrainingPanel(BasePanel):
         """Event handler: Training has started."""
         self.log_text.append("Training started (event).")
         self.training_completed_shown = False
+        self.show_status_message("Training started")
         if hasattr(self, "sidebar"):
             self.sidebar.on_training_started()
         self.update_loop(force_active=True, log_epochs=True)
@@ -367,15 +369,18 @@ class TrainingPanel(BasePanel):
         self.tab_loss.set_series(epoch_values, train_loss_values, val_loss_values)
 
     def training_finished(self):
-        """Display a completion dialog when all training jobs finish."""
+        """Report completion without interrupting the workflow."""
         if hasattr(self, "sidebar"):
             self.sidebar.check_ready_to_train()
-
-        # Only show message once
 
         if not self.training_completed_shown:
             self.training_completed_shown = True
             self.log_text.append("All training jobs finished.")
+            self.show_status_message("Training complete · Review results")
+
+    def show_status_message(self, message: str, timeout_ms: int = 7000) -> bool:
+        """Show a non-modal status message on the application status bar."""
+        return show_status_message(self, message, timeout_ms)
 
     def update_info(self):
         """Delegate info-panel updates to the sidebar."""

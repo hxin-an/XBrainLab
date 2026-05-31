@@ -30,6 +30,7 @@ from XBrainLab.ui.application_capabilities import (
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
+from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 ChannelSelectionDialog: Any | None = None
@@ -94,6 +95,9 @@ class DatasetSidebar(QWidget):
     def _update_panel_after_command_result(self, result) -> None:
         if result is None:
             self.panel.update_panel()
+
+    def _show_status(self, message: str) -> None:
+        show_status_message(self.panel, message)
 
     def init_ui(self):
         """Build sidebar layout: info panel, operation and execution buttons."""
@@ -608,11 +612,7 @@ class DatasetSidebar(QWidget):
                         )
                         return
                     self._update_panel_after_command_result(command_result)
-                    QMessageBox.information(
-                        self,
-                        "Success",
-                        "Channel selection applied.",
-                    )
+                    self._show_status("Channel selection applied")
                 except Exception as e:
                     QMessageBox.critical(
                         self,
@@ -642,7 +642,7 @@ class DatasetSidebar(QWidget):
         """Prompt the user and clear the entire loaded dataset."""
         clear_enabled, clear_tooltip = self._clear_dataset_availability()
         if not clear_enabled:
-            QMessageBox.information(self, "Clear Dataset", clear_tooltip)
+            self._show_status(clear_tooltip)
             return
 
         reset_capability = get_command_capability(self, CommandName.RESET_SESSION)
@@ -691,6 +691,6 @@ class DatasetSidebar(QWidget):
                 )
                 return
             self._update_panel_after_command_result(result)
-            QMessageBox.information(self, "Success", "Dataset cleared.")
+            self._show_status("Dataset cleared")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to clear dataset: {e}")

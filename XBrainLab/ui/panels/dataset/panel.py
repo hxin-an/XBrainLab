@@ -29,6 +29,7 @@ from XBrainLab.ui.application_capabilities import (
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.core.base_panel import BasePanel
+from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.theme import Theme
 from XBrainLab.ui.table_sizing import scaled_column_widths
 
@@ -198,11 +199,7 @@ class DatasetPanel(BasePanel):
         if total_files is None:
             return
 
-        QMessageBox.information(
-            self,
-            "Success",
-            f"Dataset updated. Total files: {total_files}",
-        )
+        show_status_message(self, f"Dataset updated · {total_files} files")
 
     def _compatibility_apply_loader(self, loader) -> int | None:
         try:

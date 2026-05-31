@@ -45,6 +45,7 @@ from XBrainLab.ui.application_capabilities import (
     get_command_capability,
     run_controller_compatibility_call,
 )
+from XBrainLab.ui.status import show_status_message
 
 from .interpretation_command_runner import execute_interpretation_command_responsive
 
@@ -155,6 +156,9 @@ class DatasetActionHandler:
     def _update_panel_after_command_result(self, result) -> None:
         if result is None:
             self.panel.update_panel()
+
+    def _show_status(self, message: str) -> None:
+        show_status_message(self.panel, message)
 
     def _compatibility_controller_value(
         self,
@@ -315,11 +319,7 @@ class DatasetActionHandler:
                             CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                         )
                         return
-                    QMessageBox.information(
-                        self.panel,
-                        "Data imported",
-                        result.message,
-                    )
+                    self._show_status(result.message)
                     return
             except Exception as e:
                 QMessageBox.critical(self.panel, "Error", f"Import failed: {e}")
@@ -533,9 +533,7 @@ class DatasetActionHandler:
         recipe_message = ""
         if bool(dialog_result.get("save_recipe", False)):
             recipe_message = self._save_interpretation_recipe()
-        QMessageBox.information(
-            self.panel,
-            "Data interpreted",
+        self._show_status(
             " ".join(part for part in [apply_result.message, recipe_message] if part),
         )
 
@@ -754,9 +752,7 @@ class DatasetActionHandler:
             recipe_message = ""
             if bool(dialog_result.get("save_recipe", False)):
                 recipe_message = self._save_interpretation_recipe()
-            QMessageBox.information(
-                self.panel,
-                "Data interpreted",
+            self._show_status(
                 " ".join(
                     part for part in [apply_result.message, recipe_message] if part
                 ),
@@ -1119,7 +1115,7 @@ class DatasetActionHandler:
                 count = int(result.diagnostics.get("success_count", 0))
             self._update_panel_after_command_result(result)
 
-            QMessageBox.information(self.panel, "Success", f"Updated {count} files.")
+            self._show_status(f"Updated {count} files")
 
     def _smart_parse_filenames(self) -> list[str] | None:
         result = execute_application_command(
@@ -1253,9 +1249,7 @@ class DatasetActionHandler:
                 recipe_message = (
                     self._offer_label_recipe_save(result) if result is not None else ""
                 )
-                QMessageBox.information(
-                    self.panel,
-                    "Success",
+                self._show_status(
                     " ".join(
                         part
                         for part in [f"Applied to {count} files.", recipe_message]

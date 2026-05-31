@@ -18,6 +18,7 @@ from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.visualization import PlotType
 from XBrainLab.ui.components import PlotFigureWindow
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.status import show_status_message
 
 
 class TrainingManagerWindow(BaseDialog):
@@ -170,11 +171,12 @@ class TrainingManagerWindow(BaseDialog):
             logger.debug("Failed to set interrupt", exc_info=True)
 
     def finish_training(self):
-        """Re-enable the start button and show a completion dialog."""
+        """Re-enable the start button and report completion non-modally."""
         self.start_btn.setEnabled(True)
-        self.status_bar.setText("IDLE")
         self.update_table()
-        QMessageBox.information(self, "Success", "Training has stopped")
+        message = "Training stopped · Review results"
+        self.status_bar.setText(message)
+        show_status_message(self, message)
 
     def update_loop(self):
         """Periodic callback to refresh the table and detect training completion."""

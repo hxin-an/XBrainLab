@@ -40,6 +40,7 @@ from XBrainLab.ui.dialogs.preprocess import (
     ResampleDialog,
 )
 from XBrainLab.ui.refresh_coordinator import refresh_shared_status
+from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
@@ -421,32 +422,21 @@ class PreprocessSidebar(QWidget):
         if result is None:
             refresh_shared_status(self)
 
+    def _show_status(self, message: str) -> None:
+        if show_status_message(self.panel, message):
+            return
+        logger.info(message)
+
     def _show_command_failure(self, title: str, message: str) -> None:
         QMessageBox.critical(self, title, message)
 
     def _show_epoch_success(self, result) -> None:
-        if result is None:
-            QMessageBox.information(
-                self,
-                "Success",
-                "Epoching applied.\nPreprocessing is now LOCKED.",
-            )
-            return
-
         message = "Epoching applied. Preprocessing is now locked."
-        status_bar_factory = getattr(self.main_window, "statusBar", None)
-        if callable(status_bar_factory):
-            status_bar = status_bar_factory()
-            show_message = getattr(status_bar, "showMessage", None)
-            if callable(show_message):
-                show_message(message, 5000)
-                return
-
-        logger.info(message)
+        self._show_status(message)
 
     def _show_preprocess_success(self, result: Any, message: str) -> None:
         self._notify_update_after_command_result(result)
-        QMessageBox.information(self, "Success", message)
+        self._show_status(message)
 
     def _handle_epoch_command_success(self, result: Any) -> None:
         self._notify_update_after_command_result(result)
@@ -723,7 +713,7 @@ class PreprocessSidebar(QWidget):
                 return
             self._notify_update_after_command_result(result)
             self._refresh_shared_status_after_command_result(result)
-            QMessageBox.information(self, "Success", "Preprocessing reset.")
+            self._show_status("Preprocessing reset")
         except Exception as e:
             logger.error("Reset failed: %s", e)
             QMessageBox.critical(self, "Error", f"Reset failed: {e}")

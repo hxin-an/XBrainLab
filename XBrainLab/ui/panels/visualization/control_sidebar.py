@@ -33,6 +33,7 @@ from XBrainLab.ui.dialogs.visualization import (
     SaliencySettingDialog,
 )
 from XBrainLab.ui.montage_positions import normalize_montage_positions
+from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
@@ -66,6 +67,9 @@ class ControlSidebar(QWidget):
     def main_window(self):
         """QMainWindow: The application main window reference."""
         return self.panel.main_window
+
+    def _show_status(self, message: str) -> None:
+        show_status_message(self.panel, message)
 
     def init_ui(self):
         """Build the sidebar layout with info, configuration, and operation groups."""
@@ -209,7 +213,7 @@ class ControlSidebar(QWidget):
                     )
                     return
 
-                QMessageBox.information(self, "Success", "Montage set")
+                self._show_status("Montage set")
 
                 # Notify parent to refresh view
                 self._on_update_after_command_result(result)
@@ -307,7 +311,7 @@ class ControlSidebar(QWidget):
                 f"Saliency setup failed: {result.message}",
             )
             return
-        QMessageBox.information(self, "Success", "Saliency parameters set")
+        self._show_status("Saliency parameters set")
         if self.panel and hasattr(self.panel, "mark_refresh_dirty"):
             self.panel.mark_refresh_dirty()
         if self.panel and hasattr(self.panel, "update_info"):
