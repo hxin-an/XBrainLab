@@ -7,7 +7,6 @@ with support for original-vs-current overlays and event markers.
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import pyqtgraph as pg
 from PyQt6.QtCore import QThreadPool
 from scipy.signal import welch
 
@@ -18,7 +17,6 @@ from XBrainLab.ui.application_capabilities import (
 )
 from XBrainLab.ui.core.worker import Worker
 from XBrainLab.ui.panels.preprocess.data_query import query_preprocess_render_lists
-from XBrainLab.ui.styles.theme import Theme
 
 if TYPE_CHECKING:
     from XBrainLab.ui.panels.preprocess.preview_widget import PreviewWidget
@@ -43,6 +41,7 @@ class PreprocessPlotter:
         self.threadpool = QThreadPool.globalInstance()
         self._plot_generation = 0
         self._active_psd_workers: list[Worker] = []
+        self._is_plotting = False
 
     def _get_chan_data(self, obj, ch_idx, start_time=0, duration=5):
         """Helper to retrieve channel data from a data object."""
@@ -117,26 +116,12 @@ class PreprocessPlotter:
             # Event markers are visualized primarily in Raw mode.
             pass
 
-        # Draw Events
-        for onset, desc in events:
-            # Vertical Line
-            # Use QColor with alpha for lower contrast
-            # 50% Alpha (80 hex)
-            pen = pg.mkPen(color=(Theme.ACCENT_SUCCESS + "80"), width=2)
-            v_line = pg.InfiniteLine(
-                pos=onset,
-                angle=90,
-                movable=False,
-                pen=pen,
-                label=str(desc),
-                labelOpts={
-                    "position": 0.98,
-                    "color": Theme.TEXT_PRIMARY,
-                    "fill": (20, 20, 20, 200),
-                    "anchor": (0, 0),
-                },
-            )
-            self.widget.plot_time.addItem(v_line)
+        # The widget owns a reusable marker pool. Redraws update existing
+        # PyQtGraph items instead of deleting and recreating native objects.
+        show_markers = getattr(self.widget, "show_time_event_markers", None)
+        if callable(show_markers):
+            show_markers(events)
+        return events
 
     def _calc_psd_task(self, sig, sfreq, sig_orig=None):
         """Worker task to calculate PSD for current and optional original signal."""
@@ -196,7 +181,24 @@ class PreprocessPlotter:
         data_list: list[Any] | None = None,
         original_data_list: list[Any] | None = None,
     ):
-        """Main plotting routine."""
+        """Main plotting routine with a non-reentrant redraw guard."""
+        if self._is_plotting:
+            return
+        self._is_plotting = True
+        try:
+            self._plot_sample_data_impl(
+                data_list=data_list,
+                original_data_list=original_data_list,
+            )
+        finally:
+            self._is_plotting = False
+
+    def _plot_sample_data_impl(
+        self,
+        *,
+        data_list: list[Any] | None = None,
+        original_data_list: list[Any] | None = None,
+    ):
         self._plot_generation += 1
         plot_generation = self._plot_generation
 
@@ -252,23 +254,8 @@ class PreprocessPlotter:
                 y_orig_uv = y_orig * 1e6 if y_orig is not None else None
 
                 if y_orig_uv is not None and x_orig is not None:
-                    self.widget.plot_time.plot(
-                        x_orig,
-                        y_orig_uv,
-                        pen=pg.mkPen(
-                            Theme.CHART_ORIGINAL_DATA,
-                            width=1,
-                            style=pg.QtCore.Qt.PenStyle.DashLine,
-                        ),
-                        name="Original",
-                    )
-
-                self.widget.plot_time.plot(
-                    x_curr,
-                    y_curr_uv,
-                    pen=pg.mkPen(Theme.CHART_PRIMARY, width=1.5),
-                    name="Current",
-                )
+                    self.widget.time_original_curve.setData(x_orig, y_orig_uv)
+                self.widget.time_current_curve.setData(x_curr, y_curr_uv)
 
                 if raw_obj.is_raw():
                     self.widget.plot_time.setTitle(f"{chan_name} (Time)")
@@ -288,7 +275,6 @@ class PreprocessPlotter:
                 else:
                     self.widget.plot_time.enableAutoRange(axis="y")
 
-                # Events / Annotations Visualization
                 self._plot_events(raw_obj, x_curr[0], x_curr[-1])
 
             # --- Frequency Domain (Async) ---
@@ -312,25 +298,14 @@ class PreprocessPlotter:
                         return
                     f_curr, p_curr, f_orig, p_orig = result
 
-                    # Plot Original (if available)
                     if f_orig is not None and p_orig is not None:
-                        self.widget.plot_freq.plot(
+                        self.widget.freq_original_curve.setData(
                             f_orig,
                             10 * np.log10(p_orig),
-                            pen=pg.mkPen(
-                                Theme.CHART_ORIGINAL_DATA,
-                                width=1,
-                                style=pg.QtCore.Qt.PenStyle.DashLine,
-                            ),
-                            name="Original",
                         )
-
-                    # Plot Current
-                    self.widget.plot_freq.plot(
+                    self.widget.freq_current_curve.setData(
                         f_curr,
                         10 * np.log10(p_curr),
-                        pen=pg.mkPen(Theme.CHART_PRIMARY, width=1.5),
-                        name="Current",
                     )
                     self.widget.plot_freq.setTitle(f"{chan_name} (PSD)")
 

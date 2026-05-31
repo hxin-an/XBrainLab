@@ -49,6 +49,7 @@ class PreviewWidget(QWidget):
 
     # Signal to request a plot update from the controller/plotter
     request_plot_update = pyqtSignal()
+    MAX_EVENT_MARKERS = 32
 
     def __init__(self, parent=None):
         """Initialize the preview widget.
@@ -92,6 +93,23 @@ class PreviewWidget(QWidget):
         self.plot_time.getPlotItem().vb.setMouseEnabled(x=False, y=False)
         self.plot_time.getPlotItem().buttonsHidden = True
         self.plot_time.hideButtons()
+        self.time_event_markers = []
+        self.time_original_curve = self.plot_time.plot(
+            [],
+            [],
+            pen=pg.mkPen(
+                Theme.CHART_ORIGINAL_DATA,
+                width=1,
+                style=Qt.PenStyle.DashLine,
+            ),
+            name="Original",
+        )
+        self.time_current_curve = self.plot_time.plot(
+            [],
+            [],
+            pen=pg.mkPen(Theme.CHART_PRIMARY, width=1.5),
+            name="Current",
+        )
 
         # Monkey-patch leaveEvent to hide crosshair when mouse leaves the widget
         self._orig_leave_time = self.plot_time.leaveEvent
@@ -152,6 +170,22 @@ class PreviewWidget(QWidget):
         self.plot_freq.getPlotItem().vb.setMouseEnabled(x=False, y=False)
         self.plot_freq.getPlotItem().buttonsHidden = True
         self.plot_freq.hideButtons()
+        self.freq_original_curve = self.plot_freq.plot(
+            [],
+            [],
+            pen=pg.mkPen(
+                Theme.CHART_ORIGINAL_DATA,
+                width=1,
+                style=Qt.PenStyle.DashLine,
+            ),
+            name="Original",
+        )
+        self.freq_current_curve = self.plot_freq.plot(
+            [],
+            [],
+            pen=pg.mkPen(Theme.CHART_PRIMARY, width=1.5),
+            name="Current",
+        )
 
         # Monkey-patch leaveEvent to hide crosshair when mouse leaves the widget
         self._orig_leave_freq = self.plot_freq.leaveEvent
@@ -394,30 +428,67 @@ class PreviewWidget(QWidget):
         # Title is sufficient for "Data is Epoched" status.
 
     def clear_plot_data(self):
-        """Clear transient plot data without deleting persistent crosshair items."""
-        self._clear_plot_items(
-            self.plot_time,
-            keep={self.v_line_time, self.h_line_time, self.label_time},
-        )
-        self._clear_plot_items(
-            self.plot_freq,
-            keep={self.v_line_freq, self.h_line_freq, self.label_freq},
-        )
-        self._ensure_plot_item(self.plot_time, self.v_line_time)
-        self._ensure_plot_item(self.plot_time, self.h_line_time)
-        self._ensure_plot_item(self.plot_time, self.label_time)
-        self._ensure_plot_item(self.plot_freq, self.v_line_freq)
-        self._ensure_plot_item(self.plot_freq, self.h_line_freq)
-        self._ensure_plot_item(self.plot_freq, self.label_freq)
+        """Clear plotted data without deleting PyQtGraph graphics items."""
+        for curve_name in (
+            "time_original_curve",
+            "time_current_curve",
+            "freq_original_curve",
+            "freq_current_curve",
+        ):
+            curve = getattr(self, curve_name, None)
+            if curve is not None:
+                curve.setData([], [])
+        for item_name in (
+            "v_line_time",
+            "h_line_time",
+            "label_time",
+            "v_line_freq",
+            "h_line_freq",
+            "label_freq",
+        ):
+            item = getattr(self, item_name, None)
+            if item is not None:
+                item.hide()
+        self.clear_time_event_markers()
 
-    @staticmethod
-    def _clear_plot_items(plot, *, keep: set[object]) -> None:
-        for item in list(plot.getPlotItem().items):
-            if item in keep:
-                continue
-            plot.removeItem(item)
+    def clear_time_event_markers(self) -> None:
+        """Hide reusable event markers without removing their Qt graphics items."""
+        for marker in getattr(self, "time_event_markers", []):
+            marker.hide()
 
-    @staticmethod
-    def _ensure_plot_item(plot, item) -> None:
-        if item not in plot.getPlotItem().items:
-            plot.addItem(item, ignoreBounds=True)
+    def show_time_event_markers(self, events: list[tuple[float, str]]) -> None:
+        """Show visible EEG event markers using a bounded reusable item pool."""
+        visible_events = events[: self.MAX_EVENT_MARKERS]
+        self._ensure_time_event_marker_pool(len(visible_events))
+        self.clear_time_event_markers()
+
+        for marker, (onset, description) in zip(
+            self.time_event_markers,
+            visible_events,
+            strict=False,
+        ):
+            marker.setPos(onset)
+            label = getattr(marker, "label", None)
+            if label is not None:
+                label.setFormat(str(description))
+            marker.show()
+
+    def _ensure_time_event_marker_pool(self, count: int) -> None:
+        while len(self.time_event_markers) < count:
+            marker = pg.InfiniteLine(
+                pos=0,
+                angle=90,
+                movable=False,
+                pen=pg.mkPen(color=(Theme.ACCENT_SUCCESS + "80"), width=1),
+                label="",
+                labelOpts={
+                    "position": 0.98,
+                    "color": Theme.TEXT_PRIMARY,
+                    "fill": (20, 20, 20, 200),
+                    "anchor": (0, 0),
+                },
+            )
+            marker.setZValue(500)
+            marker.hide()
+            self.plot_time.addItem(marker, ignoreBounds=True)
+            self.time_event_markers.append(marker)

@@ -16,6 +16,11 @@ def mock_widget():
     widget.plot_tabs = MagicMock()
     widget.plot_tabs.currentIndex.return_value = 0
     widget.clear_plot_data = MagicMock()
+    widget.show_time_event_markers = MagicMock()
+    widget.time_original_curve = MagicMock()
+    widget.time_current_curve = MagicMock()
+    widget.freq_original_curve = MagicMock()
+    widget.freq_current_curve = MagicMock()
 
     # Mock Crosshair items
     widget.v_line_time = MagicMock()
@@ -80,8 +85,7 @@ def test_plot_sample_data_time_domain(mock_widget, mock_controller):
 
         mock_widget.clear_plot_data.assert_called_once()
 
-        # Check plot called
-        assert mock_widget.plot_time.plot.call_count >= 1
+        mock_widget.time_current_curve.setData.assert_called_once()
 
         # Check title set
         mock_widget.plot_time.setTitle.assert_called_with("ch1 (Time)")
@@ -136,10 +140,10 @@ def test_stale_psd_result_does_not_update_latest_plot(mock_widget, mock_controll
     psd_result = (np.array([1.0]), np.array([1.0]), None, None)
 
     handlers[0](psd_result)
-    mock_widget.plot_freq.plot.assert_not_called()
+    mock_widget.freq_current_curve.setData.assert_not_called()
 
     handlers[1](psd_result)
-    mock_widget.plot_freq.plot.assert_called_once()
+    mock_widget.freq_current_curve.setData.assert_called_once()
     mock_widget.plot_freq.setTitle.assert_called_with("ch1 (PSD)")
 
 
@@ -153,7 +157,7 @@ def test_plot_sample_data_defers_psd_until_frequency_tab(mock_widget, mock_contr
     ) as MockWorker:
         plotter.plot_sample_data()
 
-    mock_widget.plot_time.plot.assert_called()
+    mock_widget.time_current_curve.setData.assert_called_once()
     MockWorker.assert_not_called()
     plotter.threadpool.start.assert_not_called()
 
@@ -190,6 +194,24 @@ def test_plot_sample_data_keeps_psd_worker_until_finished(
     assert plotter._active_psd_workers == []
 
 
+def test_plot_sample_data_ignores_reentrant_refresh(mock_widget, mock_controller):
+    plotter = PreprocessPlotter(mock_widget, mock_controller)
+    calls = 0
+
+    def reenter_once():
+        nonlocal calls
+        calls += 1
+        plotter.plot_sample_data()
+
+    mock_widget.clear_plot_data.side_effect = reenter_once
+
+    plotter.plot_sample_data()
+
+    assert calls == 1
+    mock_widget.clear_plot_data.assert_called_once()
+    mock_widget.time_current_curve.setData.assert_called_once()
+
+
 def test_plot_no_data(mock_widget, mock_controller):
     mock_controller.has_data.return_value = False
     plotter = PreprocessPlotter(mock_widget, mock_controller)
@@ -198,7 +220,7 @@ def test_plot_no_data(mock_widget, mock_controller):
 
     # Should clear transient data but not plot
     mock_widget.clear_plot_data.assert_called_once()
-    mock_widget.plot_time.plot.assert_not_called()
+    mock_widget.time_current_curve.setData.assert_not_called()
 
 
 def test_plot_sample_data_uses_service_query_before_controller(
@@ -224,7 +246,7 @@ def test_plot_sample_data_uses_service_query_before_controller(
 
     execute.assert_called_once_with(plotter)
     mock_controller.has_data.assert_not_called()
-    mock_widget.plot_time.plot.assert_called()
+    mock_widget.time_current_curve.setData.assert_called_once()
 
 
 def test_plot_sample_data_refuses_real_study_query_none_controller_fallback(
@@ -251,7 +273,7 @@ def test_plot_sample_data_refuses_real_study_query_none_controller_fallback(
     query.assert_called_once_with(plotter)
     mock_controller.has_data.assert_not_called()
     mock_controller.get_preprocessed_data_list.assert_not_called()
-    mock_widget.plot_time.plot.assert_not_called()
+    mock_widget.time_current_curve.setData.assert_not_called()
 
 
 def test_plot_sample_data_with_supplied_data_uses_query_for_original_overlay(
@@ -281,7 +303,7 @@ def test_plot_sample_data_with_supplied_data_uses_query_for_original_overlay(
 
     query.assert_called_once_with(plotter)
     stale_original.get_sfreq.assert_not_called()
-    mock_widget.plot_time.plot.assert_called()
+    mock_widget.time_current_curve.setData.assert_called_once()
 
 
 class TestGetChanData:
@@ -395,10 +417,10 @@ class TestPlotEvents:
             {"onset": 5.0, "description": "out_of_range"},
         ]
 
-        with patch("XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.pg"):
-            plotter._plot_events(raw_obj, start_time=0.0, end_time=3.0)
-            # Only one event should be plotted (onset=1.0 is in range)
-            assert mock_widget.plot_time.addItem.call_count == 1
+        events = plotter._plot_events(raw_obj, start_time=0.0, end_time=3.0)
+        assert events == [(1.0, "stim")]
+        mock_widget.plot_time.addItem.assert_not_called()
+        mock_widget.show_time_event_markers.assert_called_once_with([(1.0, "stim")])
 
     def test_raw_no_annotations(self, mock_widget, mock_controller):
         plotter = PreprocessPlotter(mock_widget, mock_controller)
@@ -407,16 +429,20 @@ class TestPlotEvents:
         mne = raw_obj.get_mne()
         mne.annotations = None
 
-        plotter._plot_events(raw_obj, start_time=0.0, end_time=10.0)
+        events = plotter._plot_events(raw_obj, start_time=0.0, end_time=10.0)
+        assert events == []
         mock_widget.plot_time.addItem.assert_not_called()
+        mock_widget.show_time_event_markers.assert_called_once_with([])
 
     def test_epochs_no_events_plotted(self, mock_widget, mock_controller):
         plotter = PreprocessPlotter(mock_widget, mock_controller)
         epoch_obj = MagicMock()
         epoch_obj.is_raw.return_value = False
 
-        plotter._plot_events(epoch_obj, start_time=0.0, end_time=10.0)
+        events = plotter._plot_events(epoch_obj, start_time=0.0, end_time=10.0)
+        assert events == []
         mock_widget.plot_time.addItem.assert_not_called()
+        mock_widget.show_time_event_markers.assert_called_once_with([])
 
 
 class TestCalcPsdTask:
@@ -453,13 +479,13 @@ class TestPlotSampleDataEdgeCases:
     def test_no_controller(self, mock_widget):
         plotter = PreprocessPlotter(mock_widget, None)
         plotter.plot_sample_data()
-        mock_widget.plot_time.plot.assert_not_called()
+        mock_widget.time_current_curve.setData.assert_not_called()
 
     def test_empty_data_list(self, mock_widget, mock_controller):
         mock_controller.get_preprocessed_data_list.return_value = []
         plotter = PreprocessPlotter(mock_widget, mock_controller)
         plotter.plot_sample_data()
-        mock_widget.plot_time.plot.assert_not_called()
+        mock_widget.time_current_curve.setData.assert_not_called()
 
     def test_negative_chan_idx(self, mock_widget, mock_controller):
         mock_widget.chan_combo.currentIndex.return_value = -1
@@ -468,7 +494,7 @@ class TestPlotSampleDataEdgeCases:
         with patch("XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.Worker"):
             plotter.plot_sample_data()
             # Should return early since chan_idx < 0
-            mock_widget.plot_time.plot.assert_not_called()
+            mock_widget.time_current_curve.setData.assert_not_called()
 
     def test_yscale_auto(self, mock_widget, mock_controller):
         """yscale_spin == 0 triggers enableAutoRange."""
@@ -483,10 +509,7 @@ class TestPlotSampleDataEdgeCases:
         data = np.random.rand(1, 500)
         mne.get_data.return_value = data
 
-        with (
-            patch("XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.Worker"),
-            patch("XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.pg"),
-        ):
+        with patch("XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.Worker"):
             plotter.plot_sample_data()
             mock_widget.plot_time.enableAutoRange.assert_called_once()
 

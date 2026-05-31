@@ -36,16 +36,26 @@ class TestPreviewWidgetMethods:
     def test_show_locked_message(self, preview):
         preview.show_locked_message("Data locked")
 
-    def test_clear_plot_data_keeps_crosshair_items(self, preview):
-        import pyqtgraph as pg
-
-        curve = pg.PlotDataItem([0, 1], [0, 1], name="Current")
-        preview.plot_time.addItem(curve)
+    def test_clear_plot_data_keeps_persistent_items(self, preview):
+        preview.time_current_curve.setData([0, 1], [0, 1])
+        preview.freq_current_curve.setData([0, 1], [0, 1])
+        preview.show_time_event_markers([(0.5, "stim")])
+        event_marker = preview.time_event_markers[0]
 
         preview.clear_plot_data()
 
         time_items = preview.plot_time.getPlotItem().items
-        assert curve not in time_items
+        freq_items = preview.plot_freq.getPlotItem().items
+        assert preview.time_current_curve in time_items
+        assert preview.freq_current_curve in freq_items
+        assert event_marker in time_items
+        assert not event_marker.isVisible()
+        assert preview.time_current_curve.xData is None or (
+            len(preview.time_current_curve.xData) == 0
+        )
+        assert preview.freq_current_curve.xData is None or (
+            len(preview.freq_current_curve.xData) == 0
+        )
         assert preview.v_line_time in time_items
         assert preview.h_line_time in time_items
         assert preview.label_time in time_items
