@@ -260,6 +260,29 @@ def test_analysis_service_can_return_ui_evaluation_objects() -> None:
     ]
 
 
+def test_analysis_service_targets_requested_model_summary_only() -> None:
+    plan_a = _Plan("Plan A", [_Run(finished=True), _Run(finished=True)])
+    plan_b = _Plan("Plan B", [_Run(finished=True)])
+    evaluation = _EvaluationController([plan_a, plan_b])
+    service, _visualization, _preprocess = _service(evaluation=evaluation)
+
+    _message, diagnostics = _expect_payload(
+        service.handle_evaluate(
+            EvaluateCommand(
+                include_model_summaries=True,
+                model_summary_plan_index=1,
+                model_summary_run_index=0,
+            ),
+        ),
+    )
+
+    assert diagnostics["model_summaries"] == [
+        {"plan": "", "runs": ["", ""]},
+        {"plan": "", "runs": ["Plan B summary run"]},
+    ]
+    assert evaluation.model_summary_calls == 1
+
+
 def test_analysis_service_can_skip_heavy_evaluation_payloads() -> None:
     plan = _Plan("Plan A", [_Run(finished=True), _Run(finished=False)])
     evaluation = _EvaluationController([plan])

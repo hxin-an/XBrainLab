@@ -17,6 +17,11 @@ from ..tools.application_surface import (
 )
 from ..tools.schema_contract import tool_contract_for_llm
 from ..tools.tool_registry import ToolRegistry
+from .decision_context import (
+    STEP_BY_STEP_MODE,
+    build_workflow_decision_context,
+    normalize_workflow_mode,
+)
 
 
 class ContextAssembler:
@@ -63,6 +68,15 @@ Rules:
 10. If the user asks a concept question, asks why a step is blocked, asks what
     a term means, or is only discussing the workflow, do not call a mutating
     tool. Answer in user-facing language.
+11. Treat Workflow Decision Context as the current workflow truth. Do not use
+    older conversation turns as evidence that a workflow step is still needed.
+12. If decision_needed is not "(none)", do not invent those parameters. Explain
+    the needed decision and, when a matching existing_ui_surface is named, route
+    the user to that existing UI surface instead of creating a second UI in chat.
+13. In step_by_step mode, stop after one successful workflow step and summarize
+    the result. In continue_until_decision mode, continue only until the next
+    decision_needed, confirmation, blocker, long-running action, or destructive
+    boundary.
 
 Workflow tool choices:
 - The current application state is authoritative. If the state already has a
@@ -92,6 +106,8 @@ Workflow tool choices:
         self.registry = tool_registry
         self.study_state = study_state
         self.context_notes: list[str] = []
+        self.execution_mode = STEP_BY_STEP_MODE
+        self.max_history_messages = 4
 
     def _get_stage_config(self) -> tuple[PipelineStage, dict[str, Any]]:
         """Return the current pipeline stage and its configuration.
@@ -168,7 +184,7 @@ Workflow tool choices:
         ]
         return "\n".join(lines) if lines else "None."
 
-    def build_system_prompt(self) -> str:
+    def build_system_prompt(self, latest_user_text: str = "") -> str:
         """Constructs the full system prompt with stage-filtered tools.
 
         Each pipeline stage has its own dedicated system prompt that
@@ -184,8 +200,14 @@ Workflow tool choices:
         allowed_tools = self._application_allowed_tools(config["tools"])
         tools_str = self._format_tools(allowed_tools)
         blocked_str = self._format_blocked_tools()
+        decision_context = build_workflow_decision_context(
+            self.study_state,
+            latest_user_text=latest_user_text,
+            mode=self.execution_mode,
+        )
 
         prompt = config["system_prompt"]
+        prompt += "\n" + decision_context.format_for_prompt() + "\n"
         prompt += self._TOOL_BLOCK_TEMPLATE.format(
             tools_str=tools_str,
             blocked_str=blocked_str,
@@ -223,9 +245,45 @@ Workflow tool choices:
             by the conversation history.
 
         """
-        messages = [{"role": "system", "content": self.build_system_prompt()}]
+        clean_history = self._history_for_llm(history)
+        latest_user_text = self._latest_user_text(clean_history)
+        messages = [
+            {
+                "role": "system",
+                "content": self.build_system_prompt(latest_user_text),
+            },
+        ]
 
-        # Sliding Window is managed by Controller
-        messages.extend(history)
+        messages.extend(clean_history)
 
         return messages
+
+    def set_execution_mode(self, mode: str) -> None:
+        """Set the prompt-facing workflow autonomy mode."""
+        self.execution_mode = normalize_workflow_mode(mode)
+
+    def _history_for_llm(self, history: list) -> list[dict[str, Any]]:
+        """Return short user-visible history for the LLM prompt.
+
+        Internal tool feedback remains in controller history for metrics and
+        recovery, but it should not become workflow truth for the next LLM turn.
+        """
+        cleaned: list[dict[str, Any]] = []
+        for message in history:
+            if not isinstance(message, dict):
+                continue
+            role = message.get("role")
+            content = str(message.get("content", "")).strip()
+            if role not in {"user", "assistant"} or not content:
+                continue
+            if content.startswith(("System:", "Tool Output:", "Request:")):
+                continue
+            cleaned.append({"role": role, "content": content})
+        return cleaned[-self.max_history_messages :]
+
+    @staticmethod
+    def _latest_user_text(history: list[dict[str, Any]]) -> str:
+        for message in reversed(history):
+            if message.get("role") == "user":
+                return str(message.get("content", "")).strip()
+        return ""

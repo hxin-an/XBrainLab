@@ -476,7 +476,10 @@ class TrainingPanel(BasePanel):
         if not callable(get_epoch):
             return train_count
         try:
-            record_epoch = int(get_epoch())
+            value = get_epoch()
+            if not isinstance(value, (int, str)):
+                return train_count
+            record_epoch = int(value)
         except (TypeError, ValueError):
             return train_count
         if record_epoch <= 0:

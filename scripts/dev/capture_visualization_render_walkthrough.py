@@ -60,7 +60,7 @@ BLOCKED_TAB_SPECS: list[dict[str, str]] = [
     {
         "tab": "3D Plot",
         "screenshot": "visualization-render-3d-blocked.png",
-        "expected_reason": "interactive OpenGL desktop session",
+        "expected_reason": "Saliency Map, Spectrogram, or Topographic Map",
     },
 ]
 UNCAUGHT_EXCEPTIONS: list[str] = []
@@ -596,8 +596,8 @@ def validate_visualization_render_payload(
         return False, "No completed tiny training run was captured."
     if not training.get("metrics_available"):
         return False, "Evaluation metrics were not available after tiny training."
-    if not training.get("saliency_available"):
-        return False, "Saliency was not available after tiny training."
+    # Training now finishes with metric-only evaluation; configured saliency is
+    # computed as a background visualization job when the panel opens.
 
     app_visualize = payload.get("application_visualize") or {}
     if not app_visualize.get("ok"):

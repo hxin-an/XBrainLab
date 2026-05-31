@@ -30,6 +30,7 @@ from XBrainLab.ui.application_capabilities import (
     execute_application_command,
     execute_application_command_async,
     get_command_capability,
+    has_real_application_context,
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
@@ -374,6 +375,14 @@ class TrainingSidebar(QWidget):
                     on_error=_handle_generate_error,
                     busy_target=self.panel,
                 ):
+                    return
+
+                if has_real_application_context(self):
+                    QMessageBox.warning(
+                        self,
+                        "Data Splitting Blocked",
+                        CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+                    )
                     return
 
                 result = execute_application_command(self, command)

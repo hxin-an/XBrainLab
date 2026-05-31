@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+from scipy.signal import welch
 
 from XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter import PreprocessPlotter
 
@@ -77,121 +78,66 @@ def test_plotter_init(mock_widget, mock_controller):
 def test_plot_sample_data_time_domain(mock_widget, mock_controller):
     plotter = PreprocessPlotter(mock_widget, mock_controller)
 
-    # Patch Worker to avoid actual threading
-    with patch(
-        "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.Worker"
-    ) as MockWorker:
-        plotter.plot_sample_data()
+    plotter.plot_sample_data()
 
-        mock_widget.clear_plot_data.assert_called_once()
+    mock_widget.clear_plot_data.assert_called_once()
 
-        mock_widget.time_current_curve.setData.assert_called_once()
+    mock_widget.time_current_curve.setData.assert_called_once()
 
-        # Check title set
-        mock_widget.plot_time.setTitle.assert_called_with("ch1 (Time)")
+    # Check title set
+    mock_widget.plot_time.setTitle.assert_called_with("ch1 (Time)")
 
 
-def test_plot_sample_data_async_psd(mock_widget, mock_controller):
+def test_plot_sample_data_calculates_psd_on_ui_thread(mock_widget, mock_controller):
     plotter = PreprocessPlotter(mock_widget, mock_controller)
-
-    # Mock ThreadPool to run synchronous for test or just check start call
-    plotter.threadpool = MagicMock()
     mock_widget.plot_tabs.currentIndex.return_value = 1
 
-    with patch(
-        "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.Worker"
-    ) as MockWorker:
+    with patch.object(plotter, "_calc_psd_task", wraps=plotter._calc_psd_task) as calc:
         plotter.plot_sample_data()
 
-        # Verify loading title
-        mock_widget.plot_freq.setTitle.assert_called_with("Calculating PSD...")
-
-        # Verify Worker created
-        MockWorker.assert_called_once()
-
-        # Verify ThreadPool started
-        plotter.threadpool.start.assert_called_once()
+    calc.assert_called_once()
+    mock_widget.freq_current_curve.setData.assert_called_once()
+    mock_widget.plot_freq.setTitle.assert_called_with("ch1 (PSD)")
 
 
 def test_stale_psd_result_does_not_update_latest_plot(mock_widget, mock_controller):
     plotter = PreprocessPlotter(mock_widget, mock_controller)
-    plotter.threadpool = MagicMock()
-    mock_widget.plot_tabs.currentIndex.return_value = 1
-    handlers = []
-
-    class _Signal:
-        def connect(self, callback):
-            handlers.append(callback)
-
-    class _Signals:
-        result = _Signal()
-
-    class _Worker:
-        signals = _Signals()
-
-    with patch(
-        "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.Worker",
-        side_effect=lambda *_, **__: _Worker(),
-    ):
-        plotter.plot_sample_data()
-        plotter.plot_sample_data()
-
-    assert len(handlers) == 2
     psd_result = (np.array([1.0]), np.array([1.0]), None, None)
+    plotter._plot_generation = 2
 
-    handlers[0](psd_result)
+    plotter._apply_psd_result(psd_result, "ch1", plot_generation=1)
     mock_widget.freq_current_curve.setData.assert_not_called()
 
-    handlers[1](psd_result)
+    plotter._apply_psd_result(psd_result, "ch1", plot_generation=2)
     mock_widget.freq_current_curve.setData.assert_called_once()
     mock_widget.plot_freq.setTitle.assert_called_with("ch1 (PSD)")
 
 
 def test_plot_sample_data_defers_psd_until_frequency_tab(mock_widget, mock_controller):
     plotter = PreprocessPlotter(mock_widget, mock_controller)
-    plotter.threadpool = MagicMock()
     mock_widget.plot_tabs.currentIndex.return_value = 0
 
-    with patch(
-        "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.Worker"
-    ) as MockWorker:
+    with patch.object(plotter, "_calc_psd_task") as calc:
         plotter.plot_sample_data()
 
     mock_widget.time_current_curve.setData.assert_called_once()
-    MockWorker.assert_not_called()
-    plotter.threadpool.start.assert_not_called()
+    calc.assert_not_called()
 
 
-def test_plot_sample_data_keeps_psd_worker_until_finished(
+def test_plot_sample_data_does_not_create_psd_workers(
     mock_widget,
     mock_controller,
 ):
     plotter = PreprocessPlotter(mock_widget, mock_controller)
-    plotter.threadpool = MagicMock()
     mock_widget.plot_tabs.currentIndex.return_value = 1
-    finish_handlers = []
 
-    class _Signal:
-        def connect(self, callback):
-            finish_handlers.append(callback)
-
-    class _Signals:
-        result = MagicMock()
-        finished = _Signal()
-
-    class _Worker:
-        signals = _Signals()
-
-    worker = _Worker()
     with patch(
-        "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.Worker",
-        return_value=worker,
-    ):
+        "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.welch",
+        wraps=welch,
+    ) as wrapped_welch:
         plotter.plot_sample_data()
 
-    assert plotter._active_psd_workers == [worker]
-    finish_handlers[-1]()
-    assert plotter._active_psd_workers == []
+    assert wrapped_welch.called
 
 
 def test_plot_sample_data_ignores_reentrant_refresh(mock_widget, mock_controller):
@@ -235,13 +181,10 @@ def test_plot_sample_data_uses_service_query_before_controller(
     )
     plotter = PreprocessPlotter(mock_widget, mock_controller)
 
-    with (
-        patch(
-            "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.query_preprocess_render_lists",
-            return_value=([raw_obj], []),
-        ) as execute,
-        patch("XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.Worker"),
-    ):
+    with patch(
+        "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.query_preprocess_render_lists",
+        return_value=([raw_obj], []),
+    ) as execute:
         plotter.plot_sample_data()
 
     execute.assert_called_once_with(plotter)
@@ -292,13 +235,10 @@ def test_plot_sample_data_with_supplied_data_uses_query_for_original_overlay(
     mock_controller.study.loaded_data_list = [stale_original]
     plotter = PreprocessPlotter(mock_widget, mock_controller)
 
-    with (
-        patch(
-            "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.query_preprocess_render_lists",
-            return_value=([current], [current]),
-        ) as query,
-        patch("XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.Worker"),
-    ):
+    with patch(
+        "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.query_preprocess_render_lists",
+        return_value=([current], [current]),
+    ) as query:
         plotter.plot_sample_data(data_list=[current])
 
     query.assert_called_once_with(plotter)
@@ -491,10 +431,9 @@ class TestPlotSampleDataEdgeCases:
         mock_widget.chan_combo.currentIndex.return_value = -1
         plotter = PreprocessPlotter(mock_widget, mock_controller)
 
-        with patch("XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.Worker"):
-            plotter.plot_sample_data()
-            # Should return early since chan_idx < 0
-            mock_widget.time_current_curve.setData.assert_not_called()
+        plotter.plot_sample_data()
+        # Should return early since chan_idx < 0
+        mock_widget.time_current_curve.setData.assert_not_called()
 
     def test_yscale_auto(self, mock_widget, mock_controller):
         """yscale_spin == 0 triggers enableAutoRange."""
@@ -509,9 +448,8 @@ class TestPlotSampleDataEdgeCases:
         data = np.random.rand(1, 500)
         mne.get_data.return_value = data
 
-        with patch("XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.Worker"):
-            plotter.plot_sample_data()
-            mock_widget.plot_time.enableAutoRange.assert_called_once()
+        plotter.plot_sample_data()
+        mock_widget.plot_time.enableAutoRange.assert_called_once()
 
     def test_plot_exception(self, mock_widget, mock_controller):
         """Plotting exception is caught and reported."""

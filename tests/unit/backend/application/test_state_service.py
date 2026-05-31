@@ -155,6 +155,30 @@ class _EvaluationController:
         return []
 
 
+class _FinishedRun:
+    def __init__(self, eval_record: Any) -> None:
+        self.eval_record = eval_record
+
+    def is_finished(self) -> bool:
+        return True
+
+
+class _Plan:
+    def __init__(self, runs: list[Any]) -> None:
+        self._runs = runs
+
+    def get_plans(self) -> list[Any]:
+        return self._runs
+
+
+class _EvaluationControllerWithPlans:
+    def __init__(self, plans: list[Any]) -> None:
+        self._plans = plans
+
+    def get_plans(self) -> list[Any]:
+        return self._plans
+
+
 def _snapshot_service() -> StateSnapshotService:
     study = _Study()
     dataset = _DatasetController(study)
@@ -207,6 +231,36 @@ def test_state_snapshot_service_builds_workflow_snapshot() -> None:
     assert state.visualization.saliency_configured is True
     assert state.interpretation.has_scan_result is True
     assert state.active_dataset.has_epoch_data is True
+
+
+def test_state_snapshot_requires_real_saliency_arrays_for_availability() -> None:
+    state_builder = _snapshot_service()
+    state_builder.study.saliency_params = {}
+    empty_eval = type("Eval", (), {"gradient": {0: []}})()
+    state_builder.evaluation_state = _EvaluationControllerWithPlans(
+        [_Plan([_FinishedRun(empty_eval)])],
+    )
+
+    state = state_builder.build()
+
+    assert state.evaluation.finished_runs == 1
+    assert state.visualization.saliency_configured is False
+    assert state.visualization.saliency_available is False
+
+
+def test_state_snapshot_reports_saliency_available_only_with_output_data() -> None:
+    state_builder = _snapshot_service()
+    state_builder.study.saliency_params = {"SmoothGrad": {"nt_samples": 1}}
+    eval_record = type("Eval", (), {"gradient": {0: [[1.0]]}})()
+    state_builder.evaluation_state = _EvaluationControllerWithPlans(
+        [_Plan([_FinishedRun(eval_record)])],
+    )
+
+    state = state_builder.build()
+
+    assert state.evaluation.finished_runs == 1
+    assert state.visualization.saliency_configured is True
+    assert state.visualization.saliency_available is True
 
 
 def test_data_summary_query_falls_back_to_state_when_loaded_list_query_fails() -> None:

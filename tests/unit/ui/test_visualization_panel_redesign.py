@@ -3,8 +3,10 @@ from __future__ import annotations
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 from PyQt6.QtWidgets import QGridLayout, QGroupBox, QWidget
 
+from XBrainLab.backend.application import SaliencyCommand, VisualizeCommand
 from XBrainLab.backend.application.results import ChangedState, CommandResult, ErrorType
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.observer import Observable
@@ -69,6 +71,26 @@ def _make_trainer(name="EEGNet", repeats=2):
     trainer.option.repeat_num = repeats
     trainer.get_plans.return_value = [MagicMock() for _ in range(repeats)]
     return trainer
+
+
+def _make_eval_record_with_saliency():
+    record = MagicMock()
+    record.gradient = {0: np.ones((1, 2, 3))}
+    record.gradient_input = {}
+    record.smoothgrad = {}
+    record.smoothgrad_sq = {}
+    record.vargrad = {}
+    return record
+
+
+def _make_eval_record_without_saliency():
+    record = MagicMock()
+    record.gradient = {}
+    record.gradient_input = {}
+    record.smoothgrad = {}
+    record.smoothgrad_sq = {}
+    record.vargrad = {}
+    return record
 
 
 def _current_mock_widget(panel) -> Any:
@@ -236,7 +258,7 @@ def test_visualization_panel_dispatches_default_run_when_fold_changes(qtbot):
     first_trainer = _make_trainer("EEGNet", repeats=2)
     second_trainer = _make_trainer("SCCNet", repeats=2)
     second_plan = second_trainer.get_plans.return_value[0]
-    second_eval_record = MagicMock()
+    second_eval_record = _make_eval_record_with_saliency()
     second_plan.get_eval_record.return_value = second_eval_record
     ctrl.get_trainers.return_value = [first_trainer, second_trainer]
 
@@ -257,7 +279,7 @@ def test_visualization_panel_dispatches_default_run_when_fold_changes(qtbot):
 def test_visualization_panel_dispatches_plot_update_to_active_tab(qtbot):
     panel, ctrl = _make_panel(qtbot)
     trainer = _make_trainer("EEGNet", repeats=2)
-    eval_record = MagicMock()
+    eval_record = _make_eval_record_with_saliency()
     trainer.get_plans.return_value[0].get_eval_record.return_value = eval_record
     ctrl.get_trainers.return_value = [trainer]
 
@@ -275,6 +297,221 @@ def test_visualization_panel_dispatches_plot_update_to_active_tab(qtbot):
     assert args[0] is trainer.get_plans.return_value[0]
     assert args[1] is trainer
     assert args[4] is eval_record
+
+
+def test_visualization_panel_computes_configured_saliency_on_demand(
+    qtbot,
+    monkeypatch,
+):
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    service_trainer = _make_trainer("EEGNet", repeats=1)
+    service_trainer.get_plans.return_value[
+        0
+    ].get_eval_record.return_value = _make_eval_record_without_saliency()
+    async_commands = []
+    configured_params = {
+        "SmoothGrad": {"nt_samples": 3},
+        "SmoothGrad_Squared": {"nt_samples": 3},
+        "VarGrad": {"nt_samples": 3},
+    }
+
+    def fake_execute(_panel, command, **_kwargs):
+        if isinstance(command, SaliencyCommand):
+            return CommandResult.success_result(
+                command_name="saliency",
+                message="Saliency summary ready.",
+                state={},
+                changed_state=ChangedState(),
+                diagnostics={
+                    "payload_type": "saliency_summary",
+                    "params": configured_params,
+                    "saliency_configured": True,
+                    "saliency_available": False,
+                    "configure_available": True,
+                },
+            )
+        if isinstance(command, VisualizeCommand):
+            return CommandResult.success_result(
+                command_name="visualize",
+                message="Visualization summary ready.",
+                state={},
+                changed_state=ChangedState(),
+                diagnostics={
+                    "payload_type": "visualization_summary",
+                    "available": True,
+                    "trainer_objects": [service_trainer],
+                },
+            )
+        raise AssertionError(f"unexpected command: {command!r}")
+
+    def fake_execute_async(_panel, command, *, on_result, **_kwargs):
+        del on_result
+        async_commands.append(command)
+        return True
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command",
+        fake_execute,
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
+        fake_execute_async,
+    )
+
+    panel, _ctrl = _make_panel(qtbot, parent=RealMainWindow())
+    current_widget = _current_mock_widget(panel)
+    current_widget.show_message.reset_mock()
+    current_widget.update_plot.reset_mock()
+
+    panel.update_panel()
+
+    assert len(async_commands) == 1
+    command = async_commands[0]
+    assert isinstance(command, SaliencyCommand)
+    assert command.method == "Gradient"
+    assert command.params == configured_params
+    current_widget.update_plot.assert_not_called()
+    current_widget.show_message.assert_called_with("Computing saliency...")
+
+
+def test_visualization_panel_unconfigured_saliency_shows_actionable_message(
+    qtbot,
+    monkeypatch,
+):
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    service_trainer = _make_trainer("EEGNet", repeats=1)
+    service_trainer.get_plans.return_value[
+        0
+    ].get_eval_record.return_value = _make_eval_record_without_saliency()
+
+    def fake_execute(_panel, command, **_kwargs):
+        if isinstance(command, SaliencyCommand):
+            return CommandResult.success_result(
+                command_name="saliency",
+                message="Saliency parameters are not configured yet.",
+                state={},
+                changed_state=ChangedState(),
+                diagnostics={
+                    "payload_type": "saliency_summary",
+                    "saliency_available": False,
+                    "configure_available": True,
+                },
+            )
+        if isinstance(command, VisualizeCommand):
+            return CommandResult.success_result(
+                command_name="visualize",
+                message="Visualization summary ready.",
+                state={},
+                changed_state=ChangedState(),
+                diagnostics={
+                    "payload_type": "visualization_summary",
+                    "available": True,
+                    "trainer_objects": [service_trainer],
+                },
+            )
+        raise AssertionError(f"unexpected command: {command!r}")
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command",
+        fake_execute,
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("unconfigured saliency should not auto-compute")
+        ),
+    )
+
+    panel, _ctrl = _make_panel(qtbot, parent=RealMainWindow())
+    current_widget = _current_mock_widget(panel)
+    current_widget.show_message.reset_mock()
+    current_widget.update_plot.reset_mock()
+
+    panel.update_panel()
+
+    current_widget.update_plot.assert_not_called()
+    current_widget.show_message.assert_called_with(
+        "Saliency has not been computed for this run. "
+        "Use Saliency Settings to compute it."
+    )
+
+
+def test_visualization_panel_missing_saliency_worker_shows_actionable_message(
+    qtbot,
+    monkeypatch,
+):
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    service_trainer = _make_trainer("EEGNet", repeats=1)
+    service_trainer.get_plans.return_value[
+        0
+    ].get_eval_record.return_value = _make_eval_record_without_saliency()
+
+    def fake_execute(_panel, command, **_kwargs):
+        if isinstance(command, SaliencyCommand):
+            return CommandResult.success_result(
+                command_name="saliency",
+                message="Saliency summary ready.",
+                state={},
+                changed_state=ChangedState(),
+                diagnostics={
+                    "payload_type": "saliency_summary",
+                    "params": {
+                        "SmoothGrad": {"nt_samples": 1},
+                        "SmoothGrad_Squared": {"nt_samples": 1},
+                        "VarGrad": {"nt_samples": 1},
+                    },
+                    "saliency_configured": True,
+                    "saliency_available": False,
+                    "configure_available": True,
+                },
+            )
+        if isinstance(command, VisualizeCommand):
+            return CommandResult.success_result(
+                command_name="visualize",
+                message="Visualization summary ready.",
+                state={},
+                changed_state=ChangedState(),
+                diagnostics={
+                    "payload_type": "visualization_summary",
+                    "available": True,
+                    "trainer_objects": [service_trainer],
+                },
+            )
+        raise AssertionError(f"unexpected command: {command!r}")
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command",
+        fake_execute,
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
+        lambda *_args, **_kwargs: False,
+    )
+
+    panel, _ctrl = _make_panel(qtbot, parent=RealMainWindow())
+    current_widget = _current_mock_widget(panel)
+    current_widget.show_message.reset_mock()
+    current_widget.update_plot.reset_mock()
+
+    panel.update_panel()
+
+    current_widget.update_plot.assert_not_called()
+    current_widget.show_message.assert_called_with(
+        "Saliency has not been computed for this run. "
+        "Use Saliency Settings to compute it."
+    )
 
 
 def test_visualization_panel_preserves_selection_on_training_stopped(qtbot):
@@ -297,6 +534,81 @@ def test_visualization_panel_preserves_selection_on_training_stopped(qtbot):
 
     assert panel.plan_combo.currentText() == "Fold 2 (SCCNet)"
     assert panel.run_combo.currentText() == "Average"
+
+
+def test_visualization_panel_starts_configured_saliency_after_training_stopped(
+    qtbot,
+    monkeypatch,
+):
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    training_controller = Observable()
+    configured_params = {
+        "SmoothGrad": {"nt_samples": 2},
+        "SmoothGrad_Squared": {"nt_samples": 2},
+        "VarGrad": {"nt_samples": 2},
+    }
+    async_commands = []
+
+    def fake_execute(_panel, command, **_kwargs):
+        if isinstance(command, SaliencyCommand):
+            return CommandResult.success_result(
+                command_name="saliency",
+                message="Saliency summary ready.",
+                state={},
+                changed_state=ChangedState(),
+                diagnostics={
+                    "payload_type": "saliency_summary",
+                    "params": configured_params,
+                    "saliency_configured": True,
+                    "saliency_available": False,
+                    "configure_available": True,
+                    "finished_run_count": 1,
+                },
+            )
+        if isinstance(command, VisualizeCommand):
+            return CommandResult.success_result(
+                command_name="visualize",
+                message="Visualization summary ready.",
+                state={},
+                changed_state=ChangedState(),
+                diagnostics={
+                    "payload_type": "visualization_summary",
+                    "available": True,
+                    "trainer_objects": [],
+                },
+            )
+        raise AssertionError(f"unexpected command: {command!r}")
+
+    def fake_execute_async(_panel, command, *, on_result, **_kwargs):
+        del on_result
+        async_commands.append(command)
+        return True
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command",
+        fake_execute,
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
+        fake_execute_async,
+    )
+    panel, _ctrl = _make_panel(
+        qtbot,
+        training_controller=training_controller,
+        parent=RealMainWindow(),
+    )
+
+    with patch.object(panel, "update_panel"):
+        training_controller.notify("training_stopped")
+        qtbot.wait(50)
+
+    assert len(async_commands) == 1
+    assert isinstance(async_commands[0], SaliencyCommand)
+    assert async_commands[0].params == configured_params
 
 
 def test_visualization_panel_shows_placeholder_without_valid_selection(qtbot):
@@ -581,6 +893,66 @@ def test_visualization_panel_loads_average_record_only_on_average_selection(
     args, _kwargs = current_widget.update_plot.call_args
     assert args[4] is average_record
     ctrl.get_averaged_record.assert_not_called()
+
+
+def test_visualization_panel_does_not_sync_load_average_when_worker_unavailable(
+    qtbot,
+    monkeypatch,
+):
+    from XBrainLab.backend.application import VisualizeCommand
+
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    service_trainer = _make_trainer("ServiceNet", repeats=1)
+    commands = []
+
+    def fake_execute(_panel, command, **_kwargs):
+        commands.append(command)
+        if not isinstance(command, VisualizeCommand):
+            raise AssertionError(f"unexpected command: {command!r}")
+        return CommandResult.success_result(
+            command_name="visualize",
+            message="Visualization summary ready.",
+            state={},
+            changed_state=ChangedState(),
+            diagnostics={
+                "payload_type": "visualization_summary",
+                "available": True,
+                "trainer_objects": [service_trainer],
+            },
+        )
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command",
+        fake_execute,
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
+        lambda *_args, **_kwargs: False,
+    )
+    panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
+    ctrl.get_averaged_record.side_effect = AssertionError(
+        "stale averaged records should not be read",
+    )
+
+    panel.refresh_combos()
+    current_widget = _current_mock_widget(panel)
+    current_widget.show_message.reset_mock()
+    current_widget.update_plot.reset_mock()
+
+    panel.run_combo.setCurrentText("Average")
+
+    assert commands
+    assert all(not command.include_averaged_records for command in commands)
+    ctrl.get_averaged_record.assert_not_called()
+    current_widget.update_plot.assert_not_called()
+    current_widget.show_message.assert_called_with(
+        "Average saliency could not start in the background. "
+        "Try again after the current operation finishes."
+    )
 
 
 def test_visualization_panel_refuses_real_study_query_none_average_fallback(

@@ -386,6 +386,8 @@ def _ui_only_command_fields(command_name: CommandName) -> frozenset[str]:
                 "include_metrics",
                 "include_pooled_results",
                 "include_model_summaries",
+                "model_summary_plan_index",
+                "model_summary_run_index",
             }
         )
     if command_name == CommandName.VISUALIZE:

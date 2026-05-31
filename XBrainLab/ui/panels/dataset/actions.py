@@ -43,6 +43,7 @@ from XBrainLab.ui.application_capabilities import (
     execute_application_command,
     execute_application_command_async,
     get_command_capability,
+    has_real_application_context,
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.status import show_status_message
@@ -591,6 +592,14 @@ class DatasetActionHandler:
             choices,
             label_sources,
         ):
+            return True
+
+        if has_real_application_context(self.panel):
+            QMessageBox.warning(
+                self.panel,
+                "Interpretation Blocked",
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+            )
             return True
 
         review_state = self._run_interpretation_review_sequence(

@@ -71,7 +71,7 @@ class Visualizer:
         """
         created_figure = self.fig is None
         if self.fig is None:
-            self.fig = plt.figure(figsize=self.figsize, dpi=self.dpi)
+            self.fig = Figure(figsize=self.figsize, dpi=self.dpi)
         try:
             self.fig.clf()
             return self._get_plt(*args, **kwargs)

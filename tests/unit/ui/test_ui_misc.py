@@ -324,6 +324,49 @@ class TestDatasetActionHandler:
         handler.panel.controller.import_files.assert_not_called()
         handler.panel.update_panel.assert_not_called()
 
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_data_real_study_does_not_sync_review_when_worker_unavailable(
+        self,
+        mock_mb,
+        mock_fd,
+        handler,
+        qtbot,
+    ):
+        from XBrainLab.backend.study import Study
+
+        main_window = QMainWindow()
+        qtbot.addWidget(main_window)
+        main_window.study = Study()
+        handler.panel.main_window = main_window
+        handler.panel.study = main_window.study
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileNames.return_value = (["/tmp/sub-01_task-mi.fif"], "")
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.get_command_capability",
+                return_value=SimpleNamespace(enabled=True, reasons=[]),
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command_async",
+                return_value=False,
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                side_effect=AssertionError(
+                    "real Study review must not fall back to sync",
+                ),
+            ) as mock_execute,
+        ):
+            handler.import_data()
+
+        mock_execute.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert mock_mb.warning.call_args.args[1] == "Interpretation Blocked"
+        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
+
     def test_import_data_prefers_backend_scan_capability_over_stale_controller(
         self,
         handler,

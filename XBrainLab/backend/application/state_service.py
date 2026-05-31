@@ -158,12 +158,11 @@ class StateSnapshotService:
                 self.training_state.get_missing_requirements,
             ),
         )
+        saliency_params = getattr(self.study, "saliency_params", None)
         visualization = VisualizationStateSnapshot(
-            saliency_configured=(
-                getattr(self.study, "saliency_params", None) is not None
-            ),
+            saliency_configured=bool(saliency_params),
             saliency_available=evaluation.finished_runs > 0
-            and getattr(self.study, "saliency_params", None) is not None,
+            and self._saliency_output_available(),
             montage_available=self._montage_available(epoch_data),
             channel_positions_available=self._channel_positions_available(epoch_data),
             channel_count=len(epoch.channel_names),
@@ -414,6 +413,55 @@ class StateSnapshotService:
             finished_runs=finished_runs,
             metrics_available=metrics_available,
         )
+
+    def _saliency_output_available(self) -> bool:
+        """Return true only when a finished run contains real saliency arrays."""
+        plans = self._safe_call_list(self.evaluation_state.get_plans)
+        for plan in plans:
+            for run in self._safe_plan_runs(plan):
+                if not self._run_finished(run):
+                    continue
+                eval_record = getattr(run, "eval_record", None)
+                if eval_record is None:
+                    continue
+                if self._eval_record_has_saliency(eval_record):
+                    return True
+        return False
+
+    @staticmethod
+    def _eval_record_has_saliency(eval_record: Any) -> bool:
+        for attr in (
+            "gradient",
+            "gradient_input",
+            "smoothgrad",
+            "smoothgrad_sq",
+            "vargrad",
+        ):
+            store = getattr(eval_record, attr, None)
+            if StateSnapshotService._saliency_store_has_data(store):
+                return True
+        return False
+
+    @staticmethod
+    def _saliency_store_has_data(store: Any) -> bool:
+        if store is None:
+            return False
+        values = store.values() if isinstance(store, dict) else store
+        try:
+            iterator = iter(values)
+        except TypeError:
+            return False
+        for value in iterator:
+            if StateSnapshotService._has_nonempty_value(value):
+                return True
+        return False
+
+    @staticmethod
+    def _has_nonempty_value(value: Any) -> bool:
+        try:
+            return len(value) > 0
+        except TypeError:
+            return False
 
     @staticmethod
     def _safe_plan_runs(plan: Any) -> list[Any]:

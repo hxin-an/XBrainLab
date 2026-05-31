@@ -106,6 +106,8 @@ def test_mcp_tool_specs_use_same_command_schema():
     assert "include_metrics" not in evaluate_schema["properties"]
     assert "include_pooled_results" not in evaluate_schema["properties"]
     assert "include_model_summaries" not in evaluate_schema["properties"]
+    assert "model_summary_plan_index" not in evaluate_schema["properties"]
+    assert "model_summary_run_index" not in evaluate_schema["properties"]
     visualize_schema = tools[CommandName.VISUALIZE.value]["inputSchema"]
     assert "include_objects" not in visualize_schema["properties"]
     assert "include_averaged_records" not in visualize_schema["properties"]
@@ -143,6 +145,8 @@ def test_mcp_tool_specs_expose_execution_boundary_metadata():
         (CommandName.EVALUATE, "include_metrics"),
         (CommandName.EVALUATE, "include_pooled_results"),
         (CommandName.EVALUATE, "include_model_summaries"),
+        (CommandName.EVALUATE, "model_summary_plan_index"),
+        (CommandName.EVALUATE, "model_summary_run_index"),
         (CommandName.VISUALIZE, "include_objects"),
         (CommandName.VISUALIZE, "include_averaged_records"),
         (CommandName.GENERATE_DATASET, "generator"),

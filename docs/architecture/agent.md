@@ -1,6 +1,6 @@
 # Agent 目前架構
 
-最後更新：`2026-05-05`
+最後更新：`2026-05-31`
 
 ## 範圍
 
@@ -103,6 +103,40 @@ Study / cached controllers
 - 防止明顯 tool loop，並限制 multi-step execution 次數。
 
 這一層目前同時包含 agent orchestration 和一部分 workflow policy。
+
+### Workflow Decision Context
+
+2026-05-31 bounded Copilot slice 後，LLM prompt 不再把長 conversation history 當成
+workflow truth。`ContextAssembler` 會先從 `ApplicationService.get_state()` 和
+`get_capabilities()` 產生一份 compact `WorkflowDecisionContext`，再把它放進 system prompt。
+
+目前 decision context 會明確列出：
+
+- `mode`：`step_by_step` 或 `continue_until_decision`。
+- `workflow_stage`：使用者可理解的目前階段。
+- `recommended_next_step` / `recommended_label`：下一個建議 backend command。
+- `decision_needed`：缺哪些使用者決定，例如資料來源、epoch window、split strategy、model。
+- `existing_ui_surface`：若需要人決定，應打開既有 Data Import wizard、Epoch dialog、
+  Dataset split dialog、Training settings 或 Saliency settings，而不是在 chat 裡重做第二套 UI。
+- `can_auto_continue` / `stop_reason`：是否可以繼續自動執行，以及為什麼必須停。
+- `evidence` / `blocked_reasons`：從 backend state / capability policy 來的可追溯理由。
+
+conversation history 仍保留作語境，但送進 LLM 的 history 只保留最近少量 user-visible
+turns，並過濾 `Tool Output:`、`Request:` 和內部 system payload。這避免舊 tool result
+或長聊天紀錄覆蓋目前 backend state。
+
+Data Import lifecycle 也是 decision context 的一級狀態：
+
+```text
+source selected -> scan_source
+scan ready      -> preview_interpretation
+candidate ready -> validate_interpretation
+validated       -> apply_interpretation boundary
+applied         -> loaded raw data / preprocess
+```
+
+這讓 agent 在使用者說「繼續」時從目前 import recipe / candidate 狀態前進，而不是因為
+聊天裡曾經提過資料夾就重複 scan。
 
 ### 4. Worker / Engine / Backend
 

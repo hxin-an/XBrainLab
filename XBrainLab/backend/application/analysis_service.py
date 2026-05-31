@@ -79,10 +79,13 @@ class AnalysisCommandService:
                 pooled_eval_results.append(pooled_result)
             if command.include_model_summaries:
                 model_summaries.append(
-                    {
-                        "plan": self._safe_model_summary(plan),
-                        "runs": [self._safe_model_summary(plan, run) for run in runs],
-                    },
+                    self._model_summary_payload(
+                        plan,
+                        runs,
+                        plan_index=plan_idx,
+                        requested_plan_index=command.model_summary_plan_index,
+                        requested_run_index=command.model_summary_run_index,
+                    ),
                 )
         finished_total = sum(item["finished_run_count"] for item in summaries)
         message = (
@@ -105,6 +108,10 @@ class AnalysisCommandService:
             diagnostics["pooled_eval_results"] = pooled_eval_results
         if command.include_model_summaries:
             diagnostics["model_summaries"] = model_summaries
+            diagnostics["model_summary_request"] = {
+                "plan_index": command.model_summary_plan_index,
+                "run_index": command.model_summary_run_index,
+            }
         return (
             message,
             diagnostics,
@@ -201,7 +208,7 @@ class AnalysisCommandService:
             {
                 "payload_type": "saliency_summary",
                 "action": "query",
-                "saliency_configured": current_params is not None,
+                "saliency_configured": bool(current_params),
                 "saliency_available": state.visualization.saliency_available,
                 "configure_available": not configure_reasons,
                 "configure_reasons": configure_reasons,
@@ -297,6 +304,39 @@ class AnalysisCommandService:
         except Exception:
             logger.debug("Failed to build evaluation model summary", exc_info=True)
             return ""
+
+    def _model_summary_payload(
+        self,
+        plan: Any,
+        runs: list[Any],
+        *,
+        plan_index: int,
+        requested_plan_index: int | None,
+        requested_run_index: int | None,
+    ) -> dict[str, Any]:
+        """Build only the requested model summary to avoid UI-triggered stalls."""
+        if requested_plan_index is None and requested_run_index is None:
+            return {
+                "plan": self._safe_model_summary(plan),
+                "runs": [self._safe_model_summary(plan, run) for run in runs],
+            }
+
+        if requested_plan_index is not None and plan_index != requested_plan_index:
+            return {"plan": "", "runs": [""] * len(runs)}
+
+        run_summaries = [""] * len(runs)
+        if requested_run_index is None:
+            return {
+                "plan": self._safe_model_summary(plan),
+                "runs": run_summaries,
+            }
+
+        if 0 <= requested_run_index < len(runs):
+            run_summaries[requested_run_index] = self._safe_model_summary(
+                plan,
+                runs[requested_run_index],
+            )
+        return {"plan": "", "runs": run_summaries}
 
     def _safe_averaged_record(self, trainer: Any) -> Any:
         try:

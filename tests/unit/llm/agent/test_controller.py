@@ -976,6 +976,7 @@ class TestExecutionMode:
 
         ctrl.set_execution_mode(LLMController.MODE_MULTI)
         assert ctrl.execution_mode == LLMController.MODE_MULTI
+        ctrl.assembler.set_execution_mode.assert_called_with(LLMController.MODE_MULTI)
         ctrl.execution_mode_changed.emit.assert_called_with(LLMController.MODE_MULTI)
 
     def test_set_mode_back_to_single(self, ctrl):
@@ -984,6 +985,7 @@ class TestExecutionMode:
         ctrl.set_execution_mode(LLMController.MODE_MULTI)
         ctrl.set_execution_mode(LLMController.MODE_SINGLE)
         assert ctrl.execution_mode == LLMController.MODE_SINGLE
+        ctrl.assembler.set_execution_mode.assert_called_with(LLMController.MODE_SINGLE)
 
     def test_invalid_mode_ignored(self, ctrl):
         from XBrainLab.llm.agent.controller import LLMController

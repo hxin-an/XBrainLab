@@ -29,6 +29,7 @@ from XBrainLab.ui.application_capabilities import (
     execute_application_command,
     execute_application_command_async,
     get_command_capability,
+    has_real_application_context,
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
@@ -481,6 +482,14 @@ class PreprocessSidebar(QWidget):
             on_error=_handle_error,
             busy_target=self.panel,
         ):
+            return
+
+        if has_real_application_context(self):
+            QMessageBox.warning(
+                self,
+                blocked_title,
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+            )
             return
 
         try:

@@ -444,14 +444,7 @@ class TrainingPlanHolder:
                     target.eval()
 
             if target and target_loader:
-                if self.saliency_params:
-                    eval_record = Evaluator.evaluate_with_saliency(
-                        target,
-                        target_loader,
-                        self.saliency_params,
-                    )
-                else:
-                    eval_record = Evaluator.evaluate(target, target_loader)
+                eval_record = Evaluator.evaluate(target, target_loader)
                 train_record.set_eval_record(eval_record)
 
         train_record.export_checkpoint()

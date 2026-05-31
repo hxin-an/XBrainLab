@@ -81,7 +81,9 @@ def _base_payload():
                 "screenshot": "3d-blocked.png",
                 "ok": True,
                 "blocked_reason": (
-                    "3D rendering requires an interactive OpenGL desktop session."
+                    "3D rendering requires an interactive OpenGL desktop session. "
+                    "Use the desktop launcher, or switch to Saliency Map, "
+                    "Spectrogram, or Topographic Map in this headless environment."
                 ),
                 "message_evidence": {"ok": True},
                 "plotter_created": False,

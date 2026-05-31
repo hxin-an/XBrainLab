@@ -1,6 +1,6 @@
 # XBrainLab Agent 目標
 
-最後更新：`2026-05-04`
+最後更新：`2026-05-31`
 
 這份文件定義 XBrainLab agent 的目標態。
 
@@ -143,10 +143,16 @@ Context Assembler 的責任是把使用者指令轉成 LLM 可以判斷的完整
 - system prompt：agent 角色、工作流規則、安全邊界。
 - tool definitions：目前 backend command、schema、前置條件、輸出格式。
 - RAG context：少量可驗證的 few-shot workflow examples。
-- memory：conversation history 和使用者當前意圖。
+- memory：只保留短 user-visible context；長 conversation history 不可作為 workflow truth。
 - state snapshot：由 State Manager 提供的 workflow stage、資料狀態、訓練狀態和可用 command。
+- decision context：由 ApplicationService state / capability policy 推導的 next step、
+  decision boundary、existing UI surface 和 blocked reason。
 
 Context Assembler 不應直接執行 backend 操作。它只負責讓 LLM 在正確上下文中提出候選 tool call。
+
+LLM 可以看 conversation，但 workflow truth 必須來自 state / decision context。當
+`decision_needed` 有值時，agent 不應自行猜 subject、event、epoch window、split strategy、
+model 或 saliency target；它應把使用者帶回既有 UI decision surface，或提出最小必要問題。
 
 ## State Manager
 

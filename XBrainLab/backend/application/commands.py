@@ -358,6 +358,8 @@ class EvaluateCommand:
     include_metrics: bool = True
     include_pooled_results: bool = False
     include_model_summaries: bool = False
+    model_summary_plan_index: int | None = None
+    model_summary_run_index: int | None = None
 
     @property
     def name(self) -> CommandName:

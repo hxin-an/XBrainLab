@@ -3,7 +3,6 @@
 from typing import Any
 
 import numpy as np
-from matplotlib import pyplot as plt
 
 from .base import Visualizer
 
@@ -29,12 +28,15 @@ class SaliencyMapViz(Visualizer):
             matplotlib.figure.Figure: The rendered saliency map figure.
 
         """
+        if self.fig is None:
+            raise RuntimeError("Visualizer figure was not initialized")
+        fig = self.fig
         saliency_by_label = self.iter_saliency_by_label(method)
         if not saliency_by_label:
-            ax = plt.gca()
+            ax = fig.add_subplot(111)
             ax.text(0.5, 0.5, "No saliency data for this run.", ha="center")
             ax.set_axis_off()
-            return plt.gcf()
+            return fig
         visible_label_number = len(saliency_by_label)
         duration = self.epoch_data.get_epoch_duration()
         rows = 1 if visible_label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
@@ -42,7 +44,7 @@ class SaliencyMapViz(Visualizer):
         for plot_index, (_label_key, label_name, raw_saliency) in enumerate(
             saliency_by_label,
         ):
-            plt.subplot(rows, cols, plot_index + 1)
+            ax = fig.add_subplot(rows, cols, plot_index + 1)
 
             if absolute:
                 saliency = np.abs(raw_saliency).mean(axis=0)
@@ -51,7 +53,7 @@ class SaliencyMapViz(Visualizer):
                 saliency = raw_saliency.mean(axis=0)
                 cmap = "coolwarm"
 
-            im = plt.imshow(
+            im = ax.imshow(
                 saliency,
                 aspect="auto",
                 cmap=cmap,
@@ -60,15 +62,15 @@ class SaliencyMapViz(Visualizer):
                 interpolation="none",
             )
 
-            plt.xlabel("time")
-            plt.ylabel("channel")
+            ax.set_xlabel("time")
+            ax.set_ylabel("channel")
             ch_names = self.epoch_data.get_channel_names()
-            plt.yticks(ticks=range(len(ch_names)), labels=ch_names, fontsize=6)
-            plt.xticks(
+            ax.set_yticks(ticks=range(len(ch_names)), labels=ch_names, fontsize=6)
+            ax.set_xticks(
                 ticks=np.linspace(0, saliency.shape[-1], 5),
                 labels=np.round(np.linspace(0, duration, 5), 2),
             )
-            plt.colorbar(im, orientation="vertical")
-            plt.title(f"Saliency Map of class {label_name}")
-        plt.tight_layout()
-        return plt.gcf()
+            fig.colorbar(im, ax=ax, orientation="vertical")
+            ax.set_title(f"Saliency Map of class {label_name}")
+        fig.tight_layout()
+        return fig

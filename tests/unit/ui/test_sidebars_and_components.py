@@ -273,7 +273,7 @@ class TestPreprocessSidebar:
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=None,
-            ),
+            ) as mock_execute,
             patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
             patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_critical,
             patch("PyQt6.QtWidgets.QMessageBox.information") as mock_info,
@@ -283,6 +283,7 @@ class TestPreprocessSidebar:
             sidebar.open_filtering()
 
         sidebar.panel.controller.apply_filter.assert_not_called()
+        mock_execute.assert_not_called()
         mock_warning.assert_called_once()
         assert mock_warning.call_args.args[1] == "Filtering Blocked"
         assert "could not safely complete" in mock_warning.call_args.args[2]
@@ -1369,7 +1370,9 @@ class TestTrainingSidebar:
                 assert refresh is False
                 return query_result
             if isinstance(command, GenerateDatasetCommand):
-                return None
+                raise AssertionError(
+                    "real Study dataset generation must not fall back to sync",
+                )
             raise AssertionError(f"unexpected command: {command!r}")
 
         with (

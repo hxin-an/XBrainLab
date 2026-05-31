@@ -172,6 +172,12 @@ class Saliency3DEngine(QObject):
             selected_event_name,
         )
         saliency_raw = np.asarray(saliency_store[label_key], dtype=float)
+        if not self._has_saliency_data(saliency_raw):
+            raise KeyError(
+                "No saliency samples are available for EEG event "
+                f"{selected_event_name!r}. Select another trained class or "
+                "regenerate saliency after training.",
+            )
         if absolute:
             saliency_raw = np.abs(saliency_raw)
         self.saliency = saliency_raw.mean(axis=0)
@@ -268,13 +274,20 @@ class Saliency3DEngine(QObject):
             for candidate in candidates:
                 if candidate is None:
                     continue
-                if candidate in saliency_store:
+                if candidate in saliency_store and Saliency3DEngine._has_saliency_data(
+                    saliency_store[candidate],
+                ):
                     return candidate
                 for key in saliency_store:
-                    if str(key) == str(candidate):
+                    key_matches = str(key) == str(candidate)
+                    has_data = Saliency3DEngine._has_saliency_data(
+                        saliency_store[key],
+                    )
+                    if key_matches and has_data:
                         return key
-            if len(saliency_store) == 1:
-                return next(iter(saliency_store))
+            fallback = Saliency3DEngine._first_nonempty_saliency_key(saliency_store)
+            if fallback is not None:
+                return fallback
             available = ", ".join(map(str, saliency_store.keys()))
         else:
             try:
@@ -285,8 +298,12 @@ class Saliency3DEngine(QObject):
                 if (
                     isinstance(candidate, (int, np.integer))
                     and 0 <= int(candidate) < gradient_len
+                    and Saliency3DEngine._has_saliency_data(saliency_store[candidate])
                 ):
                     return candidate
+            fallback = Saliency3DEngine._first_nonempty_saliency_key(saliency_store)
+            if fallback is not None:
+                return fallback
             available = f"0..{max(gradient_len - 1, 0)}"
 
         raise KeyError(
@@ -295,6 +312,29 @@ class Saliency3DEngine(QObject):
             f"(event code {event_value!r}) to saliency results. "
             f"Available saliency keys: {available}."
         )
+
+    @staticmethod
+    def _has_saliency_data(value) -> bool:
+        try:
+            return len(value) > 0
+        except TypeError:
+            return False
+
+    @staticmethod
+    def _first_nonempty_saliency_key(saliency_store):
+        if isinstance(saliency_store, dict):
+            for key, value in saliency_store.items():
+                if Saliency3DEngine._has_saliency_data(value):
+                    return key
+            return None
+        try:
+            store_len = len(saliency_store)
+        except TypeError:
+            return None
+        for index in range(store_len):
+            if Saliency3DEngine._has_saliency_data(saliency_store[index]):
+                return index
+        return None
 
     @staticmethod
     def _saliency_store(eval_record, method):

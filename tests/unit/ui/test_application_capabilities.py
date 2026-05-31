@@ -426,6 +426,84 @@ def test_execute_application_command_async_returns_false_for_mock_study(
     assert started_workers == []
 
 
+def test_execute_application_command_async_returns_false_without_thread_pool(
+    qtbot,
+    monkeypatch,
+):
+    study = Study()
+    widget = QWidget()
+    cast(Any, widget).main_window = SimpleNamespace(study=study)
+    qtbot.addWidget(widget)
+    busy_states: list[bool] = []
+    cast(Any, widget).set_busy = lambda busy: busy_states.append(bool(busy))
+
+    class _Service:
+        def execute(self, command):
+            raise AssertionError("service should not run without a thread pool")
+
+    monkeypatch.setattr(
+        application_capabilities,
+        "get_application_service",
+        lambda provided_study: _Service(),
+    )
+    monkeypatch.setattr(
+        application_capabilities.QThreadPool,
+        "globalInstance",
+        lambda: None,
+    )
+
+    started = execute_application_command_async(
+        widget,
+        QueryStateCommand(),
+        on_result=lambda _result: None,
+    )
+
+    assert started is False
+    assert busy_states == [True, False]
+    assert cast(Any, widget)._xbrainlab_active_application_workers == []
+
+
+def test_execute_application_command_async_returns_false_when_worker_start_fails(
+    qtbot,
+    monkeypatch,
+):
+    study = Study()
+    widget = QWidget()
+    cast(Any, widget).main_window = SimpleNamespace(study=study)
+    qtbot.addWidget(widget)
+    busy_states: list[bool] = []
+    cast(Any, widget).set_busy = lambda busy: busy_states.append(bool(busy))
+
+    class _Service:
+        def execute(self, command):
+            raise AssertionError("worker should not run when start fails")
+
+    class _ThreadPool:
+        def start(self, worker):
+            raise RuntimeError("thread pool rejected worker")
+
+    monkeypatch.setattr(
+        application_capabilities,
+        "get_application_service",
+        lambda provided_study: _Service(),
+    )
+    monkeypatch.setattr(
+        application_capabilities.QThreadPool,
+        "globalInstance",
+        lambda: _ThreadPool(),
+    )
+
+    started = execute_application_command_async(
+        widget,
+        QueryStateCommand(),
+        on_result=lambda _result: None,
+    )
+
+    assert started is False
+    assert busy_states == [True, False]
+    assert cast(Any, widget)._xbrainlab_active_application_workers == []
+
+
 def test_legacy_controller_fallback_refuses_real_study(qtbot):
     study = Study()
     widget = QWidget()

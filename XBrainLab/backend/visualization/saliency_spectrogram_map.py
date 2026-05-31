@@ -3,7 +3,6 @@
 from typing import Any
 
 import numpy as np
-from matplotlib import pyplot as plt
 from matplotlib.ticker import FuncFormatter
 from scipy import signal
 
@@ -40,7 +39,9 @@ class SaliencySpectrogramMapViz(Visualizer):
 
         """
         sfreq = self.epoch_data.get_model_args()["sfreq"]
-        fig = plt.gcf()
+        if self.fig is None:
+            raise RuntimeError("Visualizer figure was not initialized")
+        fig = self.fig
         saliency_by_label = self.iter_saliency_by_label(method)
         if not saliency_by_label:
             ax = fig.gca()

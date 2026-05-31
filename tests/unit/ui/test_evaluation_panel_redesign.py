@@ -488,6 +488,8 @@ def test_evaluation_panel_uses_application_payload_before_stale_controller(
 
     stale_controller.get_model_summary_str.assert_not_called()
     assert calls[-1].include_model_summaries is True
+    assert calls[-1].model_summary_plan_index == 0
+    assert calls[-1].model_summary_run_index == 0
     assert panel.summary_text.toPlainText() == "Service run 1 summary"
 
 
@@ -527,6 +529,54 @@ def test_evaluation_panel_shows_placeholder_when_service_summary_missing(
     panel.bottom_tabs.setCurrentWidget(panel.summary_tab)
 
     assert "Model summary unavailable" in panel.summary_text.toPlainText()
+
+
+def test_evaluation_panel_does_not_sync_load_model_summary_when_worker_unavailable(
+    qtbot,
+    monkeypatch,
+):
+    """Model Summary must not block the UI by falling back to sync service calls."""
+
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    service_plan = MockPlanHolder("Service Plan")
+    calls = []
+
+    def fake_execute(_panel, command, **_kwargs):
+        calls.append(command)
+        return CommandResult.success_result(
+            command_name="evaluate",
+            message="Evaluation summary ready.",
+            state={},
+            changed_state=ChangedState(),
+            diagnostics={
+                "payload_type": "evaluation_summary",
+                "available": True,
+                "plan_objects": [service_plan],
+            },
+        )
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.evaluation.panel.execute_application_command",
+        fake_execute,
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.evaluation.panel.execute_application_command_async",
+        lambda *_args, **_kwargs: False,
+    )
+
+    panel = EvaluationPanel(controller=MagicMock(), parent=RealMainWindow())
+    qtbot.addWidget(panel)
+
+    panel.update_panel()
+    panel.bottom_tabs.setCurrentWidget(panel.summary_tab)
+
+    assert len(calls) == 1
+    assert calls[0].include_model_summaries is False
+    assert "could not start in the background" in panel.summary_text.toPlainText()
 
 
 def test_evaluation_panel_refuses_real_study_query_none_controller_fallback(

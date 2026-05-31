@@ -681,7 +681,9 @@ def test_train_one_repeat_uses_basic_evaluation_without_saliency(base_holder):
     assert record.eval_record is sentinel
 
 
-def test_train_one_repeat_uses_saliency_only_when_configured(base_holder):
+def test_train_one_repeat_keeps_saliency_out_of_training_thread_when_configured(
+    base_holder,
+):
     base_holder.option.evaluation_option = TrainingEvaluation.LAST_EPOCH
     base_holder.set_saliency_params(
         {
@@ -696,18 +698,45 @@ def test_train_one_repeat_uses_saliency_only_when_configured(base_holder):
 
     sentinel = object()
     with (
+        patch.object(Evaluator, "evaluate", return_value=sentinel) as mock_evaluate,
+        patch.object(Evaluator, "evaluate_with_saliency") as mock_saliency,
+        patch.object(record, "export_checkpoint"),
+    ):
+        base_holder.train_one_repeat(record)
+
+    mock_evaluate.assert_called_once()
+    mock_saliency.assert_not_called()
+    assert record.eval_record is sentinel
+
+
+def test_set_saliency_params_recomputes_finished_metric_only_record(base_holder):
+    base_holder.option.repeat_num = 1
+    record = base_holder.get_plans()[0]
+    record.eval_record = object()
+    sentinel = object()
+
+    with (
+        patch.object(base_holder, "get_loader", return_value=(None, None, "loader")),
+        patch.object(base_holder, "get_eval_pair", return_value=("model", "loader")),
         patch.object(Evaluator, "evaluate") as mock_evaluate,
         patch.object(
             Evaluator,
             "evaluate_with_saliency",
             return_value=sentinel,
         ) as mock_saliency,
-        patch.object(record, "export_checkpoint"),
     ):
-        base_holder.train_one_repeat(record)
+        base_holder.set_saliency_params(
+            {
+                "SmoothGrad": {"nt_samples": 1},
+                "SmoothGrad_Squared": {"nt_samples": 1},
+                "VarGrad": {"nt_samples": 1},
+            }
+        )
 
     mock_evaluate.assert_not_called()
-    mock_saliency.assert_called_once()
+    mock_saliency.assert_called_once_with(
+        "model", "loader", base_holder.saliency_params
+    )
     assert record.eval_record is sentinel
 
 

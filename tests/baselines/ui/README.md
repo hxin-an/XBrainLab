@@ -27,3 +27,6 @@ Current note:
 - the approved `ai-assistant-open.png` reference now reflects the post-`AQ-006`
   local-first shell, where the open assistant surface shows `Model: Local` rather
   than the older Gemini-default wording
+- the approved `panel-visualization.png` reference now reflects the compact
+  one-row visualization control bar used after the saliency/lazy-rendering
+  stabilization work

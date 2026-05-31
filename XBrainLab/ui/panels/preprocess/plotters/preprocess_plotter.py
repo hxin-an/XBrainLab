@@ -7,7 +7,6 @@ with support for original-vs-current overlays and event markers.
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from PyQt6.QtCore import QThreadPool
 from scipy.signal import welch
 
 from XBrainLab.backend.utils.logger import logger
@@ -15,7 +14,6 @@ from XBrainLab.ui.application_capabilities import (
     ControllerCompatibilityUnavailableError,
     run_controller_compatibility_call,
 )
-from XBrainLab.ui.core.worker import Worker
 from XBrainLab.ui.panels.preprocess.data_query import query_preprocess_render_lists
 
 if TYPE_CHECKING:
@@ -38,9 +36,7 @@ class PreprocessPlotter:
         """
         self.widget = widget
         self.controller = controller
-        self.threadpool = QThreadPool.globalInstance()
         self._plot_generation = 0
-        self._active_psd_workers: list[Worker] = []
         self._is_plotting = False
 
     def _get_chan_data(self, obj, ch_idx, start_time=0, duration=5):
@@ -124,7 +120,7 @@ class PreprocessPlotter:
         return events
 
     def _calc_psd_task(self, sig, sfreq, sig_orig=None):
-        """Worker task to calculate PSD for current and optional original signal."""
+        """Calculate PSD for current and optional original signal."""
         # Calc Current
         f, pxx = welch(sig, fs=sfreq, nperseg=min(len(sig), 256 * 4))
 
@@ -142,11 +138,12 @@ class PreprocessPlotter:
     def _frequency_tab_active(self) -> bool:
         tabs = getattr(self.widget, "plot_tabs", None)
         current_index = getattr(tabs, "currentIndex", None)
-        return callable(current_index) and int(current_index()) == 1
-
-    def _discard_psd_worker(self, worker: Worker) -> None:
-        if worker in self._active_psd_workers:
-            self._active_psd_workers.remove(worker)
+        if not callable(current_index):
+            return False
+        value = current_index()
+        if not isinstance(value, (int, str)):
+            return False
+        return int(value) == 1
 
     def _compatibility_data_lists_for_render(
         self,
@@ -277,46 +274,33 @@ class PreprocessPlotter:
 
                 self._plot_events(raw_obj, x_curr[0], x_curr[-1])
 
-            # --- Frequency Domain (Async) ---
+            # --- Frequency Domain ---
             if y_curr is not None and self._frequency_tab_active():
-                # Show loading state
                 self.widget.plot_freq.setTitle("Calculating PSD...")
-
-                # Prepare args for worker
-                worker = Worker(
-                    self._calc_psd_task,
-                    y_curr_uv,
-                    sfreq,
-                    sig_orig=y_orig_uv,
-                )
-
-                # Pass data needed for plotting via closure or args
-                # We also need orig data if present
-
-                def handle_psd_result(result):
-                    if plot_generation != self._plot_generation:
-                        return
-                    f_curr, p_curr, f_orig, p_orig = result
-
-                    if f_orig is not None and p_orig is not None:
-                        self.widget.freq_original_curve.setData(
-                            f_orig,
-                            10 * np.log10(p_orig),
-                        )
-                    self.widget.freq_current_curve.setData(
-                        f_curr,
-                        10 * np.log10(p_curr),
-                    )
-                    self.widget.plot_freq.setTitle(f"{chan_name} (PSD)")
-
-                worker.signals.result.connect(handle_psd_result)
-                finished_signal = getattr(worker.signals, "finished", None)
-                if hasattr(finished_signal, "connect"):
-                    finished_signal.connect(lambda: self._discard_psd_worker(worker))
-                self._active_psd_workers.append(worker)
-                if self.threadpool is not None:
-                    self.threadpool.start(worker)
+                result = self._calc_psd_task(y_curr_uv, sfreq, sig_orig=y_orig_uv)
+                self._apply_psd_result(result, chan_name, plot_generation)
 
         except Exception as e:
             logger.error("Plotting failed: %s", e, exc_info=True)
             self.widget.plot_time.setTitle("Plot Error")
+
+    def _apply_psd_result(
+        self,
+        result: tuple[Any, Any, Any, Any],
+        chan_name: str,
+        plot_generation: int,
+    ) -> None:
+        """Apply PSD arrays to persistent PyQtGraph curves on the UI thread."""
+        if plot_generation != self._plot_generation:
+            return
+        f_curr, p_curr, f_orig, p_orig = result
+        if f_orig is not None and p_orig is not None:
+            self.widget.freq_original_curve.setData(
+                f_orig,
+                10 * np.log10(np.maximum(p_orig, np.finfo(float).tiny)),
+            )
+        self.widget.freq_current_curve.setData(
+            f_curr,
+            10 * np.log10(np.maximum(p_curr, np.finfo(float).tiny)),
+        )
+        self.widget.plot_freq.setTitle(f"{chan_name} (PSD)")

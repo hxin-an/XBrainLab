@@ -68,6 +68,14 @@ def find_study(context: Any) -> Any | None:
     return None
 
 
+def has_real_application_context(context: Any) -> bool:
+    """Return whether a UI context is backed by a real product ``Study``."""
+    study = find_study(context)
+    return (
+        study is not None and isinstance(study, Study) and not isinstance(study, Mock)
+    )
+
+
 def get_command_capability(
     context: Any,
     command_name: CommandName | str,
@@ -216,9 +224,14 @@ def execute_application_command_async(
 
     try:
         thread_pool.start(worker)
-    except Exception:
+    except Exception as exc:
         _finish_worker()
-        raise
+        logger.warning(
+            "Could not start async application command %s: %s",
+            command.name,
+            exc,
+        )
+        return False
     return True
 
 

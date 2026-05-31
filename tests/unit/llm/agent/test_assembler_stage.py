@@ -136,6 +136,9 @@ class TestStageBasedFiltering:
         )
         assert "Never invent placeholder paths" in prompt
         assert "do not call a different tool" in prompt
+        assert "Treat Workflow Decision Context as the current workflow truth" in prompt
+        assert "do not invent those parameters" in prompt
+        assert "continue_until_decision mode" in prompt
         assert "apply_standard_preprocess for" in prompt
         assert "individual and group are training_mode" in prompt
 

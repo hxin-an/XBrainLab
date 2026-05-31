@@ -223,6 +223,7 @@ class LLMController(QObject):
             logger.warning("Invalid execution mode: %s", mode)
             return
         self._execution_mode = mode
+        self.assembler.set_execution_mode(mode)
         self.execution_mode_changed.emit(mode)
         logger.info("Execution mode changed to: %s", mode)
 

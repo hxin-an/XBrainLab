@@ -25,6 +25,8 @@ from XBrainLab.ui.application_capabilities import (
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.core.base_panel import BasePanel
+from XBrainLab.ui.refresh_coordinator import refresh_after_observer
+from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 from .control_sidebar import ControlSidebar
@@ -82,6 +84,8 @@ class VisualizationPanel(BasePanel):
         self.last_saliency_query = None
         self._application_summary_dirty = True
         self._saliency_summary_dirty = True
+        self._saliency_compute_in_progress = False
+        self._saliency_compute_attempted: set[tuple[object, ...]] = set()
 
         # 2. Base Init
         super().__init__(parent=parent, controller=controller)
@@ -93,7 +97,11 @@ class VisualizationPanel(BasePanel):
     def _setup_bridges(self):
         """Listen to TrainingController to update when training finishes."""
         if self.training_controller:
-            self._create_refresh_bridge(self.training_controller, "training_stopped")
+            self._create_bridge(
+                self.training_controller,
+                "training_stopped",
+                self._on_training_stopped,
+            )
             self._create_refresh_bridge(self.training_controller, "history_cleared")
             self._create_refresh_bridge(self.training_controller, "config_changed")
         if self.controller:
@@ -104,6 +112,12 @@ class VisualizationPanel(BasePanel):
                 self.preprocess_controller,
                 "preprocess_changed",
             )
+
+    def _on_training_stopped(self, *args, **kwargs) -> bool:
+        """Refresh after training and start configured saliency as a background job."""
+        refreshed = refresh_after_observer(self, event_name="training_stopped")
+        self._maybe_start_configured_saliency_compute()
+        return refreshed
 
     def init_ui(self):
         """Build the panel layout with control bar, tabbed plots, and sidebar."""
@@ -435,16 +449,12 @@ class VisualizationPanel(BasePanel):
                         on_ready=self.on_update,
                     ):
                         return
-                    self._refresh_application_query(
-                        view=self.tabs.tabText(self.tabs.currentIndex()),
-                        include_averaged_records=True,
+                    self._show_widget_message(
+                        current_widget,
+                        "Average saliency could not start in the background. "
+                        "Try again after the current operation finishes.",
                     )
-                    averaged_record = self._averaged_record_from_application_query(
-                        trainer,
-                    )
-                    eval_record = (
-                        None if averaged_record is _MISSING else averaged_record
-                    )
+                    return
                 else:
                     eval_record = self._compatibility_averaged_record_for_render(
                         trainer,
@@ -487,6 +497,23 @@ class VisualizationPanel(BasePanel):
             )
             return
 
+        if self._has_service_saliency_summary() and not self._eval_record_has_saliency(
+            eval_record,
+            method_name,
+        ):
+            if self._start_lazy_saliency_compute(
+                current_widget,
+                eval_record,
+                method_name,
+            ):
+                return
+            self._show_widget_message(
+                current_widget,
+                "Saliency has not been computed for this run. "
+                "Use Saliency Settings to compute it.",
+            )
+            return
+
         # Call update_plot on the active widget
         if current_widget and hasattr(current_widget, "update_plot"):
             current_widget.update_plot(
@@ -524,6 +551,150 @@ class VisualizationPanel(BasePanel):
         """Invalidate cached ApplicationService visualization summaries."""
         self._application_summary_dirty = True
         self._saliency_summary_dirty = True
+        self._saliency_compute_attempted.clear()
+
+    def _start_lazy_saliency_compute(
+        self,
+        current_widget,
+        eval_record,
+        method_name: str,
+    ) -> bool:
+        """Compute saliency on demand when a finished run has metrics only."""
+        params = self._configured_saliency_params()
+        if not params:
+            return False
+        return self._start_saliency_compute(
+            params=params,
+            method_name=method_name,
+            current_widget=current_widget,
+            attempt_key=(id(eval_record), method_name),
+        )
+
+    def _maybe_start_configured_saliency_compute(self) -> bool:
+        """Start a background saliency job after training if the user configured it."""
+        query_result = execute_application_command(
+            self,
+            SaliencyCommand(),
+            refresh=False,
+        )
+        if query_result is None or query_result.failed:
+            return False
+        self.last_saliency_query = query_result
+        self._saliency_summary_dirty = False
+        diagnostics = getattr(query_result, "diagnostics", {}) or {}
+        if diagnostics.get("payload_type") != "saliency_summary":
+            return False
+        if diagnostics.get("saliency_available") is True:
+            return False
+        if int(diagnostics.get("finished_run_count") or 0) < 1:
+            return False
+        params = self._configured_saliency_params()
+        if not params:
+            return False
+        return self._start_saliency_compute(
+            params=params,
+            method_name=self.method_combo.currentText()
+            if hasattr(self, "method_combo")
+            else "Gradient",
+            current_widget=self.tabs.currentWidget() if hasattr(self, "tabs") else None,
+            attempt_key=("training_stopped", id(query_result), "configured"),
+        )
+
+    def _start_saliency_compute(
+        self,
+        *,
+        params: dict[str, object],
+        method_name: str,
+        current_widget,
+        attempt_key: tuple[object, ...],
+    ) -> bool:
+        """Run configured saliency computation in the ApplicationService worker."""
+        if self._saliency_compute_in_progress:
+            if current_widget is not None:
+                self._show_widget_message(current_widget, "Computing saliency...")
+            return True
+
+        if attempt_key in self._saliency_compute_attempted:
+            return False
+
+        self._saliency_compute_attempted.add(attempt_key)
+        self._saliency_compute_in_progress = True
+        if current_widget is not None:
+            self._show_widget_message(current_widget, "Computing saliency...")
+        show_status_message(self, "Computing saliency...")
+
+        started = execute_application_command_async(
+            self,
+            SaliencyCommand(method=method_name, params=params),
+            on_result=self._on_lazy_saliency_configured,
+            on_error=self._on_lazy_saliency_error,
+            refresh=False,
+            busy_target=self.main_window,
+        )
+        if not started:
+            self._saliency_compute_in_progress = False
+            return False
+        return True
+
+    def _on_lazy_saliency_configured(self, result) -> None:
+        self._saliency_compute_in_progress = False
+        if result.failed:
+            self._saliency_summary_dirty = True
+            show_status_message(self, f"Saliency failed: {result.message}")
+            return
+        show_status_message(self, "Saliency ready")
+        self.mark_refresh_dirty()
+        self.update_panel()
+
+    def _on_lazy_saliency_error(self, error: tuple) -> None:
+        self._saliency_compute_in_progress = False
+        self._saliency_summary_dirty = True
+        message = error[1] if len(error) > 1 else error
+        show_status_message(self, f"Saliency failed: {message}")
+
+    @staticmethod
+    def _eval_record_has_saliency(eval_record, method_name: str) -> bool:
+        stores = {
+            "Gradient": getattr(eval_record, "gradient", {}),
+            "Gradient * Input": getattr(eval_record, "gradient_input", {}),
+            "SmoothGrad": getattr(eval_record, "smoothgrad", {}),
+            "SmoothGrad_Squared": getattr(eval_record, "smoothgrad_sq", {}),
+            "VarGrad": getattr(eval_record, "vargrad", {}),
+        }
+        store = stores.get(method_name)
+        if not store:
+            return False
+        values = store.values() if isinstance(store, dict) else store
+        for value in values:
+            if VisualizationPanel._has_nonempty_saliency_value(value):
+                return True
+        return False
+
+    @staticmethod
+    def _has_nonempty_saliency_value(value) -> bool:
+        try:
+            return len(value) > 0
+        except TypeError:
+            return False
+
+    def _configured_saliency_params(self) -> dict[str, object]:
+        diagnostics = (
+            getattr(self.last_saliency_query, "diagnostics", {})
+            if self.last_saliency_query is not None
+            else {}
+        )
+        if diagnostics.get("payload_type") != "saliency_summary":
+            return {}
+        params = diagnostics.get("params")
+        return dict(params) if isinstance(params, dict) else {}
+
+    def _has_service_saliency_summary(self) -> bool:
+        diagnostics = (
+            getattr(self.last_saliency_query, "diagnostics", {})
+            if self.last_saliency_query is not None
+            else {}
+        )
+        return diagnostics.get("payload_type") == "saliency_summary"
 
     def _application_query_blocks_display(self, result) -> bool:
         if result is None:
@@ -552,11 +723,6 @@ class VisualizationPanel(BasePanel):
         include_averaged_records: bool = False,
     ) -> bool:
         """Refresh visualization readiness without eager saliency averaging."""
-        payload = self._visualization_query_payload()
-        if payload is not None:
-            include_averaged_records = include_averaged_records or (
-                "averaged_records" in payload
-            )
         result = execute_application_command(
             self,
             VisualizeCommand(
@@ -579,11 +745,6 @@ class VisualizationPanel(BasePanel):
         on_ready=None,
     ) -> bool:
         """Load heavy visualization payloads off the UI thread when possible."""
-        payload = self._visualization_query_payload()
-        if payload is not None:
-            include_averaged_records = include_averaged_records or (
-                "averaged_records" in payload
-            )
 
         def _handle_result(result) -> None:
             self.last_application_query = result

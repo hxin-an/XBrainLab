@@ -334,11 +334,8 @@ class ModelSelectionDialog(BaseDialog):
             return
 
         self.params_table.resizeRowsToContents()
-        header_height = (
-            self.params_table.horizontalHeader().height()
-            if self.params_table.horizontalHeader() is not None
-            else 28
-        )
+        header = self.params_table.horizontalHeader()
+        header_height = header.height() if header is not None else 28
         row_total = sum(
             self.params_table.rowHeight(row)
             for row in range(self.params_table.rowCount())

@@ -4,7 +4,6 @@ from typing import Any
 
 import mne
 import numpy as np
-from matplotlib import pyplot as plt
 
 from .base import Visualizer
 
@@ -33,6 +32,9 @@ class SaliencyTopoMapViz(Visualizer):
             ValueError: If no montage positions are available.
 
         """
+        if self.fig is None:
+            raise RuntimeError("Visualizer figure was not initialized")
+        fig = self.fig
         positions = self.epoch_data.get_montage_position()
 
         if positions is None or len(positions) == 0:
@@ -49,10 +51,10 @@ class SaliencyTopoMapViz(Visualizer):
         chs = self.epoch_data.get_channel_names()
         saliency_by_label = self.iter_saliency_by_label(method)
         if not saliency_by_label:
-            ax = plt.gca()
+            ax = fig.add_subplot(111)
             ax.text(0.5, 0.5, "No saliency data for this run.", ha="center")
             ax.set_axis_off()
-            return plt.gcf()
+            return fig
 
         visible_label_number = len(saliency_by_label)
         rows = 1 if visible_label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
@@ -61,7 +63,7 @@ class SaliencyTopoMapViz(Visualizer):
         for plot_index, (_label_key, label_name, raw_saliency) in enumerate(
             saliency_by_label,
         ):
-            ax = plt.subplot(rows, cols, plot_index + 1)
+            ax = fig.add_subplot(rows, cols, plot_index + 1)
             kwargs = {
                 "pos": pos_array[:, 0:2],
                 "ch_type": "eeg",
@@ -89,8 +91,8 @@ class SaliencyTopoMapViz(Visualizer):
                 data += np.random.normal(0, 1e-10, data.shape)
 
             im, _ = mne.viz.plot_topomap(data=data, cmap=cmap, **kwargs)
-            cbar = plt.colorbar(im, orientation="vertical")
+            cbar = fig.colorbar(im, ax=ax, orientation="vertical")
             cbar.ax.get_yaxis().set_ticks([])
-            plt.title(f"Saliency Map of class {label_name}", color="white")
-        plt.tight_layout()
-        return plt.gcf()
+            ax.set_title(f"Saliency Map of class {label_name}", color="white")
+        fig.tight_layout()
+        return fig

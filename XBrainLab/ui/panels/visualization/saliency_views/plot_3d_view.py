@@ -381,7 +381,11 @@ class Saliency3DPlotWidget(QWidget):
             cached = _INTERACTIVE_3D_PROBE_CACHE.get(cache_key)
             if cached is not None:
                 return cached
-            return None, "Checking 3D runtime..."
+            return (
+                None,
+                "Checking 3D runtime... If this takes more than a few seconds, "
+                "use a 2D saliency view.",
+            )
         return True, ""
 
     def _start_interactive_3d_runtime_probe(

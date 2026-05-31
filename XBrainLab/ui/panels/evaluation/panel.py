@@ -36,6 +36,10 @@ MODEL_SUMMARY_UNAVAILABLE_TEXT = (
     "Train or refresh the model, then open this tab again."
 )
 MODEL_SUMMARY_DEFERRED_TEXT = "Open Model Summary to load model details."
+MODEL_SUMMARY_BACKGROUND_UNAVAILABLE_TEXT = (
+    "Model summary could not start in the background. Try again after the current "
+    "operation finishes."
+)
 
 
 class EvaluationPanel(BasePanel):
@@ -219,16 +223,10 @@ class EvaluationPanel(BasePanel):
         *,
         include_pooled_results: bool = False,
         include_model_summaries: bool = False,
+        model_summary_plan_index: int | None = None,
+        model_summary_run_index: int | None = None,
     ) -> bool:
         """Refresh the service-backed evaluation payload with explicit UI needs."""
-        payload = self._evaluation_query_payload()
-        if payload is not None:
-            include_pooled_results = include_pooled_results or (
-                "pooled_eval_results" in payload
-            )
-            include_model_summaries = include_model_summaries or (
-                "model_summaries" in payload
-            )
         result = execute_application_command(
             self,
             EvaluateCommand(
@@ -236,6 +234,8 @@ class EvaluationPanel(BasePanel):
                 include_metrics=False,
                 include_pooled_results=include_pooled_results,
                 include_model_summaries=include_model_summaries,
+                model_summary_plan_index=model_summary_plan_index,
+                model_summary_run_index=model_summary_run_index,
             ),
             refresh=False,
         )
@@ -249,17 +249,11 @@ class EvaluationPanel(BasePanel):
         *,
         include_pooled_results: bool = False,
         include_model_summaries: bool = False,
+        model_summary_plan_index: int | None = None,
+        model_summary_run_index: int | None = None,
         on_ready=None,
     ) -> bool:
         """Load heavy evaluation payloads off the UI thread when possible."""
-        payload = self._evaluation_query_payload()
-        if payload is not None:
-            include_pooled_results = include_pooled_results or (
-                "pooled_eval_results" in payload
-            )
-            include_model_summaries = include_model_summaries or (
-                "model_summaries" in payload
-            )
 
         def _handle_result(result) -> None:
             self.last_application_query = result
@@ -279,6 +273,8 @@ class EvaluationPanel(BasePanel):
                 include_metrics=False,
                 include_pooled_results=include_pooled_results,
                 include_model_summaries=include_model_summaries,
+                model_summary_plan_index=model_summary_plan_index,
+                model_summary_run_index=model_summary_run_index,
             ),
             on_result=_handle_result,
             on_error=_handle_error,
@@ -412,7 +408,8 @@ class EvaluationPanel(BasePanel):
                             on_ready=self.update_views,
                         ):
                             return
-                        self._refresh_application_query(include_pooled_results=True)
+                        self._clear_metric_views()
+                        return
                     pooled_result = self._pooled_result_from_application_query(plan)
                     if pooled_result is None:
                         self._clear_metric_views()
@@ -483,14 +480,26 @@ class EvaluationPanel(BasePanel):
         has_service_payload = self._evaluation_query_payload() is not None
         if has_service_payload:
             payload = self._evaluation_query_payload() or {}
-            if "model_summaries" not in payload:
+            plan_index = self._current_plan_index(plan)
+            run_index = None if record is None else self._plan_run_index(plan, record)
+            if (
+                "model_summaries" not in payload
+                or not self._payload_matches_model_summary_request(
+                    payload,
+                    plan_index,
+                    run_index,
+                )
+            ):
                 self.summary_text.setText("Loading model details...")
                 if self._refresh_application_query_async(
                     include_model_summaries=True,
+                    model_summary_plan_index=plan_index,
+                    model_summary_run_index=run_index,
                     on_ready=lambda: self.update_model_summary(plan, record=record),
                 ):
                     return
-                self._refresh_application_query(include_model_summaries=True)
+                self.summary_text.setText(MODEL_SUMMARY_BACKGROUND_UNAVAILABLE_TEXT)
+                return
         summary_str = self._summary_from_application_query(plan, record)
         if summary_str is None:
             summary_str = self._compatibility_summary_for_render(plan, record)
@@ -572,6 +581,20 @@ class EvaluationPanel(BasePanel):
         if 0 <= run_index < len(run_summaries):
             return str(run_summaries[run_index] or "")
         return str(summary.get("plan") or "")
+
+    @staticmethod
+    def _payload_matches_model_summary_request(
+        payload: dict,
+        plan_index: int,
+        run_index: int | None,
+    ) -> bool:
+        request = payload.get("model_summary_request")
+        if not isinstance(request, dict):
+            return True
+        return (
+            request.get("plan_index") == plan_index
+            and request.get("run_index") == run_index
+        )
 
     def _current_plan_index(self, plan) -> int:
         for index in range(self.model_combo.count()):

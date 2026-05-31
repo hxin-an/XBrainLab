@@ -490,5 +490,5 @@ class PreviewWidget(QWidget):
             )
             marker.setZValue(500)
             marker.hide()
-            self.plot_time.addItem(marker, ignoreBounds=True)
+            self.plot_time.addItem(marker)
             self.time_event_markers.append(marker)

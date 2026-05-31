@@ -478,16 +478,6 @@
                 }
             }
         ],
-        "./XBrainLab/backend/visualization/saliency_map.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 23,
-                    "endColumn": 63,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./XBrainLab/ui/chat/message_bubble.py": [
             {
                 "code": "reportAttributeAccessIssue",
@@ -814,14 +804,6 @@
                 "range": {
                     "startColumn": 12,
                     "endColumn": 22,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportCallIssue",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 47,
                     "lineCount": 1
                 }
             }

@@ -120,17 +120,21 @@ class BaseSaliencyView(QWidget):
         if self.canvas is None:
             return
         canvas = self.canvas
-        self.main_layout.removeWidget(canvas)
         if hasattr(canvas, "_draw_pending"):
             canvas._draw_pending = False
+        app = QApplication.instance()
+        if app is not None:
+            with suppress(RuntimeError):
+                app.processEvents()
+        self.main_layout.removeWidget(canvas)
         canvas.setParent(None)
         canvas.hide()
         canvas.close()
         self.canvas = None
 
     def _replace_figure(self, figure: Figure) -> None:
-        self._close_current_figure()
         self._release_canvas()
+        self._close_current_figure()
         self.fig = figure
         Theme.apply_matplotlib_dark_theme(self.fig)
         self.canvas = FigureCanvas(self.fig)
@@ -196,6 +200,6 @@ class BaseSaliencyView(QWidget):
     def closeEvent(self, event):  # noqa: N802
         """Release matplotlib figure and canvas widgets to prevent leaks."""
         self._cancel_pending_render()
-        self._close_current_figure()
         self._release_canvas()
+        self._close_current_figure()
         super().closeEvent(event)
