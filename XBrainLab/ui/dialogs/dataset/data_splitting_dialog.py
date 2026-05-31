@@ -6,6 +6,7 @@ strategies such as subject-wise, session-wise, or trial-wise splits.
 """
 
 from enum import Enum
+from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
@@ -15,8 +16,8 @@ from PyQt6.QtGui import QBrush, QColor, QPainter
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QFormLayout,
-    QGroupBox,
+    QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -42,6 +43,9 @@ from .data_splitting_preview_dialog import (
 )
 
 _UNSET = object()
+_CHEVRON_DOWN_ICON = (
+    Path(__file__).resolve().parents[3] / "resources" / "icons" / "chevron-down.svg"
+).as_posix()
 
 
 def _is_real_study_context(parent: Any, controller: Any) -> bool:
@@ -429,11 +433,14 @@ class DataSplittingDialog(BaseDialog):
         content_layout.setSpacing(16)
 
         # Left: Preview
-        preview_group = QGroupBox("Data splitting preview")
+        preview_group = QFrame()
         preview_group.setObjectName("DataSplitPreviewGroup")
         left_layout = QVBoxLayout(preview_group)
-        left_layout.setContentsMargins(12, 18, 12, 12)
+        left_layout.setContentsMargins(12, 12, 12, 12)
         left_layout.setSpacing(12)
+        preview_title = QLabel("Data splitting preview")
+        preview_title.setObjectName("DataSplitSectionTitle")
+        left_layout.addWidget(preview_title)
         self.canvas = PreviewCanvas(self)
         left_layout.addWidget(self.canvas)
 
@@ -455,38 +462,45 @@ class DataSplittingDialog(BaseDialog):
         content_layout.addWidget(preview_group, stretch=1)
 
         # Right: Options
-        options_group = QGroupBox("Split settings")
+        options_group = QFrame()
         options_group.setObjectName("DataSplitOptionsGroup")
         options_group.setMinimumWidth(260)
         options_group.setMaximumWidth(300)
         right_layout = QVBoxLayout(options_group)
-        right_layout.setContentsMargins(12, 18, 12, 12)
+        right_layout.setContentsMargins(12, 12, 12, 12)
         right_layout.setSpacing(12)
-        form_layout = QFormLayout()
+        settings_title = QLabel("Split settings")
+        settings_title.setObjectName("DataSplitSectionTitle")
+        right_layout.addWidget(settings_title)
+
+        form_layout = QGridLayout()
         form_layout.setContentsMargins(0, 0, 0, 0)
-        form_layout.setSpacing(10)
-        form_layout.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
-        form_layout.setFormAlignment(Qt.AlignmentFlag.AlignTop)
+        form_layout.setHorizontalSpacing(12)
+        form_layout.setVerticalSpacing(10)
+        form_layout.setColumnStretch(1, 1)
 
         # Training Type
         self.train_type_combo = QComboBox()
         self.train_type_combo.addItems([i.value for i in TrainingType])
         self.train_type_combo.currentTextChanged.connect(self.update_preview)
-        form_layout.addRow("Training", self.train_type_combo)
+        form_layout.addWidget(QLabel("Training"), 0, 0)
+        form_layout.addWidget(self.train_type_combo, 0, 1)
 
         # Testing Set
         self.test_combo = QComboBox()
         self.test_combo.addItems([i.value for i in SplitByType])
         self.test_combo.setCurrentText(SplitByType.TRIAL.value)
         self.test_combo.currentTextChanged.connect(self.update_preview)
-        form_layout.addRow("Testing", self.test_combo)
+        form_layout.addWidget(QLabel("Testing"), 1, 0)
+        form_layout.addWidget(self.test_combo, 1, 1)
 
         # Validation Set
         self.val_combo = QComboBox()
         self.val_combo.addItems([i.value for i in ValSplitByType])
         self.val_combo.setCurrentText(ValSplitByType.TRIAL.value)
         self.val_combo.currentTextChanged.connect(self.update_preview)
-        form_layout.addRow("Validation", self.val_combo)
+        form_layout.addWidget(QLabel("Validation"), 2, 0)
+        form_layout.addWidget(self.val_combo, 2, 1)
         right_layout.addLayout(form_layout)
 
         self.cv_check = QCheckBox("Cross validation")
@@ -504,6 +518,7 @@ class DataSplittingDialog(BaseDialog):
         action_layout = QHBoxLayout()
         action_layout.addStretch(1)
         self.btn_confirm = QPushButton("Confirm")
+        self.btn_confirm.setObjectName("PrimaryConfirmButton")
         self.btn_confirm.clicked.connect(self.confirm)
         action_layout.addWidget(self.btn_confirm)
         layout.addLayout(action_layout)
@@ -711,22 +726,16 @@ class DataSplittingDialog(BaseDialog):
             font-size: 16px;
             font-weight: 700;
         }
-        QGroupBox#DataSplitPreviewGroup,
-        QGroupBox#DataSplitOptionsGroup {
+        QFrame#DataSplitPreviewGroup,
+        QFrame#DataSplitOptionsGroup {
             border: 1px solid #3d454d;
             border-radius: 6px;
-            margin-top: 10px;
             background: #202225;
+        }
+        QLabel#DataSplitSectionTitle {
             color: #f2f5f8;
             font-weight: 700;
-        }
-        QGroupBox#DataSplitPreviewGroup::title,
-        QGroupBox#DataSplitOptionsGroup::title {
-            subcontrol-origin: margin;
-            left: 10px;
-            padding: 0 5px;
-            background: #1b1b1d;
-            color: #f2f5f8;
+            font-size: 13px;
         }
         QLabel#DataSplitLegendSwatch {
             border-radius: 2px;
@@ -745,12 +754,19 @@ class DataSplittingDialog(BaseDialog):
             color: #f2f5f8;
             border: 1px solid #3d454d;
             border-radius: 4px;
-            padding: 5px 8px;
-            min-width: 155px;
+            padding: 5px 28px 5px 8px;
+            min-width: 150px;
         }
         QComboBox::drop-down {
-            border-left: 1px solid #3d454d;
+            subcontrol-origin: padding;
+            subcontrol-position: top right;
+            border: none;
             width: 24px;
+        }
+        QComboBox::down-arrow {
+            image: url("__CHEVRON_DOWN_ICON__");
+            width: 10px;
+            height: 10px;
         }
         QComboBox QAbstractItemView {
             background: #25272a;
@@ -762,7 +778,18 @@ class DataSplittingDialog(BaseDialog):
             color: #f2f5f8;
             spacing: 8px;
         }
-        QPushButton {
+        QCheckBox::indicator {
+            width: 14px;
+            height: 14px;
+            border: 1px solid #5d6670;
+            border-radius: 2px;
+            background: #25272a;
+        }
+        QCheckBox::indicator:checked {
+            background: #0069a8;
+            border-color: #0a7fc7;
+        }
+        QPushButton#PrimaryConfirmButton {
             min-width: 128px;
             padding: 7px 12px;
             border-radius: 4px;
@@ -771,9 +798,12 @@ class DataSplittingDialog(BaseDialog):
             color: #f2f5f8;
             font-weight: 700;
         }
-        QPushButton:disabled {
+        QPushButton#PrimaryConfirmButton:hover {
+            background: #0a7fc7;
+        }
+        QPushButton#PrimaryConfirmButton:disabled {
             border-color: #3d454d;
             background: #2a2c30;
             color: #87909b;
         }
-        """
+        """.replace("__CHEVRON_DOWN_ICON__", _CHEVRON_DOWN_ICON)

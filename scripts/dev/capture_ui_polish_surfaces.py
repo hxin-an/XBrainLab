@@ -5,13 +5,23 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from PIL import Image
 from PyQt6.QtCore import QSize
-from PyQt6.QtWidgets import QApplication, QWidget
+from PyQt6.QtWidgets import QApplication, QTreeWidgetItem, QWidget
 
+from XBrainLab.backend.dataset import (
+    DataSplittingConfig,
+    SplitByType,
+    TrainingType,
+    ValSplitByType,
+)
 from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import DataSplittingDialog
+from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
+    DataSplitterHolder,
+    DataSplittingPreviewDialog,
+)
 from XBrainLab.ui.dialogs.training.model_selection_dialog import ModelSelectionDialog
 from XBrainLab.ui.panels.evaluation.metrics_table import MetricsTableWidget
 
@@ -26,6 +36,7 @@ def main() -> int:
     captures = [
         ("model-selection-dialog.png", _model_selection_dialog()),
         ("data-splitting-dialog.png", _data_splitting_dialog()),
+        ("data-splitting-preview-dialog.png", _data_splitting_preview_dialog()),
         ("evaluation-metrics-table.png", _metrics_table()),
     ]
     for filename, widget in captures:
@@ -55,6 +66,50 @@ def _data_splitting_dialog() -> QWidget:
     controller.get_dataset_generator.return_value = None
     dialog = DataSplittingDialog(None, controller)
     dialog.resize(QSize(820, 600))
+    return dialog
+
+
+def _data_splitting_preview_dialog() -> QWidget:
+    epoch = MagicMock()
+    epoch.subject_map = {"S01": [0, 1, 2], "S02": [3, 4, 5]}
+    epoch.session_map = {"session": [0, 1, 2, 3, 4, 5]}
+    epoch.label_map = {"left": 0, "right": 1}
+    epoch.data = list(range(120))
+    val_splitter = DataSplitterHolder(True, ValSplitByType.TRIAL)
+    test_splitter = DataSplitterHolder(True, SplitByType.TRIAL)
+    config = DataSplittingConfig(
+        TrainingType.FULL,
+        False,
+        [val_splitter],
+        [test_splitter],
+    )
+    with (
+        patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator"
+        ),
+        patch("threading.Thread"),
+    ):
+        dialog = DataSplittingPreviewDialog(
+            None, "Data Splitting Step 2", epoch, config
+        )
+    if dialog.preview_debounce_timer is not None:
+        dialog.preview_debounce_timer.stop()
+    if dialog.timer is not None:
+        dialog.timer.stop()
+    dialog._interrupt_preview_worker(0.2)
+    dialog.tree.clear()
+    for name, train, val, test in (
+        ("Dataset 1", 78, 21, 21),
+        ("Dataset 2", 80, 20, 20),
+    ):
+        item = QTreeWidgetItem(dialog.tree)
+        item.setText(0, name)
+        item.setText(1, str(train))
+        item.setText(2, str(val))
+        item.setText(3, str(test))
+    dialog._clear_tree_current_item()
+    dialog._resize_tree_to_rows()
+    dialog.resize(QSize(980, 640))
     return dialog
 
 
@@ -124,6 +179,7 @@ def _write_readme() -> None:
         "fully represented by the Data Import wizard artifacts.\n\n"
         "- `model-selection-dialog.png`\n"
         "- `data-splitting-dialog.png`\n"
+        "- `data-splitting-preview-dialog.png`\n"
         "- `evaluation-metrics-table.png`\n",
         encoding="utf-8",
     )

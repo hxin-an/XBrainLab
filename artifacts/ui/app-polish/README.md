@@ -11,4 +11,5 @@ Focused current screenshots for manual review of surfaces that are not fully rep
 
 - `model-selection-dialog.png`
 - `data-splitting-dialog.png`
+- `data-splitting-preview-dialog.png`
 - `evaluation-metrics-table.png`

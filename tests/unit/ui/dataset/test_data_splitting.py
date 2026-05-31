@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
-from PyQt6.QtWidgets import QDialog
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QAbstractItemView, QDialog
 
 from XBrainLab.backend.dataset.option import SplitByType, SplitUnit
 from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
@@ -81,7 +82,18 @@ def test_data_splitting_window_init(qtbot):
         qtbot.addWidget(window)
 
         assert window.windowTitle() == "Test Window"
-        assert window.tree.columnCount() > 0
+        assert window.tree.columnCount() == 4
+        assert [window.tree.headerItem().text(i) for i in range(4)] == [
+            "Dataset",
+            "Train",
+            "Validation",
+            "Test",
+        ]
+        assert (
+            window.tree.selectionMode() == QAbstractItemView.SelectionMode.NoSelection
+        )
+        assert window.tree.focusPolicy() == Qt.FocusPolicy.NoFocus
+        assert "chevron-down.svg" in window.styleSheet()
 
 
 def test_data_splitting_window_preview(qtbot):
@@ -112,7 +124,8 @@ def test_data_splitting_window_preview(qtbot):
 
         # Check tree initial state
         assert window.tree.topLevelItemCount() == 1
-        assert window.tree.topLevelItem(0).text(1) == "calculating"
+        assert window.tree.topLevelItem(0).text(0) == "Calculating"
+        assert window.tree.height() <= 180
 
 
 def test_data_splitting_window_update_table(qtbot):
@@ -154,7 +167,11 @@ def test_data_splitting_window_update_table(qtbot):
         window.update_table()
 
         assert window.tree.topLevelItemCount() == 1
-        assert window.tree.topLevelItem(0).text(1) == "Dataset1"
+        assert window.tree.topLevelItem(0).text(0) == "Dataset1"
+        assert window.tree.topLevelItem(0).text(1) == "100"
+        assert window.tree.selectedItems() == []
+        assert window.tree.currentIndex().isValid() is False
+        assert window.tree.height() <= 180
 
 
 def test_data_splitting_window_confirm(qtbot):

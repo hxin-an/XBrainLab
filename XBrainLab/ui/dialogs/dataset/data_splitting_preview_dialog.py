@@ -5,13 +5,15 @@ validation and testing split units, amounts, and manual selection support.
 """
 
 import threading
+from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QSize, Qt, QTimer
+from PyQt6.QtCore import QModelIndex, QSize, Qt, QTimer
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
+    QFrame,
     QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -39,6 +41,9 @@ DEFAULT_SPLIT_ENTRY_VALUE = "0.2"
 PREVIEW_WORKER_RESTART_JOIN_TIMEOUT_SEC = 0.2
 PREVIEW_WORKER_CLOSE_JOIN_TIMEOUT_SEC = 1.0
 PREVIEW_DEBOUNCE_MS = 250
+_CHEVRON_DOWN_ICON = (
+    Path(__file__).resolve().parents[3] / "resources" / "icons" / "chevron-down.svg"
+).as_posix()
 
 _PREVIEW_DIALOG_STYLE = f"""
     QDialog {{
@@ -48,47 +53,57 @@ _PREVIEW_DIALOG_STYLE = f"""
     QLabel {{
         color: {Theme.TEXT_SECONDARY};
     }}
-    QGroupBox {{
+    QFrame#SplitPreviewPanel {{
         background-color: {Theme.BACKGROUND_MID};
         border: 1px solid {Theme.BACKGROUND_LIGHT};
-        border-radius: 4px;
-        margin-top: 18px;
-        padding-top: 12px;
-        color: {Theme.TEXT_SECONDARY};
-        font-weight: bold;
+        border-radius: 6px;
     }}
-    QGroupBox::title {{
-        subcontrol-origin: margin;
-        left: 10px;
-        padding: 0 6px;
-        background-color: {Theme.BACKGROUND_DARK};
+    QLabel#SplitPreviewSectionTitle {{
         color: {Theme.TEXT_PRIMARY};
+        font-weight: bold;
+        font-size: 13px;
+        background: transparent;
+    }}
+    QLabel#SplitPreviewMuted {{
+        color: {Theme.TEXT_SECONDARY};
+        background: transparent;
     }}
     QComboBox, QLineEdit {{
         background-color: {Theme.BACKGROUND_DARK};
         color: {Theme.TEXT_PRIMARY};
         border: 1px solid {Theme.BACKGROUND_LIGHT};
         border-radius: 3px;
-        padding: 5px 8px;
+        padding: 5px 28px 5px 8px;
         min-height: 24px;
     }}
-    QPushButton {{
-        background-color: {Theme.ACCENT_PRIMARY};
-        color: {Theme.TEXT_PRIMARY};
+    QComboBox::drop-down {{
+        subcontrol-origin: padding;
+        subcontrol-position: top right;
         border: none;
+        width: 24px;
+    }}
+    QComboBox::down-arrow {{
+        image: url("{_CHEVRON_DOWN_ICON}");
+        width: 10px;
+        height: 10px;
+    }}
+    QPushButton#PrimaryConfirmButton {{
+        background-color: #0069a8;
+        color: {Theme.TEXT_PRIMARY};
+        border: 1px solid #0a7fc7;
         border-radius: 4px;
         padding: 7px 12px;
         font-weight: bold;
     }}
-    QPushButton:hover {{
-        background-color: {Theme.ACCENT_HOVER};
+    QPushButton#PrimaryConfirmButton:hover {{
+        background-color: #0a7fc7;
     }}
 """
 
 _RESULT_TREE_STYLE = f"""
     QTreeWidget {{
-        background-color: {Theme.BACKGROUND_MID};
-        alternate-background-color: {Theme.BACKGROUND_DARK};
+        background-color: #202225;
+        alternate-background-color: #27292d;
         color: {Theme.TEXT_PRIMARY};
         border: 1px solid {Theme.BACKGROUND_LIGHT};
         border-radius: 4px;
@@ -99,7 +114,7 @@ _RESULT_TREE_STYLE = f"""
         min-height: 26px;
     }}
     QTreeWidget::item:selected {{
-        background-color: {Theme.BLUE_PRESSED};
+        background-color: #202225;
         color: {Theme.TEXT_PRIMARY};
     }}
     QHeaderView::section {{
@@ -229,27 +244,36 @@ class DataSplittingPreviewDialog(BaseDialog):
         # Left: Tree
         left_layout = QVBoxLayout()
         left_layout.setSpacing(10)
-        results_group = QGroupBox("Split Results")
+        results_group = QFrame()
+        results_group.setObjectName("SplitPreviewPanel")
         results_layout = QVBoxLayout(results_group)
-        results_layout.setContentsMargins(10, 12, 10, 10)
+        results_layout.setContentsMargins(12, 12, 12, 12)
+        results_layout.setSpacing(10)
+        results_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        results_title = QLabel("Split results")
+        results_title.setObjectName("SplitPreviewSectionTitle")
+        results_layout.addWidget(results_title)
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["Select", "Dataset", "Train", "Validation", "Test"])
+        self.tree.setHeaderLabels(["Dataset", "Train", "Validation", "Test"])
         self.tree.setRootIsDecorated(False)
         self.tree.setAlternatingRowColors(True)
         self.tree.setUniformRowHeights(True)
         self.tree.setIndentation(0)
+        self.tree.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.tree.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.tree.setStyleSheet(_RESULT_TREE_STYLE)
         header = self.tree.header()
         if header is not None:
             header.setStretchLastSection(False)
-            header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-            for col in (2, 3, 4):
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            for col in (1, 2, 3):
                 header.setSectionResizeMode(
                     col,
                     QHeaderView.ResizeMode.ResizeToContents,
                 )
         results_layout.addWidget(self.tree)
+        self._resize_tree_to_rows()
+        results_layout.addStretch(1)
         left_layout.addWidget(results_group, stretch=1)
 
         layout.addLayout(left_layout, stretch=3)
@@ -259,34 +283,26 @@ class DataSplittingPreviewDialog(BaseDialog):
         right_layout.setSpacing(12)
 
         # Dataset Info
-        info_group = QGroupBox("Dataset Info")
-        info_layout = QGridLayout(info_group)
-        info_layout.setContentsMargins(12, 12, 12, 12)
+        info_group, info_layout = self._panel_grid("Split overview")
         info_layout.setHorizontalSpacing(12)
         info_layout.setVerticalSpacing(8)
-        info_layout.addWidget(QLabel("Subject:"), 0, 0)
-        info_layout.addWidget(QLabel(str(len(self.epoch_data.subject_map))), 0, 1)
-        info_layout.addWidget(QLabel("Session:"), 1, 0)
-        info_layout.addWidget(QLabel(str(len(self.epoch_data.session_map))), 1, 1)
-        info_layout.addWidget(QLabel("Label:"), 2, 0)
-        info_layout.addWidget(QLabel(str(len(self.epoch_data.label_map))), 2, 1)
-        info_layout.addWidget(QLabel("Trial:"), 3, 0)
-        info_layout.addWidget(QLabel(str(len(self.epoch_data.data))), 3, 1)
+        summary_rows = [
+            ("Subjects", str(len(self.epoch_data.subject_map))),
+            ("Sessions", str(len(self.epoch_data.session_map))),
+            ("Labels", str(len(self.epoch_data.label_map))),
+            ("Trials", str(len(self.epoch_data.data))),
+            ("Training", self.config.train_type.value),
+        ]
+        for row, (name, value) in enumerate(summary_rows):
+            label = QLabel(name)
+            label.setObjectName("SplitPreviewMuted")
+            info_layout.addWidget(label, row, 0)
+            info_layout.addWidget(QLabel(value), row, 1)
+        info_layout.setColumnStretch(1, 1)
         right_layout.addWidget(info_group)
 
-        # Training Type
-        train_group = QGroupBox("Training type")
-        train_layout = QVBoxLayout(train_group)
-        train_layout.setContentsMargins(12, 12, 12, 12)
-        train_layout.setSpacing(6)
-        train_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        train_layout.addWidget(QLabel(self.config.train_type.value))
-        right_layout.addWidget(train_group)
-
         # Validation
-        val_group = QGroupBox("Validation")
-        val_layout = QGridLayout(val_group)
-        val_layout.setContentsMargins(12, 12, 12, 12)
+        val_group, val_layout = self._panel_grid("Validation split")
         val_layout.setHorizontalSpacing(8)
         val_layout.setVerticalSpacing(8)
         val_layout.setColumnStretch(1, 1)
@@ -357,9 +373,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         right_layout.addWidget(val_group)
 
         # Testing
-        test_group = QGroupBox("Testing")
-        test_layout = QGridLayout(test_group)
-        test_layout.setContentsMargins(12, 12, 12, 12)
+        test_group, test_layout = self._panel_grid("Testing split")
         test_layout.setHorizontalSpacing(8)
         test_layout.setVerticalSpacing(8)
         test_layout.setColumnStretch(1, 1)
@@ -408,10 +422,26 @@ class DataSplittingPreviewDialog(BaseDialog):
 
         # Confirm
         self.btn_confirm = QPushButton("Confirm")
+        self.btn_confirm.setObjectName("PrimaryConfirmButton")
         self.btn_confirm.clicked.connect(self.confirm)
         right_layout.addWidget(self.btn_confirm)
 
         layout.addLayout(right_layout, stretch=1)
+
+    @staticmethod
+    def _panel_grid(title: str) -> tuple[QFrame, QGridLayout]:
+        panel = QFrame()
+        panel.setObjectName("SplitPreviewPanel")
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.setContentsMargins(12, 12, 12, 12)
+        panel_layout.setSpacing(10)
+        title_label = QLabel(title)
+        title_label.setObjectName("SplitPreviewSectionTitle")
+        panel_layout.addWidget(title_label)
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        panel_layout.addLayout(grid)
+        return panel, grid
 
     def on_split_type_change(self, splitter, text):
         """Handle changes to the split unit combo box.
@@ -492,8 +522,8 @@ class DataSplittingPreviewDialog(BaseDialog):
             self.tree.clear()
             item = QTreeWidgetItem(self.tree)
             item.setSizeHint(0, QSize(0, 28))
-            item.setText(0, "...")
-            item.setText(1, "calculating")
+            item.setText(0, "Calculating")
+            self._resize_tree_to_rows()
 
         # Prepare splitters
         # Assuming splitter has to_thread (which Holder does)
@@ -521,7 +551,8 @@ class DataSplittingPreviewDialog(BaseDialog):
             self.tree.clear()
             item = QTreeWidgetItem(self.tree)
             item.setSizeHint(0, QSize(0, 28))
-            item.setText(1, "Nan")
+            item.setText(0, "Preview failed")
+            self._resize_tree_to_rows()
         else:
             with self._datasets_lock:
                 snapshot = list(self.datasets)
@@ -530,7 +561,7 @@ class DataSplittingPreviewDialog(BaseDialog):
                 if (
                     self.tree.topLevelItemCount() == 1
                     and item0
-                    and item0.text(0) == "..."
+                    and item0.text(0) == "Calculating"
                 ):
                     self.tree.clear()
 
@@ -541,8 +572,26 @@ class DataSplittingPreviewDialog(BaseDialog):
                         item = QTreeWidgetItem(self.tree)
                         item.setSizeHint(0, QSize(0, 28))
                         info = dataset.get_treeview_row_info()
-                        for col, val in enumerate(info):
+                        visible_info = info[1:] if len(info) >= 5 else info
+                        for col, val in enumerate(visible_info):
                             item.setText(col, str(val))
+                self._clear_tree_current_item()
+                self._resize_tree_to_rows()
+
+    def _clear_tree_current_item(self) -> None:
+        if self.tree is None:
+            return
+        self.tree.clearSelection()
+        self.tree.setCurrentIndex(QModelIndex())
+
+    def _resize_tree_to_rows(self) -> None:
+        if self.tree is None:
+            return
+        header = self.tree.header()
+        header_height = header.height() if header is not None else 32
+        row_count = max(1, self.tree.topLevelItemCount())
+        target_height = min(420, max(140, header_height + row_count * 34 + 14))
+        self.tree.setFixedHeight(target_height)
 
     def confirm(self):
         """Finalize dataset generation and accept the dialog."""

@@ -1486,7 +1486,7 @@
   "renders": [
     {
       "tab": "Saliency Map",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual/artifacts/ui/visualization-render/visualization-render-saliency-map.png",
+      "screenshot": "artifacts/ui/visualization-render/visualization-render-saliency-map.png",
       "ok": true,
       "failure_reason": "",
       "error_visible": false,
@@ -1497,7 +1497,7 @@
     },
     {
       "tab": "Spectrogram",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual/artifacts/ui/visualization-render/visualization-render-spectrogram.png",
+      "screenshot": "artifacts/ui/visualization-render/visualization-render-spectrogram.png",
       "ok": true,
       "failure_reason": "",
       "error_visible": false,
@@ -1508,7 +1508,7 @@
     },
     {
       "tab": "Topographic Map",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual/artifacts/ui/visualization-render/visualization-render-topographic-map.png",
+      "screenshot": "artifacts/ui/visualization-render/visualization-render-topographic-map.png",
       "ok": true,
       "failure_reason": "",
       "error_visible": false,
@@ -1521,7 +1521,7 @@
   "blocked_renders": [
     {
       "tab": "3D Plot",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual/artifacts/ui/visualization-render/visualization-render-3d-blocked.png",
+      "screenshot": "artifacts/ui/visualization-render/visualization-render-3d-blocked.png",
       "ok": true,
       "failure_reason": "",
       "blocked_reason": "3D rendering requires an interactive OpenGL desktop session. Use the desktop launcher, or switch to Saliency Map, Spectrogram, or Topographic Map in this headless environment.",
@@ -1560,7 +1560,7 @@
   },
   "dismissed_dialogs": [],
   "screenshots": {
-    "ready": "/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual/artifacts/ui/visualization-render/visualization-render-saliency-map.png"
+    "ready": "artifacts/ui/visualization-render/visualization-render-saliency-map.png"
   },
   "final_state": {
     "pipeline_stage": "trained",
@@ -2080,6 +2080,6 @@
       }
     }
   },
-  "elapsed_seconds": 9.229,
+  "elapsed_seconds": 8.763,
   "uncaught_exceptions": []
 }

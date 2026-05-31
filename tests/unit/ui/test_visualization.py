@@ -804,3 +804,57 @@ class TestSaliency3DPlotWidget:
         saliency.get_3d_head_plot()
 
         assert saliency.plotter.slider_ranges == [(1, 24)]
+
+    def test_3d_head_plot_continues_when_bounds_overlay_fails(self):
+        from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_head import (
+            Saliency3D,
+        )
+
+        class PlotterStub:
+            def __init__(self):
+                self.camera = MagicMock()
+                self.mesh_count = 0
+
+            def add_camera_orientation_widget(self):
+                pass
+
+            def add_slider_widget(self, **_kwargs):
+                pass
+
+            def add_checkbox_button_widget(self, *_args, **_kwargs):
+                pass
+
+            def add_text(self, *_args, **_kwargs):
+                pass
+
+            def add_mesh(self, *_args, **_kwargs):
+                self.mesh_count += 1
+                return object()
+
+            def add_scalar_bar(self, *_args, **_kwargs):
+                pass
+
+            def update_scalar_bar_range(self, *_args, **_kwargs):
+                pass
+
+            def show_bounds(self, *_args, **_kwargs):
+                raise TypeError("can only concatenate tuple (not list) to tuple")
+
+        saliency = Saliency3D.__new__(Saliency3D)
+        saliency.engine = MagicMock()
+        saliency.engine.saliency = np.zeros((3, 24))
+        saliency.engine.saliency_cap = object()
+        saliency.engine.brain_scaled = object()
+        saliency.engine.scalar_bar_range = [0.0, 1.0]
+        saliency.plotter = PlotterStub()
+        saliency.channelBox = MagicMock()
+        saliency.headBox = MagicMock()
+        saliency.showChannel = True
+        saliency.showHead = True
+        saliency.chs = []
+        cast(Any, saliency).cmap = "coolwarm"
+
+        result = saliency.get_3d_head_plot()
+
+        assert result is saliency.plotter
+        assert saliency.plotter.mesh_count >= 2

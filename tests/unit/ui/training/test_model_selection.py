@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtGui import QColor, QPalette
-from PyQt6.QtWidgets import QAbstractItemView, QTableWidgetItem
+from PyQt6.QtWidgets import QAbstractItemView, QDialogButtonBox, QTableWidgetItem
 
 from XBrainLab.ui.dialogs.training import ModelSelectionDialog
 from XBrainLab.ui.styles.theme import Theme
@@ -71,6 +71,10 @@ class TestModelSelection:
             QPalette.ColorGroup.Inactive,
             QPalette.ColorRole.HighlightedText,
         ) == QColor(Theme.TEXT_PRIMARY)
+        assert dialog.findChild(QDialogButtonBox) is None
+        assert dialog.confirm_btn is not None
+        assert dialog.confirm_btn.text() == "Confirm"
+        assert "chevron-down.svg" in dialog.styleSheet()
 
     def test_params_table_stays_visible_for_models_without_editable_params(self, qtbot):
         with patch("inspect.getmembers") as mock_getmembers:
@@ -118,4 +122,5 @@ class TestModelSelection:
             # Click again to clear
             dialog.load_pretrained_weight()
             assert dialog.pretrained_weight_path is None
+            assert dialog.weight_label.text() == "None"
             assert dialog.weight_btn.text() == "Load"

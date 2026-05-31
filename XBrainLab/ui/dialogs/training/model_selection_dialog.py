@@ -6,6 +6,7 @@ signature and supports loading pretrained weights.
 
 import inspect
 import os
+from pathlib import Path
 from typing import Any
 
 from PyQt6.QtCore import QModelIndex, Qt
@@ -13,9 +14,9 @@ from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
-    QDialogButtonBox,
     QFileDialog,
-    QGroupBox,
+    QFrame,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -34,6 +35,9 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
 
 ARG_DICT_SKIP_SET = {"self", "n_classes", "channels", "samples", "sfreq"}
+_CHEVRON_DOWN_ICON = (
+    Path(__file__).resolve().parents[3] / "resources" / "icons" / "chevron-down.svg"
+).as_posix()
 
 
 class ModelSelectionDialog(BaseDialog):
@@ -63,6 +67,7 @@ class ModelSelectionDialog(BaseDialog):
         self.model_combo = None
         self.params_table = None
         self.params_group = None
+        self.confirm_btn = None
         self.weight_label = None
         self.weight_btn = None
 
@@ -89,24 +94,46 @@ class ModelSelectionDialog(BaseDialog):
         layout.setContentsMargins(18, 18, 18, 14)
         layout.setSpacing(12)
 
-        # Model Selection
-        top_layout = QHBoxLayout()
-        top_layout.addWidget(QLabel("Model:"))
+        # Model setup
+        setup_frame = QFrame()
+        setup_frame.setObjectName("ModelSection")
+        setup_layout = QGridLayout(setup_frame)
+        setup_layout.setContentsMargins(12, 12, 12, 12)
+        setup_layout.setHorizontalSpacing(12)
+        setup_layout.setVerticalSpacing(10)
+        setup_title = QLabel("Model setup")
+        setup_title.setObjectName("SectionTitle")
+        setup_layout.addWidget(setup_title, 0, 0, 1, 3)
+
+        setup_layout.addWidget(QLabel("Model"), 1, 0)
         self.model_combo = QComboBox()
         self.model_combo.addItems(self.model_list)
         self.model_combo.currentTextChanged.connect(self.on_model_select)
-        top_layout.addWidget(self.model_combo)
-        top_layout.addStretch(1)
-        layout.addLayout(top_layout)
+        setup_layout.addWidget(self.model_combo, 1, 1)
+
+        setup_layout.addWidget(QLabel("Pretrained weight"), 2, 0)
+        self.weight_label = QLabel("None")
+        self.weight_label.setObjectName("PretrainedWeightLabel")
+        setup_layout.addWidget(self.weight_label, 2, 1)
+        self.weight_btn = QPushButton("Load")
+        self.weight_btn.clicked.connect(self.load_pretrained_weight)
+        setup_layout.addWidget(self.weight_btn, 2, 2)
+        setup_layout.setColumnStretch(1, 1)
+        layout.addWidget(setup_frame)
 
         # Parameters Table
-        self.params_group = QGroupBox("Model Parameters")
+        self.params_group = QFrame()
+        self.params_group.setObjectName("ModelSection")
         self.params_group.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
         group_layout = QVBoxLayout(self.params_group)
-        group_layout.setContentsMargins(10, 16, 10, 10)
+        group_layout.setContentsMargins(12, 12, 12, 12)
+        group_layout.setSpacing(10)
+        params_title = QLabel("Model parameters")
+        params_title.setObjectName("SectionTitle")
+        group_layout.addWidget(params_title)
         self.params_table = QTableWidget()
         self.params_table.setColumnCount(2)
         self.params_table.setHorizontalHeaderLabels(["Parameter", "Value"])
@@ -164,26 +191,14 @@ class ModelSelectionDialog(BaseDialog):
         group_layout.addWidget(self.params_table)
         layout.addWidget(self.params_group, stretch=0)
 
-        # Pretrained Weight
-        weight_layout = QHBoxLayout()
-        weight_layout.setSpacing(8)
-        weight_layout.addWidget(QLabel("Pretrained weight:"))
-        self.weight_label = QLabel("")
-        self.weight_label.setObjectName("PretrainedWeightLabel")
-        weight_layout.addWidget(self.weight_label)
-        weight_layout.addStretch(1)
-        self.weight_btn = QPushButton("Load")
-        self.weight_btn.clicked.connect(self.load_pretrained_weight)
-        weight_layout.addWidget(self.weight_btn)
-        layout.addLayout(weight_layout)
-
         # Buttons
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
-        )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        action_layout = QHBoxLayout()
+        action_layout.addStretch(1)
+        self.confirm_btn = QPushButton("Confirm")
+        self.confirm_btn.setObjectName("PrimaryConfirmButton")
+        self.confirm_btn.clicked.connect(self.accept)
+        action_layout.addWidget(self.confirm_btn)
+        layout.addLayout(action_layout)
 
     @staticmethod
     def _dialog_style() -> str:
@@ -196,20 +211,15 @@ class ModelSelectionDialog(BaseDialog):
             color: {Theme.TEXT_PRIMARY};
             background: transparent;
         }}
-        QDialog#ModelSelectionDialog QGroupBox {{
+        QDialog#ModelSelectionDialog QFrame#ModelSection {{
             color: {Theme.TEXT_PRIMARY};
             border: 1px solid {Theme.BACKGROUND_LIGHT};
             border-radius: 6px;
-            margin-top: 10px;
-            padding: 10px 8px 8px 8px;
             background: {Theme.BACKGROUND_MID};
         }}
-        QDialog#ModelSelectionDialog QGroupBox::title {{
-            subcontrol-origin: margin;
-            left: 8px;
-            padding: 0 4px;
+        QDialog#ModelSelectionDialog QLabel#SectionTitle {{
             color: {Theme.TEXT_SECONDARY};
-            background: {Theme.BACKGROUND_DARK};
+            background: transparent;
             font-weight: 700;
         }}
         QDialog#ModelSelectionDialog QComboBox {{
@@ -217,8 +227,22 @@ class ModelSelectionDialog(BaseDialog):
             color: {Theme.TEXT_PRIMARY};
             border: 1px solid {Theme.METRICS_TABLE_BORDER};
             border-radius: 4px;
-            padding: 4px 8px;
+            padding: 4px 28px 4px 8px;
             min-height: 22px;
+        }}
+        QDialog#ModelSelectionDialog QComboBox::drop-down {{
+            subcontrol-origin: padding;
+            subcontrol-position: top right;
+            border: none;
+            width: 24px;
+        }}
+        QDialog#ModelSelectionDialog QComboBox::down-arrow {{
+            image: url("{_CHEVRON_DOWN_ICON}");
+            width: 10px;
+            height: 10px;
+        }}
+        QDialog#ModelSelectionDialog QLabel#PretrainedWeightLabel {{
+            color: {Theme.TEXT_SECONDARY};
         }}
         QDialog#ModelSelectionDialog QPushButton {{
             background: {Theme.BACKGROUND_MID};
@@ -234,6 +258,18 @@ class ModelSelectionDialog(BaseDialog):
             background: {Theme.BLUE_PRIMARY};
             border-color: {Theme.BLUE_HOVER};
             font-weight: 700;
+        }}
+        QDialog#ModelSelectionDialog QPushButton#PrimaryConfirmButton {{
+            min-width: 128px;
+            padding: 7px 12px;
+            border-radius: 4px;
+            border: 1px solid #0a7fc7;
+            background: #0069a8;
+            color: {Theme.TEXT_PRIMARY};
+            font-weight: 700;
+        }}
+        QDialog#ModelSelectionDialog QPushButton#PrimaryConfirmButton:hover {{
+            background: #0a7fc7;
         }}
         """
 
@@ -310,7 +346,7 @@ class ModelSelectionDialog(BaseDialog):
         target_height = max(140, min(240, header_height + row_total + 18))
         self.params_table.setFixedHeight(target_height)
         if self.params_group:
-            self.params_group.setMaximumHeight(target_height + 42)
+            self.params_group.setMaximumHeight(target_height + 58)
 
     def _clear_params_table_selection(self) -> None:
         """Avoid a misleading initial selected row in the parameter table."""
@@ -329,7 +365,7 @@ class ModelSelectionDialog(BaseDialog):
 
         if self.pretrained_weight_path:
             self.pretrained_weight_path = None
-            self.weight_label.setText("")
+            self.weight_label.setText("None")
             self.weight_btn.setText("Load")
             return
 

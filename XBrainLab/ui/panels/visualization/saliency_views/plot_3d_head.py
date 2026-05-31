@@ -238,6 +238,9 @@ class Saliency3D:
         self.plotter.update_scalar_bar_range(self.engine.scalar_bar_range, "saliency")
         self.plotter.add_mesh(self.engine.brain_scaled, color=Theme.BRAIN_MESH)
 
-        self.plotter.show_bounds(color="white")
+        try:
+            self.plotter.show_bounds(color="white")
+        except TypeError as exc:
+            logger.warning("Skipping 3D bounds overlay: %s", exc)
 
         return self.plotter
