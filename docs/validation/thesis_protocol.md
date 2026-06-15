@@ -1,6 +1,6 @@
 # Thesis Tool-Call Evaluation Protocol
 
-最後更新：`2026-05-06`
+最後更新：`2026-06-01`
 
 這份文件定義 XBrainLab 要支撐碩士論文主張時使用的驗證 protocol。論文主 evidence 是
 assistant 的 tool-call accuracy：它是否選對工具、給對參數、遵守當前 workflow state、正確處理
@@ -114,6 +114,24 @@ case 數量不能只停在 demo 級：
 deterministic tool-call eval 可以證明 scoring framework 和 scripted policy 正確，但不能宣稱
 local LLM 真實 tool-call 能力。local LLM tool-call eval 需要在產品主線穩定後，以同一批 cases
 重跑 primary / fallback model，並記錄 parser failure、verification failure、retry 和 recovery。
+
+## Future AutoResearch Case Generation
+
+正式擴充 benchmark suite 時，case generation 本身應視為研究工作，而不是目前產品修復的一部分。
+在 XBrainLab 本體、agent command path 和 verification layer 穩定前，不應啟動大規模 benchmark
+生成，也不應宣稱 case suite 已足以支撐正式 thesis result。
+
+啟動時採用 research-first 的 AutoResearch-style pipeline：
+
+- subagents 先研究 function/tool-call benchmark、agent trajectory eval、XBrainLab workflow、
+  EEG / BCI 操作情境與常見錯誤。
+- subagents 只能產生候選 cases、coverage critique 和 failure taxonomy 建議。
+- 每個候選 case 必須保留來源 rationale、目標 workflow stage、initial state、expected
+  tool / no-tool behavior、expected parameters、verification expectation 和 expected state delta。
+- gold benchmark 只能由主 agent 經過去重、schema validation、coverage matrix、人工可讀審核和
+  freeze 後建立；不能讓 subagent 直接把候選 case 寫成正式 gold suite。
+- benchmark generation 方法可以在 Phase 3 開始時根據最新研究再調整；本 protocol 只固定 evidence
+  邊界與審核要求，不預先定死具體 case taxonomy。
 
 ## Local Eval Gate 分層
 

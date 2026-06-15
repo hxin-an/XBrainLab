@@ -1,6 +1,6 @@
 # XBrainLab Agent Guide
 
-最後更新：`2026-05-31`
+最後更新：`2026-06-15`
 
 這份文件是給任何進入本 repo 的 coding agent 的最短入口。
 
@@ -68,6 +68,29 @@ Milestone 是最低交付門檻，不是工作上限。完成一個 milestone �
 7. 保留 dirty worktree 裡不是你做的改動，不要 reset 或 checkout。
 8. 重要進度、決策、驗證結果寫進文件，不靠聊天回報保存狀態。
 9. tool-call eval 要等 backend / UI / agent / local LLM 主線穩定後再做。
+
+## Handoff-ready 規則
+
+使用者不應成為第一層 QA。任何 agent 若要回報「可以手測了」、「handoff-ready」或「這版可給你測」，
+必須先完成 handoff candidate gate；否則只能回報為 checkpoint。
+
+handoff candidate gate 至少包含：
+
+1. scope：說明這次修的是哪一類問題，以及哪些區域刻意不碰。
+2. focused regression：重現或保護使用者指出的 bug；若無法自動重現，要留下可觀察 artifact。
+3. same-class sweep：用搜尋、source guard、或 reviewer/subagent 檢查同類 bug 是否還存在。
+4. happy path：跑一條像使用者一樣操作的 workflow 或 UI-observable walkthrough。
+5. edge / regression：針對修復類型跑相鄰 workflow、edge case 或 multi-dataset gate。
+6. artifact review：可見 UI 變動必須有 screenshot / walkthrough artifact，主 agent 要自己看過。
+7. branch hygiene：worktree clean 或明確列出無關 dirty files；validated checkpoint 已 commit 並 push。
+8. claim boundary：列出仍不能宣稱完成、仍需真人 Windows acceptance 或未覆蓋的風險。
+
+若是 data import、label、epoch、training、evaluation 或 visualization 相關 handoff，還必須跑
+required multi-dataset gate，除非本輪明確只是 docs-only 或純內部文字修正。若這個 gate 因資料下載、
+環境或時間被跳過，最終回報不可說 handoff-ready。
+
+對 UI / UX 可見改動，dashboard PASS 不夠；必須有可讀 screenshot / walkthrough artifact，並確認沒有
+明顯跑版、白字白底、primary action 被擠掉、nested scroll 或 dialog 超出螢幕。
 
 ## 完成語意與防止局部結案
 

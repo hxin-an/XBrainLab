@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-05-31`
+最後更新：`2026-06-15`
 
 這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
@@ -29,6 +29,23 @@
 | 1B Data Interpretation | scan / preview / validate / apply tests，加 representative format artifact。 |
 | 1C Tool-Call Baseline | agent tool tests、MCP adapter tests、blocked reason / structured result checks。 |
 | 1D Desktop Acceptance | human Windows click-through notes，加 automated walkthrough screenshot evidence。 |
+
+## Handoff Candidate Gate
+
+交給使用者手測前，必須先把 branch 判定為 handoff candidate。這個 gate 的目的不是取代
+human Windows acceptance，而是避免使用者成為第一層 QA。
+
+handoff candidate 必須同時具備：
+
+- focused regression：使用者指出的 bug 有測試、script 或 artifact 保護。
+- same-class sweep：同類 UI / backend / state / data flow 問題已搜尋並處理。
+- happy path：至少一條使用者可理解的 product workflow 或 UI-observable walkthrough 通過。
+- edge / regression：依改動類型跑相鄰 workflow 或 multi-dataset / architecture / source guard。
+- artifact review：可見 UI 改動有 screenshot / walkthrough artifact，且已人工檢查明顯跑版。
+- branch hygiene：worktree clean 或 dirty files 已解釋；validated checkpoint 已 commit 並 push。
+- claim boundary：明確列出仍不能宣稱的範圍。
+
+未完成這些條件時，只能稱為 checkpoint 或 blocked，不可回報「可以手測」。
 
 ## Required Multi-Dataset Gate
 

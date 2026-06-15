@@ -1,6 +1,6 @@
 # XBrainLab Agent Workflows
 
-最後更新：`2026-05-02`
+最後更新：`2026-06-15`
 
 workflow 是「多步驟流程」。它可以引用 `.agents/skills/`，但不取代 canonical docs。
 
@@ -15,6 +15,7 @@ workflow 是「多步驟流程」。它可以引用 `.agents/skills/`，但不�
 | `architecture-review.md` | 架構複盤與 product-delivery 順序校準。 |
 | `refactor-slice.md` | 選定並執行第一個重構 slice。 |
 | `agent-toolcall-scoring.md` | 設計 tool-call scoring system。 |
+| `handoff-candidate.md` | 交給使用者手測前的 happy path / edge / artifact gate。 |
 
 ## 使用原則
 

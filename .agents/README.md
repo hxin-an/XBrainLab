@@ -1,6 +1,6 @@
 # XBrainLab Agent Entry
 
-最後更新：`2026-05-03`
+最後更新：`2026-06-15`
 
 這是 repo-local agent 操作入口。
 
@@ -29,6 +29,18 @@ Milestone 是最低交付門檻，不是只需要做這些。若 milestone 勾�
 - 若發現 worker 只修局部、留下明顯產品問題、或沒有碰到核心需求，必須打回並要求補完。
 - 使用者要求的是工程級可用軟體；「完成 checklist」但仍不專業、不穩定、不可操作，不算完成。
 - 只有在已知 blocker 被解除、剩餘風險被清楚界定且不違背本輪核心需求時，才能回報為可交付。
+
+## Manual Handoff Gate
+
+agent 不能把未驗證的修復直接交給使用者手測。任何「可以手測」回報都必須先通過
+`.agents/workflows/handoff-candidate.md`：
+
+- bug 類工作要有 focused regression 和 same-class sweep。
+- UI 可見工作要有 screenshot / walkthrough artifact，且主 agent 自己檢查過畫面。
+- data / import / labels / epoch / training / evaluation / visualization handoff 要跑 required
+  multi-dataset gate，除非本輪明確不是產品 handoff。
+- subagent reviewer 只能當 gate input；主 agent 必須讀 diff、看 artifact、跑驗證後自己判定。
+- 若 gate 未完成，回報語意只能是 checkpoint / blocked，不能說 handoff-ready。
 
 目前主線是 product delivery：
 
@@ -75,6 +87,7 @@ tool-call eval / thesis evidence 要等產品主線穩定後再開始。
 | `runbooks/autopilot.md` | 長時間工作循環。 |
 | `runbooks/architecture-review.md` | 全盤架構複盤步驟。 |
 | `runbooks/refactor-gate.md` | 後端重構開工前檢查。 |
+| `workflows/handoff-candidate.md` | 交給使用者手測前的 happy path / edge / artifact gate。 |
 
 ## Skills / Workflows
 

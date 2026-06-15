@@ -116,6 +116,29 @@ Recommended minimum before merging a stabilization branch to `main`:
 - `mkdocs build --strict` is `PASS`;
 - worktree is clean and remaining risks are documented.
 
+## Manual-Test Candidate Rules
+
+Do not tell the user a branch is ready for manual testing unless it has passed a
+handoff candidate gate. A handoff candidate is stronger than a validated
+checkpoint: it proves the fix did not only address the first visible symptom.
+
+Before saying "ready to test" or "handoff-ready", complete and report:
+
+- bug reproduction or focused regression coverage for the user-reported issue;
+- same-class sweep for similar call sites, screens, command paths, or data flows;
+- a happy-path product route, preferably through an automated UI walkthrough or
+  screenshot-producing script when UI is involved;
+- edge/regression coverage for the changed class of behavior;
+- screenshot or walkthrough artifact review for visible UI changes;
+- required multi-dataset gate for data/import/label/epoch/training/evaluation/
+  visualization handoffs, unless the change is explicitly docs-only;
+- clean or explained worktree, focused commit, and pushed branch;
+- claim boundary: what this still does not prove.
+
+If any required gate is skipped, the branch may be a checkpoint but is not a
+manual-test candidate. State the blocker instead of asking the user to find the
+next obvious bug.
+
 ## Scope Separation
 
 Keep these apart unless the user explicitly asks to combine them:

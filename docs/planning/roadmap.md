@@ -1,6 +1,6 @@
 # XBrainLab Roadmap
 
-最後更新：`2026-05-10`
+最後更新：`2026-06-01`
 
 這份 roadmap 是產品主線，不是施工日誌。它用來決定：**先做什麼，做到什麼程度才算過關，哪些 claim 不能先講。**
 
@@ -41,6 +41,16 @@ MVP 之後才做 release candidate、formal thesis evidence、完整 MCP client 
 | 2 Release Candidate | 可下載測試版與限制說明。 | candidate artifact、version、known limitations、troubleshooting。 | 每次 merge 自動正式發布。 |
 | 3 Thesis Evidence | formal agent / tool-call 評估。 | case suite、model、repeat count、scorer version 都清楚。 | agent score 代表 UI 完成。 |
 | 4 MCP Hardening | 外部 agent adapter 成熟化。 | session ownership、auth、job lifecycle、client matrix。 | headless MCP 等於控制使用者桌面 UI。 |
+
+## Phase 3 的特別說明
+
+Phase 3 是論文 evidence 階段，不是目前產品修復階段。正式擴充 tool-call benchmark 之前，
+XBrainLab 本體、agent command path、verification layer 和代表性產品 workflow 必須先穩定。
+
+Benchmark case generation 啟動時應採用 AutoResearch-style 流程：先讓 subagents 研究 tool-call /
+agent trajectory benchmark 方法、XBrainLab workflow 和 EEG / BCI 使用情境，再產生候選 cases。
+候選 cases 不能直接成為 gold benchmark；必須由主 agent 去重、檢查 coverage、審核 expected
+tool / state / verification 行為，並凍結成可重跑 suite 後才可支撐 thesis claim。
 
 ## Phase 1A 的特別說明
 

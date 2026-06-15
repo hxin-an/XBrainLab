@@ -65,7 +65,11 @@ poetry run pytest --capture=sys \
 - mock-heavy unit tests 是 regression floor，不是 real workflow evidence。
 - architecture / refresh / state-truth 類修復，必須有 same-class sweep 和 source guard clean
   evidence；只跑新增測試只能支撐 checkpoint，不能支撐 complete。
-- 給使用者手測或宣稱 handoff-ready 前，必須跑 required multi-dataset gate。
+- 給使用者手測或宣稱 handoff-ready 前，必須完成 `.agents/workflows/handoff-candidate.md`：
+  focused regression、same-class sweep、happy path、edge/regression、artifact review、branch
+  hygiene 和 claim boundary。
+- data/import/label/epoch/training/evaluation/visualization handoff 前，必須跑 required
+  multi-dataset gate；跳過時只能稱為 checkpoint。
 - 不同副檔名不等於不同資料集；同一 source family 的轉檔只能算 format coverage，不能算 dataset source diversity。
 - public local-only fixture evidence 不能當作 clean clone always-on CI。
 - optional `llm` group 未驗證前，不能宣稱 local LLM runtime ready。
