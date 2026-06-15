@@ -61,6 +61,9 @@ poetry run python scripts/dev/report_dataset_validation_matrix.py --strict --for
 poetry run python scripts/dev/report_data_interpretation_format_matrix.py --format json
 
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/integration/ui/test_data_import_wizard_format_matrix.py -q
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/integration/io/test_io_integration.py \
   tests/integration/io/test_public_bids_fixture.py \
   tests/integration/pipeline/test_public_cross_source_training_smoke.py -q
@@ -75,6 +78,12 @@ poetry run python scripts/dev/run_public_cross_source_training_smoke.py \
 - compact multiformat：FIF、FIF.GZ、epoched FIF、EDF、BDF、BrainVision、EEGLAB SET 都要存在。
 - public event-rich sources：至少 3 個 public event-rich fixtures，且來自至少 3 個 source families。
 - public BIDS EEG：必須有 downloaded tiny BIDS EEG root，包含 `events.tsv` / sidecar path。
+
+`test_data_import_wizard_format_matrix.py` 會把 Data Interpretation format matrix 裡的每個
+format-boundary case 送進真實 `ApplicationService scan -> preview -> validate`，再打開
+`DataInterpretationPreviewDialog` 走完 `Choose EEG Data`、`Load Labels`、`Review Metadata`、
+`Match Labels`、`Review and Import` 五個 step。它覆蓋 GDF+MAT、EDF、BDF、EEGLAB、BrainVision、
+FIF、BIDS events、CSV / TSV / TXT labels，以及目前明確 blocked 的 XDF / LSL。
 
 這個 gate 能支撐「手測前已跨不同 dataset source 做過 import / label / BIDS / training-smoke
 preflight」。它仍不能支撐 full BIDS validator compliance、任意 proprietary format、

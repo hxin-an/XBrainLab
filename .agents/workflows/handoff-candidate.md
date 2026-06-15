@@ -70,7 +70,9 @@ happy path 要保存或引用 artifact / command output，不能只說「看起�
 再跑與本輪風險相符的 edge gate：
 
 - data/import/label/epoch/training/evaluation/visualization handoff：
-  required multi-dataset gate。
+  required multi-dataset gate；Data Import wizard 另跑
+  `tests/integration/ui/test_data_import_wizard_format_matrix.py`，確認代表格式都能打開五步
+  wizard。
 - backend command / ApplicationService：
   focused command tests + architecture/source guard。
 - UI layout / visible UX：

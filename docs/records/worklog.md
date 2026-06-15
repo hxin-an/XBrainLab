@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-05-30`
+最後更新：`2026-06-15`
 
 ## 這份文件的用途
 
@@ -34,6 +34,51 @@
 - 證據：
 - 接續 / 本輪剩餘：
 ```
+
+## 2026-06-15
+
+### 21:58 Data Import wizard format-matrix gate
+
+- 做了什麼：
+  - 使用者指出先前 handoff 判斷對 Data Load / Data Import wizard 邊際案例不夠嚴，尤其不同格式資料集應該直接測過。
+  - 新增 `tests/integration/ui/test_data_import_wizard_format_matrix.py`，把
+    `report_data_interpretation_format_matrix.py` 的每個 format-boundary case 走真實
+    `ApplicationService scan -> preview -> validate`，再打開 `DataInterpretationPreviewDialog`
+    並切過五個 step。
+  - 覆蓋 GDF+MAT、EDF、BDF、EEGLAB SET、BrainVision VHDR/VMRK、MNE FIF、BIDS events、
+    CSV / TSV / TXT labels，以及目前明確 blocked 的 XDF / LSL。
+  - 將 handoff / validation docs 補上 Data Import wizard format-matrix gate，避免只用 dashboard
+    或單一 GDF case 宣稱可手測。
+- 結果：
+  - 新增 wizard format-matrix integration test：`9 passed`。
+  - Data Interpretation focused suite 加新測試：`248 passed`。
+  - Required multi-dataset gate：public fixture strict matrix OK；format capability matrix
+    `13` rows 全部 observed / match；IO / public BIDS / cross-source integration `36 passed`；
+    public cross-source training strict script `4 passed, 0 missing, 0 failed`。
+  - 重新渲染 Data Import wizard steps 和 Match Labels placement-mode screenshots，人工檢查
+    choose/load/match/BIDS/fallback/review/四種 placement mode 無明顯白列、重疊或 missing primary。
+- 證據：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration/ui/test_data_import_wizard_format_matrix.py -q`
+    -> `9 passed`。
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys ... tests/integration/ui/test_data_import_wizard_format_matrix.py ... -q`
+    -> `248 passed`。
+  - `poetry run python scripts/dev/fetch_public_eeg_fixtures.py` -> existing public fixtures verified。
+  - `poetry run python scripts/dev/report_dataset_validation_matrix.py --strict --format json`
+    -> strict validation OK。
+  - `poetry run python scripts/dev/report_data_interpretation_format_matrix.py --format json`
+    -> all expected capabilities observed / match。
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration/io/test_io_integration.py tests/integration/io/test_public_bids_fixture.py tests/integration/pipeline/test_public_cross_source_training_smoke.py -q`
+    -> `36 passed, 11 warnings`。
+  - `poetry run python scripts/dev/run_public_cross_source_training_smoke.py --format json --strict`
+    -> `4 passed, 0 missing, 0 failed`。
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_import_wizard_steps.py`
+    -> screenshots refreshed。
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_import_match_label_placement_modes.py`
+    -> placement screenshots refreshed。
+- 接續 / 本輪剩餘：
+  - Commit / push this gate after final dashboard.
+  - 仍不能宣稱 full BIDS validator compliance、任意 proprietary dataset、XDF / LSL stream parser、
+    long Windows human click-through acceptance、或 scientific model-quality claim。
 
 ## 2026-05-30
 
