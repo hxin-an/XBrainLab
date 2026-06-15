@@ -5,10 +5,12 @@ import re
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QFrame,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -28,6 +30,7 @@ from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.refresh_coordinator import refresh_after_observer
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
+from XBrainLab.ui.styles.theme import Theme
 
 from .control_sidebar import ControlSidebar
 from .saliency_views.map_view import SaliencyMapWidget
@@ -179,7 +182,12 @@ class VisualizationPanel(BasePanel):
         self._apply_visualization_control_layout(single_row=False)
         left_layout.addWidget(self.ctrl_bar)
 
-        # 2. Plots Group
+        # 2. Saliency compute entry point
+        self.saliency_action_bar = self._build_saliency_action_bar()
+        self.saliency_action_bar.setVisible(False)
+        left_layout.addWidget(self.saliency_action_bar)
+
+        # 3. Plots Group
         plots_group = QGroupBox("EXPLANATION PLOTS")
         plots_layout = QVBoxLayout(plots_group)
         plots_layout.setContentsMargins(10, 20, 10, 10)
@@ -220,6 +228,71 @@ class VisualizationPanel(BasePanel):
 
         # Keep startup light; populate data-backed controls when the panel is opened.
         self._clear_plan_controls()
+
+    def _build_saliency_action_bar(self) -> QFrame:
+        """Build the explicit saliency compute prompt shown for metric-only runs."""
+        frame = QFrame()
+        frame.setObjectName("SaliencyActionBar")
+        frame.setStyleSheet(
+            f"""
+            QFrame#SaliencyActionBar {{
+                background-color: {Theme.BACKGROUND_MID};
+                border: 1px solid {Theme.BACKGROUND_LIGHT};
+                border-radius: 6px;
+            }}
+            QLabel#SaliencyActionTitle {{
+                background-color: transparent;
+                color: {Theme.TEXT_PRIMARY};
+                font-weight: bold;
+            }}
+            QLabel#SaliencyActionDetail {{
+                background-color: transparent;
+                color: {Theme.TEXT_SECONDARY};
+            }}
+            """
+        )
+
+        layout = QHBoxLayout(frame)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(12)
+
+        text_layout = QVBoxLayout()
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(2)
+        self.saliency_action_title = QLabel("Saliency not computed yet")
+        self.saliency_action_title.setObjectName("SaliencyActionTitle")
+        self.saliency_action_detail = QLabel(
+            "Recommended profile computes Gradient + Gradient * Input."
+        )
+        self.saliency_action_detail.setObjectName("SaliencyActionDetail")
+        self.saliency_action_detail.setWordWrap(True)
+        text_layout.addWidget(self.saliency_action_title)
+        text_layout.addWidget(self.saliency_action_detail)
+
+        self.compute_saliency_btn = QPushButton("Compute Saliency")
+        self.compute_saliency_btn.setMinimumWidth(140)
+        self.compute_saliency_btn.setStyleSheet(
+            Stylesheets.BTN_PRIMARY
+            + f"""
+            QPushButton:disabled {{
+                background-color: {Theme.BTN_DISABLED_BG};
+                color: {Theme.BTN_DISABLED_TEXT};
+            }}
+            """
+        )
+        self.compute_saliency_btn.clicked.connect(
+            self._compute_saliency_from_action_bar
+        )
+
+        self.saliency_settings_btn = QPushButton("Settings")
+        self.saliency_settings_btn.setMinimumWidth(86)
+        self.saliency_settings_btn.setStyleSheet(Stylesheets.BTN_GHOST)
+        self.saliency_settings_btn.clicked.connect(self._open_saliency_settings)
+
+        layout.addLayout(text_layout, stretch=1)
+        layout.addWidget(self.saliency_settings_btn)
+        layout.addWidget(self.compute_saliency_btn)
+        return frame
 
     def resizeEvent(self, event):  # noqa: N802
         """Switch visualization controls between compact and full-width layouts."""
@@ -404,6 +477,7 @@ class VisualizationPanel(BasePanel):
     def on_update(self):
         """Gather settings and call update_plot on current tab."""
         current_widget = self.tabs.currentWidget()
+        self._hide_saliency_action_bar()
         if self._application_summary_dirty or self.last_application_query is None:
             self._refresh_application_query(
                 view=self.tabs.tabText(self.tabs.currentIndex()),
@@ -501,6 +575,7 @@ class VisualizationPanel(BasePanel):
             eval_record,
             method_name,
         ):
+            self._show_saliency_action_bar(method_name)
             if self._start_lazy_saliency_compute(
                 current_widget,
                 eval_record,
@@ -509,8 +584,7 @@ class VisualizationPanel(BasePanel):
                 return
             self._show_widget_message(
                 current_widget,
-                "Saliency has not been computed for this run. "
-                "Use Saliency Settings to compute it.",
+                "Saliency has not been computed for this run.",
             )
             return
 
@@ -523,6 +597,87 @@ class VisualizationPanel(BasePanel):
                 absolute,
                 eval_record,
             )
+
+    def _compute_saliency_from_action_bar(self) -> None:
+        """Compute saliency for the current run using a product-friendly default."""
+        method_name = (
+            self.method_combo.currentText() if hasattr(self, "method_combo") else ""
+        ) or "Gradient"
+        params = self._recommended_saliency_params_for_method(method_name)
+        methods = params.get("methods")
+        methods_key = tuple(methods) if isinstance(methods, (list, tuple, set)) else ()
+        current_widget = self.tabs.currentWidget() if hasattr(self, "tabs") else None
+        started = self._start_saliency_compute(
+            params=params,
+            method_name=method_name,
+            current_widget=current_widget,
+            attempt_key=(
+                "manual",
+                self.plan_combo.currentText() if hasattr(self, "plan_combo") else "",
+                self.run_combo.currentText() if hasattr(self, "run_combo") else "",
+                method_name,
+                methods_key,
+            ),
+        )
+        if not started:
+            self._set_saliency_action_busy(False)
+            show_status_message(self, "Saliency compute could not start.")
+
+    def _open_saliency_settings(self) -> None:
+        sidebar = getattr(self, "sidebar", None)
+        set_saliency = getattr(sidebar, "set_saliency", None)
+        if callable(set_saliency):
+            set_saliency()
+
+    def _show_saliency_action_bar(self, method_name: str | None = None) -> None:
+        if not hasattr(self, "saliency_action_bar"):
+            return
+        method_name = method_name or "Gradient"
+        if method_name in {"Gradient", "Gradient * Input"}:
+            detail = "Recommended profile computes Gradient + Gradient * Input."
+        else:
+            detail = f"{method_name} uses default noise settings. Adjust in Settings."
+        self.saliency_action_detail.setText(detail)
+        self.saliency_action_bar.setVisible(True)
+
+    def _hide_saliency_action_bar(self) -> None:
+        if not hasattr(self, "saliency_action_bar"):
+            return
+        if self._saliency_compute_in_progress:
+            return
+        self.saliency_action_bar.setVisible(False)
+        self._set_saliency_action_busy(False)
+
+    def _set_saliency_action_busy(self, busy: bool) -> None:
+        if not hasattr(self, "compute_saliency_btn"):
+            return
+        self.compute_saliency_btn.setEnabled(not busy)
+        self.compute_saliency_btn.setText(
+            "Computing..." if busy else "Compute Saliency"
+        )
+
+    @staticmethod
+    def _recommended_saliency_params_for_method(method_name: str) -> dict[str, object]:
+        noise_defaults = {
+            "nt_samples": 5,
+            "nt_samples_batch_size": None,
+            "stdevs": 1.0,
+        }
+        if method_name in {"Gradient", "Gradient * Input"}:
+            return {
+                "profile": "recommended",
+                "methods": ["Gradient", "Gradient * Input"],
+            }
+        if method_name in {"SmoothGrad", "SmoothGrad_Squared", "VarGrad"}:
+            return {
+                "profile": "advanced",
+                "methods": [method_name],
+                method_name: noise_defaults,
+            }
+        return {
+            "profile": "recommended",
+            "methods": ["Gradient", "Gradient * Input"],
+        }
 
     def update_info(self):
         """Update the Sidebar Info Panel and refresh combos."""
@@ -619,6 +774,8 @@ class VisualizationPanel(BasePanel):
 
         self._saliency_compute_attempted.add(attempt_key)
         self._saliency_compute_in_progress = True
+        self._show_saliency_action_bar(method_name)
+        self._set_saliency_action_busy(True)
         if current_widget is not None:
             self._show_widget_message(current_widget, "Computing saliency...")
         show_status_message(self, "Computing saliency...")
@@ -633,13 +790,16 @@ class VisualizationPanel(BasePanel):
         )
         if not started:
             self._saliency_compute_in_progress = False
+            self._set_saliency_action_busy(False)
             return False
         return True
 
     def _on_lazy_saliency_configured(self, result) -> None:
         self._saliency_compute_in_progress = False
+        self._set_saliency_action_busy(False)
         if result.failed:
             self._saliency_summary_dirty = True
+            self._saliency_compute_attempted.clear()
             show_status_message(self, f"Saliency failed: {result.message}")
             return
         show_status_message(self, "Saliency ready")
@@ -648,7 +808,9 @@ class VisualizationPanel(BasePanel):
 
     def _on_lazy_saliency_error(self, error: tuple) -> None:
         self._saliency_compute_in_progress = False
+        self._set_saliency_action_busy(False)
         self._saliency_summary_dirty = True
+        self._saliency_compute_attempted.clear()
         message = error[1] if len(error) > 1 else error
         show_status_message(self, f"Saliency failed: {message}")
 

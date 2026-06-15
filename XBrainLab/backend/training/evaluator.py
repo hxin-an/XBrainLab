@@ -22,6 +22,18 @@ class Evaluator:
         "nt_samples_batch_size": None,
         "stdevs": 1.0,
     }
+    _ALL_SALIENCY_METHODS: ClassVar[tuple[str, ...]] = (
+        "Gradient",
+        "Gradient * Input",
+        "SmoothGrad",
+        "SmoothGrad_Squared",
+        "VarGrad",
+    )
+    _NOISE_TUNNEL_METHODS: ClassVar[tuple[str, ...]] = (
+        "SmoothGrad",
+        "SmoothGrad_Squared",
+        "VarGrad",
+    )
 
     @staticmethod
     def _model_device(model: torch.nn.Module) -> Any | None:
@@ -54,6 +66,31 @@ class Evaluator:
         if isinstance(value, dict):
             params.update(value)
         return params
+
+    @staticmethod
+    def _selected_saliency_methods(saliency_params: dict) -> set[str]:
+        value = saliency_params.get("_methods")
+        if value is None:
+            value = saliency_params.get("methods")
+
+        if isinstance(value, str):
+            raw_methods = [value]
+        elif isinstance(value, (list, tuple, set)):
+            raw_methods = list(value)
+        else:
+            return set(Evaluator._ALL_SALIENCY_METHODS)
+
+        valid_methods = set(Evaluator._ALL_SALIENCY_METHODS)
+        selected = {str(method).strip() for method in raw_methods}
+        selected &= valid_methods
+        return selected or set(Evaluator._ALL_SALIENCY_METHODS)
+
+    @staticmethod
+    def _captum_output_to_numpy(value: Any) -> np.ndarray:
+        """Return the first tensor attribution as a CPU numpy array."""
+        if isinstance(value, tuple):
+            value = value[0]
+        return value.detach().cpu().numpy()
 
     @staticmethod
     def compute_auc(y_true, y_pred, multi_class="ovr") -> float:
@@ -252,6 +289,18 @@ class Evaluator:
         """
         model.eval()
 
+        selected_methods = Evaluator._selected_saliency_methods(saliency_params)
+        compute_gradient = "Gradient" in selected_methods
+        compute_gradient_input = "Gradient * Input" in selected_methods
+        compute_smoothgrad = "SmoothGrad" in selected_methods
+        compute_smoothgrad_sq = "SmoothGrad_Squared" in selected_methods
+        compute_vargrad = "VarGrad" in selected_methods
+        compute_any_gradient = compute_gradient or compute_gradient_input
+        compute_any_noise = any(
+            method in selected_methods for method in Evaluator._NOISE_TUNNEL_METHODS
+        )
+        compute_any_saliency = compute_any_gradient or compute_any_noise
+
         output_list = []
         label_list = []
 
@@ -261,8 +310,10 @@ class Evaluator:
         smoothgrad_sq_list = []
         vargrad_list = []
 
-        saliency_inst = Saliency(model)
-        noise_tunnel_inst = NoiseTunnel(saliency_inst)
+        saliency_inst = Saliency(model) if compute_any_saliency else None
+        noise_tunnel_inst = (
+            NoiseTunnel(saliency_inst) if compute_any_noise and saliency_inst else None
+        )
 
         for inputs, labels in data_loader:
             batch_inputs, batch_labels = Evaluator._move_batch_to_model_device(
@@ -275,81 +326,95 @@ class Evaluator:
             output_list.append(outputs.detach().cpu().numpy())
             label_list.append(batch_labels.detach().cpu().numpy())
 
-            batch_inputs.requires_grad_(True)
+            if compute_any_saliency:
+                batch_inputs.requires_grad_(True)
             target_labels = label_list[-1].tolist()
-            batch_gradient = (
-                saliency_inst.attribute(
-                    batch_inputs,
-                    target=target_labels,
-                    abs=False,
-                )
-                .detach()
-                .cpu()
-                .numpy()
-            )
 
-            gradient_list.append(batch_gradient)
-            gradient_input_list.append(
-                np.multiply(batch_inputs.detach().cpu().numpy(), batch_gradient),
-            )
-            smoothgrad_list.append(
-                noise_tunnel_inst.attribute(
-                    batch_inputs,
-                    target=target_labels,
-                    nt_type="smoothgrad",
-                    **Evaluator._noise_tunnel_params(saliency_params, "SmoothGrad"),
+            if compute_any_gradient and saliency_inst is not None:
+                batch_gradient = Evaluator._captum_output_to_numpy(
+                    saliency_inst.attribute(
+                        batch_inputs,
+                        target=target_labels,
+                        abs=False,
+                    )
                 )
-                .detach()
-                .cpu()
-                .numpy(),
-            )
-            smoothgrad_sq_list.append(
-                noise_tunnel_inst.attribute(
-                    batch_inputs,
-                    target=target_labels,
-                    nt_type="smoothgrad_sq",
-                    **Evaluator._noise_tunnel_params(
-                        saliency_params,
-                        "SmoothGrad_Squared",
+                if compute_gradient:
+                    gradient_list.append(batch_gradient)
+                if compute_gradient_input:
+                    batch_inputs_array = batch_inputs.detach().cpu().numpy()
+                    gradient_input_list.append(
+                        np.multiply(batch_inputs_array, batch_gradient),
+                    )
+            if compute_smoothgrad and noise_tunnel_inst is not None:
+                smoothgrad_list.append(
+                    Evaluator._captum_output_to_numpy(
+                        noise_tunnel_inst.attribute(
+                            batch_inputs,
+                            target=target_labels,
+                            nt_type="smoothgrad",
+                            **Evaluator._noise_tunnel_params(
+                                saliency_params,
+                                "SmoothGrad",
+                            ),
+                        )
                     ),
                 )
-                .detach()
-                .cpu()
-                .numpy(),
-            )
-            vargrad_list.append(
-                noise_tunnel_inst.attribute(
-                    batch_inputs,
-                    target=target_labels,
-                    nt_type="vargrad",
-                    **Evaluator._noise_tunnel_params(saliency_params, "VarGrad"),
+            if compute_smoothgrad_sq and noise_tunnel_inst is not None:
+                smoothgrad_sq_list.append(
+                    Evaluator._captum_output_to_numpy(
+                        noise_tunnel_inst.attribute(
+                            batch_inputs,
+                            target=target_labels,
+                            nt_type="smoothgrad_sq",
+                            **Evaluator._noise_tunnel_params(
+                                saliency_params,
+                                "SmoothGrad_Squared",
+                            ),
+                        )
+                    ),
                 )
-                .detach()
-                .cpu()
-                .numpy(),
-            )
+            if compute_vargrad and noise_tunnel_inst is not None:
+                vargrad_list.append(
+                    Evaluator._captum_output_to_numpy(
+                        noise_tunnel_inst.attribute(
+                            batch_inputs,
+                            target=target_labels,
+                            nt_type="vargrad",
+                            **Evaluator._noise_tunnel_params(
+                                saliency_params,
+                                "VarGrad",
+                            ),
+                        )
+                    ),
+                )
 
         label_list = np.concatenate(label_list)
         output_list = np.concatenate(output_list)
 
-        gradient_list = np.concatenate(gradient_list)
-        gradient_input_list = np.concatenate(gradient_input_list)
-        smoothgrad_list = np.concatenate(smoothgrad_list)
-        smoothgrad_sq_list = np.concatenate(smoothgrad_sq_list)
-        vargrad_list = np.concatenate(vargrad_list)
+        gradient_values = np.concatenate(gradient_list) if gradient_list else None
+        gradient_input_values = (
+            np.concatenate(gradient_input_list) if gradient_input_list else None
+        )
+        smoothgrad_values = np.concatenate(smoothgrad_list) if smoothgrad_list else None
+        smoothgrad_sq_values = (
+            np.concatenate(smoothgrad_sq_list) if smoothgrad_sq_list else None
+        )
+        vargrad_values = np.concatenate(vargrad_list) if vargrad_list else None
 
         num_classes = output_list.shape[-1]
 
         # Helper to organize by class
         def _by_class(arr, labels, n_classes):
+            if arr is None:
+                return {}
             return {i: arr[np.where(labels == i)] for i in range(n_classes)}
 
         return EvalRecord(
             label_list,
             output_list,
-            _by_class(gradient_list, label_list, num_classes),
-            _by_class(gradient_input_list, label_list, num_classes),
-            _by_class(smoothgrad_list, label_list, num_classes),
-            _by_class(smoothgrad_sq_list, label_list, num_classes),
-            _by_class(vargrad_list, label_list, num_classes),
+            _by_class(gradient_values, label_list, num_classes),
+            _by_class(gradient_input_values, label_list, num_classes),
+            _by_class(smoothgrad_values, label_list, num_classes),
+            _by_class(smoothgrad_sq_values, label_list, num_classes),
+            _by_class(vargrad_values, label_list, num_classes),
         )

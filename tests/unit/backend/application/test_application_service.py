@@ -1839,11 +1839,9 @@ def test_saliency_command_can_configure_params():
     assert result.diagnostics["action"] == "configure"
     assert result.diagnostics["saliency_configured"] is True
     assert result.diagnostics["saliency_available"] is False
-    assert set(result.diagnostics["params"]) == {
-        "SmoothGrad",
-        "SmoothGrad_Squared",
-        "VarGrad",
-    }
+    params = result.diagnostics["params"]
+    assert params["_methods"] == ["Gradient"]
+    assert {"SmoothGrad", "SmoothGrad_Squared", "VarGrad"}.issubset(params)
 
 
 def test_saliency_command_normalizes_flat_method_params():
@@ -1865,6 +1863,7 @@ def test_saliency_command_normalizes_flat_method_params():
     assert result.ok is True
     assert result.diagnostics["requested_method"] == "Gradient"
     params = result.diagnostics["params"]
+    assert params["_methods"] == ["Gradient"]
     for method in ("SmoothGrad", "SmoothGrad_Squared", "VarGrad"):
         assert params[method]["nt_samples"] == 2
         assert params[method]["nt_samples_batch_size"] == 1

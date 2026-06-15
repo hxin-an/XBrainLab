@@ -27,6 +27,11 @@ _DEFAULT_SALIENCY_PARAMS: dict[str, Any] = {
     "stdevs": 1.0,
 }
 _SUPPORTED_SALIENCY_PARAM_KEYS = ("SmoothGrad", "SmoothGrad_Squared", "VarGrad")
+_RECOMMENDED_SALIENCY_METHODS = ("Gradient", "Gradient * Input")
+_ALL_SALIENCY_METHODS = (
+    *_RECOMMENDED_SALIENCY_METHODS,
+    *_SUPPORTED_SALIENCY_PARAM_KEYS,
+)
 
 
 class AnalysisCommandService:
@@ -246,12 +251,21 @@ class AnalysisCommandService:
     def _normalize_saliency_params(
         method: str | None,
         params: dict[str, Any] | None,
-    ) -> tuple[dict[str, dict[str, Any]], str | None]:
+    ) -> tuple[dict[str, Any], str | None]:
         """Normalize agent-friendly saliency args to evaluator-required keys."""
         raw = dict(params or {})
         requested_method = str(raw.pop("method", method or "") or "").strip() or None
+        profile = str(raw.pop("profile", "") or "").strip().lower()
+        explicit_methods = AnalysisCommandService._normalize_saliency_methods(
+            raw.pop("methods", None),
+        )
+        selected_methods = AnalysisCommandService._select_saliency_methods(
+            requested_method=requested_method,
+            profile=profile,
+            explicit_methods=explicit_methods,
+        )
         flat_params: dict[str, Any] = {}
-        normalized = {
+        normalized: dict[str, Any] = {
             key: dict(_DEFAULT_SALIENCY_PARAMS)
             for key in _SUPPORTED_SALIENCY_PARAM_KEYS
         }
@@ -261,9 +275,46 @@ class AnalysisCommandService:
             elif key not in _SUPPORTED_SALIENCY_PARAM_KEYS:
                 flat_params[key] = value
         if flat_params:
-            for method_params in normalized.values():
+            for key in _SUPPORTED_SALIENCY_PARAM_KEYS:
+                method_params = normalized[key]
                 method_params.update(flat_params)
+        normalized["_methods"] = selected_methods
+        if profile:
+            normalized["_profile"] = profile
         return normalized, requested_method
+
+    @staticmethod
+    def _normalize_saliency_methods(value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            items = [value]
+        elif isinstance(value, (list, tuple, set)):
+            items = list(value)
+        else:
+            return []
+
+        methods = []
+        for item in items:
+            method = str(item).strip()
+            if method in _ALL_SALIENCY_METHODS and method not in methods:
+                methods.append(method)
+        return methods
+
+    @staticmethod
+    def _select_saliency_methods(
+        *,
+        requested_method: str | None,
+        profile: str,
+        explicit_methods: list[str],
+    ) -> list[str]:
+        if explicit_methods:
+            return explicit_methods
+        if profile == "recommended":
+            return list(_RECOMMENDED_SALIENCY_METHODS)
+        if requested_method in _ALL_SALIENCY_METHODS:
+            return [requested_method]
+        return list(_ALL_SALIENCY_METHODS)
 
     @staticmethod
     def _saliency_configuration_reasons(

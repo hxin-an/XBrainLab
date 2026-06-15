@@ -167,3 +167,40 @@ def test_eval_model(dataloader, y, full_y):
         ]
         for g, expected_shape in zip(called_gradient, expected_list, strict=False):
             assert called_gradient[g].shape == expected_shape
+
+
+def test_eval_model_respects_selected_saliency_methods(dataloader, y, full_y):
+    model = FakeModel()
+    model.eval()
+
+    saliency_params = {
+        "_methods": ["Gradient", "Gradient * Input"],
+    }
+
+    with (
+        patch(
+            "XBrainLab.backend.training.record.eval.EvalRecord.__init__",
+            return_value=None,
+        ) as eval_record_mock,
+        patch.object(model, "eval") as eval_model_mock,
+    ):
+        result = Evaluator.evaluate_with_saliency(model, dataloader, saliency_params)
+        eval_model_mock.assert_called()
+
+        assert isinstance(result, EvalRecord)
+        args = eval_record_mock.call_args[0]
+        called_y = args[0]
+        called_output = args[1]
+        called_gradient = args[2]
+        called_gradient_input = args[3]
+        called_smoothgrad = args[4]
+        called_smoothgrad_sq = args[5]
+        called_vargrad = args[6]
+
+        assert np.array_equal(called_y, y)
+        assert np.array_equal(called_output.argmax(axis=-1), full_y)
+        assert len(called_gradient) == CLASS_NUM
+        assert len(called_gradient_input) == CLASS_NUM
+        assert called_smoothgrad == {}
+        assert called_smoothgrad_sq == {}
+        assert called_vargrad == {}

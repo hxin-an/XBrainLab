@@ -105,6 +105,8 @@ def test_visualization_panel_layout_and_sidebar(qtbot):
     assert panel.tabs.count() == 4
     assert panel.plan_combo.itemText(0) == "Select a plan"
     assert panel.method_combo.count() >= 3
+    assert panel.saliency_action_bar.isHidden()
+    assert panel.compute_saliency_btn.text() == "Compute Saliency"
     assert panel.sidebar.btn_montage.text() == "Set Montage"
     assert panel.sidebar.btn_saliency.text() == "Saliency Settings"
     assert panel.sidebar.btn_export.isHidden()
@@ -439,9 +441,82 @@ def test_visualization_panel_unconfigured_saliency_shows_actionable_message(
 
     current_widget.update_plot.assert_not_called()
     current_widget.show_message.assert_called_with(
-        "Saliency has not been computed for this run. "
-        "Use Saliency Settings to compute it."
+        "Saliency has not been computed for this run."
     )
+    assert panel.saliency_action_bar.isVisibleTo(panel)
+    assert panel.compute_saliency_btn.isEnabled()
+
+
+def test_visualization_panel_compute_button_uses_recommended_profile(
+    qtbot,
+    monkeypatch,
+):
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    service_trainer = _make_trainer("EEGNet", repeats=1)
+    service_trainer.get_plans.return_value[
+        0
+    ].get_eval_record.return_value = _make_eval_record_without_saliency()
+    async_commands = []
+
+    def fake_execute(_panel, command, **_kwargs):
+        if isinstance(command, SaliencyCommand):
+            return CommandResult.success_result(
+                command_name="saliency",
+                message="Saliency parameters are not configured yet.",
+                state={},
+                changed_state=ChangedState(),
+                diagnostics={
+                    "payload_type": "saliency_summary",
+                    "saliency_available": False,
+                    "configure_available": True,
+                },
+            )
+        if isinstance(command, VisualizeCommand):
+            return CommandResult.success_result(
+                command_name="visualize",
+                message="Visualization summary ready.",
+                state={},
+                changed_state=ChangedState(),
+                diagnostics={
+                    "payload_type": "visualization_summary",
+                    "available": True,
+                    "trainer_objects": [service_trainer],
+                },
+            )
+        raise AssertionError(f"unexpected command: {command!r}")
+
+    def fake_execute_async(_panel, command, *, on_result, **_kwargs):
+        del on_result
+        async_commands.append(command)
+        return True
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command",
+        fake_execute,
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
+        fake_execute_async,
+    )
+
+    panel, _ctrl = _make_panel(qtbot, parent=RealMainWindow())
+    panel.update_panel()
+
+    panel.compute_saliency_btn.click()
+
+    assert len(async_commands) == 1
+    command = async_commands[0]
+    assert isinstance(command, SaliencyCommand)
+    assert command.method == "Gradient"
+    assert command.params == {
+        "profile": "recommended",
+        "methods": ["Gradient", "Gradient * Input"],
+    }
+    assert panel.compute_saliency_btn.text() == "Computing..."
 
 
 def test_visualization_panel_missing_saliency_worker_shows_actionable_message(
@@ -509,9 +584,9 @@ def test_visualization_panel_missing_saliency_worker_shows_actionable_message(
 
     current_widget.update_plot.assert_not_called()
     current_widget.show_message.assert_called_with(
-        "Saliency has not been computed for this run. "
-        "Use Saliency Settings to compute it."
+        "Saliency has not been computed for this run."
     )
+    assert panel.saliency_action_bar.isVisibleTo(panel)
 
 
 def test_visualization_panel_preserves_selection_on_training_stopped(qtbot):

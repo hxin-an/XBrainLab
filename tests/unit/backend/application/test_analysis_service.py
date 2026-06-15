@@ -328,6 +328,7 @@ def test_analysis_service_visualize_saliency_and_montage_handlers() -> None:
     assert "saliency map" in visualize["available_views"]
     assert saliency["payload_type"] == "saliency_configuration"
     assert saliency["requested_method"] == "Gradient"
+    assert saliency["params"]["_methods"] == ["Gradient"]
     assert saliency["params"]["SmoothGrad"]["nt_samples"] == 2
     assert visualization.params is not None
     assert preprocess.applied_montage == (["Cz"], [(0.0, 0.0, 0.0)])
