@@ -15686,3 +15686,54 @@
     preflight / unavailable-state because the approved model cache is missing.
   - Historical records can still reference deleted artifact paths; those are records, not current
     evidence entrances.
+
+### 2026-06-15 Data Import skip-label state sweep
+
+- scope：
+  - Exploratory same-class sweep for Data Import wizard label-state bugs, focused on
+    `Continue without labels`, duplicate label-source reloads, recipe replay, and
+    headless/MCP choices that could otherwise disagree with the UI.
+- 做了什麼：
+  - Fixed the Load Labels path where selecting an already included auto-detected label source after
+    `Continue without labels` left the recipe with both `skip_labels` and active label choices.
+  - Made Match Labels source selection clear the skip state, including the user confirming the
+    currently selected source.
+  - Kept metadata and selected EEG choices when labels are skipped, while suppressing only
+    label-specific choices such as class maps, event roles, label carrier selections, and label
+    remaps.
+  - Normalized import recipes so `skip_labels=True` suppresses active label sources/carriers,
+    label plans, label imports, class maps, event roles, internal event selections, and run event
+    mappings during build, load, and replay.
+  - Hardened `build_interpretation_candidate()` so direct UI/headless/MCP choices cannot combine
+    `skip_labels=True` with embedded events, external carriers, class maps, or event-role
+    semantics.
+  - Added regression coverage for skip-label result choices, metadata preservation, duplicate
+    auto-detected label reloads, recipe replay, recipe reload scan behavior, and candidate
+    recipe-trace normalization.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `82 passed`.
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_*.py -q`
+    -> `95 passed`.
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_service.py -q`
+    -> `11 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration/ui/test_data_import_wizard_runtime.py -q`
+    -> `1 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration/ui/test_data_import_wizard_format_matrix.py -q`
+    -> `9 passed`.
+  - `poetry run ruff check ...changed Data Import files...` -> `All checks passed!`.
+  - `poetry run basedpyright ...changed product/backend files...` -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python scripts/dev/fetch_public_eeg_fixtures.py` -> fixtures present / validated.
+  - `poetry run python scripts/dev/report_dataset_validation_matrix.py --strict --format json`
+    -> strict validation `ok: true`.
+  - `poetry run python scripts/dev/report_data_interpretation_format_matrix.py --format json`
+    -> all expected capabilities observed and matched.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration/io/test_io_integration.py tests/integration/io/test_public_bids_fixture.py tests/integration/pipeline/test_public_cross_source_training_smoke.py -q`
+    -> `36 passed`.
+  - `poetry run python scripts/dev/run_public_cross_source_training_smoke.py --format json --strict`
+    -> `4 passed`, `0 missing`, `0 failed`.
+- 不能宣稱：
+  - This is a focused Data Import label-state sweep, not proof that every UI panel is bug-free.
+  - It does not claim full BIDS validator compliance, arbitrary proprietary format support, or
+    scientific model-quality evidence.
+  - Human Windows click-through remains separate from the offscreen and scripted gates above.

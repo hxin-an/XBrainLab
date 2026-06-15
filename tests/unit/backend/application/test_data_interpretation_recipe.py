@@ -26,6 +26,9 @@ def test_import_recipe_from_dict_rehydrates_metadata_and_mappings():
                 "selected_scope": {"events_files": ["/data/events.tsv"]},
             },
             "skip_labels": True,
+            "label_sources": ["/external-labels"],
+            "label_carriers": ["/data/events.tsv"],
+            "label_carrier_plan": [{"path": "/data/events.tsv"}],
             "label_carrier": "external_files",
             "excluded_label_carriers": ["/data/rejected_events.tsv"],
             "metadata": [
@@ -54,13 +57,14 @@ def test_import_recipe_from_dict_rehydrates_metadata_and_mappings():
         "root": "/data",
         "selected_scope": {"events_files": ["/data/events.tsv"]},
     }
-    assert recipe.label_carrier == "external_files"
-    assert recipe.excluded_label_carriers == ["/data/rejected_events.tsv"]
-    assert recipe.event_roles == {"trial_type": "class cue"}
-    assert recipe.class_map == {"left": "0"}
-    assert recipe.run_event_mappings == {
-        "S001R04.edf": {"T1": "left fist", "T2": "right fist"},
-    }
+    assert recipe.label_sources == []
+    assert recipe.label_carriers == []
+    assert recipe.label_carrier_plan == []
+    assert recipe.label_carrier == ""
+    assert recipe.excluded_label_carriers == []
+    assert recipe.event_roles == {}
+    assert recipe.class_map == {}
+    assert recipe.run_event_mappings == {}
 
 
 def test_build_import_recipe_preserves_applied_trace_and_writes_json(tmp_path):
@@ -102,20 +106,22 @@ def test_build_import_recipe_preserves_applied_trace_and_writes_json(tmp_path):
     loaded = load_import_recipe(str(target))
 
     assert target.read_bytes().endswith(b"\n")
-    assert loaded.label_sources == ["/external-labels"]
+    assert loaded.label_sources == []
     assert loaded.bids == {
         "root": "/data",
         "selected_scope": {"events_files": ["/data/events.tsv"]},
     }
     assert loaded.skip_labels is True
-    assert loaded.label_carrier == "external_files"
-    assert loaded.excluded_label_carriers == ["/data/rejected_events.tsv"]
+    assert loaded.label_carriers == []
+    assert loaded.label_carrier_plan == []
+    assert loaded.label_carrier == ""
+    assert loaded.excluded_label_carriers == []
+    assert loaded.event_roles == {}
+    assert loaded.class_map == {}
     assert loaded.recipe_trace == ["scan", "apply", "recipe:recipe-1"]
     assert loaded.warnings == ["Review labels."]
-    assert loaded.label_imports == [{"status": "applied"}]
-    assert loaded.run_event_mappings == {
-        "S001R04.edf": {"T1": "left fist", "T2": "right fist"},
-    }
+    assert loaded.label_imports == []
+    assert loaded.run_event_mappings == {}
 
 
 def test_choices_from_import_recipe_recreates_review_choices():
@@ -180,7 +186,7 @@ def test_choices_from_import_recipe_recreates_review_choices():
         run_event_mappings={
             "S001R04.edf": {"T1": "left fist", "T2": "right fist"},
         },
-        skip_labels=True,
+        skip_labels=False,
         label_carrier="external_files",
         excluded_label_carriers=["/data/rejected_events.tsv"],
     )
@@ -190,7 +196,6 @@ def test_choices_from_import_recipe_recreates_review_choices():
     assert choices["recipe_id"] == "recipe-1"
     assert choices["selected_eeg_files"] == ["/data/sub-01.fif"]
     assert choices["label_sources"] == ["/external-labels"]
-    assert choices["skip_labels"] is True
     assert choices["label_carrier"] == "external_files"
     assert choices["excluded_label_carriers"] == ["/data/rejected_events.tsv"]
     assert choices["required_label_carriers"] == ["/data/events.tsv"]
@@ -212,6 +217,80 @@ def test_choices_from_import_recipe_recreates_review_choices():
     assert choices["run_event_mappings"] == {
         "S001R04.edf": {"T1": "left fist", "T2": "right fist"},
     }
+
+
+def test_choices_from_import_recipe_skip_labels_suppresses_label_choices():
+    recipe = ImportRecipe(
+        recipe_id="recipe-1",
+        interpretation_id="interp-1",
+        source_path="/data",
+        source_kind="folder",
+        selected_eeg_files=["/data/sub-01.fif"],
+        label_sources=["/external-labels"],
+        label_carriers=["/data/events.tsv"],
+        label_carrier_plan=[{"path": "/data/events.tsv"}],
+        metadata=[
+            FileMetadataResolution(
+                file="/data/sub-01.fif",
+                subject=MetadataFieldResolution(
+                    field="subject",
+                    value="S01",
+                    source="user_override",
+                    decision="safe",
+                    reason="confirmed",
+                    override="S01",
+                ),
+                session=MetadataFieldResolution(
+                    field="session",
+                    value=None,
+                    source="missing",
+                    decision="needs_confirmation",
+                    reason="missing",
+                ),
+                task=MetadataFieldResolution(
+                    field="task",
+                    value=None,
+                    source="missing",
+                    decision="needs_confirmation",
+                    reason="missing",
+                ),
+                run=MetadataFieldResolution(
+                    field="run",
+                    value=None,
+                    source="missing",
+                    decision="needs_confirmation",
+                    reason="missing",
+                ),
+            )
+        ],
+        event_roles={"trial_type": "class cue"},
+        class_map={"1": "left", "2": "right"},
+        run_event_mappings={
+            "S001R04.edf": {"T1": "left fist", "T2": "right fist"},
+        },
+        skip_labels=True,
+        label_carrier="external_files",
+        excluded_label_carriers=["/data/rejected_events.tsv"],
+    )
+
+    choices = choices_from_import_recipe(recipe)
+
+    assert choices["recipe_id"] == "recipe-1"
+    assert choices["selected_eeg_files"] == ["/data/sub-01.fif"]
+    assert choices["metadata_overrides"] == {"sub-01.fif": {"subject": "S01"}}
+    assert choices["skip_labels"] is True
+    for key in (
+        "label_sources",
+        "label_carrier",
+        "excluded_label_carriers",
+        "required_label_carriers",
+        "label_carrier_choices",
+        "event_roles",
+        "class_map",
+        "internal_event_selection",
+        "run_event_mappings",
+    ):
+        assert key not in choices
 
 
 def test_choices_from_import_recipe_preserves_event_order_targets():

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, cast
 
@@ -11,6 +12,7 @@ from XBrainLab.backend.application.commands import (
     ApplyInterpretationCommand,
     LabelImportPlan,
     PreviewInterpretationCommand,
+    ReloadInterpretationRecipeCommand,
     SaveInterpretationRecipeCommand,
     ScanSourceCommand,
     ValidateInterpretationCommand,
@@ -233,6 +235,54 @@ def test_scan_preview_includes_labels_from_external_folder(
     )
     assert snapshot.label_sources == [str(label_dir.resolve())]
     assert snapshot.action_items
+
+
+def test_reload_skip_label_recipe_does_not_rescan_external_label_sources(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "eeg"
+    label_dir = tmp_path / "labels"
+    source_dir.mkdir()
+    label_dir.mkdir()
+    eeg_path = source_dir / "sub-01_task-mi_raw.fif"
+    label_path = label_dir / "sub-01_task-mi_events.tsv"
+    recipe_path = tmp_path / "skip-labels-recipe.json"
+    eeg_path.write_bytes(b"not loaded during scan")
+    label_path.write_text("onset\ttrial_type\n0.0\tleft\n", encoding="utf-8")
+    recipe_path.write_text(
+        json.dumps(
+            {
+                "recipe_id": "recipe-1",
+                "interpretation_id": "interp-1",
+                "source_path": str(source_dir),
+                "source_kind": "folder",
+                "selected_eeg_files": [str(eeg_path)],
+                "skip_labels": True,
+                "label_sources": [str(label_dir)],
+                "label_carriers": [str(label_path)],
+                "label_carrier_plan": [{"path": str(label_path)}],
+                "label_carrier": "external_files",
+                "event_roles": {"trial_type": "class cue"},
+                "class_map": {"left": "left hand"},
+            },
+        ),
+        encoding="utf-8",
+    )
+    service, _dataset = _service()
+
+    _message, payload = _expect_payload(
+        service.handle_reload_interpretation_recipe(
+            ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path)),
+        ),
+    )
+
+    assert payload["scan_result"]["label_sources"] == []
+    assert payload["scan_result"]["label_carriers"] == []
+    assert payload["candidate"]["label_sources"] == []
+    assert payload["candidate"]["label_carriers"] == []
+    assert payload["candidate"]["class_map"] == {}
+    assert payload["candidate"]["choices"]["skip_labels"] is True
+    assert "label_carrier" not in payload["candidate"]["choices"]
 
 
 def test_apply_interpretation_imports_only_preview_selected_eeg_files(

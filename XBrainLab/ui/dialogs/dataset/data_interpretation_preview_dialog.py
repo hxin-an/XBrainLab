@@ -996,7 +996,10 @@ class DataInterpretationPreviewDialog(
         row.addStretch(1)
         layout.addLayout(row)
         self.label_source_mode_combo.currentIndexChanged.connect(
-            self._refresh_label_source_mode
+            self._handle_label_source_mode_changed
+        )
+        self.label_source_mode_combo.activated.connect(
+            self._handle_label_source_mode_changed
         )
 
     def _label_source_mode_choices(self) -> list[tuple[str, str]]:
@@ -1112,6 +1115,14 @@ class DataInterpretationPreviewDialog(
         if hasattr(self, "rule_status_label"):
             self.rule_status_label.setText(self._label_rule_status_text())
         self._sync_scroll_policy()
+
+    def _handle_label_source_mode_changed(self, *_args: Any) -> None:
+        if self._skip_labels:
+            self._skip_labels = False
+            if hasattr(self, "label_sources_label"):
+                self.label_sources_label.setText("")
+                self.label_sources_label.setVisible(False)
+        self._refresh_label_source_mode()
 
     def _refresh_event_detail_view(self) -> None:
         if not hasattr(self, "event_tree") or not hasattr(self, "event_layout"):
@@ -1984,6 +1995,9 @@ class DataInterpretationPreviewDialog(
                 continue
             if self._is_duplicate_label_source(text):
                 skipped_duplicate = True
+                if self._skip_labels:
+                    self._skip_labels = False
+                    changed = True
                 continue
             self._extra_label_sources.append(text)
             changed = True
@@ -3341,6 +3355,11 @@ class DataInterpretationPreviewDialog(
         metadata_overrides = self._metadata_overrides()
         if metadata_overrides:
             choices["metadata_overrides"] = metadata_overrides
+        eeg_file_remap = self._eeg_file_remap_choices()
+        if eeg_file_remap:
+            choices["eeg_file_remap"] = eeg_file_remap
+        if self._skip_labels:
+            return choices
         class_map = self._class_map_overrides()
         if class_map:
             choices["class_map"] = class_map
@@ -3349,9 +3368,6 @@ class DataInterpretationPreviewDialog(
             event_roles.update(self._internal_event_role_overrides())
         if event_roles:
             choices["event_roles"] = event_roles
-        eeg_file_remap = self._eeg_file_remap_choices()
-        if eeg_file_remap:
-            choices["eeg_file_remap"] = eeg_file_remap
         if self._excluded_label_carriers:
             choices["excluded_label_carriers"] = list(self._excluded_label_carriers)
         label_carrier_source = self._label_carrier_source_choice()
@@ -3367,6 +3383,8 @@ class DataInterpretationPreviewDialog(
         return choices
 
     def _label_carrier_source_choice(self) -> str:
+        if self._skip_labels:
+            return ""
         if not hasattr(self, "label_source_mode_combo"):
             return ""
         mode = self._label_source_mode()

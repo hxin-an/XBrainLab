@@ -577,6 +577,12 @@ def test_build_interpretation_candidate_skip_labels_suppresses_external_carriers
         ),
         choices={
             "skip_labels": True,
+            "label_carrier": "embedded_events",
+            "event_roles": {"internal_events": "event role candidates"},
+            "class_map": {"769": "left hand"},
+            "run_event_mappings": {
+                "S001R04.edf": {"T1": "left fist", "T2": "right fist"},
+            },
             "required_label_carriers": ["/data/missing_events.tsv"],
             "label_carrier_choices": {
                 "/data/missing_events.tsv": {
@@ -590,9 +596,17 @@ def test_build_interpretation_candidate_skip_labels_suppresses_external_carriers
     assert candidate.blocked_reasons == []
     assert candidate.label_carriers == []
     assert candidate.label_carrier_plan == []
-    assert "label_carrier" not in candidate.event_roles
+    assert candidate.event_roles == {}
+    assert candidate.class_map == {}
+    assert candidate.internal_event_preview == {}
+    assert candidate.internal_event_selection == {}
+    assert candidate.run_event_mappings == {}
     assert candidate.confirmation_items == []
     assert "choices:skip_labels" in candidate.recipe_trace
+    assert "choices:label_carrier" not in candidate.recipe_trace
+    assert "choices:class_map" not in candidate.recipe_trace
+    assert "choices:event_roles" not in candidate.recipe_trace
+    assert "choices:label_carriers" not in candidate.recipe_trace
 
 
 def test_build_interpretation_candidate_remaps_saved_label_carrier_choices(tmp_path):

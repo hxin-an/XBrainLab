@@ -87,8 +87,13 @@ def build_interpretation_candidate(
     warnings = list(scan.warnings)
     confirmation_items: list[str] = []
     event_roles: dict[str, str] = {}
-    class_map: dict[str, str] = _string_mapping(choices.get("class_map"))
-    run_event_mappings = _nested_string_mapping(choices.get("run_event_mappings"))
+    skip_labels = bool(choices.get("skip_labels"))
+    class_map: dict[str, str] = (
+        {} if skip_labels else _string_mapping(choices.get("class_map"))
+    )
+    run_event_mappings = (
+        {} if skip_labels else _nested_string_mapping(choices.get("run_event_mappings"))
+    )
     class_map_source = "user_choices" if class_map else ""
     metadata = _metadata_for_selected_files(
         scan.metadata,
@@ -103,11 +108,12 @@ def build_interpretation_candidate(
         ),
     )
     label_carrier_source = _label_carrier_source_choice(choices)
-    skip_labels = bool(choices.get("skip_labels"))
     use_external_label_carriers = (
         label_carrier_source != "embedded_events" and not skip_labels
     )
-    excluded_label_carriers = _string_list(choices.get("excluded_label_carriers"))
+    excluded_label_carriers = (
+        [] if skip_labels else _string_list(choices.get("excluded_label_carriers"))
+    )
     active_label_carriers = (
         _exclude_paths(scan.label_carriers, excluded_label_carriers)
         if use_external_label_carriers
@@ -119,9 +125,13 @@ def build_interpretation_candidate(
         scan.bids,
         bids,
     )
-    label_carrier_choices = _remapped_label_carrier_choices(
-        choices.get("label_carrier_choices"),
-        choices.get("label_carrier_remap"),
+    label_carrier_choices = (
+        {}
+        if skip_labels
+        else _remapped_label_carrier_choices(
+            choices.get("label_carrier_choices"),
+            choices.get("label_carrier_remap"),
+        )
     )
     label_carrier_plan = _build_label_carrier_plan(
         active_label_carriers,
@@ -141,7 +151,9 @@ def build_interpretation_candidate(
             "before applying.",
         )
     internal_event_preview: dict[str, Any] = {}
-    if scan.bids.get("is_bids"):
+    if skip_labels:
+        internal_event_selection: dict[str, Any] = {}
+    elif scan.bids.get("is_bids"):
         event_roles.update(
             {
                 "onset": "time anchor",
@@ -154,6 +166,21 @@ def build_interpretation_candidate(
                 "BIDS-like source has no events.tsv carrier; supervised labels "
                 "may be limited.",
             )
+        event_roles.update(_string_mapping(choices.get("event_roles")))
+        explicit_internal_event_selection = isinstance(
+            choices.get("internal_event_selection"),
+            dict,
+        ) and bool(choices.get("internal_event_selection"))
+        internal_event_selection = (
+            _internal_event_selection(
+                internal_event_preview,
+                choices.get("internal_event_selection"),
+                event_roles,
+            )
+            if label_carrier_source == "embedded_events"
+            or explicit_internal_event_selection
+            else {}
+        )
     else:
         extensions = {Path(item).suffix.lower() for item in selected_files}
         internal_event_preview = _internal_events.build_internal_event_preview(
@@ -181,22 +208,21 @@ def build_interpretation_candidate(
                 "Confirm which events are trial anchors, class cues, responses, "
                 "artifacts, or boundaries.",
             )
-
-    event_roles.update(_string_mapping(choices.get("event_roles")))
-    explicit_internal_event_selection = isinstance(
-        choices.get("internal_event_selection"),
-        dict,
-    ) and bool(choices.get("internal_event_selection"))
-    internal_event_selection = (
-        _internal_event_selection(
-            internal_event_preview,
+        event_roles.update(_string_mapping(choices.get("event_roles")))
+        explicit_internal_event_selection = isinstance(
             choices.get("internal_event_selection"),
-            event_roles,
+            dict,
+        ) and bool(choices.get("internal_event_selection"))
+        internal_event_selection = (
+            _internal_event_selection(
+                internal_event_preview,
+                choices.get("internal_event_selection"),
+                event_roles,
+            )
+            if label_carrier_source == "embedded_events"
+            or explicit_internal_event_selection
+            else {}
         )
-        if label_carrier_source == "embedded_events"
-        or explicit_internal_event_selection
-        else {}
-    )
     if label_carrier_source == "embedded_events" and not class_map:
         selection_class_map = _string_mapping(internal_event_selection.get("class_map"))
         if selection_class_map:
@@ -754,36 +780,37 @@ def _paths_missing_from_scan(required: list[str], scanned: list[str]) -> list[st
 
 def _choice_recipe_trace(choices: dict[str, Any]) -> list[str]:
     traces: list[str] = []
+    skip_labels = bool(choices.get("skip_labels"))
     metadata_overrides = choices.get("metadata_overrides")
     if isinstance(metadata_overrides, dict) and metadata_overrides:
         traces.append("choices:metadata_overrides")
-    if _string_mapping(choices.get("class_map")):
+    if not skip_labels and _string_mapping(choices.get("class_map")):
         traces.append("choices:class_map")
-    if _string_mapping(choices.get("event_roles")):
+    if not skip_labels and _string_mapping(choices.get("event_roles")):
         traces.append("choices:event_roles")
     use_external_label_carriers = (
-        _label_carrier_source_choice(choices) != "embedded_events"
+        _label_carrier_source_choice(choices) != "embedded_events" and not skip_labels
     )
     if use_external_label_carriers and (
         _normalize_label_carrier_choices(choices.get("label_carrier_choices"))
         or _string_list(choices.get("required_label_carriers"))
     ):
         traces.append("choices:label_carriers")
-    if _label_carrier_source_choice(choices):
+    if not skip_labels and _label_carrier_source_choice(choices):
         traces.append("choices:label_carrier")
-    if _string_list(choices.get("label_sources")):
+    if not skip_labels and _string_list(choices.get("label_sources")):
         traces.append("choices:label_sources")
-    if _string_list(choices.get("excluded_label_carriers")):
+    if not skip_labels and _string_list(choices.get("excluded_label_carriers")):
         traces.append("choices:excluded_label_carriers")
-    if bool(choices.get("skip_labels")):
+    if skip_labels:
         traces.append("choices:skip_labels")
     if _string_mapping(choices.get("eeg_file_remap")):
         traces.append("choices:eeg_file_remap")
-    if _string_mapping(choices.get("label_carrier_remap")):
+    if not skip_labels and _string_mapping(choices.get("label_carrier_remap")):
         traces.append("choices:label_carrier_remap")
-    if _nested_string_mapping(choices.get("run_event_mappings")):
+    if not skip_labels and _nested_string_mapping(choices.get("run_event_mappings")):
         traces.append("choices:run_event_mappings")
-    if isinstance(choices.get("internal_event_selection"), dict):
+    if not skip_labels and isinstance(choices.get("internal_event_selection"), dict):
         traces.append("choices:internal_event_selection")
     return traces
 

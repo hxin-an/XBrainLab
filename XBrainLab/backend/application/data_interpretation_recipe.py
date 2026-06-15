@@ -67,6 +67,7 @@ def import_recipe_from_dict(payload: dict[str, Any]) -> ImportRecipe:
         file_metadata_from_dict(item)
         for item in cast(list[dict[str, Any]], payload.get("metadata", []))
     ]
+    skip_labels = bool(payload.get("skip_labels", False))
     return ImportRecipe(
         recipe_id=str(payload.get("recipe_id", "recipe-reloaded")),
         interpretation_id=str(payload.get("interpretation_id", "")),
@@ -75,12 +76,18 @@ def import_recipe_from_dict(payload: dict[str, Any]) -> ImportRecipe:
         selected_eeg_files=[
             str(item) for item in payload.get("selected_eeg_files", [])
         ],
-        label_sources=[str(item) for item in payload.get("label_sources", [])],
-        label_carriers=[str(item) for item in payload.get("label_carriers", [])],
+        label_sources=[]
+        if skip_labels
+        else [str(item) for item in payload.get("label_sources", [])],
+        label_carriers=[]
+        if skip_labels
+        else [str(item) for item in payload.get("label_carriers", [])],
         bids=dict(payload.get("bids") or {})
         if isinstance(payload.get("bids"), dict)
         else {},
-        label_carrier_plan=[
+        label_carrier_plan=[]
+        if skip_labels
+        else [
             dict(item)
             for item in payload.get("label_carrier_plan", [])
             if isinstance(item, dict)
@@ -91,20 +98,26 @@ def import_recipe_from_dict(payload: dict[str, Any]) -> ImportRecipe:
             for item in payload.get("format_capabilities", [])
             if isinstance(item, dict)
         ],
-        skip_labels=bool(payload.get("skip_labels", False)),
-        label_carrier=str(payload.get("label_carrier", "")),
-        excluded_label_carriers=[
-            str(item) for item in payload.get("excluded_label_carriers", [])
-        ],
+        skip_labels=skip_labels,
+        label_carrier="" if skip_labels else str(payload.get("label_carrier", "")),
+        excluded_label_carriers=[]
+        if skip_labels
+        else [str(item) for item in payload.get("excluded_label_carriers", [])],
         validation_decision=str(payload.get("validation_decision", "safe")),
         confirmations=[str(item) for item in payload.get("confirmations", [])],
-        event_roles=_string_mapping(payload.get("event_roles")),
-        class_map=_string_mapping(payload.get("class_map")),
-        internal_event_selection=dict(payload.get("internal_event_selection") or {})
+        event_roles={} if skip_labels else _string_mapping(payload.get("event_roles")),
+        class_map={} if skip_labels else _string_mapping(payload.get("class_map")),
+        internal_event_selection={}
+        if skip_labels
+        else dict(payload.get("internal_event_selection") or {})
         if isinstance(payload.get("internal_event_selection"), dict)
         else {},
-        run_event_mappings=_nested_string_mapping(payload.get("run_event_mappings")),
-        label_imports=[
+        run_event_mappings={}
+        if skip_labels
+        else _nested_string_mapping(payload.get("run_event_mappings")),
+        label_imports=[]
+        if skip_labels
+        else [
             dict(item)
             for item in payload.get("label_imports", [])
             if isinstance(item, dict)
@@ -121,35 +134,46 @@ def build_import_recipe(
     warnings: list[str],
 ) -> ImportRecipe:
     """Build a recipe from an applied interpretation-like object."""
+    skip_labels = bool(getattr(applied, "skip_labels", False))
     return ImportRecipe(
         recipe_id=recipe_id,
         interpretation_id=str(applied.interpretation_id),
         source_path=str(applied.source_path),
         source_kind=str(applied.source_kind),
         selected_eeg_files=list(applied.loaded_files),
-        label_sources=list(getattr(applied, "label_sources", [])),
-        label_carriers=list(applied.label_carriers),
+        label_sources=[]
+        if skip_labels
+        else list(getattr(applied, "label_sources", [])),
+        label_carriers=[] if skip_labels else list(applied.label_carriers),
         bids=dict(getattr(applied, "bids", {}) or {}),
-        label_carrier_plan=[dict(item) for item in applied.label_carrier_plan],
+        label_carrier_plan=[]
+        if skip_labels
+        else [dict(item) for item in applied.label_carrier_plan],
         metadata=list(applied.metadata),
         format_capabilities=[dict(item) for item in applied.format_capabilities],
-        skip_labels=bool(getattr(applied, "skip_labels", False)),
-        label_carrier=str(getattr(applied, "label_carrier", "")),
+        skip_labels=skip_labels,
+        label_carrier="" if skip_labels else str(getattr(applied, "label_carrier", "")),
         excluded_label_carriers=[
             str(item) for item in getattr(applied, "excluded_label_carriers", [])
-        ],
+        ]
+        if not skip_labels
+        else [],
         validation_decision=str(applied.validation_decision),
         confirmations=list(applied.confirmations),
-        event_roles=dict(applied.event_roles),
-        class_map=dict(applied.class_map),
-        internal_event_selection=dict(
-            getattr(applied, "internal_event_selection", {}) or {}
-        ),
-        run_event_mappings={
+        event_roles={} if skip_labels else dict(applied.event_roles),
+        class_map={} if skip_labels else dict(applied.class_map),
+        internal_event_selection={}
+        if skip_labels
+        else dict(getattr(applied, "internal_event_selection", {}) or {}),
+        run_event_mappings={}
+        if skip_labels
+        else {
             str(key): dict(value)
             for key, value in getattr(applied, "run_event_mappings", {}).items()
         },
-        label_imports=[dict(item) for item in applied.label_imports],
+        label_imports=[]
+        if skip_labels
+        else [dict(item) for item in applied.label_imports],
         warnings=list(warnings),
         recipe_trace=[*applied.recipe_trace, f"recipe:{recipe_id}"],
     )
@@ -160,32 +184,35 @@ def choices_from_import_recipe(recipe: ImportRecipe) -> dict[str, Any]:
     choices: dict[str, Any] = {"recipe_id": recipe.recipe_id}
     if recipe.selected_eeg_files:
         choices["selected_eeg_files"] = list(recipe.selected_eeg_files)
-    if recipe.label_sources:
+    include_label_choices = not recipe.skip_labels
+    if include_label_choices and recipe.label_sources:
         choices["label_sources"] = list(recipe.label_sources)
     if recipe.skip_labels:
         choices["skip_labels"] = True
-    if recipe.label_carrier:
+    if include_label_choices and recipe.label_carrier:
         choices["label_carrier"] = recipe.label_carrier
-    if recipe.excluded_label_carriers:
+    if include_label_choices and recipe.excluded_label_carriers:
         choices["excluded_label_carriers"] = list(recipe.excluded_label_carriers)
-    required_label_carriers = _required_label_carriers_from_recipe(recipe)
+    required_label_carriers = (
+        _required_label_carriers_from_recipe(recipe) if include_label_choices else []
+    )
     if required_label_carriers:
         choices["required_label_carriers"] = required_label_carriers
     metadata_overrides = _metadata_overrides_from_recipe(recipe.metadata)
     if metadata_overrides:
         choices["metadata_overrides"] = metadata_overrides
     label_carrier_choices = _label_carrier_choices_from_recipe(
-        recipe.label_carrier_plan,
+        recipe.label_carrier_plan if include_label_choices else [],
     )
     if label_carrier_choices:
         choices["label_carrier_choices"] = label_carrier_choices
-    if recipe.event_roles:
+    if include_label_choices and recipe.event_roles:
         choices["event_roles"] = dict(recipe.event_roles)
-    if recipe.class_map:
+    if include_label_choices and recipe.class_map:
         choices["class_map"] = dict(recipe.class_map)
-    if recipe.internal_event_selection:
+    if include_label_choices and recipe.internal_event_selection:
         choices["internal_event_selection"] = dict(recipe.internal_event_selection)
-    if recipe.run_event_mappings:
+    if include_label_choices and recipe.run_event_mappings:
         choices["run_event_mappings"] = {
             str(key): dict(value) for key, value in recipe.run_event_mappings.items()
         }

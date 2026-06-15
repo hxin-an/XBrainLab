@@ -595,9 +595,9 @@ def test_match_labels_internal_source_does_not_return_label_file_choices(qtbot):
     qtbot.addWidget(dialog)
     _show_step(dialog, "Match Labels")
 
-    dialog.label_source_mode_combo.setCurrentIndex(
-        dialog.label_source_mode_combo.findData("internal_events")
-    )
+    internal_index = dialog.label_source_mode_combo.findData("internal_events")
+    dialog.label_source_mode_combo.setCurrentIndex(internal_index)
+    dialog.label_source_mode_combo.activated.emit(internal_index)
     result = dialog.get_result()
 
     assert result["choices"]["label_carrier"] == "embedded_events"
@@ -635,9 +635,9 @@ def test_match_labels_internal_source_hides_label_file_class_map(qtbot):
 
     assert [item[1] for item in dialog._class_map_items] == ["1", "2", "3", "4"]
 
-    dialog.label_source_mode_combo.setCurrentIndex(
-        dialog.label_source_mode_combo.findData("internal_events")
-    )
+    internal_index = dialog.label_source_mode_combo.findData("internal_events")
+    dialog.label_source_mode_combo.setCurrentIndex(internal_index)
+    dialog.label_source_mode_combo.activated.emit(internal_index)
     result = dialog.get_result()
 
     assert dialog._class_map_items == []
@@ -2298,7 +2298,113 @@ def test_data_interpretation_preview_dialog_skip_labels_marks_choice(qtbot):
 
     result = dialog.get_result()
     assert result["choices"]["skip_labels"] is True
+    assert "label_carrier" not in result["choices"]
+    assert "label_carrier_choices" not in result["choices"]
     assert "Skipped" in dialog.label_sources_label.text()
+
+
+def test_match_labels_selecting_source_after_skip_clears_skip_choice(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s).",
+            "internal_event_preview": {
+                "pattern_status": "Shared event pattern detected",
+                "candidate_label_events": [
+                    {
+                        "event_code": "769",
+                        "use_as": "Class label",
+                        "event_count": 72,
+                        "coverage": "1/1 files",
+                        "evidence": "Repeated count",
+                    }
+                ],
+                "not_used_events": [],
+            },
+        },
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Load Labels")
+    qtbot.wait(0)
+
+    dialog.skip_labels_btn.click()
+    qtbot.wait(0)
+    assert dialog.get_result()["choices"]["skip_labels"] is True
+
+    _show_step(dialog, "Match Labels")
+    qtbot.wait(0)
+    internal_index = dialog.label_source_mode_combo.findData("internal_events")
+    dialog.label_source_mode_combo.setCurrentIndex(internal_index)
+    dialog.label_source_mode_combo.activated.emit(internal_index)
+    qtbot.wait(0)
+
+    result = dialog.get_result()
+    assert "skip_labels" not in result["choices"]
+    assert result["choices"]["label_carrier"] == "embedded_events"
+
+
+def test_load_labels_duplicate_source_after_skip_reenables_existing_labels(
+    qtbot,
+    monkeypatch,
+):
+    auto_label = "/tmp/source/labels/A01T.mat"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+            "label_carriers": [auto_label],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+            "label_carrier_preview": [
+                {
+                    "path": auto_label,
+                    "name": "A01T.mat",
+                    "source_kind": "auto",
+                    "source_location": "/tmp/source/labels",
+                    "selected_label_field": "classlabel",
+                    "selected_anchor": "768",
+                    "placement_method": "eeg_event",
+                }
+            ],
+        },
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Load Labels")
+    qtbot.wait(0)
+
+    dialog.skip_labels_btn.click()
+    qtbot.wait(0)
+    assert dialog.get_result()["choices"]["skip_labels"] is True
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog.QFileDialog.getOpenFileNames",
+        lambda *_args, **_kwargs: ([auto_label], ""),
+    )
+    dialog.add_label_file_btn.click()
+    qtbot.wait(0)
+
+    result = dialog.get_result()
+    assert "skip_labels" not in result["choices"]
+    assert "Already included" in dialog.label_sources_label.text()
+    qtbot.waitUntil(
+        lambda: _visible_step_text(dialog, "Load Labels").splitlines().count("A01T.mat")
+        == 1,
+        timeout=1000,
+    )
+    assert _visible_step_text(dialog, "Load Labels").splitlines().count("A01T.mat") == 1
+    _show_step(dialog, "Match Labels")
+    assert dialog.label_source_mode_combo.currentData() == "loaded_label_files"
+    assert "A01T.mat" in _tree_text(dialog.label_carrier_tree)
 
 
 def test_attach_labels_buttons_use_clear_action_hierarchy(qtbot):
@@ -3165,6 +3271,42 @@ def test_data_interpretation_preview_dialog_returns_review_edits(qtbot):
         "1": "left hand",
         "2": "right",
     }
+
+
+def test_data_interpretation_preview_dialog_skip_labels_keeps_metadata_edits(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={"source_path": "/tmp/source"},
+        preview={
+            "metadata_preview": [
+                {
+                    "file": "sub-01_task-mi.fif",
+                    "subject": {"value": "01", "decision": "safe"},
+                    "session": {"value": None, "decision": "needs_confirmation"},
+                    "task": {"value": "mi", "decision": "safe"},
+                    "run": {"value": None, "decision": "needs_confirmation"},
+                },
+            ],
+            "class_map": {"1": "left", "2": "right"},
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+
+    metadata_item = dialog.file_tree.topLevelItem(0)
+    assert metadata_item is not None
+    metadata_item.setText(2, "session-01")
+
+    dialog.skip_labels_btn.click()
+
+    result = dialog.get_result()
+
+    assert result["choices"]["skip_labels"] is True
+    assert result["choices"]["metadata_overrides"] == {
+        "sub-01_task-mi.fif": {"session": "session-01"}
+    }
+    assert "class_map" not in result["choices"]
+    assert "label_carrier" not in result["choices"]
 
 
 def test_data_interpretation_preview_dialog_applies_smart_parse_task_and_run(qtbot):
