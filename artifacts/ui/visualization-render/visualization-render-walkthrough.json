@@ -1411,7 +1411,7 @@
     ],
     "finished_run_count": 1,
     "metrics_available": true,
-    "saliency_available": true
+    "saliency_available": false
   },
   "application_evaluate": {
     "command": "evaluate",
@@ -2080,6 +2080,6 @@
       }
     }
   },
-  "elapsed_seconds": 8.763,
+  "elapsed_seconds": 8.474,
   "uncaught_exceptions": []
 }

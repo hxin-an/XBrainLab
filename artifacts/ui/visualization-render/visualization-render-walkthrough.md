@@ -14,9 +14,9 @@
 - dataset preparation ok: `True`
 - finished runs: `1`
 - metrics available: `True`
-- saliency available: `True`
+- saliency available: `False`
 - ready screenshot: `artifacts/ui/visualization-render/visualization-render-saliency-map.png`
-- elapsed seconds: `8.763`
+- elapsed seconds: `8.474`
 - uncaught exceptions: `0`
 
 ## Rendered Tabs
