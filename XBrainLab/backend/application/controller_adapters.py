@@ -89,6 +89,7 @@ class _TrainingControllerPort(_ObservableControllerPort, Protocol):
     def clean_datasets(self, *args: Any, **kwargs: Any) -> Any: ...
     def is_training(self) -> bool: ...
     def get_formatted_history(self) -> list[dict[str, Any]]: ...
+    def get_resource_preflight_context(self) -> dict[str, Any]: ...
 
 
 class _EvaluationControllerPort(_ObservableControllerPort, Protocol):
@@ -293,6 +294,13 @@ class TrainingControllerAdapter(LazyControllerAdapter):
             append=append,
             interactive=interactive,
         )
+
+    def get_resource_preflight_context(self) -> dict[str, Any]:
+        return {
+            "datasets": list(getattr(self._study, "datasets", []) or []),
+            "training_option": getattr(self._study, "training_option", None),
+            "model_holder": getattr(self._study, "model_holder", None),
+        }
 
     def stop_training(self, *, wait_timeout: float | None = None) -> bool:
         controller = self._controller()

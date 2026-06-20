@@ -336,6 +336,36 @@ def test_analysis_service_visualize_saliency_and_montage_handlers() -> None:
     assert montage == {"channel_count": 1, "montage_name": "standard_1020"}
 
 
+def test_analysis_service_settings_params_select_only_advanced_methods() -> None:
+    state = _state(saliency_available=False, saliency_configured=False, finished_runs=1)
+    service, visualization, _preprocess = _service(state=state)
+
+    _message, saliency = _expect_payload(
+        service.handle_saliency(
+            SaliencyCommand(
+                params={
+                    "SmoothGrad": {"nt_samples": 3},
+                    "SmoothGrad_Squared": {"nt_samples": 3},
+                    "VarGrad": {"nt_samples": 3},
+                },
+            ),
+        ),
+    )
+
+    assert saliency["payload_type"] == "saliency_configuration"
+    assert saliency["params"]["_methods"] == [
+        "SmoothGrad",
+        "SmoothGrad_Squared",
+        "VarGrad",
+    ]
+    assert visualization.params is not None
+    assert visualization.params["_methods"] == [
+        "SmoothGrad",
+        "SmoothGrad_Squared",
+        "VarGrad",
+    ]
+
+
 def test_analysis_service_reports_saliency_configuration_readiness() -> None:
     state = _state(
         has_epoch=True,

@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
 
+from XBrainLab.backend.application import resource_guard
 from XBrainLab.backend.application.commands import (
     ClearTrainingHistoryCommand,
     ConfigureTrainingCommand,
     StopTrainingCommand,
     TrainCommand,
 )
+from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ActiveTrainingSnapshot,
@@ -40,6 +43,7 @@ class _TrainingController:
         self.stopped = False
         self.history_cleared = False
         self.notifications: list[str] = []
+        self.resource_context: dict[str, Any] | None = None
 
     def set_model_holder(self, holder: Any) -> None:
         self.model_holder = holder
@@ -63,12 +67,41 @@ class _TrainingController:
     def notify(self, event_name: str) -> None:
         self.notifications.append(event_name)
 
+    def get_resource_preflight_context(self) -> dict[str, Any]:
+        return dict(self.resource_context or {})
+
 
 class _TrainingManager:
     def __init__(self) -> None:
         self.model_holder: Any | None = object()
         self.training_option: Any | None = object()
         self.saliency_params: dict[str, Any] | None = {"SmoothGrad": {}}
+
+
+class _ArrayLike:
+    def __init__(self, *, nbytes: int, shape: tuple[int, ...] = (1,)) -> None:
+        self.nbytes = nbytes
+        self.shape = shape
+
+
+class _EpochData:
+    def __init__(self, *, data_nbytes: int, label_nbytes: int = 0) -> None:
+        self.data = _ArrayLike(nbytes=data_nbytes, shape=(10, data_nbytes // 10))
+        self.labels = _ArrayLike(nbytes=label_nbytes, shape=(10,))
+
+    def get_data(self) -> _ArrayLike:
+        return self.data
+
+    def get_label_list(self) -> _ArrayLike:
+        return self.labels
+
+
+class _Dataset:
+    def __init__(self, epoch_data: _EpochData) -> None:
+        self.epoch_data = epoch_data
+
+    def get_epoch_data(self) -> _EpochData:
+        return self.epoch_data
 
 
 def _state() -> ApplicationStateSnapshot:
@@ -222,7 +255,9 @@ def test_training_service_start_stop_and_clear_history() -> None:
     )
 
     assert start_message == "Training started."
-    assert start_payload == {"append": False, "interactive": False}
+    assert start_payload["append"] is False
+    assert start_payload["interactive"] is False
+    assert start_payload["resource_preflight"]["dataset_bytes"] == 0
     assert stop == (
         "Training stopped.",
         {"stopped": True, "wait_timeout": 1.5},
@@ -240,6 +275,49 @@ def test_training_service_start_stop_and_clear_history() -> None:
         "run_count_before": 3,
         "finished_run_count_before": 1,
     }
+
+
+def test_training_service_blocks_training_when_dataset_exceeds_available_ram(
+    monkeypatch,
+) -> None:
+    service, training = _service()
+    training.resource_context = {
+        "datasets": [_Dataset(_EpochData(data_nbytes=10_000, label_nbytes=1_000))],
+        "training_option": SimpleNamespace(
+            use_cpu=True, bs=4, get_device=lambda: "cpu"
+        ),
+    }
+    monkeypatch.setattr(resource_guard, "available_ram_bytes", lambda: 5_000)
+    monkeypatch.setattr(resource_guard, "available_vram_bytes", lambda _idx=None: None)
+
+    with pytest.raises(PreconditionError, match="available RAM"):
+        service.handle_train(TrainCommand())
+
+    assert training.started is False
+
+
+def test_training_service_blocks_cuda_training_when_batch_exceeds_available_vram(
+    monkeypatch,
+) -> None:
+    service, training = _service()
+    training.resource_context = {
+        "datasets": [
+            _Dataset(_EpochData(data_nbytes=40_000, label_nbytes=1_000)),
+        ],
+        "training_option": SimpleNamespace(
+            use_cpu=False,
+            gpu_idx=0,
+            bs=10,
+            get_device=lambda: "cuda:0",
+        ),
+    }
+    monkeypatch.setattr(resource_guard, "available_ram_bytes", lambda: 10_000_000)
+    monkeypatch.setattr(resource_guard, "available_vram_bytes", lambda _idx=None: 5_000)
+
+    with pytest.raises(PreconditionError, match="GPU memory"):
+        service.handle_train(TrainCommand())
+
+    assert training.started is False
 
 
 def test_training_service_clears_configuration() -> None:

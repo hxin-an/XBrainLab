@@ -100,6 +100,77 @@ current truth 以這些文件為準：
 - [architecture/README.md](../architecture/README.md)
 - [validation/README.md](README.md)
 
+## 2026-06-20 BIDS Epoch / Saliency Baseline / Resource Guard Gate
+
+`stabilize/bids-epoch-saliency-baseline` implements the 2026-06-17 progress-report
+decision for this slice:
+
+- BIDS / BIDS-like import recipes keep onset / duration / label-field placement as
+  epoch handoff hints, and Create Epochs can use interval duration defaults.
+- Visualization starts the fast saliency baseline (`Gradient` + `Gradient * Input`)
+  in the background after training or when a metric-only run is opened.
+- SmoothGrad / SmoothGrad_Squared / VarGrad stay behind Saliency Settings; selecting
+  or changing an advanced method recomputes that method instead of recomputing every
+  saliency method.
+- Import and training commands now have resource preflight: `LoadData` / Data Import
+  apply check selected file sizes against available RAM, and `TrainCommand` checks
+  dataset RAM and GPU-batch VRAM estimates before starting training.
+
+Validation:
+
+```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/backend/application/test_application_service.py \
+  tests/unit/backend/application/test_analysis_service.py \
+  tests/unit/backend/application/test_training_service.py -q
+# 87 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_visualization_panel_redesign.py \
+  tests/unit/ui/dialogs/test_saliency_setting.py \
+  tests/unit/ui/components/test_plot_figure_window.py -q
+# 46 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/backend/application/test_epoch_context.py \
+  tests/integration/ui/test_dialog_acceptance.py::test_epoching_dialog_uses_import_interval_defaults \
+  tests/unit/backend/application/test_application_service.py::test_apply_interpretation_honors_interval_end_field -q
+# 5 passed
+
+poetry run pytest --capture=sys tests/unit/backend/application/test_data_compatibility_service.py -q
+# 8 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/backend/application/test_data_interpretation_service.py \
+  tests/unit/backend/application/test_application_service.py::test_apply_interpretation_honors_interval_end_field \
+  tests/unit/backend/application/test_training_service.py -q
+# 21 passed
+
+poetry run python scripts/dev/report_dataset_validation_matrix.py --strict --format json
+# strict_validation.ok: true
+
+poetry run python scripts/dev/report_data_interpretation_format_matrix.py --format json
+# all_expected_capabilities_observed: true
+# all_expected_capabilities_match: true
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/integration/ui/test_data_import_wizard_format_matrix.py -q
+# 9 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/integration/io/test_io_integration.py \
+  tests/integration/io/test_public_bids_fixture.py \
+  tests/integration/pipeline/test_public_cross_source_training_smoke.py -q
+# 36 passed
+
+poetry run python scripts/dev/run_public_cross_source_training_smoke.py --format json --strict
+# 4 passed, 0 missing, 0 failed
+```
+
+This supports a manual-test candidate after final dashboard/docs/branch hygiene pass.
+It still does not claim human Windows acceptance, full BIDS validator compliance,
+arbitrary public dataset certification, or scientific model-quality evidence.
+
 ## 2026-05-30 Release-Candidate Gate Follow-Up
 
 Manual-test gating on `/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`

@@ -37,6 +37,7 @@ from .data_interpretation import (
 from .data_interpretation_apply import DataInterpretationApplyService
 from .data_interpretation_state import DataInterpretationSessionState
 from .errors import ApplicationError, ConfirmationRequiredError, PreconditionError
+from .resource_guard import check_import_resource_preflight
 from .results import ErrorType
 from .state import InterpretationStateSnapshot
 
@@ -273,6 +274,12 @@ class DataInterpretationCommandService:
     ) -> tuple[int, list[str]]:
         """Replace active raw data before importing reviewed interpretation files."""
         expected_count = len(paths)
+        preflight = check_import_resource_preflight(paths)
+        if not preflight.ok:
+            raise PreconditionError(
+                preflight.message,
+                diagnostics={"resource_preflight": preflight.diagnostics},
+            )
         loaded_files = list(self.dataset.get_loaded_data_list() or [])
         clean_dataset = getattr(self.dataset, "clean_dataset", None)
         if loaded_files and callable(clean_dataset):

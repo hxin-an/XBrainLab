@@ -21,6 +21,7 @@ from .commands import (
     TrainCommand,
 )
 from .errors import PreconditionError
+from .resource_guard import check_training_resource_preflight
 from .state import ApplicationStateSnapshot
 
 HandlerResult = str | tuple[str, dict[str, Any]]
@@ -103,6 +104,12 @@ class TrainingCommandService:
     def handle_train(self, command: Command) -> HandlerResult:
         if not isinstance(command, TrainCommand):
             raise TypeError("Invalid command for train")
+        preflight = check_training_resource_preflight(self.training)
+        if not preflight.ok:
+            raise PreconditionError(
+                preflight.message,
+                diagnostics={"resource_preflight": preflight.diagnostics},
+            )
         self.training.start_training(
             append=command.append,
             interactive=command.interactive,
@@ -112,6 +119,7 @@ class TrainingCommandService:
             {
                 "append": command.append,
                 "interactive": command.interactive,
+                "resource_preflight": preflight.diagnostics,
             },
         )
 

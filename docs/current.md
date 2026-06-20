@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-05-30`
+最後更新：`2026-06-20`
 
 這頁只回答一件事：**現在能相信什麼，還不能宣稱什麼，下一步該做什麼。**
 完整階段安排看 [Roadmap](planning/roadmap.md)，下一輪施工看 [Now](planning/now.md)。
@@ -17,7 +17,7 @@ XBrainLab 正在收斂成 Windows 本地 EEG / BCI 桌面工具。主線已經�
 | 區域 | 目前狀態 | 邊界 |
 | --- | --- | --- |
 | Backend | `ApplicationService / Command API` 已是主要 command spine；UI / assistant / MCP product runtime 不再把 `BackendFacade` 當入口，service lazy wrappers 已改成明確 command handler。 | Phase 1A 還要以 release-candidate gate 持續防止新的 legacy / duplicate refresh truth。 |
-| UI | PyQt 主流程、Data Interpretation wizard、training / evaluation / visualization surface 都有 baseline；evaluation / visualization baseline 已更新到目前 approved reference。 | automated walkthrough 不等於 human Windows desktop acceptance。 |
+| UI | PyQt 主流程、Data Interpretation wizard、training / evaluation / visualization surface 都有 baseline；`stabilize/bids-epoch-saliency-baseline` 已把 2026-06-17 定稿的 saliency background baseline flow 落到 command/UI path。 | automated walkthrough 不等於 human Windows desktop acceptance；仍需真人 Windows click-through 才能宣稱產品驗收完成。 |
 | Data Interpretation | `scan -> preview -> validate -> apply -> recipe` baseline 已存在；Data Import wizard 已補強 Tier 1/Tier 2 label-source、BIDS-like events、internal event evidence、external label placement、structured review coverage，並把 reviewed label placement 寫成 epoch 建議。 | 還不是 full BIDS / arbitrary import system；P300/SSVEP/clinical/XDF/LSL/MOABB/proprietary converters 不能誇大。Epoch 目前消費 import 建議，不代表 epoch/preprocess 全流程已做完整 UX 重作。 |
 | Agent / MCP | tool surface 和 MCP adapter 已開始走同一套 command / capability / state snapshot。 | 這是 product baseline，不是完整 thesis benchmark 或 MCP client certification。 |
 | Packaging | Windows launcher / startup smoke 有 evidence。 | 還不是 signed installer，也不是 release approval。 |
@@ -57,9 +57,11 @@ XBrainLab 正在收斂成 Windows 本地 EEG / BCI 桌面工具。主線已經�
 | Gate | 最近結果 | 用途 |
 | --- | --- | --- |
 | `mkdocs build --strict` | PASS | 文件站可建。 |
-| fast quality dashboard | PASS in the latest clean local generated `artifacts/quality/latest.md`; exact generated-at and commit fields live in that artifact. | lint、type、architecture、startup、UI baseline、UI product walkthrough、UI unit、real-data IO。 |
-| full UI unit suite | `1242 passed` | 支撐目前 UI regression baseline，不取代人工 UX approval。 |
-| pipeline smoke | `2 passed` | 支撐 tiny train/evaluate loop。 |
+| fast quality dashboard | Clean evidence lives in generated `artifacts/quality/latest.md` for the current branch/commit. | lint、type、architecture、startup、UI baseline、UI product walkthrough、UI unit、real-data IO。 |
+| UI unit suite in dashboard | `1265 passed` | 支撐目前 UI regression baseline，不取代人工 UX approval。 |
+| Data Interpretation format matrix | expected capabilities observed / match | 支撐代表性 scan / preview / validation format boundary。 |
+| Required multi-dataset gate | strict dataset matrix OK; IO + public BIDS + cross-source integration `36 passed`; public cross-source strict smoke `4 passed, 0 missing, 0 failed` | 支撐 checked-in GDF/MAT、compact multiformat、public event-rich fixtures、public BIDS EEG fixture。 |
+| Saliency / visualization focused tests | ApplicationService / training / UI saliency regression passed on `stabilize/bids-epoch-saliency-baseline`. | 支撐 background baseline、advanced settings recompute boundary、BIDS epoch handoff 和 resource preflight；不取代人工 UX review。 |
 | Windows launcher walkthrough | PASS | 自動化 launcher command / bounded startup evidence，不是 signed installer 或真人 click-through。 |
 
 ## 先看哪裡

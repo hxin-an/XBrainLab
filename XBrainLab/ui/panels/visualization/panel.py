@@ -633,9 +633,14 @@ class VisualizationPanel(BasePanel):
         if not hasattr(self, "saliency_action_bar"):
             return
         method_name = method_name or "Gradient"
-        if method_name in {"Gradient", "Gradient * Input"}:
-            detail = "Recommended profile computes Gradient + Gradient * Input."
+        if self._saliency_compute_in_progress:
+            self.saliency_action_title.setText("Preparing saliency baseline")
+            detail = "Computing Gradient + Gradient * Input in the background."
+        elif method_name in {"Gradient", "Gradient * Input"}:
+            self.saliency_action_title.setText("Preparing saliency baseline")
+            detail = "XBrainLab prepares Gradient + Gradient * Input automatically."
         else:
+            self.saliency_action_title.setText("Advanced saliency not computed")
             detail = f"{method_name} uses default noise settings. Adjust in Settings."
         self.saliency_action_detail.setText(detail)
         self.saliency_action_bar.setVisible(True)
@@ -716,7 +721,14 @@ class VisualizationPanel(BasePanel):
     ) -> bool:
         """Compute saliency on demand when a finished run has metrics only."""
         params = self._configured_saliency_params()
-        if not params:
+        if self._is_recommended_saliency_method(method_name):
+            configured_methods = self._selected_saliency_methods_from_params(params)
+            if not params or method_name not in configured_methods:
+                params = self._baseline_saliency_params()
+        elif (
+            not params
+            or method_name not in self._selected_saliency_methods_from_params(params)
+        ):
             return False
         return self._start_saliency_compute(
             params=params,
@@ -726,7 +738,7 @@ class VisualizationPanel(BasePanel):
         )
 
     def _maybe_start_configured_saliency_compute(self) -> bool:
-        """Start a background saliency job after training if the user configured it."""
+        """Start background saliency after training when finished runs exist."""
         query_result = execute_application_command(
             self,
             SaliencyCommand(),
@@ -744,15 +756,17 @@ class VisualizationPanel(BasePanel):
         if int(diagnostics.get("finished_run_count") or 0) < 1:
             return False
         params = self._configured_saliency_params()
+        profile = "configured"
         if not params:
-            return False
+            params = self._baseline_saliency_params()
+            profile = "recommended-baseline"
         return self._start_saliency_compute(
             params=params,
             method_name=self.method_combo.currentText()
             if hasattr(self, "method_combo")
             else "Gradient",
             current_widget=self.tabs.currentWidget() if hasattr(self, "tabs") else None,
-            attempt_key=("training_stopped", id(query_result), "configured"),
+            attempt_key=("training_stopped", id(query_result), profile),
         )
 
     def _start_saliency_compute(
@@ -857,6 +871,30 @@ class VisualizationPanel(BasePanel):
             else {}
         )
         return diagnostics.get("payload_type") == "saliency_summary"
+
+    @staticmethod
+    def _is_recommended_saliency_method(method_name: str) -> bool:
+        return method_name in {"Gradient", "Gradient * Input"}
+
+    @staticmethod
+    def _baseline_saliency_params() -> dict[str, object]:
+        return {
+            "profile": "recommended",
+            "methods": ["Gradient", "Gradient * Input"],
+        }
+
+    @staticmethod
+    def _selected_saliency_methods_from_params(params: dict[str, object]) -> set[str]:
+        raw_methods = params.get("_methods") or params.get("methods")
+        if isinstance(raw_methods, str):
+            return {raw_methods}
+        if isinstance(raw_methods, (list, tuple, set)):
+            return {str(item) for item in raw_methods}
+        return {
+            method
+            for method in ("SmoothGrad", "SmoothGrad_Squared", "VarGrad")
+            if isinstance(params.get(method), dict)
+        }
 
     def _application_query_blocks_display(self, result) -> bool:
         if result is None:

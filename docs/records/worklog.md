@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-06-15`
+最後更新：`2026-06-20`
 
 ## 這份文件的用途
 
@@ -34,6 +34,80 @@
 - 證據：
 - 接續 / 本輪剩餘：
 ```
+
+## 2026-06-20
+
+### 15:20 BIDS epoch, saliency baseline, and resource preflight implementation
+
+- 做了什麼：
+  - 在 `stabilize/bids-epoch-saliency-baseline` 落地 2026-06-17 報告定稿的 saliency flow：
+    training 完成或開啟 metric-only visualization run 時，背景先算 `Gradient` +
+    `Gradient * Input` baseline。
+  - 修正 saliency method selection：Saliency Settings 傳入 SmoothGrad / SmoothGrad_Squared /
+    VarGrad params 時，只計算進階 methods，不再把 Gradient baseline 和所有方法一起算。
+  - 加入 resource preflight：
+    `LoadData` / Data Import apply 前檢查 selected file size vs available RAM；
+    `TrainCommand` 前檢查 dataset RAM working set 和 GPU batch VRAM estimate。
+  - 確認既有 BIDS / BIDS-like epoch handoff 已保存 onset / duration / label-field placement，
+    並由 Create Epochs 讀取 interval duration default。
+- 結果：
+  - ApplicationService / analysis / training focused regression `87 passed`。
+  - Visualization saliency UI regression `46 passed`。
+  - BIDS epoch handoff focused regression `5 passed`。
+  - Data compatibility import preflight regression `8 passed`。
+  - Data Interpretation apply + training resource focused regression `21 passed`。
+  - strict dataset matrix OK。
+  - Data Interpretation format matrix expected capabilities observed / match。
+  - Data Import wizard format matrix `9 passed`。
+  - IO + public BIDS + cross-source integration `36 passed`。
+  - public cross-source strict smoke `4 passed, 0 missing, 0 failed`。
+- 證據：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/backend/application/test_analysis_service.py tests/unit/backend/application/test_training_service.py -q`
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/dialogs/test_saliency_setting.py tests/unit/ui/components/test_plot_figure_window.py -q`
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application/test_epoch_context.py tests/integration/ui/test_dialog_acceptance.py::test_epoching_dialog_uses_import_interval_defaults tests/unit/backend/application/test_application_service.py::test_apply_interpretation_honors_interval_end_field -q`
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_data_compatibility_service.py -q`
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py::test_apply_interpretation_honors_interval_end_field tests/unit/backend/application/test_training_service.py -q`
+  - `poetry run python scripts/dev/report_dataset_validation_matrix.py --strict --format json`
+  - `poetry run python scripts/dev/report_data_interpretation_format_matrix.py --format json`
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration/ui/test_data_import_wizard_format_matrix.py -q`
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration/io/test_io_integration.py tests/integration/io/test_public_bids_fixture.py tests/integration/pipeline/test_public_cross_source_training_smoke.py -q`
+  - `poetry run python scripts/dev/run_public_cross_source_training_smoke.py --format json --strict`
+- 不能宣稱：
+  - 還不是 human Windows acceptance。
+  - 還不是 full BIDS validator compliance。
+  - resource preflight 是估算式 guard，不是所有機器所有資料大小的精準 memory profiler。
+
+### 14:25 Manual-test candidate gate and weekly to-do reset
+
+- 做了什麼：
+  - 將 `ux/saliency-compute-flow` at `6b29fc4f` 視為 manual-test candidate，而不是 product complete。
+  - 重新跑 fast quality dashboard、多資料集 gate、Data Interpretation format matrix、
+    public cross-source training smoke、saliency / visualization focused tests 和 docs build。
+  - 把本週手測、修復、合併前 gate 寫回 `docs/planning/now.md`，避免進度只留在聊天裡。
+- 結果：
+  - worktree clean。
+  - fast quality dashboard PASS。
+  - Data Interpretation format matrix expected capabilities observed / match。
+  - dataset validation matrix strict OK。
+  - IO + public BIDS + cross-source integration `36 passed`。
+  - public cross-source strict smoke `4 passed, 0 missing, 0 failed`。
+  - saliency / visualization / ApplicationService focused suite `136 passed`。
+  - focused UI/training suite `29 passed`。
+  - `mkdocs build --strict` PASS。
+- 證據：
+  - `poetry run python scripts/dev/update_quality_dashboard.py`
+  - `poetry run python scripts/dev/report_data_interpretation_format_matrix.py --format json`
+  - `poetry run python scripts/dev/report_dataset_validation_matrix.py --strict --format json`
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration/io/test_io_integration.py tests/integration/io/test_public_bids_fixture.py tests/integration/pipeline/test_public_cross_source_training_smoke.py -q`
+  - `poetry run python scripts/dev/run_public_cross_source_training_smoke.py --format json --strict`
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization_panel_redesign.py tests/integration/ui/test_saliency_label_mapping_runtime.py tests/unit/backend/application/test_analysis_service.py tests/unit/backend/application/test_application_service.py tests/unit/backend/training/test_training_plan_test_model.py tests/unit/backend/training/record/test_eval_coverage.py tests/unit/backend/visualization/test_base.py -q`
+  - `poetry run mkdocs build --strict`
+- 接續 / 本輪剩餘：
+  - 後續讀取 `/mnt/d/workspace_v2/core/lab/meetings/progress/reports/2026-06-17.md` 後修正：
+    report 已定稿 saliency 要改成 training 後背景計算 `Gradient` + `Gradient * Input` baseline，
+    explicit `Compute Saliency` 只能算已驗證 checkpoint，不能當作本週最終方案。
+  - 本週剩餘主線改為 BIDS Epoch design、finalized saliency background-baseline flow、
+    advanced saliency recompute、multi-dataset reliability expansion 和 large dataset RAM / VRAM guard。
 
 ## 2026-06-15
 

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+import pytest
+
+from XBrainLab.backend.application import resource_guard
 from XBrainLab.backend.application.commands import (
     AttachLabelsCommand,
     ImportLabelsCommand,
@@ -14,7 +17,7 @@ from XBrainLab.backend.application.data_compatibility_service import (
     DataCompatibilityCommandService,
     HandlerResult,
 )
-from XBrainLab.backend.application.errors import ApplicationError
+from XBrainLab.backend.application.errors import ApplicationError, PreconditionError
 from XBrainLab.backend.application.results import ErrorType
 
 
@@ -103,6 +106,21 @@ def test_data_compatibility_service_maps_load_failures_to_typed_error() -> None:
         }
     else:
         raise AssertionError("Expected unsupported-format ApplicationError")
+
+
+def test_data_compatibility_service_blocks_load_when_files_exceed_available_ram(
+    tmp_path,
+    monkeypatch: Any,
+) -> None:
+    service, dataset, _interpretation = _service()
+    path = tmp_path / "huge.gdf"
+    path.write_bytes(b"0" * 100)
+    monkeypatch.setattr(resource_guard, "available_ram_bytes", lambda: 100)
+
+    with pytest.raises(PreconditionError, match="available RAM"):
+        service.handle_load_data(LoadDataCommand(paths=[str(path)]))
+
+    assert not hasattr(dataset, "import_paths")
 
 
 def test_data_compatibility_service_attaches_labels_with_default_event_names(

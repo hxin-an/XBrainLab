@@ -30,11 +30,17 @@ class ApplicationError(Exception):
 class PreconditionError(ApplicationError):
     """Raised when a command cannot run in the current state."""
 
-    def __init__(self, message: str, recoverable: bool = True):
+    def __init__(
+        self,
+        message: str,
+        recoverable: bool = True,
+        diagnostics: dict[str, Any] | None = None,
+    ):
         super().__init__(
             message=message,
             error_type=ErrorType.PRECONDITION,
             recoverable=recoverable,
+            diagnostics=dict(diagnostics or {}),
         )
 
 

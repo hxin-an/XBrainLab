@@ -259,11 +259,11 @@ class AnalysisCommandService:
         explicit_methods = AnalysisCommandService._normalize_saliency_methods(
             raw.pop("methods", None),
         )
-        selected_methods = AnalysisCommandService._select_saliency_methods(
-            requested_method=requested_method,
-            profile=profile,
-            explicit_methods=explicit_methods,
-        )
+        configured_method_keys = [
+            key
+            for key in _SUPPORTED_SALIENCY_PARAM_KEYS
+            if isinstance(raw.get(key), dict)
+        ]
         flat_params: dict[str, Any] = {}
         normalized: dict[str, Any] = {
             key: dict(_DEFAULT_SALIENCY_PARAMS)
@@ -278,6 +278,12 @@ class AnalysisCommandService:
             for key in _SUPPORTED_SALIENCY_PARAM_KEYS:
                 method_params = normalized[key]
                 method_params.update(flat_params)
+        selected_methods = AnalysisCommandService._select_saliency_methods(
+            requested_method=requested_method,
+            profile=profile,
+            explicit_methods=explicit_methods,
+            configured_method_keys=configured_method_keys,
+        )
         normalized["_methods"] = selected_methods
         if profile:
             normalized["_profile"] = profile
@@ -307,13 +313,18 @@ class AnalysisCommandService:
         requested_method: str | None,
         profile: str,
         explicit_methods: list[str],
+        configured_method_keys: list[str],
     ) -> list[str]:
         if explicit_methods:
             return explicit_methods
         if profile == "recommended":
             return list(_RECOMMENDED_SALIENCY_METHODS)
+        if profile == "advanced":
+            return configured_method_keys or list(_SUPPORTED_SALIENCY_PARAM_KEYS)
         if requested_method in _ALL_SALIENCY_METHODS:
             return [requested_method]
+        if configured_method_keys:
+            return configured_method_keys
         return list(_ALL_SALIENCY_METHODS)
 
     @staticmethod

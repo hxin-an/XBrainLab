@@ -365,6 +365,7 @@ def test_visualization_panel_computes_configured_saliency_on_demand(
     )
 
     panel, _ctrl = _make_panel(qtbot, parent=RealMainWindow())
+    panel.method_combo.setCurrentText("SmoothGrad")
     current_widget = _current_mock_widget(panel)
     current_widget.show_message.reset_mock()
     current_widget.update_plot.reset_mock()
@@ -374,13 +375,13 @@ def test_visualization_panel_computes_configured_saliency_on_demand(
     assert len(async_commands) == 1
     command = async_commands[0]
     assert isinstance(command, SaliencyCommand)
-    assert command.method == "Gradient"
+    assert command.method == "SmoothGrad"
     assert command.params == configured_params
     current_widget.update_plot.assert_not_called()
     current_widget.show_message.assert_called_with("Computing saliency...")
 
 
-def test_visualization_panel_unconfigured_saliency_shows_actionable_message(
+def test_visualization_panel_unconfigured_saliency_starts_recommended_baseline(
     qtbot,
     monkeypatch,
 ):
@@ -403,8 +404,10 @@ def test_visualization_panel_unconfigured_saliency_shows_actionable_message(
                 changed_state=ChangedState(),
                 diagnostics={
                     "payload_type": "saliency_summary",
+                    "params": {},
                     "saliency_available": False,
                     "configure_available": True,
+                    "finished_run_count": 1,
                 },
             )
         if isinstance(command, VisualizeCommand):
@@ -425,11 +428,16 @@ def test_visualization_panel_unconfigured_saliency_shows_actionable_message(
         "XBrainLab.ui.panels.visualization.panel.execute_application_command",
         fake_execute,
     )
+    async_commands = []
+
+    def fake_execute_async(_panel, command, *, on_result, **_kwargs):
+        del on_result
+        async_commands.append(command)
+        return True
+
     monkeypatch.setattr(
         "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("unconfigured saliency should not auto-compute")
-        ),
+        fake_execute_async,
     )
 
     panel, _ctrl = _make_panel(qtbot, parent=RealMainWindow())
@@ -440,11 +448,92 @@ def test_visualization_panel_unconfigured_saliency_shows_actionable_message(
     panel.update_panel()
 
     current_widget.update_plot.assert_not_called()
-    current_widget.show_message.assert_called_with(
-        "Saliency has not been computed for this run."
-    )
+    current_widget.show_message.assert_called_with("Computing saliency...")
+    assert len(async_commands) == 1
+    command = async_commands[0]
+    assert isinstance(command, SaliencyCommand)
+    assert command.method == "Gradient"
+    assert command.params == {
+        "profile": "recommended",
+        "methods": ["Gradient", "Gradient * Input"],
+    }
     assert panel.saliency_action_bar.isVisibleTo(panel)
-    assert panel.compute_saliency_btn.isEnabled()
+    assert panel.compute_saliency_btn.text() == "Computing..."
+
+
+def test_visualization_panel_starts_recommended_baseline_after_training_stopped(
+    qtbot,
+    monkeypatch,
+):
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    training_controller = Observable()
+    async_commands = []
+
+    def fake_execute(_panel, command, **_kwargs):
+        if isinstance(command, SaliencyCommand):
+            return CommandResult.success_result(
+                command_name="saliency",
+                message="Saliency parameters are not configured yet.",
+                state={},
+                changed_state=ChangedState(),
+                diagnostics={
+                    "payload_type": "saliency_summary",
+                    "params": {},
+                    "saliency_configured": False,
+                    "saliency_available": False,
+                    "configure_available": True,
+                    "finished_run_count": 1,
+                },
+            )
+        if isinstance(command, VisualizeCommand):
+            return CommandResult.success_result(
+                command_name="visualize",
+                message="Visualization summary ready.",
+                state={},
+                changed_state=ChangedState(),
+                diagnostics={
+                    "payload_type": "visualization_summary",
+                    "available": True,
+                    "trainer_objects": [],
+                },
+            )
+        raise AssertionError(f"unexpected command: {command!r}")
+
+    def fake_execute_async(_panel, command, *, on_result, **_kwargs):
+        del on_result
+        async_commands.append(command)
+        return True
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command",
+        fake_execute,
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
+        fake_execute_async,
+    )
+    panel, _ctrl = _make_panel(
+        qtbot,
+        training_controller=training_controller,
+        parent=RealMainWindow(),
+    )
+
+    with patch.object(panel, "update_panel"):
+        training_controller.notify("training_stopped")
+        qtbot.wait(50)
+
+    assert len(async_commands) == 1
+    command = async_commands[0]
+    assert isinstance(command, SaliencyCommand)
+    assert command.method == "Gradient"
+    assert command.params == {
+        "profile": "recommended",
+        "methods": ["Gradient", "Gradient * Input"],
+    }
 
 
 def test_visualization_panel_compute_button_uses_recommended_profile(

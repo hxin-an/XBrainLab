@@ -18,6 +18,7 @@ from .commands import (
     LoadDataCommand,
 )
 from .errors import ApplicationError, PreconditionError
+from .resource_guard import check_import_resource_preflight
 from .results import ErrorType
 
 HandlerResult = str | tuple[str, dict[str, Any]]
@@ -40,6 +41,12 @@ class DataCompatibilityCommandService:
             raise TypeError("Invalid command for load_data")
         if not command.paths:
             raise PreconditionError("paths list cannot be empty.")
+        preflight = check_import_resource_preflight(command.paths)
+        if not preflight.ok:
+            raise PreconditionError(
+                preflight.message,
+                diagnostics={"resource_preflight": preflight.diagnostics},
+            )
         count, errors = self.dataset.import_files(command.paths)
         if count == 0 and errors:
             error_text = "; ".join(str(error) for error in errors)
