@@ -24,7 +24,7 @@ from XBrainLab.backend.application.saliency_policy import (
     selected_saliency_methods_from_params,
 )
 from XBrainLab.backend.utils.logger import logger
-from XBrainLab.backend.visualization import supported_saliency_methods
+from XBrainLab.backend.visualization import all_saliency_methods
 from XBrainLab.ui.application_capabilities import (
     ControllerCompatibilityUnavailableError,
     execute_application_command,
@@ -170,9 +170,7 @@ class VisualizationPanel(BasePanel):
         # Method Selector
         self.method_label = QLabel("Method:")
         self.method_combo = QComboBox()
-        self.method_combo.addItem("Gradient")
-        self.method_combo.addItem("Gradient * Input")
-        self.method_combo.addItems(supported_saliency_methods)
+        self.method_combo.addItems(all_saliency_methods)
         self.method_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
         )

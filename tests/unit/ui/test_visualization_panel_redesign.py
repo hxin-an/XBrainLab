@@ -10,6 +10,7 @@ from XBrainLab.backend.application import SaliencyCommand, VisualizeCommand
 from XBrainLab.backend.application.results import ChangedState, CommandResult, ErrorType
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.observer import Observable
+from XBrainLab.backend.visualization import all_saliency_methods
 
 
 def _widget_factory(parent=None):
@@ -104,7 +105,9 @@ def test_visualization_panel_layout_and_sidebar(qtbot):
 
     assert panel.tabs.count() == 4
     assert panel.plan_combo.itemText(0) == "Select a plan"
-    assert panel.method_combo.count() >= 3
+    assert [
+        panel.method_combo.itemText(i) for i in range(panel.method_combo.count())
+    ] == (all_saliency_methods)
     assert panel.saliency_action_bar.isHidden()
     assert panel.compute_saliency_btn.text() == "Compute Saliency"
     assert panel.sidebar.btn_montage.text() == "Set Montage"
