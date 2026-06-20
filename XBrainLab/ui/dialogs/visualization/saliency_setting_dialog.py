@@ -18,6 +18,9 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from XBrainLab.backend.application.saliency_policy import (
+    DEFAULT_ADVANCED_SALIENCY_PARAMS,
+)
 from XBrainLab.backend.visualization import supported_saliency_methods
 from XBrainLab.ui.core.base_dialog import BaseDialog
 
@@ -52,17 +55,8 @@ class SaliencySettingDialog(BaseDialog):
 
     def check_init_data(self):
         """Populate the algorithm map from backend saliency method definitions."""
-        # Dynamically load from backend constant to avoid hardcoding
-
         for method in supported_saliency_methods:
-            if method.startswith("Gradient"):
-                self.algo_map[method] = None
-            elif method in ["SmoothGrad", "SmoothGrad_Squared", "VarGrad"]:
-                self.algo_map[method] = [
-                    "nt_samples",
-                    "nt_samples_batch_size",
-                    "stdevs",
-                ]
+            self.algo_map[method] = list(DEFAULT_ADVANCED_SALIENCY_PARAMS)
 
     def init_ui(self):
         """Initialize the dialog UI with parameter tables for each method."""

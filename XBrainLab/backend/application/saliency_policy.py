@@ -5,17 +5,20 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from XBrainLab.backend.visualization.saliency_methods import (
+    all_saliency_methods,
+    recommended_saliency_methods,
+    supported_saliency_methods,
+)
+
 DEFAULT_ADVANCED_SALIENCY_PARAMS: dict[str, Any] = {
     "nt_samples": 5,
     "nt_samples_batch_size": None,
     "stdevs": 1.0,
 }
-ADVANCED_SALIENCY_METHODS = ("SmoothGrad", "SmoothGrad_Squared", "VarGrad")
-RECOMMENDED_SALIENCY_METHODS = ("Gradient", "Gradient * Input")
-ALL_SALIENCY_METHODS = (
-    *RECOMMENDED_SALIENCY_METHODS,
-    *ADVANCED_SALIENCY_METHODS,
-)
+ADVANCED_SALIENCY_METHODS = tuple(supported_saliency_methods)
+RECOMMENDED_SALIENCY_METHODS = tuple(recommended_saliency_methods)
+ALL_SALIENCY_METHODS = tuple(all_saliency_methods)
 
 
 def baseline_saliency_params() -> dict[str, object]:

@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.utils.logger import logger
-from XBrainLab.backend.visualization import supported_saliency_methods
+from XBrainLab.backend.visualization import all_saliency_methods
 from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
@@ -118,9 +118,7 @@ class ExportSaliencyDialog(BaseDialog):
         self.method_combo.addItem("---")
 
         if repeat_name != "---":
-            self.method_combo.addItems(
-                ["Gradient", "Gradient * Input", *supported_saliency_methods],
-            )
+            self.method_combo.addItems(all_saliency_methods)
 
     def on_export_clicked(self):
         """Validate selections, compute saliency, and export to pickle file."""

@@ -180,6 +180,9 @@ unchanged while tightening two recently touched boundaries:
   `backend.application.saliency_policy`, so `AnalysisCommandService` and the
   Visualization UI no longer carry separate copies of recommended / advanced method
   rules;
+- saliency method names originate from the backend visualization support list, and
+  the application policy / UI selectors now derive from that same list to prevent
+  method-list drift;
 - training resource preflight now receives explicit dataset / training-option context
   from `TrainingCommandService`; `resource_guard` no longer inspects controller or
   `Study` shapes directly.
@@ -190,7 +193,7 @@ Focused validation:
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/backend/application/test_saliency_policy.py \
   tests/unit/backend/application/test_resource_guard.py -q
-# 6 passed
+# 7 passed
 
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/backend/application/test_analysis_service.py \
@@ -200,6 +203,12 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/test_visualization_panel_redesign.py -q
 # 24 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/dialogs/test_saliency_setting.py \
+  tests/unit/ui/components/test_plot_figure_window.py \
+  tests/unit/ui/dialogs/test_export_saliency.py -q
+# 39 passed
 
 QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/backend/application/test_application_service.py::test_saliency_command_can_configure_params \

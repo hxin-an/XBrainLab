@@ -4,7 +4,7 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QComboBox, QGroupBox, QHBoxLayout
 
 from XBrainLab.backend.utils.logger import logger
-from XBrainLab.backend.visualization import supported_saliency_methods
+from XBrainLab.backend.visualization import all_saliency_methods
 
 from .single_plot_window import SinglePlotWindow
 
@@ -111,9 +111,7 @@ class PlotFigureWindow(SinglePlotWindow):
         # Saliency
         self.saliency_combo = QComboBox()
         self.saliency_combo.addItem("Select saliency method")
-        self.saliency_combo.addItems(
-            ["Gradient", "Gradient * Input", *supported_saliency_methods],
-        )
+        self.saliency_combo.addItems(all_saliency_methods)
         self.saliency_combo.currentTextChanged.connect(self.on_saliency_method_select)
         selector_layout.addWidget(self.saliency_combo)
 

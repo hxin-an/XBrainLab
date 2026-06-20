@@ -2,12 +2,22 @@
 
 from XBrainLab.backend.application.saliency_policy import (
     ADVANCED_SALIENCY_METHODS,
+    ALL_SALIENCY_METHODS,
     RECOMMENDED_SALIENCY_METHODS,
     baseline_saliency_params,
     normalize_saliency_params,
     recommended_saliency_params_for_method,
     selected_saliency_methods_from_params,
 )
+from XBrainLab.backend.visualization import (
+    all_saliency_methods,
+    supported_saliency_methods,
+)
+
+
+def test_policy_methods_follow_visualization_supported_method_names():
+    assert list(ADVANCED_SALIENCY_METHODS) == supported_saliency_methods
+    assert list(ALL_SALIENCY_METHODS) == all_saliency_methods
 
 
 def test_recommended_profile_selects_fast_baseline_methods():
