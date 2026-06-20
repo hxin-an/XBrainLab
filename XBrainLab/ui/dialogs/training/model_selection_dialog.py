@@ -22,10 +22,12 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
+    QWidget,
 )
 
 from XBrainLab.backend import model_base
@@ -70,6 +72,7 @@ class ModelSelectionDialog(BaseDialog):
         self.confirm_btn = None
         self.weight_label = None
         self.weight_btn = None
+        self.content_scroll = None
 
         # Fetch model list
         self.model_map = {
@@ -93,6 +96,24 @@ class ModelSelectionDialog(BaseDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 14)
         layout.setSpacing(12)
+
+        content = QWidget()
+        content.setObjectName("ModelSelectionContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(12)
+
+        self.content_scroll = QScrollArea()
+        self.content_scroll.setObjectName("ModelSelectionContentScroll")
+        self.content_scroll.setWidgetResizable(True)
+        self.content_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+        )
+        self.content_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded,
+        )
+        self.content_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.content_scroll.setWidget(content)
 
         # Model setup
         setup_frame = QFrame()
@@ -119,7 +140,7 @@ class ModelSelectionDialog(BaseDialog):
         self.weight_btn.clicked.connect(self.load_pretrained_weight)
         setup_layout.addWidget(self.weight_btn, 2, 2)
         setup_layout.setColumnStretch(1, 1)
-        layout.addWidget(setup_frame)
+        content_layout.addWidget(setup_frame)
 
         # Parameters Table
         self.params_group = QFrame()
@@ -189,7 +210,9 @@ class ModelSelectionDialog(BaseDialog):
         if vertical_header is not None:
             vertical_header.setVisible(False)
         group_layout.addWidget(self.params_table)
-        layout.addWidget(self.params_group, stretch=0)
+        content_layout.addWidget(self.params_group, stretch=0)
+        content_layout.addStretch(1)
+        layout.addWidget(self.content_scroll, stretch=1)
 
         # Buttons
         action_layout = QHBoxLayout()
@@ -243,6 +266,37 @@ class ModelSelectionDialog(BaseDialog):
         }}
         QDialog#ModelSelectionDialog QLabel#PretrainedWeightLabel {{
             color: {Theme.TEXT_SECONDARY};
+        }}
+        QDialog#ModelSelectionDialog QScrollArea#ModelSelectionContentScroll {{
+            border: none;
+            background: {Theme.BACKGROUND_DARK};
+        }}
+        QDialog#ModelSelectionDialog QScrollArea#ModelSelectionContentScroll > QWidget,
+        QDialog#ModelSelectionDialog QWidget#ModelSelectionContent {{
+            background: {Theme.BACKGROUND_DARK};
+        }}
+        QDialog#ModelSelectionDialog QScrollBar:vertical {{
+            background: {Theme.BACKGROUND_MID};
+            width: 10px;
+            margin: 0;
+            border: none;
+        }}
+        QDialog#ModelSelectionDialog QScrollBar::handle:vertical {{
+            background: {Theme.BACKGROUND_LIGHT};
+            border-radius: 5px;
+            min-height: 28px;
+        }}
+        QDialog#ModelSelectionDialog QScrollBar::handle:vertical:hover {{
+            background: {Theme.TEXT_MUTED};
+        }}
+        QDialog#ModelSelectionDialog QScrollBar::add-line:vertical,
+        QDialog#ModelSelectionDialog QScrollBar::sub-line:vertical {{
+            height: 0;
+            background: transparent;
+        }}
+        QDialog#ModelSelectionDialog QScrollBar::add-page:vertical,
+        QDialog#ModelSelectionDialog QScrollBar::sub-page:vertical {{
+            background: transparent;
         }}
         QDialog#ModelSelectionDialog QPushButton {{
             background: {Theme.BACKGROUND_MID};

@@ -1,8 +1,14 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QPalette
-from PyQt6.QtWidgets import QAbstractItemView, QDialogButtonBox, QTableWidgetItem
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QDialogButtonBox,
+    QScrollArea,
+    QTableWidgetItem,
+)
 
 from XBrainLab.ui.dialogs.training import ModelSelectionDialog
 from XBrainLab.ui.styles.theme import Theme
@@ -16,6 +22,29 @@ class DummyModel:
 
 class NoEditableParamModel:
     def __init__(self, n_classes, channels, samples, sfreq):
+        pass
+
+
+class ManyParamModel:
+    def __init__(
+        self,
+        alpha=1,
+        beta=2,
+        gamma=3,
+        delta=4,
+        epsilon=5,
+        zeta=6,
+        eta=7,
+        theta=8,
+        iota=9,
+        kappa=10,
+        lambda_param=11,
+        mu=12,
+        nu=13,
+        xi=14,
+        omicron=15,
+        pi=16,
+    ):
         pass
 
 
@@ -92,6 +121,31 @@ class TestModelSelection:
         name_item = dialog.params_table.item(0, 0)
         assert name_item is not None
         assert "No editable parameters" in name_item.text()
+
+    def test_content_scrolls_when_model_parameters_exceed_dialog_height(self, qtbot):
+        with patch("inspect.getmembers") as mock_getmembers:
+            mock_getmembers.return_value = [("ManyParamModel", ManyParamModel)]
+
+            dialog = ModelSelectionDialog(None, MagicMock())
+            qtbot.addWidget(dialog)
+
+        dialog.resize(600, 300)
+        dialog.show()
+        qtbot.wait(50)
+
+        scroll = dialog.findChild(QScrollArea, "ModelSelectionContentScroll")
+        assert scroll is not None
+        assert scroll.widgetResizable()
+        assert scroll.horizontalScrollBarPolicy() == (
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        assert scroll.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        scrollbar = scroll.verticalScrollBar()
+        assert scrollbar is not None
+        assert scrollbar.maximum() > 0
+        assert dialog.confirm_btn is not None
+        assert dialog.confirm_btn.isVisibleTo(dialog)
+        assert "QScrollArea#ModelSelectionContentScroll" in dialog.styleSheet()
 
     def test_confirm(self, dialog):
         # Modify a parameter
