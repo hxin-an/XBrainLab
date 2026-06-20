@@ -17,21 +17,10 @@ from .commands import (
     VisualizeCommand,
 )
 from .errors import PreconditionError
+from .saliency_policy import normalize_saliency_params
 from .state import ApplicationStateSnapshot
 
 HandlerResult = str | tuple[str, dict[str, Any]]
-
-_DEFAULT_SALIENCY_PARAMS: dict[str, Any] = {
-    "nt_samples": 5,
-    "nt_samples_batch_size": None,
-    "stdevs": 1.0,
-}
-_SUPPORTED_SALIENCY_PARAM_KEYS = ("SmoothGrad", "SmoothGrad_Squared", "VarGrad")
-_RECOMMENDED_SALIENCY_METHODS = ("Gradient", "Gradient * Input")
-_ALL_SALIENCY_METHODS = (
-    *_RECOMMENDED_SALIENCY_METHODS,
-    *_SUPPORTED_SALIENCY_PARAM_KEYS,
-)
 
 
 class AnalysisCommandService:
@@ -178,7 +167,7 @@ class AnalysisCommandService:
             raise TypeError("Invalid command for saliency")
         configure_requested = bool(command.params) or bool(command.method)
         if configure_requested:
-            params, requested_method = self._normalize_saliency_params(
+            params, requested_method = normalize_saliency_params(
                 command.method,
                 command.params,
             )
@@ -246,86 +235,6 @@ class AnalysisCommandService:
                 "montage_name": command.montage_name,
             },
         )
-
-    @staticmethod
-    def _normalize_saliency_params(
-        method: str | None,
-        params: dict[str, Any] | None,
-    ) -> tuple[dict[str, Any], str | None]:
-        """Normalize agent-friendly saliency args to evaluator-required keys."""
-        raw = dict(params or {})
-        requested_method = str(raw.pop("method", method or "") or "").strip() or None
-        profile = str(raw.pop("profile", "") or "").strip().lower()
-        explicit_methods = AnalysisCommandService._normalize_saliency_methods(
-            raw.pop("methods", None),
-        )
-        configured_method_keys = [
-            key
-            for key in _SUPPORTED_SALIENCY_PARAM_KEYS
-            if isinstance(raw.get(key), dict)
-        ]
-        flat_params: dict[str, Any] = {}
-        normalized: dict[str, Any] = {
-            key: dict(_DEFAULT_SALIENCY_PARAMS)
-            for key in _SUPPORTED_SALIENCY_PARAM_KEYS
-        }
-        for key, value in raw.items():
-            if key in _SUPPORTED_SALIENCY_PARAM_KEYS and isinstance(value, dict):
-                normalized[key].update(value)
-            elif key not in _SUPPORTED_SALIENCY_PARAM_KEYS:
-                flat_params[key] = value
-        if flat_params:
-            for key in _SUPPORTED_SALIENCY_PARAM_KEYS:
-                method_params = normalized[key]
-                method_params.update(flat_params)
-        selected_methods = AnalysisCommandService._select_saliency_methods(
-            requested_method=requested_method,
-            profile=profile,
-            explicit_methods=explicit_methods,
-            configured_method_keys=configured_method_keys,
-        )
-        normalized["_methods"] = selected_methods
-        if profile:
-            normalized["_profile"] = profile
-        return normalized, requested_method
-
-    @staticmethod
-    def _normalize_saliency_methods(value: Any) -> list[str]:
-        if value is None:
-            return []
-        if isinstance(value, str):
-            items = [value]
-        elif isinstance(value, (list, tuple, set)):
-            items = list(value)
-        else:
-            return []
-
-        methods = []
-        for item in items:
-            method = str(item).strip()
-            if method in _ALL_SALIENCY_METHODS and method not in methods:
-                methods.append(method)
-        return methods
-
-    @staticmethod
-    def _select_saliency_methods(
-        *,
-        requested_method: str | None,
-        profile: str,
-        explicit_methods: list[str],
-        configured_method_keys: list[str],
-    ) -> list[str]:
-        if explicit_methods:
-            return explicit_methods
-        if profile == "recommended":
-            return list(_RECOMMENDED_SALIENCY_METHODS)
-        if profile == "advanced":
-            return configured_method_keys or list(_SUPPORTED_SALIENCY_PARAM_KEYS)
-        if requested_method in _ALL_SALIENCY_METHODS:
-            return [requested_method]
-        if configured_method_keys:
-            return configured_method_keys
-        return list(_ALL_SALIENCY_METHODS)
 
     @staticmethod
     def _saliency_configuration_reasons(

@@ -104,7 +104,11 @@ class TrainingCommandService:
     def handle_train(self, command: Command) -> HandlerResult:
         if not isinstance(command, TrainCommand):
             raise TypeError("Invalid command for train")
-        preflight = check_training_resource_preflight(self.training)
+        context = self._resource_preflight_context()
+        preflight = check_training_resource_preflight(
+            context.get("datasets", []),
+            context.get("training_option"),
+        )
         if not preflight.ok:
             raise PreconditionError(
                 preflight.message,
@@ -122,6 +126,14 @@ class TrainingCommandService:
                 "resource_preflight": preflight.diagnostics,
             },
         )
+
+    def _resource_preflight_context(self) -> dict[str, Any]:
+        getter = getattr(self.training, "get_resource_preflight_context", None)
+        if callable(getter):
+            value = getter()
+            if isinstance(value, dict):
+                return dict(value)
+        return {"datasets": [], "training_option": None}
 
     def handle_stop_training(self, command: Command) -> HandlerResult:
         if not isinstance(command, StopTrainingCommand):

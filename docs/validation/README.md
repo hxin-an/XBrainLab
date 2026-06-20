@@ -171,6 +171,53 @@ This supports a manual-test candidate after final dashboard/docs/branch hygiene 
 It still does not claim human Windows acceptance, full BIDS validator compliance,
 arbitrary public dataset certification, or scientific model-quality evidence.
 
+### 2026-06-20 Clean-Code Boundary Follow-Up
+
+`refactor/saliency-resource-boundaries` keeps the BIDS epoch / saliency behavior
+unchanged while tightening two recently touched boundaries:
+
+- saliency method selection and parameter normalization now live in
+  `backend.application.saliency_policy`, so `AnalysisCommandService` and the
+  Visualization UI no longer carry separate copies of recommended / advanced method
+  rules;
+- training resource preflight now receives explicit dataset / training-option context
+  from `TrainingCommandService`; `resource_guard` no longer inspects controller or
+  `Study` shapes directly.
+
+Focused validation:
+
+```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/backend/application/test_saliency_policy.py \
+  tests/unit/backend/application/test_resource_guard.py -q
+# 6 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/backend/application/test_analysis_service.py \
+  tests/unit/backend/application/test_training_service.py -q
+# 22 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_visualization_panel_redesign.py -q
+# 24 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/backend/application/test_application_service.py::test_saliency_command_can_configure_params \
+  tests/unit/backend/application/test_application_service.py::test_saliency_command_normalizes_flat_method_params \
+  tests/unit/backend/application/test_application_service.py::test_visualize_and_saliency_commands_return_typed_query_payloads \
+  tests/unit/ui/visualization/test_control_sidebar.py -q
+# 21 passed
+
+poetry run ruff check <touched files>
+# PASS
+
+poetry run basedpyright <touched files>
+# 0 errors, 0 warnings, 0 notes
+
+poetry run python tests/architecture_compliance.py
+# PASS
+```
+
 ## 2026-05-30 Release-Candidate Gate Follow-Up
 
 Manual-test gating on `/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`

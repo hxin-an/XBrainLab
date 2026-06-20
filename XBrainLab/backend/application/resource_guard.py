@@ -1,4 +1,4 @@
-"""Resource preflight checks for training commands."""
+"""Resource preflight checks for import and training commands."""
 
 from __future__ import annotations
 
@@ -32,11 +32,12 @@ class ResourcePreflightResult:
         return " ".join(self.issues)
 
 
-def check_training_resource_preflight(training: Any) -> ResourcePreflightResult:
+def check_training_resource_preflight(
+    datasets: Iterable[Any],
+    training_option: Any,
+) -> ResourcePreflightResult:
     """Return blocking resource issues before a training run starts."""
-    context = _training_resource_context(training)
-    datasets = list(context.get("datasets") or [])
-    option = context.get("training_option")
+    option = training_option
     estimate = estimate_training_resources(datasets, option)
 
     ram_available = available_ram_bytes()
@@ -172,23 +173,6 @@ def available_vram_bytes(gpu_idx: int | None = None) -> int | None:
         return int(free_bytes)
     except Exception:
         return None
-
-
-def _training_resource_context(training: Any) -> dict[str, Any]:
-    getter = getattr(training, "get_resource_preflight_context", None)
-    if callable(getter):
-        value = getter()
-        if isinstance(value, dict):
-            return dict(value)
-
-    study = getattr(training, "_study", None)
-    if study is not None:
-        return {
-            "datasets": list(getattr(study, "datasets", []) or []),
-            "training_option": getattr(study, "training_option", None),
-            "model_holder": getattr(study, "model_holder", None),
-        }
-    return {}
 
 
 def _uses_cpu(option: Any) -> bool:

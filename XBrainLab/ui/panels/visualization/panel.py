@@ -17,6 +17,12 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.application import SaliencyCommand, VisualizeCommand
+from XBrainLab.backend.application.saliency_policy import (
+    baseline_saliency_params,
+    is_recommended_saliency_method,
+    recommended_saliency_params_for_method,
+    selected_saliency_methods_from_params,
+)
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.visualization import supported_saliency_methods
 from XBrainLab.ui.application_capabilities import (
@@ -603,7 +609,7 @@ class VisualizationPanel(BasePanel):
         method_name = (
             self.method_combo.currentText() if hasattr(self, "method_combo") else ""
         ) or "Gradient"
-        params = self._recommended_saliency_params_for_method(method_name)
+        params = recommended_saliency_params_for_method(method_name)
         methods = params.get("methods")
         methods_key = tuple(methods) if isinstance(methods, (list, tuple, set)) else ()
         current_widget = self.tabs.currentWidget() if hasattr(self, "tabs") else None
@@ -636,7 +642,7 @@ class VisualizationPanel(BasePanel):
         if self._saliency_compute_in_progress:
             self.saliency_action_title.setText("Preparing saliency baseline")
             detail = "Computing Gradient + Gradient * Input in the background."
-        elif method_name in {"Gradient", "Gradient * Input"}:
+        elif is_recommended_saliency_method(method_name):
             self.saliency_action_title.setText("Preparing saliency baseline")
             detail = "XBrainLab prepares Gradient + Gradient * Input automatically."
         else:
@@ -660,29 +666,6 @@ class VisualizationPanel(BasePanel):
         self.compute_saliency_btn.setText(
             "Computing..." if busy else "Compute Saliency"
         )
-
-    @staticmethod
-    def _recommended_saliency_params_for_method(method_name: str) -> dict[str, object]:
-        noise_defaults = {
-            "nt_samples": 5,
-            "nt_samples_batch_size": None,
-            "stdevs": 1.0,
-        }
-        if method_name in {"Gradient", "Gradient * Input"}:
-            return {
-                "profile": "recommended",
-                "methods": ["Gradient", "Gradient * Input"],
-            }
-        if method_name in {"SmoothGrad", "SmoothGrad_Squared", "VarGrad"}:
-            return {
-                "profile": "advanced",
-                "methods": [method_name],
-                method_name: noise_defaults,
-            }
-        return {
-            "profile": "recommended",
-            "methods": ["Gradient", "Gradient * Input"],
-        }
 
     def update_info(self):
         """Update the Sidebar Info Panel and refresh combos."""
@@ -721,13 +704,12 @@ class VisualizationPanel(BasePanel):
     ) -> bool:
         """Compute saliency on demand when a finished run has metrics only."""
         params = self._configured_saliency_params()
-        if self._is_recommended_saliency_method(method_name):
-            configured_methods = self._selected_saliency_methods_from_params(params)
+        if is_recommended_saliency_method(method_name):
+            configured_methods = selected_saliency_methods_from_params(params)
             if not params or method_name not in configured_methods:
-                params = self._baseline_saliency_params()
-        elif (
-            not params
-            or method_name not in self._selected_saliency_methods_from_params(params)
+                params = baseline_saliency_params()
+        elif not params or method_name not in selected_saliency_methods_from_params(
+            params
         ):
             return False
         return self._start_saliency_compute(
@@ -758,7 +740,7 @@ class VisualizationPanel(BasePanel):
         params = self._configured_saliency_params()
         profile = "configured"
         if not params:
-            params = self._baseline_saliency_params()
+            params = baseline_saliency_params()
             profile = "recommended-baseline"
         return self._start_saliency_compute(
             params=params,
@@ -871,30 +853,6 @@ class VisualizationPanel(BasePanel):
             else {}
         )
         return diagnostics.get("payload_type") == "saliency_summary"
-
-    @staticmethod
-    def _is_recommended_saliency_method(method_name: str) -> bool:
-        return method_name in {"Gradient", "Gradient * Input"}
-
-    @staticmethod
-    def _baseline_saliency_params() -> dict[str, object]:
-        return {
-            "profile": "recommended",
-            "methods": ["Gradient", "Gradient * Input"],
-        }
-
-    @staticmethod
-    def _selected_saliency_methods_from_params(params: dict[str, object]) -> set[str]:
-        raw_methods = params.get("_methods") or params.get("methods")
-        if isinstance(raw_methods, str):
-            return {raw_methods}
-        if isinstance(raw_methods, (list, tuple, set)):
-            return {str(item) for item in raw_methods}
-        return {
-            method
-            for method in ("SmoothGrad", "SmoothGrad_Squared", "VarGrad")
-            if isinstance(params.get(method), dict)
-        }
 
     def _application_query_blocks_display(self, result) -> bool:
         if result is None:

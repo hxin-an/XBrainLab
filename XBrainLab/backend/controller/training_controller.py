@@ -96,14 +96,6 @@ class TrainingController(Observable):
         self._study.train(interact=False)
         self.notify("training_stopped")
 
-    def get_resource_preflight_context(self) -> dict[str, Any]:
-        """Return datasets and training options used by command preflight."""
-        return {
-            "datasets": list(getattr(self._study, "datasets", []) or []),
-            "training_option": getattr(self._study, "training_option", None),
-            "model_holder": getattr(self._study, "model_holder", None),
-        }
-
     def stop_training(self) -> None:
         """Interrupt the current training process.
 
