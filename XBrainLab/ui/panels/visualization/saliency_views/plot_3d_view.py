@@ -92,9 +92,7 @@ class Saliency3DPlotWidget(QWidget):
         lbl = QLabel(text)
         lbl.setWordWrap(True)
         lbl.setContentsMargins(16, 16, 16, 16)
-        lbl.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-        )
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,

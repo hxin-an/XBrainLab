@@ -1384,7 +1384,10 @@
               "nt_samples": 2,
               "nt_samples_batch_size": 1,
               "stdevs": 1.0
-            }
+            },
+            "_methods": [
+              "Gradient"
+            ]
           }
         }
       },
@@ -1405,7 +1408,16 @@
         "error_type": null,
         "diagnostics": {
           "append": true,
-          "interactive": false
+          "interactive": false,
+          "resource_preflight": {
+            "dataset_bytes": 37104,
+            "estimated_ram_working_set_bytes": 74208,
+            "estimated_gpu_batch_working_set_bytes": 98816,
+            "available_ram_bytes": 27062562816,
+            "available_vram_bytes": null,
+            "gpu_index": null,
+            "uses_cpu": true
+          }
         }
       }
     ],
@@ -2080,6 +2092,6 @@
       }
     }
   },
-  "elapsed_seconds": 8.474,
+  "elapsed_seconds": 9.093,
   "uncaught_exceptions": []
 }

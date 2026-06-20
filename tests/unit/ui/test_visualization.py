@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 from PyQt6 import sip
+from PyQt6.QtCore import Qt
 
 # ============ Saliency3DEngine ============
 
@@ -447,6 +448,7 @@ class TestSaliency3DPlotWidget:
             assert labels[-1].sizePolicy().horizontalPolicy() == (
                 QSizePolicy.Policy.Expanding
             )
+            assert labels[-1].alignment() == Qt.AlignmentFlag.AlignCenter
 
     def test_clear_plot(self, qtbot):
         with patch(
@@ -805,15 +807,32 @@ class TestSaliency3DPlotWidget:
 
         assert saliency.plotter.slider_ranges == [(1, 24)]
 
-    def test_3d_head_plot_continues_when_bounds_overlay_fails(self):
+    def test_3d_head_plot_centers_scene_after_adding_meshes(self):
         from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_head import (
             Saliency3D,
         )
 
+        class CameraStub:
+            def __init__(self, calls):
+                self.calls = calls
+
+            def zoom(self, amount):
+                self.calls.append(("camera.zoom", amount))
+
         class PlotterStub:
             def __init__(self):
-                self.camera = MagicMock()
-                self.mesh_count = 0
+                self.calls = []
+                self.camera = CameraStub(self.calls)
+                self._camera_position = None
+
+            @property
+            def camera_position(self):
+                return self._camera_position
+
+            @camera_position.setter
+            def camera_position(self, value):
+                self._camera_position = value
+                self.calls.append(("camera_position", value))
 
             def add_camera_orientation_widget(self):
                 pass
@@ -828,7 +847,7 @@ class TestSaliency3DPlotWidget:
                 pass
 
             def add_mesh(self, *_args, **_kwargs):
-                self.mesh_count += 1
+                self.calls.append(("add_mesh", None))
                 return object()
 
             def add_scalar_bar(self, *_args, **_kwargs):
@@ -837,8 +856,11 @@ class TestSaliency3DPlotWidget:
             def update_scalar_bar_range(self, *_args, **_kwargs):
                 pass
 
+            def reset_camera(self):
+                self.calls.append(("reset_camera", None))
+
             def show_bounds(self, *_args, **_kwargs):
-                raise TypeError("can only concatenate tuple (not list) to tuple")
+                raise AssertionError("3D saliency should not display debug bounds")
 
         saliency = Saliency3D.__new__(Saliency3D)
         saliency.engine = MagicMock()
@@ -857,4 +879,12 @@ class TestSaliency3DPlotWidget:
         result = saliency.get_3d_head_plot()
 
         assert result is saliency.plotter
-        assert saliency.plotter.mesh_count >= 2
+        calls = saliency.plotter.calls
+        first_reset = calls.index(("reset_camera", None))
+        assert first_reset > max(
+            index for index, call in enumerate(calls) if call[0] == "add_mesh"
+        )
+        assert calls[first_reset + 1 : first_reset + 3] == [
+            ("camera_position", "xy"),
+            ("camera.zoom", 0.9),
+        ]

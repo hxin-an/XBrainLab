@@ -1,3 +1,5 @@
+import contextlib
+
 import matplotlib.pyplot as plt
 import pyvista as pv
 
@@ -213,9 +215,6 @@ class Saliency3D:
         )
         self.plotter.add_text("Show head", position=(60, 247), **CHECKBOX_TEXT_KWARGS)
 
-        self.plotter.camera_position = "xy"
-        self.plotter.camera.zoom(0.8)
-
         self.channelActor = [self.plotter.add_mesh(ch, color="w") for ch in self.chs]
 
         # Initialize scalars should be done by engine.update_scalars call in __init__?
@@ -237,12 +236,24 @@ class Saliency3D:
         )
         self.plotter.update_scalar_bar_range(self.engine.scalar_bar_range, "saliency")
         self.plotter.add_mesh(self.engine.brain_scaled, color=Theme.BRAIN_MESH)
-
-        show_bounds = getattr(self.plotter, "show_bounds", None)
-        if callable(show_bounds):
-            try:
-                show_bounds(color="white")
-            except TypeError as exc:
-                logger.warning("Skipping 3D bounds overlay: %s", exc)
+        self._center_scene_camera()
 
         return self.plotter
+
+    def _center_scene_camera(self) -> None:
+        """Center the 3-D saliency model after all actors are in the scene."""
+        reset_camera = getattr(self.plotter, "reset_camera", None)
+        if callable(reset_camera):
+            with contextlib.suppress(Exception):
+                reset_camera()
+        with contextlib.suppress(Exception):
+            self.plotter.camera_position = "xy"
+        camera = getattr(self.plotter, "camera", None)
+        zoom = getattr(camera, "zoom", None)
+        if callable(zoom):
+            with contextlib.suppress(Exception):
+                zoom(0.9)
+        render = getattr(self.plotter, "render", None)
+        if callable(render):
+            with contextlib.suppress(Exception):
+                render()
