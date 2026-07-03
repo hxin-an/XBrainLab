@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-06-20`
+最後更新：`2026-07-03`
 
 ## 這份文件的用途
 
@@ -36,6 +36,25 @@
 ```
 
 ## 2026-07-03
+
+### Roadmap five-phase model finalized
+
+- 做了什麼：
+  - 和使用者重新討論 roadmap，將過細的 Phase 1A / 1A-V / 1B / 1C 心智模型收斂成五階段：
+    Rebaseline、Desktop MVP、Product Polish / Release Candidate、Assistant MVP、Thesis Evidence。
+  - 明確定義 UI / UX 精修分層：阻礙使用或理解的 UI/UX 是 Desktop MVP blocker；美感、
+    一致性和低風險 polish 放在 Product Polish / Release Candidate。
+  - 更新 `docs/planning/roadmap.md`、`docs/current.md`、`docs/index.md`、`docs/planning/now.md`
+    和 `docs/decisions/README.md`。
+- 結果：
+  - Roadmap 入口現在以產品階段為主，不再讓使用者先面對內部工程分類。
+- 證據：
+  - `git diff --check`
+  - `poetry run mkdocs build --strict`
+- 接續 / 本輪剩餘：
+  - Branch / worktree inventory。
+  - Known blocker board。
+  - Handoff gate reset。
 
 ### Current truth rebaseline and MCP roadmap removal
 

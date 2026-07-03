@@ -29,6 +29,7 @@
 | local LLM 不使用中國模型 | active | 不使用中國公司或中國來源模型；Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM 等不列入 primary / fallback 選型。 |
 | 資料匯入目標是 Data Interpretation System | active | 使用者提供資料位置後，系統應建立可預覽、可驗證、可重跑的資料解讀；不以單純 load file / attach label 心智模型作為終局設計。 |
 | MCP 從 active roadmap 移除 | active | MCP 不再是 MVP、release candidate、handoff gate 或 thesis evidence 前置；既有 MCP code/tests/artifacts 只保留為歷史探索或相容性證據。未來若要恢復，需另開決策重新定義 scope、security、session ownership、client matrix 和 validation cost。 |
+| Roadmap 五階段定型 | active | 產品主線固定為 Rebaseline -> Desktop MVP -> Product Polish / Release Candidate -> Assistant MVP -> Thesis Evidence。阻礙使用或理解的 UI/UX 屬於 Desktop MVP blocker；美感、一致性和低風險 polish 屬於 Product Polish / Release Candidate。 |
 
 ## 目前工作方向
 

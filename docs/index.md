@@ -1,6 +1,6 @@
 # XBrainLab 專案控制室
 
-XBrainLab 是本地優先的 EEG / BCI 桌面分析工具，目前正在重新盤點 current truth；下一步是把文件、分支、known blockers 和 handoff gate 對齊後，再回到 MVP 穩定化。這個私有入口用來快速判斷現況、缺口和證據。
+XBrainLab 是本地優先的 EEG / BCI 桌面分析工具，目前 roadmap 已定型為 Rebaseline -> Desktop MVP -> Product Polish / Release Candidate -> Assistant MVP -> Thesis Evidence。這個私有入口用來快速判斷現況、缺口和證據。
 
 !!! warning "目前邊界"
     Not product complete；automated evidence 不能取代 human Windows acceptance。
@@ -90,7 +90,7 @@ Current truth rebaseline; branch inventory; known blocker reset; then manual-tes
 
 - **Roadmap**
 
-    看 current truth rebaseline、MVP baseline、Release Candidate、Thesis / Agent Evidence 的階段安排。
+    看 Rebaseline、Desktop MVP、Product Polish / Release Candidate、Assistant MVP、Thesis Evidence 的階段安排。
 
     [打開 Roadmap](planning/roadmap.md)
 
@@ -142,13 +142,11 @@ belong in git history unless they are still needed for current evidence. Current
 
 ## 目前工作主線
 
-1. Phase 0：Current Truth Rebaseline。
-2. Phase 1A：Backend / UI Stabilization。
-3. Phase 1B：Data Interpretation MVP Slice。
-4. Phase 1C：In-App Assistant Product Baseline。
-5. Phase 1D：Windows Desktop MVP Acceptance。
-6. Phase 2：Release Candidate Hardening。
-7. Phase 3：Thesis / Formal Agent Evidence。
+1. Rebaseline。
+2. Desktop MVP。
+3. Product Polish / Release Candidate。
+4. Assistant MVP。
+5. Thesis Evidence。
 
 ## 網站地圖
 

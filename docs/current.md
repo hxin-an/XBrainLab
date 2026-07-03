@@ -19,7 +19,7 @@ MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測�
 
 | 區域 | 目前狀態 | 邊界 |
 | --- | --- | --- |
-| Backend | `ApplicationService / Command API` 已是主要 command spine；UI、assistant 和 scripts 不應把 `BackendFacade` 當入口，service lazy wrappers 已改成明確 command handler。 | Phase 1A 還要以 release-candidate gate 持續防止新的 legacy / duplicate refresh truth。 |
+| Backend | `ApplicationService / Command API` 已是主要 command spine；UI、assistant 和 scripts 不應把 `BackendFacade` 當入口，service lazy wrappers 已改成明確 command handler。 | Desktop MVP 和 Product Polish 階段都要持續防止新的 legacy / duplicate refresh truth。 |
 | UI | PyQt 主流程、Data Interpretation wizard、training / evaluation / visualization surface 都有 baseline；`stabilize/bids-epoch-saliency-baseline` 已把 2026-06-17 定稿的 saliency background baseline flow 落到 command/UI path。 | automated walkthrough 不等於 human Windows desktop acceptance；仍需真人 Windows click-through 才能宣稱產品驗收完成。 |
 | Data Interpretation | `scan -> preview -> validate -> apply -> recipe` baseline 已存在；Data Import wizard 已補強 Tier 1/Tier 2 label-source、BIDS-like events、internal event evidence、external label placement、structured review coverage，並把 reviewed label placement 寫成 epoch 建議。 | 還不是 full BIDS / arbitrary import system；P300/SSVEP/clinical/XDF/LSL/MOABB/proprietary converters 不能誇大。Epoch 目前消費 import 建議，不代表 epoch/preprocess 全流程已做完整 UX 重作。 |
 | Assistant / Agent | in-app assistant 仍是產品與論文方向，但要等桌面主流程、command surface、verification layer 和 benchmark protocol 重新整理乾淨後再推。 | 目前不能宣稱 thesis-grade tool-call accuracy，也不能用 agent score 代表 UI 已可用。 |
@@ -39,7 +39,7 @@ MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測�
 - 最新可手測分支、已知 UI 問題、驗證 gate 和 artifact freshness 要重新列清楚。
 - 後續每個 handoff candidate 都必須更新 canonical docs；不能只更新 artifact 或聊天紀錄。
 
-Phase 1A 仍是 MVP 前置，但在重新盤點後再繼續推進：
+Desktop MVP 前仍要先把 backend / UI 穩定化繼續收乾淨：
 
 - product runtime 不應偷偷 fallback 到 legacy controller mutation。
 - UI refresh 不應每個頁面自己猜狀態。
@@ -50,10 +50,10 @@ Phase 1A 仍是 MVP 前置，但在重新盤點後再繼續推進：
 
 ## 可以宣稱
 
-- Roadmap 主線應改成：state/docs rebaseline -> backend/UI stabilization -> Data Interpretation MVP ->
-  in-app assistant baseline -> Windows desktop acceptance -> thesis evidence。
+- Roadmap 主線已定型為：Rebaseline -> Desktop MVP -> Product Polish / Release Candidate ->
+  Assistant MVP -> Thesis Evidence。
 - `ApplicationService / Command API` 是目前要收斂的 product spine。
-- Data Interpretation 和 tool-call baseline 都屬於 MVP，不應被推到後期。
+- Data Interpretation 屬於 Desktop MVP；assistant / tool-call baseline 要等桌面主流程穩定後再推進。
 - 現有 artifacts 能作為工程 evidence，但每個 evidence 都有明確邊界。
 
 ## 不能宣稱

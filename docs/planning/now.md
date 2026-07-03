@@ -19,6 +19,7 @@
 | --- | --- | --- |
 | In progress | Current docs rebaseline | `docs/current.md`、`docs/planning/now.md`、`docs/planning/roadmap.md`、`docs/architecture/README.md`、`docs/validation/README.md` 對目前方向不矛盾。 |
 | In progress | MCP 從 active plan 移除 | Roadmap、current truth、target / architecture docs 不再把 MCP 當 MVP、release、thesis 或 handoff gate。 |
+| In progress | Roadmap 心智模型定型 | Roadmap 改成 Rebaseline -> Desktop MVP -> Product Polish / Release Candidate -> Assistant MVP -> Thesis Evidence；UI/UX blocker 放進 Desktop MVP，視覺一致性放進 Product Polish。 |
 | Pending | Branch / worktree inventory | 列出目前可作為下一輪手測或整合基底的分支；舊 worktree / branches 只清掉已確認不需要的，不做 destructive reset。 |
 | Pending | Known blocker reset | 重新列出使用者最近手測提到的 UI / runtime blocker：evaluation、visualization、model selection scroll、3D centering、saliency readiness、Data Import label reload。 |
 | Pending | Handoff gate reset | 重新確認「可以給使用者手測」前必跑的 happy path、edge case、多資料集、screenshot artifact 和 claim boundary。 |
@@ -50,7 +51,8 @@ roadmap / architecture` 沒有每次同步，所以 canonical truth 慢慢落後
 本輪可以收尾的條件是：
 
 1. MCP 已從 active docs 和 gate 語意移除。
-2. `mkdocs build --strict` 通過。
-3. `git diff --check` 通過。
-4. docs branch clean commit 並 push。
-5. 下一輪工程入口清楚：哪個分支、哪些 blocker、哪些 gate、哪些文件要同步。
+2. Roadmap 五階段心智模型已寫進 canonical docs。
+3. `mkdocs build --strict` 通過。
+4. `git diff --check` 通過。
+5. docs branch clean commit 並 push。
+6. 下一輪工程入口清楚：哪個分支、哪些 blocker、哪些 gate、哪些文件要同步。
