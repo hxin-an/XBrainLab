@@ -1,6 +1,6 @@
 # Product Feedback Log
 
-最後更新：`2026-05-10`
+最後更新：`2026-07-04`
 
 這份文件集中保存人工使用 XBrainLab 時看到的產品問題、UI / UX 意見和未來設計方向。
 它不是 current truth、不是 target spec，也不是施工流水帳；它的角色是防止真實使用感受散落在聊天紀錄或 worklog 裡。
@@ -30,6 +30,21 @@
 | Launcher 看起來啟動但實際不可用 | log 顯示 `MainWindow initialized`，但可能閃退或視窗跑出螢幕。 | startup smoke 不能只看 process / log；還要驗證視窗可見、可互動、在目前螢幕範圍內。 | Partially fixed |
 | Loading screen 太晚出現 | App 開起來會等很久才看到載入畫面；如果 splash 幾乎快結束才跳出來，使用者感覺上等於沒有載入畫面。 | Splash 必須在 heavy backend / training / panel imports 前出現。Package `__init__`、startup helper import、top-level UI imports 都不能偷偷拖重依賴。 | In progress |
 | 測試很多但抓不到實機 bug | Unit / integration / artifact tests 能證明局部正確，仍漏掉 hidden apply、offscreen window、scope confusion 等問題。 | 需要 Validation Reality-Gap Audit，補 human-observable product smoke。 | In planning |
+
+## 2026-07-04 Desktop MVP blocker board
+
+以下是最近手測和討論中反覆出現的產品 blocker。它們是下一輪 Desktop MVP repair 的入口；
+每項修復前都要先在 `stabilize/desktop-mvp` 重現或用 artifact 確認，不可只根據聊天記憶直接宣稱已修。
+
+| 主題 | 使用者觀察 | 產品判讀 | 下一個 gate |
+| --- | --- | --- | --- |
+| Data Import label reload | 移除 label 檔再 load 回來，Load Labels 看起來回來了，但 Match Labels 沒同步；有時 auto-detected 和 loaded source 會讓同一檔出現兩份或要移除兩次。 | Label source identity、dedupe、remove semantics 和 preview state refresh 要同時修，不能只修 UI list。 | focused reload regression、wizard screenshot、multi-dataset gate。 |
+| Review and Import 太碎 | recipe note 字太多；metadata missing run/session 不應拆太多條；同樣問題跨檔案分太多列很難看。 | Review item 應 group by issue，顯示 issue / impact / next action / target step；不需要把所有 recipe note 放第一層。 | structured action item tests、review screenshot。 |
+| Epoch / preprocess crash risk | 切 preprocess、PSD/time-series preview、load 後 reset 曾出現 double free / Qt native crash；epoch dialog 背景和 overflow 也曾跑掉。 | Figure lifecycle、Qt UI thread、lazy render、dialog layout 都要一起掃，不可只修單一 crash stack。 | crash repro sweep、figure cleanup guard、epoch/preprocess screenshots。 |
+| Dataset split UI | preview title 疊到框、表格底部突兀、confirm style 不一致、select 欄不能用、combo arrow 消失。 | Split flow 可以保留 confirm 心智模型，但 layout / disabled controls / table style 要統一。 | dataset split UI screenshot + unit regression。 |
+| Model selection UI | model selection 不能上下滑、model parameters 疊到表格、pretrained weights 旁邊有怪線。 | Dialog 必須支援小視窗與長內容；參數區不應壓住模型表格。 | model selection screenshot + scroll test。 |
+| Evaluation table / model summary | metric summary / per-class table 曾白底白字；model summary 可能空或卡住。 | Table palette 和 initial selection 要有 guard；model summary 不可阻塞 UI。 | evaluation screenshot + focused panel tests。 |
+| Visualization / saliency | saliency readiness、label mapping、fold switch、3D 圖置中與 available/blocked state 反覆出問題。 | Saliency 計算、label map、fold selector、figure ownership 要從 backend state 到 UI display 一起驗證。 | visualization render walkthrough、saliency tests、3D runtime probe。 |
 
 ## 近期已處理
 

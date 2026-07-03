@@ -54,10 +54,11 @@ claim boundary。讀本頁時先看下方「目前距離目標多遠」，再進
 
 | Roadmap | 架構含義 |
 | --- | --- |
-| Phase 1A | 清 product legacy path、UI refresh truth、test adapter truth。 |
-| Phase 1B | 讓 Data Interpretation 成為正式資料入口。 |
-| Phase 1C | 讓 in-app assistant 走相同 command / capability / state snapshot。 |
-| Phase 1D | 用人手 Windows workflow 驗證整條產品線。 |
+| Rebaseline | 讓 branch/worktree、known blockers、validation claim 和 canonical docs 對齊。 |
+| Desktop MVP | 清 product legacy path、UI refresh truth、test adapter truth，並讓 Data Interpretation 到 visualization 的桌面 workflow 可跑。 |
+| Product Polish / Release Candidate | 統一 UI visual language、empty/loading/error state、artifact freshness 和 troubleshooting。 |
+| Assistant MVP | 讓 in-app assistant 走相同 command / capability / state snapshot。 |
+| Thesis Evidence | 在產品主線穩定後建立 tool-call / agent benchmark evidence。 |
 
 ## Active Risks
 

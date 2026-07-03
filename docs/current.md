@@ -1,14 +1,15 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-07-03`
+最後更新：`2026-07-04`
 
 這頁只回答一件事：**現在能相信什麼，還不能宣稱什麼，下一步該做什麼。**
 完整階段安排看 [Roadmap](planning/roadmap.md)，下一輪施工看 [Now](planning/now.md)。
 
 ## 一句話
 
-XBrainLab 正在重新盤點成 Windows 本地 EEG / BCI 桌面工具。主線現在是先把
-backend、UI、assistant、scripts 和驗證文件重新對齊，再繼續推進產品功能。
+XBrainLab 正在重新盤點成 Windows 本地 EEG / BCI 桌面工具。Roadmap、MCP 下線、
+branch/worktree inventory、known blocker board 和 handoff gate 已重新對齊；下一步進入
+Desktop MVP blocker repair。
 
 MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測試與 artifacts 只代表
 歷史探索或相容性證據，不再是 MVP、release candidate 或 thesis evidence 的必要路線。
@@ -28,16 +29,16 @@ MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測�
 
 ## 下一個真正 blocker
 
-**Current rebaseline：現況盤點、文件同步、MCP 下線決策落地。**
+**Desktop MVP blocker repair：在唯一工程基底上修主流程 blocker。**
 
-現在最大問題不是單一功能，而是文件、分支、驗證 claim 和實際程式狀態已經重新變得難以判斷。
-繼續做功能前要先把 current truth 收乾淨：
+Rebaseline 後的工程入口：
 
-- `docs/current.md`、`docs/planning/now.md`、`docs/planning/roadmap.md`、`docs/architecture/`
-  要能一致回答「目前在做什麼」。
-- MCP 要從 active roadmap、MVP gate 和 handoff claim 中移除。
-- 最新可手測分支、已知 UI 問題、驗證 gate 和 artifact freshness 要重新列清楚。
-- 後續每個 handoff candidate 都必須更新 canonical docs；不能只更新 artifact 或聊天紀錄。
+- 目前正式 git worktree 只有 `/mnt/d/workspace_v2/projects/lab/xbrainlab`。
+- rebaseline checkpoint 是 `docs/rebaseline-drop-mcp` at `9f91994f`。
+- 下一輪工程基底是 `stabilize/desktop-mvp`，從 rebaseline checkpoint 建立。
+- `docs/multi-gate-loop`、`docs/development-process-rules`、`wip/data-import-controller-dirty-checkpoint`
+  不整支 merge；只在需要時 cherry-pick 可用片段。
+- 後續每個 handoff candidate 都必須更新 canonical docs 或明確說明不需要更新的理由。
 
 Desktop MVP 前仍要先把 backend / UI 穩定化繼續收乾淨：
 
@@ -52,6 +53,7 @@ Desktop MVP 前仍要先把 backend / UI 穩定化繼續收乾淨：
 
 - Roadmap 主線已定型為：Rebaseline -> Desktop MVP -> Product Polish / Release Candidate ->
   Assistant MVP -> Thesis Evidence。
+- 正式 git worktree 已收斂到一個；下一輪產品修復從 `stabilize/desktop-mvp` 走。
 - `ApplicationService / Command API` 是目前要收斂的 product spine。
 - Data Interpretation 屬於 Desktop MVP；assistant / tool-call baseline 要等桌面主流程穩定後再推進。
 - 現有 artifacts 能作為工程 evidence，但每個 evidence 都有明確邊界。
@@ -65,6 +67,7 @@ Desktop MVP 前仍要先把 backend / UI 穩定化繼續收乾淨：
 - tool-call eval 等於 UI / product completion。
 - MCP baseline 屬於 active roadmap。
 - launcher smoke 等於 release approval 或 signed installer。
+- `stabilize/desktop-mvp` 已經 handoff-ready；它只是下一輪修復基底。
 
 ## 最近驗證
 

@@ -19,15 +19,15 @@
 | tool-call eval | tool selection / parameter / state transition 的 benchmark slice。 | EEG training quality、UI completion、產品完成。 |
 | launcher smoke | launcher / startup baseline。 | signed installer、release approval。 |
 
-## MVP Gate
+## Roadmap Evidence Gate
 
 | Phase | 需要的最低 evidence |
 | --- | --- |
-| 1A Backend Cleanup | architecture guard、focused command tests、UI refresh tests。 |
-| 1A-V Validation Reality Gap | test matrix、現有 artifacts claim audit、launcher -> Data Interpretation preview -> apply 的 product smoke。 |
-| 1B Data Interpretation | scan / preview / validate / apply tests，加 representative format artifact。 |
-| 1C Assistant Baseline | assistant tool tests、blocked reason / structured result checks、verification boundary evidence。 |
-| 1D Desktop Acceptance | human Windows click-through notes，加 automated walkthrough screenshot evidence。 |
+| Rebaseline | docs gate、branch/worktree inventory、known blocker board、handoff gate reset。 |
+| Desktop MVP | architecture guard、focused command tests、UI refresh tests、Data Import format matrix、required multi-dataset gate、human-observable desktop smoke。 |
+| Product Polish / Release Candidate | screenshot artifact review、UI visual consistency walkthrough、known limitations、troubleshooting docs、release-candidate preflight。 |
+| Assistant MVP | assistant tool tests、blocked reason / structured result checks、verification boundary evidence、local LLM unavailable state。 |
+| Thesis Evidence | frozen case suite、dataset protocol、scorer version、repeat count、failure taxonomy、statistical report。 |
 
 ## Handoff Candidate Gate
 

@@ -14,7 +14,7 @@ MVP stabilization；not product complete.
 
 <div markdown>
 <span class="xlb-kicker">主要缺口</span>
-目前先補 current docs / branch / validation claim 落差；Windows acceptance 仍 pending。
+下一步從唯一工程基底修 Desktop MVP blockers；Windows acceptance 仍 pending。
 </div>
 
 <div markdown>
@@ -34,7 +34,7 @@ local quality dashboard；screenshot index；private docs portal visual review.
 
 <div markdown>
 <span class="xlb-kicker">Next Work</span>
-Current truth rebaseline; branch inventory; known blocker reset; then manual-test candidate review.
+Desktop MVP blocker repair; then manual-test candidate gate before user handoff.
 </div>
 
 </div>
@@ -43,10 +43,10 @@ Current truth rebaseline; branch inventory; known blocker reset; then manual-tes
 
 | Area | Current Read | Best Evidence | Next Work |
 | --- | --- | --- | --- |
-| Product readiness | Baseline exists; not product complete. | [Current](current.md), [Roadmap](planning/roadmap.md) | Human-observable desktop smoke. |
+| Product readiness | Baseline exists; not product complete. | [Current](current.md), [Roadmap](planning/roadmap.md) | Desktop MVP blocker repair, then human-observable desktop smoke. |
 | Backend architecture | `ApplicationService / Command API` is the shared backend spine; `BackendFacade` is physically removed. | [Architecture](architecture/README.md), [Validation](validation/README.md) | Keep guards green while UX continues. |
 | Data Import | `scan -> preview -> validate -> apply -> recipe` works as baseline; placement evidence covers four mainstream modes. | [Data Interpretation target](target/data_interpretation_system.md), `artifacts/ui/data-import-wizard-steps/README.md` | Record UX debt; do not redesign tonight. |
-| Validation | Architecture, backend, assistant, UI refresh, split regression, docs, and dashboard gates need current-branch rebaseline before more feature work. | [Validation](validation/README.md); local generated `artifacts/quality/latest.md` | Refresh claim boundaries and add human Windows acceptance evidence. |
+| Validation | Handoff candidate gate is the required standard before user manual testing. | [Validation](validation/README.md); local generated `artifacts/quality/latest.md` | Run focused regression, same-class sweep, happy path, edge/multi-dataset, screenshot artifact, and claim boundary per branch. |
 
 ## Evidence Shortcuts
 
@@ -84,7 +84,7 @@ Current truth rebaseline; branch inventory; known blocker reset; then manual-tes
 
 - **Next work**
 
-    看下一輪施工焦點：剩餘 UI controller 例外、product smoke、human acceptance。
+    看下一輪施工焦點：Desktop MVP blocker board、唯一工程基底、handoff gate。
 
     [打開 Now](planning/now.md)
 

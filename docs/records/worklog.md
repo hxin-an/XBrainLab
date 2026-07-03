@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-07-03`
+最後更新：`2026-07-04`
 
 ## 這份文件的用途
 
@@ -34,6 +34,33 @@
 - 證據：
 - 接續 / 本輪剩餘：
 ```
+
+## 2026-07-04
+
+### Branch inventory, blocker reset, and handoff gate reset
+
+- 做了什麼：
+  - 盤點目前 git worktree、local branches、和未併入 rebaseline checkpoint 的 branches。
+  - 確認正式 git worktree 只有 `/mnt/d/workspace_v2/projects/lab/xbrainlab`。
+  - 將下一輪工程基底定為 `stabilize/desktop-mvp`，從 `docs/rebaseline-drop-mcp` 的
+    rebaseline checkpoint 建立。
+  - 將最近手測和討論中的 Desktop MVP blockers 重新整理到 `docs/planning/now.md`
+    和 `docs/records/product_feedback.md`。
+  - 重申 handoff candidate gate：focused regression、same-class sweep、happy path、
+    edge / multi-dataset、screenshot artifact、branch hygiene、claim boundary。
+- 結果：
+  - 不再把舊大型 WIP branch 當作下一輪整合來源。
+  - `docs/multi-gate-loop`、`docs/development-process-rules`、`wip/data-import-controller-dirty-checkpoint`
+    都標成不可整支 merge，只能按需 cherry-pick 可用片段。
+  - 下一輪可直接從 `stabilize/desktop-mvp` 修 Desktop MVP blockers。
+- 證據：
+  - `git worktree list --porcelain`
+  - `git branch --merged HEAD --sort=-committerdate`
+  - `git branch --no-merged HEAD --sort=-committerdate`
+  - `git diff --check`
+  - `poetry run mkdocs build --strict`
+- 接續 / 本輪剩餘：
+  - 建立並 push `stabilize/desktop-mvp`。
 
 ## 2026-07-03
 
