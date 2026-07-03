@@ -296,7 +296,7 @@ ApplicationService command name 的對映層。`ContextAssembler` 用它決定�
 - Data Interpretation tools 仍只透過 `ApplicationService.execute()` 進入 backend；實際
   scan / preview / validate / apply / recipe lifecycle 已在 backend
   `DataInterpretationCommandService` 中，reviewed metadata / label carrier side effects 已在
-  `DataInterpretationApplyService` 中，不在 agent controller、real tool 或 MCP adapter 內重建
+  `DataInterpretationApplyService` 中，不在 agent controller 或 real tool 內重建
   第二套 state。
 - Data Interpretation tools 與 analysis-readiness tools（`evaluate` / `visualize` /
   `saliency`）已註冊在 definitions / real / mock tool set；Context Assembler 可以把 backend
@@ -410,7 +410,7 @@ pipeline，不足以完整描述同一 dataset 上多個 training run、已完�
 
 - local-only runtime 已是 product path；remote runtime 若日後作歷史 fixture，必須保持 optional 且
   product code 不 import。
-- `BackendFacade` 已移除；若重新加入 wrapper，agent / MCP 會回到分裂 workflow truth。
+- `BackendFacade` 已移除；若重新加入 wrapper，agent 會回到分裂 workflow truth。
 - tool result 和 UI request 主要靠字串協定，型別邊界不夠清楚。
 - `CommandParser` 是從 LLM 文字中掃 JSON，不是 host-native structured tool calling。
 - `VerificationLayer` 已有基本檢查，但還不是完整的 tool contract validation。

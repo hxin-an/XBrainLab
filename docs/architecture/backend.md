@@ -1,6 +1,6 @@
 # Backend 目前架構
 
-最後更新：`2026-06-20`
+最後更新：`2026-07-03`
 
 ## 快速讀法
 
@@ -9,7 +9,7 @@
 
 | 問題 | 目前答案 |
 | --- | --- |
-| backend 主入口是什麼？ | `ApplicationService / Command API`。UI high-value actions、assistant、MCP、headless scripts 都應從這裡進 backend。 |
+| backend 主入口是什麼？ | `ApplicationService / Command API`。UI high-value actions、assistant、headless scripts 都應從這裡進 backend。 |
 | `BackendFacade` 還是不是架構的一部分？ | 不是。module 已刪除，architecture guard 會擋 product runtime 和 product-success tests 重新 import / construct。 |
 | `ApplicationService` 是不是 god object？ | 已從早期 god-object 形狀拆成 focused services；目前主要負責 dispatch、capability / confirmation gate、state/result envelope。 |
 | UI 是否完全不碰 controllers？ | 還不是。controllers 仍存在於 panel bootstrap、observer bridge、mock / compatibility compatibility、部分 readonly display fallback。 |
@@ -19,9 +19,9 @@
 
 | Area | 已接近 target | 剩餘距離 |
 | --- | --- | --- |
-| Command spine | load / preprocess / epoch / split / train / evaluate / visualize / saliency / reset / Data Interpretation / MCP job progress 都有 command or query truth。 | 要持續防止新 wrapper、direct manager mutation、direct service bypass 回流。 |
+| Command spine | load / preprocess / epoch / split / train / evaluate / visualize / saliency / reset / Data Interpretation 都有 command or query truth。 | 要持續防止新 wrapper、direct manager mutation、direct service bypass 回流。MCP job progress 是歷史 adapter evidence，不是 active roadmap。 |
 | Focused services | Data Interpretation、analysis、training、dataset generation、lifecycle、compatibility、data table、preprocess、state/query 都已從 `ApplicationService` 拆出；saliency method policy 由 `backend.application.saliency_policy` 共用，training resource guard 只吃明確 dataset / option context。 | focused service 間仍要靠 tests/guard 維持邊界，避免把 orchestration、UI policy 或 controller/context 探測塞回單一檔。 |
-| State truth | `StateSnapshotService` / `QueryStateCommandService` 是 UI / assistant / MCP 判斷狀態的主要讀法。 | 少數 lower-level domain / fixture tests 仍直接 setup/read `Study`，不能當 product smoke。 |
+| State truth | `StateSnapshotService` / `QueryStateCommandService` 是 UI / assistant 判斷狀態的主要讀法。 | 少數 lower-level domain / fixture tests 仍直接 setup/read `Study`，不能當 product smoke。 |
 | UI boundary | product action method 不可直接呼叫 controller compatibility helper；MainWindow controller lookup 收進 named quarantine。 | panels 還吃 injected controllers 作為 observer / adapter，不是完整 zero-controller UI。 |
 | Evidence | exact-evidence stack 已替換多個 generic non-empty product smokes。 | human Windows desktop acceptance 和長時間 local-model session 仍缺人工 evidence。 |
 
@@ -58,7 +58,7 @@ training plan history，不能只因 trainer 物件存在就開啟。2026-05-04 
 backend slice 又新增 Data Interpretation command baseline，讓 scan / preview / validate /
 apply / recipe reload 開始進入同一個 Application Service command spine。後續 Goal 1 slices
 已把 Data Interpretation 暴露到 agent tools、Dataset panel 主要 import entry，並新增
-`backend.application.automation` 作為 headless / MCP-ready JSON adapter；它只轉 command
+`backend.application.automation` 作為 headless JSON adapter；它只轉 command
 payload，不新增 controller business logic。最新 architecture cleanup 又把 Data
 Interpretation lifecycle state 和 scan / preview / validate / apply / recipe handling 從
 `ApplicationService` 拆到 `DataInterpretationCommandService`，並把 reviewed metadata / label
@@ -126,26 +126,24 @@ mapping 和 candidate recipe trace 抽到 `data_interpretation_candidate.py`；�
 resolver、snapshot assembly、clear 和 post-load label-import recipe recording 抽到
 `data_interpretation_state.py`；`DataInterpretationCommandService` 現在主要保留 command handler
 orchestration，state truth 不再混在 handler 檔案裡。
-最新 automation / MCP schema cleanup 又把 legacy data-entry 降權資訊寫進同一套
+最新 automation schema cleanup 又把 legacy data-entry 降權資訊寫進同一套
 `AutomationCommandSpec` truth：`load_data`、`attach_labels`、`import_labels` 的 command spec 和
-MCP `tools/list` `x_xbrainlab` metadata 都會標示 `legacy_compatibility=True`、
-`primary_workflow=False`，並列出 Data Interpretation scan / preview / validate / apply / recipe
-作為 preferred commands。這不移除相容工具，但避免 external MCP/headless client 把它們理解成新資料入口主線。
+automation metadata 都會標示 `legacy_compatibility=True`、`primary_workflow=False`，
+並列出 Data Interpretation scan / preview / validate / apply / recipe 作為 preferred commands。
+這不移除相容工具，但避免 headless client 把它們理解成新資料入口主線。
 同一 metadata 現在也暴露 capability-derived `execution` boundary：`long_running`、
-`destructive`、`requires_confirmation`、`decision_boundary`、`requires_http_job` 和
-`supported_job_transports`，讓 MCP client 能區分 immediate query tool 和需要 HTTP job API 的
-long-running command。
+`destructive`、`requires_confirmation` 和 `decision_boundary`。
 後續 remap schema cleanup 又把 `PreviewInterpretationCommand.choices` schema 抽成
 `data_interpretation_choice_schema.py`，agent `preview_interpretation` tool definition、
-headless `command_specs()` 和 MCP `tools/list` 共用同一份 `eeg_file_remap` /
+headless `command_specs()` 共用同一份 `eeg_file_remap` /
 `label_carrier_remap` / `label_carrier_choices` / `metadata_overrides` contract。recipe reload
-remap 不再只是 UI/backend 私有能力；external agent 和 headless payload 也能走同一個
+remap 不再只是 UI/backend 私有能力；assistant 和 headless payload 也能走同一個
 `preview_interpretation(choices=...)` command truth。
 
 2026-05-11 legacy command spine cleanup removed `BackendFacade` from product runtime
 packages. `get_application_service(study)` now owns Study-scoped `ApplicationService`
-reuse, and UI capability helpers, AgentManager, LLMController, real agent tools, MCP
-adapters, and current dev walkthrough scripts enter the backend through
+reuse, and UI capability helpers, AgentManager, LLMController, real agent tools,
+and current dev walkthrough scripts enter the backend through
 `ApplicationService / Command API` directly. 2026-05-12 physical removal then deleted
 `XBrainLab/backend/facade.py` and the facade compatibility-only test files; architecture
 compliance now rejects any test that imports or constructs `BackendFacade`.
@@ -186,7 +184,7 @@ outside explicit compatibility / fallback helpers.
 XBrainLab backend 目前是以 `Study` 作為中心狀態容器，`DataManager` 和
 `TrainingManager` 分別承接資料生命週期與訓練生命週期；UI 仍保留 controller 操作
 `Study` 的歷史路徑，但高價值 workflow 按鈕已開始透過 `ApplicationService / Command API`
-執行；assistant、MCP 和 current headless scripts 也直接進同一個 command layer。
+執行；assistant 和 current headless scripts 也直接進同一個 command layer。
 
 ## 實際分層
 
@@ -257,7 +255,7 @@ ApplicationService / Command API
   v
 same cached controllers from Study
 
-Headless / MCP-ready automation
+Headless automation
   |
   v
 backend.application.automation
@@ -341,17 +339,20 @@ bootstrap controller lookup 也只允許透過 named quarantine helper。
 
 ### Assistant / headless 入口
 
-Assistant real tools、LLMController、dev walkthrough scripts 和 MCP adapters 現在直接使用
+Assistant real tools、LLMController 和 dev walkthrough scripts 現在直接使用
 `get_application_service(study)` 或自己持有的 `ApplicationService` session。
 `BackendFacade` 不再存在；assistant / headless 入口不保留舊方法名稱或舊回傳形狀。
 
-`XBrainLab.backend.application.automation` 是新的 headless / MCP-ready adapter。它輸出
-`ApplicationService` command schema、MCP-shaped tool specs 和 live capability / autonomy
+`XBrainLab.backend.application.automation` 是 headless adapter。它輸出
+`ApplicationService` command schema 和 live capability / autonomy
 policy，並將 JSON payload 驗證後轉成 typed command 再呼叫 `ApplicationService.execute()`。
 同一個 schema 也會標出 legacy compatibility boundary：`load_data`、`attach_labels`、
 `import_labels` 仍可呼叫，但 metadata 明確標為非 primary workflow，並提供 Data Interpretation
-preferred commands。MCP tool metadata 也會帶 execution boundary，讓 external client 不需要
-猜哪些 command 是 destructive、需要 confirmation，或需要 HTTP job transport。
+preferred commands。
+
+MCP stdio / HTTP adapter code 和 artifacts 仍存在於歷史實作中，但已從 active roadmap 移除。
+本頁不再把 MCP 視為產品目標或 handoff gate；若未來重新啟用，必須另開 decision。
+
 `XBrainLab.mcp.server` 是目前的 stdio MCP server baseline；它只處理 MCP lifecycle / tool
 transport，實際 tool call 仍包這層 automation adapter，而不是繞過 command layer 或直接碰
 controller internals。每個 stdio `tools/call` structured result 都會標出
@@ -579,7 +580,7 @@ readiness 判斷；需要狀態或 blocked reason 時使用 `ApplicationService.
   reviewed metadata apply 與 reviewed label carrier apply 則在 `DataInterpretationApplyService`。
   `ApplicationService` 不再直接承接這些 workflow 細節。
 - `apply_interpretation` capability 也會套用 raw-edit blockers；若 active session 已有 epoch、
-  generated dataset、trainer 或 locked raw data，UI / agent / MCP 必須先 reset / new session，
+  generated dataset、trainer 或 locked raw data，UI / agent 必須先 reset / new session，
   不能把新的 Data Interpretation 直接套進既有 downstream pipeline。
 - Data Interpretation format capability matrix 實作位置現在是
   `data_interpretation_formats.py`。它 owns GDF、EDF / BDF、EEGLAB、BrainVision、FIF、MAT、
@@ -626,8 +627,8 @@ readiness 判斷；需要狀態或 blocked reason 時使用 `ApplicationService.
 
 - command 目前仍透過既有 controllers 執行，以保留 observer event 與 UI refresh 行為。
 - Data Interpretation 的 lifecycle truth 目前在 `DataInterpretationSessionState`，並由
-  `DataInterpretationCommandService` 作為 command boundary 協調；UI、agent、
-  automation 和 MCP 仍必須透過 `ApplicationService.execute()` 進入，不可直接建立第二套
+  `DataInterpretationCommandService` 作為 command boundary 協調；UI、agent 和
+  automation 仍必須透過 `ApplicationService.execute()` 進入，不可直接建立第二套
   interpretation state。
 - Analysis / visualization readiness truth 目前在 `AnalysisCommandService`，但 capability
   exposure 仍由 `ApplicationService.get_capabilities()` 產生。

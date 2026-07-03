@@ -60,7 +60,8 @@ artifact 和同類掃描抓掉明顯 bug，再請使用者做 acceptance。
 - UI 可見改動：跑 relevant UI walkthrough / screenshot script。
 - data/import/label 相關：跑 Data Import wizard 或 replay artifact。
 - training/evaluation/visualization 相關：跑 tiny pipeline 或 visualization render walkthrough。
-- agent/MCP 相關：跑 agent tool / MCP adapter focused tests 或 walkthrough artifact。
+- assistant 相關：跑 assistant tool / verification focused tests 或 walkthrough artifact。
+- MCP 相關只在使用者明確要求 MCP work 時才跑；MCP 不再是一般 handoff gate。
 - docs-only：跑 docs gate 即可，不宣稱產品 handoff。
 
 happy path 要保存或引用 artifact / command output，不能只說「看起來可以」。

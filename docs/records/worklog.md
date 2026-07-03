@@ -35,6 +35,30 @@
 - 接續 / 本輪剩餘：
 ```
 
+## 2026-07-03
+
+### Current truth rebaseline and MCP roadmap removal
+
+- 做了什麼：
+  - 使用者指出文件很久沒更新、現況難判斷，並決定把 MCP 從計畫拔掉。
+  - 新增 docs-only branch `docs/rebaseline-drop-mcp`。
+  - 更新 `docs/current.md`、`docs/planning/now.md`、`docs/planning/roadmap.md`、`docs/index.md`、
+    `docs/target/*`、`docs/architecture/*`、`docs/validation/README.md`、`docs/decisions/README.md`
+    和 agent 操作入口，將 active roadmap 改成 current truth rebaseline -> backend/UI stabilization
+    -> Data Interpretation -> in-app assistant -> Windows acceptance -> thesis evidence。
+  - MCP 改為歷史探索 / 相容性證據，不再是 MVP、release candidate、handoff gate 或 thesis evidence
+    前置。
+- 結果：
+  - `git diff --check` PASS。
+  - `mkdocs build --strict` PASS。
+  - MkDocs build 只出現 Material for MkDocs 對 MkDocs 2.0 的上游 warning，不是本 repo 文件錯誤。
+- 證據：
+  - `git diff --check`
+  - `poetry run mkdocs build --strict`
+- 接續 / 本輪剩餘：
+  - 盤點 branches / worktrees，決定下一個手測或整合基底。
+  - 重新列出 known blockers 和 handoff gate。
+
 ## 2026-06-20
 
 ### 15:20 BIDS epoch, saliency baseline, and resource preflight implementation

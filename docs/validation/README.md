@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-06-15`
+最後更新：`2026-07-03`
 
 這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
@@ -17,7 +17,6 @@
 | automated UI walkthrough | 可觀察 UI baseline、截圖、按鈕狀態。 | 人手 Windows acceptance、DPI / dual-monitor、長時間 local model session。 |
 | human-observable product smoke | 代表性使用者流程的視窗可見性、primary action 可見性、selected/applied scope、無 crash。 | 完整 release approval、所有資料格式與長時間模型 session。 |
 | tool-call eval | tool selection / parameter / state transition 的 benchmark slice。 | EEG training quality、UI completion、產品完成。 |
-| MCP walkthrough | adapter baseline、tools/list、tools/call、HTTP / stdio path。 | full client certification、remote production security。 |
 | launcher smoke | launcher / startup baseline。 | signed installer、release approval。 |
 
 ## MVP Gate
@@ -27,7 +26,7 @@
 | 1A Backend Cleanup | architecture guard、focused command tests、UI refresh tests。 |
 | 1A-V Validation Reality Gap | test matrix、現有 artifacts claim audit、launcher -> Data Interpretation preview -> apply 的 product smoke。 |
 | 1B Data Interpretation | scan / preview / validate / apply tests，加 representative format artifact。 |
-| 1C Tool-Call Baseline | agent tool tests、MCP adapter tests、blocked reason / structured result checks。 |
+| 1C Assistant Baseline | assistant tool tests、blocked reason / structured result checks、verification boundary evidence。 |
 | 1D Desktop Acceptance | human Windows click-through notes，加 automated walkthrough screenshot evidence。 |
 
 ## Handoff Candidate Gate
@@ -92,6 +91,9 @@ preflight」。它仍不能支撐 full BIDS validator compliance、任意 propri
 ## Artifact 解讀
 
 `artifacts/` 是機器產物和 evidence，不是 current truth。
+
+MCP artifacts 若仍存在，只代表歷史探索或相容性證據。MCP 已從 active roadmap 移除，因此
+handoff-ready、release-candidate、或 thesis evidence 不再需要 MCP walkthrough / adapter gate。
 
 current truth 以這些文件為準：
 
@@ -249,7 +251,7 @@ branch fixed and validated these product-quality gaps:
   figures, preventing matplotlib figure accumulation during repeated visualization;
 - `ApplicationService` lazy service wrappers now expose explicit command handlers
   instead of generic `__getattr__` forwarding;
-- UI-only `GenerateDatasetCommand.generator` is hidden from automation / MCP schemas
+- UI-only `GenerateDatasetCommand.generator` is hidden from automation schemas
   and rejected when supplied through automation payloads;
 - Dataset import UI tests were updated to the `ReviewInterpretationCommand` command
   path, so the focused UI suite no longer protects the old scan/preview/validate
@@ -646,7 +648,7 @@ poetry run basedpyright
 ## 2026-05-16 Manual-Test Integration Preflight
 
 Manual-test branch `integrate/all-branches-manual-test` was refreshed after a
-multi-agent read-only audit found capability, label-placement, MCP, and UI status
+multi-agent read-only audit found capability, label-placement, historical MCP, and UI status
 risks. The follow-up patch fixed preprocessing-aware raw-load blockers, destructive
 command confirmation metadata, event-code versus timestamp label placement, internal
 EEG label choice persistence, conversion-fallback pairing status, MCP HTTP conflict
@@ -661,7 +663,7 @@ Validation run from `/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manua
 - `poetry run python tests/architecture_compliance.py`: `PASS`.
 - Data Import / Epoch / UI focused suite: `178 passed`.
 - ApplicationService / automation / agent surface suite: `153 passed`.
-- MCP unit and integration suite: `18 passed`.
+- Historical MCP unit and integration suite: `18 passed`.
 - `poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q`:
   `21 passed, 10 skipped` because optional public fixtures are not present.
 - Pipeline smoke:
@@ -920,7 +922,7 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
 | Scan / candidate / review / recipe contracts | Useful unit contract tests | `test_data_interpretation_scan.py`, `test_data_interpretation_candidate.py`, `test_data_interpretation_review.py`, `test_data_interpretation_recipe.py`, `test_data_interpretation_label_carriers.py`. | Preserves BIDS/file/folder scan behavior, selected scope, external label source provenance, structured action items, recipe reload/remap, label source mode, placement, duration, and class-map source. |
 | Product runtime BackendFacade guard | Strong architecture guard | `tests/architecture_compliance.py` now has a pytest gate that scans `XBrainLab/ui`, `XBrainLab/llm`, and `XBrainLab/mcp` for `BackendFacade` imports / construction. `tests/unit/test_architecture_compliance.py` covers both violation and allowed `get_application_service(study)` cases. | Product runtime packages must enter via `ApplicationService / Command API`; `BackendFacade` module is physically removed and must not return. |
 | UI command route | Mock-heavy but useful command contract tests | `tests/unit/ui/test_ui_misc.py` asserts import file/folder/BIDS/reload route through `ScanSourceCommand`, `PreviewInterpretationCommand`, `ValidateInterpretationCommand`, and `ApplyInterpretationCommand` without controller import fallback. `tests/unit/ui/dataset/test_dataset_sidebar.py` and `test_panel.py` guard real-Study fallback refusal. | Backend/test continuation adds command-route coverage only. The current dirty worktree still contains earlier Load Labels / Match Labels UX edits, so product UI acceptance must be judged separately from these route tests. |
-| Agent / MCP command parity | Useful contract and adapter tests | `tests/unit/llm/tools/test_application_surface.py`, `tests/unit/llm/tools/real/test_real_tools.py`, `tests/unit/llm/tools/test_definitions.py`, `tests/unit/llm/agent/test_tool_call_normalizer.py`, `tests/unit/mcp/test_server.py`, and `tests/integration/mcp/*` cover exposed Data Interpretation command names, confirmation boundary, blocked reasons, schema exposure, and state truth. Broader LLM/root/integration tests that previously patched removed real-tool `BackendFacade` symbols now patch `get_application_service` and assert command objects / command results. | Real agent tools now assert `ApplicationService` command objects instead of patching `BackendFacade`; tool schema, MCP tools/list, and real/mock tool surfaces carry `label_sources` and the shared choice schema. |
+| Assistant command parity | Useful contract tests | `tests/unit/llm/tools/test_application_surface.py`, `tests/unit/llm/tools/real/test_real_tools.py`, `tests/unit/llm/tools/test_definitions.py`, and `tests/unit/llm/agent/test_tool_call_normalizer.py` cover exposed Data Interpretation command names, confirmation boundary, blocked reasons, schema exposure, and state truth. Historical MCP tests may still exist, but they are no longer active handoff gates. | Real agent tools now assert `ApplicationService` command objects instead of patching `BackendFacade`; tool schema and real/mock tool surfaces carry `label_sources` and the shared choice schema. |
 | Real-data fixture validation | Strong integration evidence when fixtures are present | Real-data tests now resolve fixtures under `tests/fixtures/data/`; scripts use the same path. | Replaced obsolete `tests/data/` path references so deleted tracked fixture files do not turn IO/pipeline tests into false skips. The replacement fixture tree must be included in the PR rather than left untracked. |
 | Legacy direct controller tests | Mock-heavy but useful compatibility tests | Legacy controller fallback tests remain in UI suites to guard mock/legacy contexts and real-Study refusal. | Not deleted; retained because they protect compatibility while architecture guards prevent product fallback bypass. |
 | Obsolete / duplicated clusters | Obsolete path cluster | The obsolete cluster is the deleted `tests/data/` fixture location, replaced by `tests/fixtures/data/`. No test cluster was deleted without replacement. | Consumers and docs were moved to `tests/fixtures/data/`; real-data gates must use that path. |

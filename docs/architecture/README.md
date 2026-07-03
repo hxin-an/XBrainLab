@@ -1,15 +1,15 @@
 # XBrainLab 目前架構
 
-最後更新：`2026-05-14`
+最後更新：`2026-07-03`
 
 這裡描述目前實作，不描述理想終局。目標態請看 [target/architecture.md](../target/architecture.md)。
 
 ## 一句話
 
-XBrainLab 正在把 UI、assistant、MCP、scripts 收斂到同一個 backend command surface：
+XBrainLab 正在把 UI、assistant、scripts 收斂到同一個 backend command surface：
 
 ```text
-UI / assistant / MCP / scripts
+UI / assistant / scripts
   -> ApplicationService / Command API
   -> focused command services
   -> Study / DataManager / TrainingManager
@@ -47,7 +47,8 @@ claim boundary。讀本頁時先看下方「目前距離目標多遠」，再進
 | `ApplicationService` | command dispatch、capability / confirmation gate、result envelope。 | 必須保持 spine，不要變成 god object。 |
 | focused services | Data Interpretation、preprocess、dataset、training、analysis、lifecycle。 | 邊界要靠 tests 和 architecture guard 維持。 |
 | `Study` / managers | domain state、data lifecycle、training lifecycle。 | product path 不應直接繞過 command spine；lower-level domain tests 仍可 setup state。 |
-| assistant / MCP | tool / JSON payload 轉 command；real `Study` pipeline stage 來自 ApplicationService state snapshot。 | MVP 先做 baseline；mock compatibility fallback 不等於 product runtime truth，client certification 屬 Phase 4。 |
+| assistant / scripts | tool / JSON payload 轉 command；real `Study` pipeline stage 來自 ApplicationService state snapshot。 | assistant baseline 要等 current truth、verification boundary 和 UI product path 重新穩定。 |
+| MCP | 既有 adapter code / tests / artifacts 是歷史探索或相容性證據。 | 已從 active roadmap 移除；不再作為產品架構目標、handoff gate 或 thesis evidence 前置。 |
 
 ## Roadmap 對應
 
@@ -55,7 +56,7 @@ claim boundary。讀本頁時先看下方「目前距離目標多遠」，再進
 | --- | --- |
 | Phase 1A | 清 product legacy path、UI refresh truth、test adapter truth。 |
 | Phase 1B | 讓 Data Interpretation 成為正式資料入口。 |
-| Phase 1C | 讓 assistant / MCP 走相同 command / capability / state snapshot。 |
+| Phase 1C | 讓 in-app assistant 走相同 command / capability / state snapshot。 |
 | Phase 1D | 用人手 Windows workflow 驗證整條產品線。 |
 
 ## Active Risks
@@ -64,11 +65,11 @@ claim boundary。讀本頁時先看下方「目前距離目標多遠」，再進
 | --- | --- | --- |
 | controller adapter remains | UI still needs injected controllers for panel constructors and observer bridges. | Treat these as adapter / observer boundary; do not use them as action, readiness, or product-success truth. |
 | UI refresh split truth | backend state 正確但畫面顯示舊狀態。 | command result / changed state 驅動 refresh；command 執行期間的 observer refresh 會被暫停，避免先用 stale controller state 重刷。 |
-| `BackendFacade` reintroduction | 這是 guarded regression，不是 current implementation。若 wrapper 回來，就會和 UI / MCP 分裂。 | Architecture guard blocks `BackendFacade` use in product UI / assistant / MCP packages and tests. |
+| `BackendFacade` reintroduction | 這是 guarded regression，不是 current implementation。若 wrapper 回來，就會和 UI / assistant 分裂。 | Architecture guard blocks `BackendFacade` use in product UI / assistant packages and tests. |
 | evidence overclaim | dashboard PASS 或 offscreen smoke 被誤解成 product complete。 | Validation docs must keep human desktop acceptance and long local-model sessions as separate claims. |
 | weak product tests returning | product-success test 可能退回 no-crash、generic string 或 generic widget assertion。 | Architecture guard now blocks known weak shapes; add new exact-evidence guards only when a real weak pattern appears. |
 | Data Interpretation maturity | 資料語意錯會污染後續 training / evidence。 | MVP 先處理代表性 ambiguity，不誇大 final support。 |
-| MCP session confusion | headless session 容易被誤解成桌面 UI 控制。 | Phase 4 明確 session ownership 和 client matrix。 |
+| MCP overhang | 歷史 MCP docs / artifacts 容易讓人誤以為它仍是 roadmap。 | Current / roadmap / validation docs 明確標示 MCP 已退出 active plan；records 保留歷史即可。 |
 
 ## 深入頁面
 

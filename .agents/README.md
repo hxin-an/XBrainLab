@@ -1,6 +1,6 @@
 # XBrainLab Agent Entry
 
-最後更新：`2026-06-15`
+最後更新：`2026-07-03`
 
 這是 repo-local agent 操作入口。
 
@@ -51,6 +51,7 @@ backend core -> UI/agent command surface unification -> UI chat stabilization
 ```
 
 tool-call eval / thesis evidence 要等產品主線穩定後再開始。
+MCP 已從 active roadmap 移除；不要把 MCP adapter / client certification 當成預設 gate。
 
 ## 不要做
 
@@ -61,6 +62,7 @@ tool-call eval / thesis evidence 要等產品主線穩定後再開始。
 - 不把 `target/` 當作已完成事實。
 - 不把 milestone 當成工作上限。
 - 不在產品主線不穩時提前做 tool-call eval。
+- 不把 MCP 當成 active roadmap；除非使用者明確要求，不做 MCP hardening 或 MCP gate。
 - 不靠聊天回報保存狀態；重要狀態寫文件。
 
 ## Product Milestones

@@ -1,6 +1,6 @@
 # XBrainLab Agent Guide
 
-最後更新：`2026-06-15`
+最後更新：`2026-07-03`
 
 這份文件是給任何進入本 repo 的 coding agent 的最短入口。
 
@@ -32,6 +32,9 @@ Milestone 是最低交付門檻，不是工作上限。完成一個 milestone �
 5. 建立 local-only LLM runtime；可下載模型，但必須控制模型大小、VRAM、硬碟 cache 和失敗 fallback。
 6. 交付可從桌面點擊啟動的 XBrainLab launcher；完整 executable packaging 可後續推進，但至少要有可靠 launcher。
 7. 產品主線穩定後，才開始 tool-call eval / thesis evidence。不要太早評估半成品。
+
+MCP 已從 active roadmap 移除。不要把 MCP hardening、MCP client certification 或 MCP adapter gate
+當作預設工作；只有使用者明確要求 MCP 時才讀 MCP 相關文件或測試。
 
 不要把舊的 `Prep Gate`、`Repair Loop`、`AQ-*` queue 當成現在的任務系統。
 
@@ -68,6 +71,7 @@ Milestone 是最低交付門檻，不是工作上限。完成一個 milestone �
 7. 保留 dirty worktree 裡不是你做的改動，不要 reset 或 checkout。
 8. 重要進度、決策、驗證結果寫進文件，不靠聊天回報保存狀態。
 9. tool-call eval 要等 backend / UI / agent / local LLM 主線穩定後再做。
+10. MCP 不再是 active plan；不要為一般 handoff 補 MCP gate。
 
 ## Handoff-ready 規則
 

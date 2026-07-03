@@ -172,7 +172,7 @@ UI replay artifact 至少應保存：
 - replay case id。
 - initial state。
 - scripted command sequence。
-- UI entrypoint：ChatPanel、import wizard、button-driven workflow 或 MCP external-agent path。
+- UI entrypoint：ChatPanel、import wizard 或 button-driven workflow。
 - visible transcript / status text。
 - relevant screenshots 或 approved UI artifacts。
 - expected / actual button enabled state。
@@ -201,8 +201,6 @@ UI replay artifact 至少應保存：
   autonomy decision、decision boundary、state_before / state_after 和 visible response。
 - tool taxonomy 必須重新設計為 workflow intent / side effect / decision boundary 導向，不能只沿用
   舊 `load_data` / `attach_labels` 或 `dataset / preprocess / training` 粗分類。
-- MCP server 若加入 validation，必須只作 external agent adapter；MCP calls 仍需經
-  ApplicationService、capability policy、autonomy policy 和 visible-response formatter。
 - raw backend schema、traceback、tool exception 不可直接出現在使用者 transcript；必須轉成人能理解的回覆，
   structured diagnostics 另存。
 
@@ -364,7 +362,7 @@ benchmark slice 使用同一 `121` cases，deterministic / primary / fallback ar
 
 尚未完成的是把這些 artifact 整理成正式 thesis report/evidence matrix、補 confidence interval
 或統計呈現、並在每次更新正式 claim 前依 release / thesis gate 重跑與保存 resource/latency
-條件。tool-call benchmark 也不能取代 UI、launcher、MCP 或 import wizard 的產品驗收 evidence。
+條件。tool-call benchmark 也不能取代 UI、launcher 或 import wizard 的產品驗收 evidence。
 
 external EEG dataset runner、repeat runs、baseline comparison 和 statistical reporting 是可選的
 pipeline support，不是目前 thesis 主線。這些不能取代 local LLM 真實 tool-call accuracy run。

@@ -1,6 +1,6 @@
 # XBrainLab Target
 
-最後更新：`2026-05-04`
+最後更新：`2026-07-03`
 
 這個資料夾定義 XBrainLab 的目標態。
 
@@ -30,7 +30,7 @@ human user 和 in-app assistant 都能操作同一套 EEG workflow 的桌面應�
 
 這代表：
 
-- UI、agent tools、headless scripts、MCP external agents 不應各走一套 workflow。
+- UI、assistant tools 和 headless scripts 不應各走一套 workflow。
 - 後端能力應收斂成共用 Application Service / Command API。
 - 資料匯入目標是建立可預覽、可驗證、可重跑的 Data Interpretation，不只是 load file 或 attach label。
 - assistant 是 workflow operator，不是普通 chatbot，也不是外部 coding agent。
@@ -38,6 +38,7 @@ human user 和 in-app assistant 都能操作同一套 EEG workflow 的桌面應�
 - assistant product runtime 已 local-only；remote backend modules 已從 product package 移除。
 - `openai` / `google-genai` 只允許留在 optional `legacy-remote-llm` dependency group /
   legacy fixture，不是產品 execution path。
+- MCP 已從 active product / thesis target 移除；既有 MCP artifacts 只保留為歷史探索或相容性證據。
 
 ## 和其他文件的關係
 

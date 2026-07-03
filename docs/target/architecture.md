@@ -1,6 +1,6 @@
 # XBrainLab 目標架構
 
-最後更新：`2026-05-09`
+最後更新：`2026-07-03`
 
 這頁描述目標態，不代表目前已完成。現況請看 [目前架構](../architecture/README.md)。
 
@@ -9,7 +9,7 @@
 XBrainLab 的目標不是「PyQt app 旁邊加一個聊天視窗」，而是：
 
 ```text
-human UI、assistant、MCP、scripts
+human UI、assistant、scripts
   都操作同一套 EEG workflow backend
 ```
 
@@ -19,7 +19,6 @@ human UI、assistant、MCP、scripts
 PyQt UI panels
 Assistant tools
 Headless scripts
-MCP server
   |
   v
 ApplicationService / Command API
@@ -61,7 +60,7 @@ MNE / PyTorch / filesystem / runtime diagnostics
 `BackendFacade` 不再是目標架構的一層；舊 high-level wrapper 已由
 `ApplicationService / Command API` 和 focused command services 取代。
 
-- UI、assistant、MCP、headless scripts 不應 import 或 instantiate `BackendFacade`。
+- UI、assistant、headless scripts 不應 import 或 instantiate `BackendFacade`。
 - 舊 facade API behavior 要保存在 command/service/helper tests，不保留 facade wrapper。
 - 不新增第二套 readiness / success / error truth。
 
@@ -77,9 +76,9 @@ scan -> preview -> validate -> confirm -> apply -> save recipe
 
 核心 truth 是 applied interpretation，不是單純「load file」或「attach label」。
 
-## Agent / MCP 目標
+## Assistant 目標
 
-assistant 和 MCP 都應該：
+assistant 應該：
 
 - 讀 backend state snapshot。
 - 使用 backend capability policy。
@@ -87,7 +86,8 @@ assistant 和 MCP 都應該：
 - 收到 structured result。
 - 遇到 destructive / long-running / semantic ambiguity 時要求確認。
 
-MCP 是 external adapter，不是第三套 backend。
+MCP 已從 active target 移除。既有 MCP 探索不再定義目標架構，也不作為 release 或 thesis
+前置條件；若未來重新啟用，必須另開 decision。
 
 ## 目前不要誤解
 

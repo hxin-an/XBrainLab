@@ -215,7 +215,7 @@ scan -> interpret -> preview -> validate -> confirm -> apply -> save recipe
 | apply | 只套用 `safe` 或已確認的解讀，並更新 XBrainLab workflow state。 |
 | save recipe | 保存可重跑、可審查的資料解讀紀錄。 |
 
-這條流程是 UI、in-app agent、headless script 和 MCP external agent 的共同心智模型。任何入口都不應另建一套 label / event 判斷。
+這條流程是 UI、in-app agent 和 headless script 的共同心智模型。任何 active 入口都不應另建一套 label / event 判斷。
 
 ## 判斷策略
 
@@ -519,7 +519,7 @@ agent tool-call benchmark 應測它是否能正確操作這條流程，而不是
 
 ## 乾淨架構原則
 
-- 新 UI、agent、headless script、MCP external agent 都應使用同一套 Data Interpretation truth。
+- 新 UI、agent、headless script 都應使用同一套 Data Interpretation truth。
 - 不保留 UI、agent、backend 各自判斷 label / event 的雙重或三重 truth。
 - 舊 `load_data` / `attach_labels` 心智模型不是目標架構。
 - 任何仍存在的舊入口都不能作為新 UI / agent 的設計依據；終局交付應以乾淨、可維護、

@@ -1,6 +1,6 @@
 # XBrainLab Agent Stack
 
-最後更新：`2026-05-02`
+最後更新：`2026-07-03`
 
 這份文件只記錄「目前有效」的 agent 操作層。舊的 automation、role、skill、AQ queue 已整合到 canonical 文件或刪除。
 
@@ -60,7 +60,8 @@ active workflows 在 `.agents/workflows/`。workflow 是多步驟流程，skill 
 
 ## 能力政策
 
-- OpenAI、Codex、MCP、skills、plugins、automations 相關問題：用官方 OpenAI docs / `openai-docs` skill。
+- OpenAI、Codex、skills、plugins、automations 相關問題：用官方 OpenAI docs / `openai-docs` skill。
+- MCP 已從 active XBrainLab roadmap 移除；只有使用者明確要求 MCP 時，才讀 MCP adapter / security skills。
 - GitHub issue / PR / CI 相關問題：用 GitHub plugin 或 `gh`。
 - XBrainLab repo-local skills：使用 `.agents/skills/` 內的 active skills；不要恢復舊 `xbrainlab-*` skills。
 - 不新增新的 agent role 文件，除非使用者明確要恢復多角色 automation。

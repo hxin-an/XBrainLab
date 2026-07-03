@@ -1,6 +1,6 @@
 # XBrainLab Decisions
 
-最後更新：`2026-05-04`
+最後更新：`2026-07-03`
 
 ## 這份文件的用途
 
@@ -28,12 +28,13 @@
 | local LLM 下載需受容量邊界控制 | active | 可下載模型，但單模型原則 10GB 內、總 cache 原則 20GB 內；27B+ 需使用者明確同意。 |
 | local LLM 不使用中國模型 | active | 不使用中國公司或中國來源模型；Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM 等不列入 primary / fallback 選型。 |
 | 資料匯入目標是 Data Interpretation System | active | 使用者提供資料位置後，系統應建立可預覽、可驗證、可重跑的資料解讀；不以單純 load file / attach label 心智模型作為終局設計。 |
+| MCP 從 active roadmap 移除 | active | MCP 不再是 MVP、release candidate、handoff gate 或 thesis evidence 前置；既有 MCP code/tests/artifacts 只保留為歷史探索或相容性證據。未來若要恢復，需另開決策重新定義 scope、security、session ownership、client matrix 和 validation cost。 |
 
 ## 目前工作方向
 
 | 方向 | 狀態 | 說明 |
 | --- | --- | --- |
-| UI / Agent 共用 Application Service | confirmed | 後端重構目標不是把所有邏輯塞進 `BackendFacade`，而是建立共用 command API，讓 UI、assistant tools、scripts 都呼叫同一批 backend workflow。 |
+| UI / Assistant / Scripts 共用 Application Service | confirmed | 後端重構目標不是把所有邏輯塞進 `BackendFacade`，而是建立共用 command API，讓 UI、assistant tools、scripts 都呼叫同一批 backend workflow。 |
 | UI / Agent command surface unification | active | UI 和 agent 對同一 backend workflow 應共用 state、capability policy、blocked reason 和 typed command result，不各自維護第二套判斷。 |
 
 ## 舊 ADR 處理

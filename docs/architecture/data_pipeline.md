@@ -284,7 +284,7 @@ Data Import wizard baseline 和仍未完成的產品化差距，不是新增目�
 - `ScanSourceCommand.label_sources` 可帶入 EEG source 之外的 label / event file 或 folder；
   `scan_source_path()` 會合併 auto-discovered 和 user-added carriers，並保留 carrier source。
 - preview / validation payload 已輸出 `action_items`，每項包含 `target_step`、`issue`、`impact`、
-  `next_action` 和 `severity`，供 UI、agent、headless、MCP 讀同一份 command result。
+  `next_action` 和 `severity`，供 UI、agent、headless 讀同一份 command result。
 - import dialog 目前以 `QStackedWidget` step panels 呈現，一次只顯示一個 task panel：
   Choose EEG Data、Attach Labels、Review Metadata、Match Labels、Review and Import。
 - Dataset sidebar 主要入口已改成 `Import file`、`Import folder`、`Import BIDS folder`；BIDS
@@ -303,7 +303,7 @@ Data Import wizard baseline 和仍未完成的產品化差距，不是新增目�
 | Mainstream label placement evidence | backend preview 會依資料結構支援 EEG event order、label time、label interval、label event code；UI 讀 `placement_reviews` 顯示 check，而不是靠前端硬猜。Blocked placement review 現在會成為 candidate blocker，不會只變成 confirmation。 | 仍不宣稱 full BIDS；BIDS inheritance、跨 datatype 和更複雜 run-level semantics 需要另外確認。 |
 | Actionable Review and Import checklist | preview / validation emits structured action items; UI renders grouped review cards with issue、impact、next action and target step. | The hidden compatibility tree still backs legacy payload tests / remap selectors, but it is no longer the first-layer review layout. |
 | Import without labels / limited mode | `Skip labels for now` is saved in choices and produces a supervised-limited action item. | Downstream dataset/training capability policy should consume this limited state more explicitly. |
-| UI / agent / MCP alignment | ApplicationService, tool definitions, real/mock tools, state snapshot, stdio MCP and HTTP MCP tests use the same extended command surface. | Broader tool-call eval waits until product stabilization. |
+| UI / agent / headless alignment | ApplicationService, tool definitions, real/mock tools, and state snapshot use the same extended command surface. | Broader tool-call eval waits until product stabilization. MCP is no longer active roadmap. |
 
 ### Remaining gaps
 

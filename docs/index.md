@@ -1,6 +1,6 @@
 # XBrainLab 專案控制室
 
-XBrainLab 是本地優先的 EEG / BCI 桌面分析工具，目前正在做 MVP 穩定化；下一步是 private docs review 與 human Windows smoke。這個私有入口用來快速判斷現況、缺口和證據。
+XBrainLab 是本地優先的 EEG / BCI 桌面分析工具，目前正在重新盤點 current truth；下一步是把文件、分支、known blockers 和 handoff gate 對齊後，再回到 MVP 穩定化。這個私有入口用來快速判斷現況、缺口和證據。
 
 !!! warning "目前邊界"
     Not product complete；automated evidence 不能取代 human Windows acceptance。
@@ -14,7 +14,7 @@ MVP stabilization；not product complete.
 
 <div markdown>
 <span class="xlb-kicker">主要缺口</span>
-Phase 1A 剩下的是 zero-controller UI 距離、human desktop acceptance、以及測試證據邊界；Windows acceptance 仍 pending。
+目前先補 current docs / branch / validation claim 落差；Windows acceptance 仍 pending。
 </div>
 
 <div markdown>
@@ -34,7 +34,7 @@ local quality dashboard；screenshot index；private docs portal visual review.
 
 <div markdown>
 <span class="xlb-kicker">Next Work</span>
-Private docs review; human smoke; manual-test branch review before any `main` promotion.
+Current truth rebaseline; branch inventory; known blocker reset; then manual-test candidate review.
 </div>
 
 </div>
@@ -46,7 +46,7 @@ Private docs review; human smoke; manual-test branch review before any `main` pr
 | Product readiness | Baseline exists; not product complete. | [Current](current.md), [Roadmap](planning/roadmap.md) | Human-observable desktop smoke. |
 | Backend architecture | `ApplicationService / Command API` is the shared backend spine; `BackendFacade` is physically removed. | [Architecture](architecture/README.md), [Validation](validation/README.md) | Keep guards green while UX continues. |
 | Data Import | `scan -> preview -> validate -> apply -> recipe` works as baseline; placement evidence covers four mainstream modes. | [Data Interpretation target](target/data_interpretation_system.md), `artifacts/ui/data-import-wizard-steps/README.md` | Record UX debt; do not redesign tonight. |
-| Validation | Architecture, backend, agent/MCP, UI refresh, split regression, docs, and dashboard gates are green for current branch. | [Validation](validation/README.md); local generated `artifacts/quality/latest.md` | Add human Windows acceptance evidence. |
+| Validation | Architecture, backend, assistant, UI refresh, split regression, docs, and dashboard gates need current-branch rebaseline before more feature work. | [Validation](validation/README.md); local generated `artifacts/quality/latest.md` | Refresh claim boundaries and add human Windows acceptance evidence. |
 
 ## Evidence Shortcuts
 
@@ -90,13 +90,13 @@ Private docs review; human smoke; manual-test branch review before any `main` pr
 
 - **Roadmap**
 
-    看 MVP baseline、Release Candidate、Thesis / Agent Evidence、MCP hardening 的階段安排。
+    看 current truth rebaseline、MVP baseline、Release Candidate、Thesis / Agent Evidence 的階段安排。
 
     [打開 Roadmap](planning/roadmap.md)
 
 - **Target architecture**
 
-    看理想狀態：UI、agent、MCP、scripts 共用 Application Service / Command API。
+    看理想狀態：UI、assistant、scripts 共用 Application Service / Command API。
 
     [打開目標架構](target/architecture.md)
 
@@ -130,7 +130,6 @@ Private docs review; human smoke; manual-test branch review before any `main` pr
 | --- | --- | --- |
 | `artifacts/quality/latest.md` | Local generated fast engineering health：lint、type、architecture guard、startup smoke、UI baseline、real-data IO。 | Canonical current truth、product completion、thesis claim、local LLM readiness。 |
 | `artifacts/agent_evals/dashboard.md` | Tool-call benchmark slice for selected local models and deterministic baseline。 | EEG training accuracy、UI usability、product completion。 |
-| `artifacts/mcp/http-walkthrough.md` | Headless MCP HTTP transport、tools/list、scan/preview、train job status/cancel baseline。 | Full MCP client certification、desktop UI refresh、persistent recovery。 |
 | `artifacts/data_interpretation/format-capability-matrix.md` | Representative Data Interpretation scan/preview/validation format boundaries。 | Full manual certification for every real dataset or XDF / LSL parser support。 |
 | `artifacts/ui/data-import-wizard-steps/README.md` | Current Data Import wizard screenshots, including the four loaded-label placement mode panels。 | Final Match Labels / Review and Import UX approval。 |
 | `artifacts/ui/app-polish/README.md` | Current model-selection, data-splitting, and evaluation table polish screenshots。 | End-to-end training quality or human desktop acceptance。 |
@@ -143,13 +142,13 @@ belong in git history unless they are still needed for current evidence. Current
 
 ## 目前工作主線
 
-1. Phase 1A：Backend Command Spine / UI Refresh / Test Evidence 收尾。
-2. Phase 1B：Data Interpretation MVP Slice。
-3. Phase 1C：Tool-Call Product Baseline。
-4. Phase 1D：Windows Desktop MVP Acceptance。
-5. Phase 2：Release Candidate Hardening。
-6. Phase 3：Thesis / Formal Agent Evidence。
-7. Phase 4：MCP / External Agent Hardening。
+1. Phase 0：Current Truth Rebaseline。
+2. Phase 1A：Backend / UI Stabilization。
+3. Phase 1B：Data Interpretation MVP Slice。
+4. Phase 1C：In-App Assistant Product Baseline。
+5. Phase 1D：Windows Desktop MVP Acceptance。
+6. Phase 2：Release Candidate Hardening。
+7. Phase 3：Thesis / Formal Agent Evidence。
 
 ## 網站地圖
 

@@ -1,14 +1,17 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-06-20`
+最後更新：`2026-07-03`
 
 這頁只回答一件事：**現在能相信什麼，還不能宣稱什麼，下一步該做什麼。**
 完整階段安排看 [Roadmap](planning/roadmap.md)，下一輪施工看 [Now](planning/now.md)。
 
 ## 一句話
 
-XBrainLab 正在收斂成 Windows 本地 EEG / BCI 桌面工具。主線已經從「到處補功能」
-改成「先讓 backend、UI、assistant、MCP 共用同一套 workflow truth」。
+XBrainLab 正在重新盤點成 Windows 本地 EEG / BCI 桌面工具。主線現在是先把
+backend、UI、assistant、scripts 和驗證文件重新對齊，再繼續推進產品功能。
+
+MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測試與 artifacts 只代表
+歷史探索或相容性證據，不再是 MVP、release candidate 或 thesis evidence 的必要路線。
 
 目前不能宣稱 product complete。
 
@@ -16,17 +19,27 @@ XBrainLab 正在收斂成 Windows 本地 EEG / BCI 桌面工具。主線已經�
 
 | 區域 | 目前狀態 | 邊界 |
 | --- | --- | --- |
-| Backend | `ApplicationService / Command API` 已是主要 command spine；UI / assistant / MCP product runtime 不再把 `BackendFacade` 當入口，service lazy wrappers 已改成明確 command handler。 | Phase 1A 還要以 release-candidate gate 持續防止新的 legacy / duplicate refresh truth。 |
+| Backend | `ApplicationService / Command API` 已是主要 command spine；UI、assistant 和 scripts 不應把 `BackendFacade` 當入口，service lazy wrappers 已改成明確 command handler。 | Phase 1A 還要以 release-candidate gate 持續防止新的 legacy / duplicate refresh truth。 |
 | UI | PyQt 主流程、Data Interpretation wizard、training / evaluation / visualization surface 都有 baseline；`stabilize/bids-epoch-saliency-baseline` 已把 2026-06-17 定稿的 saliency background baseline flow 落到 command/UI path。 | automated walkthrough 不等於 human Windows desktop acceptance；仍需真人 Windows click-through 才能宣稱產品驗收完成。 |
 | Data Interpretation | `scan -> preview -> validate -> apply -> recipe` baseline 已存在；Data Import wizard 已補強 Tier 1/Tier 2 label-source、BIDS-like events、internal event evidence、external label placement、structured review coverage，並把 reviewed label placement 寫成 epoch 建議。 | 還不是 full BIDS / arbitrary import system；P300/SSVEP/clinical/XDF/LSL/MOABB/proprietary converters 不能誇大。Epoch 目前消費 import 建議，不代表 epoch/preprocess 全流程已做完整 UX 重作。 |
-| Agent / MCP | tool surface 和 MCP adapter 已開始走同一套 command / capability / state snapshot。 | 這是 product baseline，不是完整 thesis benchmark 或 MCP client certification。 |
+| Assistant / Agent | in-app assistant 仍是產品與論文方向，但要等桌面主流程、command surface、verification layer 和 benchmark protocol 重新整理乾淨後再推。 | 目前不能宣稱 thesis-grade tool-call accuracy，也不能用 agent score 代表 UI 已可用。 |
+| MCP | 從 active plan 移除。 | 不再追求 MCP hardening、MCP client certification、MCP external-agent product path 或 MCP thesis evidence。 |
 | Packaging | Windows launcher / startup smoke 有 evidence。 | 還不是 signed installer，也不是 release approval。 |
 
 ## 下一個真正 blocker
 
-**Phase 1A：Backend Command Spine Cleanup。**
+**Current rebaseline：現況盤點、文件同步、MCP 下線決策落地。**
 
-這不是為了架構漂亮，而是為了避免 MVP 前繼續累積 bug：
+現在最大問題不是單一功能，而是文件、分支、驗證 claim 和實際程式狀態已經重新變得難以判斷。
+繼續做功能前要先把 current truth 收乾淨：
+
+- `docs/current.md`、`docs/planning/now.md`、`docs/planning/roadmap.md`、`docs/architecture/`
+  要能一致回答「目前在做什麼」。
+- MCP 要從 active roadmap、MVP gate 和 handoff claim 中移除。
+- 最新可手測分支、已知 UI 問題、驗證 gate 和 artifact freshness 要重新列清楚。
+- 後續每個 handoff candidate 都必須更新 canonical docs；不能只更新 artifact 或聊天紀錄。
+
+Phase 1A 仍是 MVP 前置，但在重新盤點後再繼續推進：
 
 - product runtime 不應偷偷 fallback 到 legacy controller mutation。
 - UI refresh 不應每個頁面自己猜狀態。
@@ -37,7 +50,8 @@ XBrainLab 正在收斂成 Windows 本地 EEG / BCI 桌面工具。主線已經�
 
 ## 可以宣稱
 
-- Roadmap 目前主線合理：backend cleanup -> Data Interpretation MVP -> tool-call baseline -> Windows desktop acceptance。
+- Roadmap 主線應改成：state/docs rebaseline -> backend/UI stabilization -> Data Interpretation MVP ->
+  in-app assistant baseline -> Windows desktop acceptance -> thesis evidence。
 - `ApplicationService / Command API` 是目前要收斂的 product spine。
 - Data Interpretation 和 tool-call baseline 都屬於 MVP，不應被推到後期。
 - 現有 artifacts 能作為工程 evidence，但每個 evidence 都有明確邊界。
@@ -49,7 +63,7 @@ XBrainLab 正在收斂成 Windows 本地 EEG / BCI 桌面工具。主線已經�
 - Data Interpretation final。
 - automated UI walkthrough 等於 human Windows desktop acceptance。
 - tool-call eval 等於 UI / product completion。
-- MCP baseline 等於完整 external-agent certification。
+- MCP baseline 屬於 active roadmap。
 - launcher smoke 等於 release approval 或 signed installer。
 
 ## 最近驗證
