@@ -34,8 +34,8 @@ MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測�
 Rebaseline 後的工程入口：
 
 - 目前正式 git worktree 只有 `/mnt/d/workspace_v2/projects/lab/xbrainlab`。
-- rebaseline checkpoint 是 `docs/rebaseline-drop-mcp` at `9f91994f`。
-- 下一輪工程基底是 `stabilize/desktop-mvp`，從 rebaseline checkpoint 建立。
+- rebaseline checkpoint 是 `docs/rebaseline-drop-mcp` 的 latest pushed checkpoint。
+- 下一輪工程基底是 `stabilize/desktop-mvp`，已從 rebaseline checkpoint 建立並 push。
 - `docs/multi-gate-loop`、`docs/development-process-rules`、`wip/data-import-controller-dirty-checkpoint`
   不整支 merge；只在需要時 cherry-pick 可用片段。
 - 後續每個 handoff candidate 都必須更新 canonical docs 或明確說明不需要更新的理由。

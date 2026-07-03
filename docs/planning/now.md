@@ -33,8 +33,8 @@
 | --- | --- |
 | Active repo | `/mnt/d/workspace_v2/projects/lab/xbrainlab` |
 | Registered git worktrees | 只有目前這個 worktree。之前的混亂主要是歷史 branches，不是多個仍掛載的 worktree。 |
-| Current rebaseline checkpoint | `docs/rebaseline-drop-mcp` at `9f91994f`。 |
-| Next engineering base | `stabilize/desktop-mvp`，從 rebaseline checkpoint 建立，用來修 Desktop MVP blockers。 |
+| Current rebaseline checkpoint | `docs/rebaseline-drop-mcp` 的 latest pushed checkpoint。 |
+| Next engineering base | `stabilize/desktop-mvp`，已從 rebaseline checkpoint 建立並 push，用來修 Desktop MVP blockers。 |
 | Main branch | `main` / `origin/main` 都落後目前 integration line；不要在 Desktop MVP gate 前直接把現在狀態推回 main。 |
 
 目前只有三個 local branches 沒有併入 rebaseline checkpoint：

@@ -60,7 +60,7 @@
   - `git diff --check`
   - `poetry run mkdocs build --strict`
 - 接續 / 本輪剩餘：
-  - 建立並 push `stabilize/desktop-mvp`。
+  - 從 `stabilize/desktop-mvp` 開始修 Desktop MVP blockers。
 
 ## 2026-07-03
 
