@@ -6,11 +6,12 @@
 
 ## 目前焦點
 
-**Desktop MVP blocker repair through the unified delivery flow.**
+**Desktop MVP audit and blocker repair through the unified delivery flow.**
 
-Rebaseline 已收尾。下一步從 `stabilize/desktop-mvp` 切短 task branch 修主流程 blocker；
-task branch 只能證明單一修復可合回 stabilization line。只有 `stabilize/desktop-mvp`
-通過 handoff candidate gate 後，才可以交給使用者手測。
+Rebaseline 已收尾。下一步先從 `stabilize/desktop-mvp` 做 Desktop MVP audit，主動找產品 bug、
+code quality issue、test gap、architecture drift、performance/resource risk 和 UI regression；
+再按 blocker queue 切短 task branch 修。task branch 只能證明單一修復可合回 stabilization
+line。只有 `stabilize/desktop-mvp` 通過 handoff candidate gate 後，才可以交給使用者手測。
 
 ## 本輪 To-do
 
@@ -23,7 +24,8 @@ task branch 只能證明單一修復可合回 stabilization line。只有 `stabi
 | Done | Known blocker reset | 最近手測提到的 UI / runtime blocker 已重新列在本頁與 `docs/records/product_feedback.md`。 |
 | Done | Handoff gate reset | 「可以手測」前必跑 happy path、edge case、多資料集、screenshot artifact 和 claim boundary；細節以 `docs/validation/README.md` 和 `.agents/workflows/handoff-candidate.md` 為準。 |
 | Done | Delivery flow unified | Branch 規則與 handoff 規則已統一為 Desktop MVP Delivery Flow：short task branch -> stabilization line -> handoff candidate -> user acceptance -> main。 |
-| Next | Desktop MVP blocker repair | 從唯一工程基底修主流程 blocker；每個修復分支都要通過 handoff candidate gate 才能交給使用者手測。 |
+| Next | Desktop MVP audit | 從 `stabilize/desktop-mvp` 全面盤點產品 bug、code quality、test quality、architecture drift、performance/resource 和 UI artifact 問題，產生 blocker queue。 |
+| Next | Desktop MVP blocker repair | 依 audit blocker queue 從唯一工程基底切短 task branch；每個修復分支通過 task-branch gate 後合回，整體通過 handoff gate 才能交給使用者手測。 |
 
 ## 2026-07-04 Rebaseline 結論
 
@@ -47,8 +49,8 @@ task branch 只能證明單一修復可合回 stabilization line。只有 `stabi
 
 ### Desktop MVP blocker board
 
-這些是下一輪修復入口，不代表都一定仍存在；每項開始前要先在 `stabilize/desktop-mvp`
-重現或以 artifact 確認。
+這些是 audit seed，不代表都一定仍存在；audit 要主動重現、用 artifact 確認，並補充未列出的
+產品 bug 或 code quality issue。
 
 | Area | Blocker / risk | Gate before handoff |
 | --- | --- | --- |

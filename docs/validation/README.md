@@ -24,7 +24,7 @@
 | Phase | 需要的最低 evidence |
 | --- | --- |
 | Rebaseline | docs gate、branch/worktree inventory、known blocker board、handoff gate reset。 |
-| Desktop MVP | architecture guard、focused command tests、UI refresh tests、Data Import format matrix、required multi-dataset gate、human-observable desktop smoke。 |
+| Desktop MVP | Desktop MVP audit、architecture guard、focused command tests、UI refresh tests、Data Import format matrix、required multi-dataset gate、human-observable desktop smoke。 |
 | Product Polish / Release Candidate | screenshot artifact review、UI visual consistency walkthrough、known limitations、troubleshooting docs、release-candidate preflight。 |
 | Assistant MVP | assistant tool tests、blocked reason / structured result checks、verification boundary evidence、local LLM unavailable state。 |
 | Thesis Evidence | frozen case suite、dataset protocol、scorer version、repeat count、failure taxonomy、statistical report。 |
@@ -58,6 +58,26 @@ stabilize/desktop-mvp
 - task branch gate 只證明「這個小修復可合回 stabilization line」。
 - handoff candidate gate 才證明「可以交給使用者手測」。
 - main merge gate 要等使用者 acceptance 或明確同意的 release-candidate preflight。
+
+## Desktop MVP Audit Gate
+
+Desktop MVP 的第一輪修復不能只針對使用者指出的一個 symptom。使用者回報的 bug 是 audit
+trigger；agent 要主動找產品 bug 和 code quality issue。
+
+Audit 至少覆蓋：
+
+| Area | 要找的問題 |
+| --- | --- |
+| Product workflow | import、label、metadata、epoch、preprocess、dataset split、training、evaluation、visualization 是否能完成主要路徑。 |
+| UI / UX | 明顯跑版、白字白底、primary action 消失、不可點狀態誤導、loading/error/empty state 不清楚。 |
+| Backend correctness | command result、state lifecycle、data mutation、label/event recipe、thread/figure cleanup。 |
+| Architecture / clean code | duplicated truth、legacy/fallback creep、direct controller mutation、god object / long method / shotgun surgery。 |
+| Test quality | mock-heavy 假保護、缺 non-mocked smoke、缺 screenshot / artifact、缺 multi-dataset edge。 |
+| Performance/resource | UI-thread blocking、eager imports、background job cleanup、GPU/CPU/RAM guard、Matplotlib / Qt resource leaks。 |
+| Docs / claim | current truth、known blockers、validation claim、artifact freshness 是否一致。 |
+
+Audit 輸出必須產生 blocker queue，並把 blocking findings 修完或標成 blocked 後，才可以進入
+handoff-ready 判定。若只完成單一修復，回報語意只能是 checkpoint。
 
 handoff candidate 必須同時具備：
 

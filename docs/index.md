@@ -14,7 +14,7 @@ MVP stabilization；not product complete.
 
 <div markdown>
 <span class="xlb-kicker">主要缺口</span>
-下一步從唯一工程基底修 Desktop MVP blockers；Windows acceptance 仍 pending。
+下一步從唯一工程基底做 Desktop MVP audit，再修 blockers；Windows acceptance 仍 pending。
 </div>
 
 <div markdown>
@@ -34,7 +34,7 @@ local quality dashboard；screenshot index；private docs portal visual review.
 
 <div markdown>
 <span class="xlb-kicker">Next Work</span>
-Desktop MVP blocker repair; then manual-test candidate gate before user handoff.
+Desktop MVP audit; blocker queue; repair; handoff gate before user manual test.
 </div>
 
 </div>
@@ -43,7 +43,7 @@ Desktop MVP blocker repair; then manual-test candidate gate before user handoff.
 
 | Area | Current Read | Best Evidence | Next Work |
 | --- | --- | --- | --- |
-| Product readiness | Baseline exists; not product complete. | [Current](current.md), [Roadmap](planning/roadmap.md) | Desktop MVP blocker repair, then human-observable desktop smoke. |
+| Product readiness | Baseline exists; not product complete. | [Current](current.md), [Roadmap](planning/roadmap.md) | Desktop MVP audit, blocker repair, then human-observable desktop smoke. |
 | Backend architecture | `ApplicationService / Command API` is the shared backend spine; `BackendFacade` is physically removed. | [Architecture](architecture/README.md), [Validation](validation/README.md) | Keep guards green while UX continues. |
 | Data Import | `scan -> preview -> validate -> apply -> recipe` works as baseline; placement evidence covers four mainstream modes. | [Data Interpretation target](target/data_interpretation_system.md), `artifacts/ui/data-import-wizard-steps/README.md` | Record UX debt; do not redesign tonight. |
 | Validation | Handoff candidate gate is the required standard before user manual testing. | [Validation](validation/README.md); local generated `artifacts/quality/latest.md` | Run focused regression, same-class sweep, happy path, edge/multi-dataset, screenshot artifact, and claim boundary per branch. |
@@ -84,7 +84,7 @@ Desktop MVP blocker repair; then manual-test candidate gate before user handoff.
 
 - **Next work**
 
-    看下一輪施工焦點：Desktop MVP blocker board、唯一工程基底、handoff gate。
+    看下一輪施工焦點：Desktop MVP audit、blocker board、唯一工程基底、handoff gate。
 
     [打開 Now](planning/now.md)
 

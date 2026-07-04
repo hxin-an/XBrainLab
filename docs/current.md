@@ -8,8 +8,8 @@
 ## 一句話
 
 XBrainLab 正在重新盤點成 Windows 本地 EEG / BCI 桌面工具。Roadmap、MCP 下線、
-branch/worktree inventory、known blocker board 和 handoff gate 已重新對齊；下一步進入
-Desktop MVP blocker repair。
+branch/worktree inventory、known blocker board 和 handoff gate 已重新對齊；下一步先做
+Desktop MVP audit，再按 blocker queue 修復。
 
 MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測試與 artifacts 只代表
 歷史探索或相容性證據，不再是 MVP、release candidate 或 thesis evidence 的必要路線。
@@ -29,7 +29,7 @@ MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測�
 
 ## 下一個真正 blocker
 
-**Desktop MVP blocker repair：在唯一工程基底上修主流程 blocker。**
+**Desktop MVP audit + blocker repair：先全面盤點，再在唯一工程基底上修主流程 blocker。**
 
 Rebaseline 後的工程入口：
 
@@ -38,6 +38,8 @@ Rebaseline 後的工程入口：
 - 下一輪工程基底是 `stabilize/desktop-mvp`，已從 rebaseline checkpoint 建立並 push。
 - `docs/multi-gate-loop`、`docs/development-process-rules`、`wip/data-import-controller-dirty-checkpoint`
   不整支 merge；只在需要時 cherry-pick 可用片段。
+- 使用者回報的 bug 是 audit trigger，不是唯一 symptom；下一輪要主動找產品 bug、code quality
+  issue、test gap、architecture drift、performance/resource risk 和 UI regression。
 - 後續每個 handoff candidate 都必須更新 canonical docs 或明確說明不需要更新的理由。
 
 Desktop MVP 前仍要先把 backend / UI 穩定化繼續收乾淨：

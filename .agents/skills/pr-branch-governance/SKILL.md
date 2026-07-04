@@ -100,6 +100,11 @@ stabilize/desktop-mvp
 Rules:
 
 - `stabilize/desktop-mvp` is the current integration line, not a scratch branch.
+- Before the first repair branch for a product area, run a Desktop MVP audit
+  pass from the stabilization line. The audit must look for product bugs, code
+  quality risks, architecture drift, weak tests, stale artifacts, and obvious UI
+  regressions across adjacent workflow areas; do not wait for the user to report
+  each bug one by one.
 - Product-code changes must normally happen on a short-lived task branch from
   `stabilize/desktop-mvp`.
 - One task branch owns one blocker, one evidence gap, or one boundary cleanup.
@@ -113,6 +118,9 @@ Rules:
   explicitly agreed release-candidate gate.
 - If a fix cannot be kept small, split it before implementation or mark the
   branch as WIP/checkpoint rather than pretending it is reviewable.
+- If the audit finds multiple blocking issues, create separate task branches or
+  an explicit ordered blocker queue; do not hide known blockers behind a narrow
+  "fixed the reported bug" claim.
 
 This flow intentionally follows short-lived branch practice: small batches,
 frequent integration, automated checks before merge, and visible product evidence

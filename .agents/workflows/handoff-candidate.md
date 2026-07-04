@@ -26,6 +26,8 @@ stabilize/desktop-mvp
 
 - task branch 只能證明單一修復可合回 stabilization line。
 - task branch 合回 `stabilize/desktop-mvp` 不等於可以請使用者手測。
+- 使用者回報的 bug 是 audit trigger，不是唯一 symptom；agent 要主動找產品 bug、
+  code quality issue、test gap、architecture drift 和可見 UI regression。
 - `handoff-ready` 只能從 stabilization line 宣稱，且必須完成本 workflow。
 - `main` merge 要等使用者 acceptance，或明確同意的 release-candidate gate。
 
@@ -38,6 +40,36 @@ stabilize/desktop-mvp
 - `blocked`：需要使用者決策、外部環境或無法自動取得的 evidence。
 
 未完成必要 gate 時，不可把 checkpoint 說成 handoff-ready。
+
+## 0.1 Desktop MVP Audit Gate
+
+在開始第一個修復分支前，或使用者要求「全面盤點」、「不要讓我一個一個回報 bug」時，
+必須先從 `stabilize/desktop-mvp` 做 Desktop MVP audit。
+
+這不是只找同類 bug，而是找會阻礙 Desktop MVP handoff 的問題：
+
+- product bugs：主流程 crash、卡 UI、狀態不同步、錯誤資料流、button/step 行為錯誤。
+- UI / UX blockers：跑版、白字白底、primary action 不可見、nested scroll、不可點卻像可點、
+  空/錯誤/載入狀態讓新手誤解。
+- code correctness：state lifecycle、thread/figure cleanup、data pipeline mutation、label/event
+  recipe trace、command result / changed-state refresh。
+- architecture / clean code：direct controller mutation 回流、duplicated workflow truth、
+  legacy/fallback creep、god-object growth、large mixed-responsibility methods。
+- test quality：mock-heavy tests 假保護、缺 non-mocked workflow smoke、缺 screenshot / artifact
+  evidence、dashboard PASS 被過度解讀。
+- performance/resource：UI-thread blocking、eager loading、background job cleanup、Matplotlib /
+  Qt native resource leaks。
+- docs/claim：current truth、known blockers、validation claim 和 artifacts 是否仍對齊。
+
+最低輸出：
+
+- audit scope：本輪檢查哪些 workflow area，哪些刻意不碰。
+- findings queue：blocking / non-blocking / needs-human-decision 分類。
+- proposed branch slices：每個 blocking finding 對應一個小 task branch 或明確合併理由。
+- validation plan：每個 area 要跑的 tests、source guards、walkthrough、screenshots、multi-dataset gate。
+- claim boundary：audit 還不能證明什麼。
+
+若 audit 發現 blocking issue，不能直接回報 handoff-ready。必須依 queue 修完，或明確回報 blocked。
 
 ## 0.5 Task-Branch Gate
 

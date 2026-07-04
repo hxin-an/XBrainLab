@@ -37,6 +37,26 @@
 
 ## 2026-07-04
 
+### Desktop MVP audit requirement added
+
+- 做了什麼：
+  - 使用者指出本輪不能只掃同類 bug，應全面盤點產品 bug 和 code quality issue。
+  - 將 Desktop MVP Delivery Flow 補成 audit-first：使用者 bug report 是 audit trigger，不是唯一
+    symptom。
+  - 更新 `.agents/skills/pr-branch-governance/SKILL.md`、`.agents/workflows/handoff-candidate.md`、
+    `docs/validation/README.md`、`docs/planning/now.md`、`docs/current.md`、`docs/index.md`
+    和 `docs/decisions/README.md`。
+- 結果：
+  - 下一步不是直接修 label reload 單點 bug，而是先從 `stabilize/desktop-mvp` 做 Desktop MVP audit。
+  - Audit 要涵蓋 product workflow、UI/UX blocker、backend correctness、architecture / clean code、
+    test quality、performance/resource、docs/claim。
+  - Audit 產生 blocker queue 後，再切短 task branches 修 blocking findings。
+- 證據：
+  - `git diff --check`
+  - `poetry run mkdocs build --strict`
+- 接續 / 本輪剩餘：
+  - commit / push audit-first rule update。
+
 ### Desktop MVP delivery flow unified
 
 - 做了什麼：
