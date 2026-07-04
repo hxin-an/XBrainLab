@@ -1,6 +1,6 @@
 # XBrainLab Decisions
 
-最後更新：`2026-07-03`
+最後更新：`2026-07-04`
 
 ## 這份文件的用途
 
@@ -30,6 +30,7 @@
 | 資料匯入目標是 Data Interpretation System | active | 使用者提供資料位置後，系統應建立可預覽、可驗證、可重跑的資料解讀；不以單純 load file / attach label 心智模型作為終局設計。 |
 | MCP 從 active roadmap 移除 | active | MCP 不再是 MVP、release candidate、handoff gate 或 thesis evidence 前置；既有 MCP code/tests/artifacts 只保留為歷史探索或相容性證據。未來若要恢復，需另開決策重新定義 scope、security、session ownership、client matrix 和 validation cost。 |
 | Roadmap 五階段定型 | active | 產品主線固定為 Rebaseline -> Desktop MVP -> Product Polish / Release Candidate -> Assistant MVP -> Thesis Evidence。阻礙使用或理解的 UI/UX 屬於 Desktop MVP blocker；美感、一致性和低風險 polish 屬於 Product Polish / Release Candidate。 |
+| Desktop MVP Delivery Flow | active | Branch 規則和 handoff 規則統一：從 `stabilize/desktop-mvp` 切短 task branch，通過 task-branch gate 後合回 stabilization line；只有 stabilization line 通過 handoff candidate gate 才能交給使用者手測；`main` merge 等使用者 acceptance 或明確 release-candidate gate。 |
 
 ## 目前工作方向
 

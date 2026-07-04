@@ -6,12 +6,11 @@
 
 ## 目前焦點
 
-**Current truth rebaseline before more feature work.**
+**Desktop MVP blocker repair through the unified delivery flow.**
 
-最近幾週產品、UI、saliency、Data Import、agent / thesis discussion 都有推進，但 canonical docs
-沒有跟著每個 checkpoint 收乾淨，導致 roadmap、current state、artifact claim 和實際分支狀態重新變得難判斷。
-
-現在先做文件與狀態重盤點，再繼續推進功能。這不是暫停工程，而是避免在錯誤前提上繼續疊工作。
+Rebaseline 已收尾。下一步從 `stabilize/desktop-mvp` 切短 task branch 修主流程 blocker；
+task branch 只能證明單一修復可合回 stabilization line。只有 `stabilize/desktop-mvp`
+通過 handoff candidate gate 後，才可以交給使用者手測。
 
 ## 本輪 To-do
 
@@ -23,6 +22,7 @@
 | Done | Branch / worktree inventory | 目前正式 git worktree 只有本 repo；下一輪工程基底定為 `stabilize/desktop-mvp`，從 rebaseline checkpoint 建立。 |
 | Done | Known blocker reset | 最近手測提到的 UI / runtime blocker 已重新列在本頁與 `docs/records/product_feedback.md`。 |
 | Done | Handoff gate reset | 「可以手測」前必跑 happy path、edge case、多資料集、screenshot artifact 和 claim boundary；細節以 `docs/validation/README.md` 和 `.agents/workflows/handoff-candidate.md` 為準。 |
+| Done | Delivery flow unified | Branch 規則與 handoff 規則已統一為 Desktop MVP Delivery Flow：short task branch -> stabilization line -> handoff candidate -> user acceptance -> main。 |
 | Next | Desktop MVP blocker repair | 從唯一工程基底修主流程 blocker；每個修復分支都要通過 handoff candidate gate 才能交給使用者手測。 |
 
 ## 2026-07-04 Rebaseline 結論

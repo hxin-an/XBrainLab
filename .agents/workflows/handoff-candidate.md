@@ -1,11 +1,33 @@
 # Handoff Candidate Workflow
 
-最後更新：`2026-06-15`
+最後更新：`2026-07-04`
 
 這份 workflow 用於任何準備交給使用者手測的修復、功能或整合 branch。
 
 目標不是消滅所有人工驗收，而是避免使用者成為第一層 QA。agent 必須先用自動化、
 artifact 和同類掃描抓掉明顯 bug，再請使用者做 acceptance。
+
+## Desktop MVP Delivery Flow
+
+Desktop MVP 期間，branch flow 和 handoff flow 是同一條交付線：
+
+```text
+stabilize/desktop-mvp
+  -> fix/<one-blocker> | test/<one-gap> | refactor/<one-boundary>
+      task-branch gate
+  -> merge back into stabilize/desktop-mvp
+      stabilization handoff gate
+  -> user manual acceptance
+      main merge gate
+  -> main
+```
+
+含義：
+
+- task branch 只能證明單一修復可合回 stabilization line。
+- task branch 合回 `stabilize/desktop-mvp` 不等於可以請使用者手測。
+- `handoff-ready` 只能從 stabilization line 宣稱，且必須完成本 workflow。
+- `main` merge 要等使用者 acceptance，或明確同意的 release-candidate gate。
 
 ## 0. Classification
 
@@ -16,6 +38,17 @@ artifact 和同類掃描抓掉明顯 bug，再請使用者做 acceptance。
 - `blocked`：需要使用者決策、外部環境或無法自動取得的 evidence。
 
 未完成必要 gate 時，不可把 checkpoint 說成 handoff-ready。
+
+## 0.5 Task-Branch Gate
+
+任何修復分支合回 `stabilize/desktop-mvp` 前，至少要有：
+
+- focused regression：重現或保護本分支要修的問題。
+- same-class sweep：搜尋同類 call sites、screens、state flow 或 data flow。
+- relevant validation：依改動類型跑 focused tests、source guard、screenshot script 或 artifact capture。
+- docs note：若改變 current truth、gate、使用者流程或 known blocker，更新 canonical docs。
+- branch hygiene：worktree clean；commit pushed。
+- claim boundary：只能說這個 task branch 可合回，不可說產品可手測。
 
 ## 1. Start Gate
 

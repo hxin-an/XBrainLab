@@ -37,6 +37,30 @@
 
 ## 2026-07-04
 
+### Desktop MVP delivery flow unified
+
+- 做了什麼：
+  - 查證 GitHub Flow、DORA trunk-based development、GitHub protected branch / required checks、
+    trunk-based release branch guidance、以及 Playwright screenshot comparison 的官方或一手資料。
+  - 將 branch 規則和 handoff 規則統一為 Desktop MVP Delivery Flow：
+    `stabilize/desktop-mvp` -> short task branch -> task-branch gate -> merge back ->
+    stabilization handoff gate -> user acceptance -> main merge gate。
+  - 更新 `.agents/skills/pr-branch-governance/SKILL.md`、`.agents/workflows/handoff-candidate.md`、
+    `docs/validation/README.md`、`docs/planning/now.md` 和 `docs/decisions/README.md`。
+- 結果：
+  - 之後不能只用「分支已合回」當作「可以手測」。
+  - `stabilize/desktop-mvp` 是 integration line，不是大雜燴 work branch。
+  - 每個產品修復要先小分支驗證，再回 stabilization line 跑 handoff gate。
+- 證據：
+  - GitHub Flow：短描述 branch、isolated complete commit、PR review、checks、merge 後刪 branch。
+  - DORA trunk-based development：small batches、少 active branches、頻繁 merge、automated tests。
+  - GitHub protected branches：required status checks pass before merge。
+  - Playwright visual comparisons：screenshot comparison 可作 UI artifact evidence。
+  - `git diff --check`
+  - `poetry run mkdocs build --strict`
+- 接續 / 本輪剩餘：
+  - commit / push delivery-flow rule update。
+
 ### Branch inventory, blocker reset, and handoff gate reset
 
 - 做了什麼：

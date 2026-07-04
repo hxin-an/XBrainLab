@@ -81,6 +81,43 @@ Rules for this mode:
   explain its known blockers, it may be a draft integration branch but it is not
   ready for `main`.
 
+## Desktop MVP Delivery Flow
+
+During Desktop MVP stabilization, branch governance and handoff governance are one
+flow. Do not treat them as separate checklists.
+
+```text
+stabilize/desktop-mvp
+  -> fix/<one-blocker> | test/<one-gap> | refactor/<one-boundary>
+      task-branch gate
+  -> merge back into stabilize/desktop-mvp
+      stabilization handoff gate
+  -> user manual acceptance
+      main merge gate
+  -> main
+```
+
+Rules:
+
+- `stabilize/desktop-mvp` is the current integration line, not a scratch branch.
+- Product-code changes must normally happen on a short-lived task branch from
+  `stabilize/desktop-mvp`.
+- One task branch owns one blocker, one evidence gap, or one boundary cleanup.
+- A task branch may be merged back only after focused regression, same-class
+  sweep, relevant tests/artifacts, clean worktree, commit, and push.
+- A task branch being merged back does not mean the product is ready for the
+  user to test.
+- "Ready for manual test" can only be said from the stabilization line after
+  the handoff candidate gate passes.
+- `main` receives the stabilization line only after user acceptance or an
+  explicitly agreed release-candidate gate.
+- If a fix cannot be kept small, split it before implementation or mark the
+  branch as WIP/checkpoint rather than pretending it is reviewable.
+
+This flow intentionally follows short-lived branch practice: small batches,
+frequent integration, automated checks before merge, and visible product evidence
+before human acceptance.
+
 ## Long-Running MVP Checkpoints
 
 Important progress must not stay local-only during long-running MVP work. After

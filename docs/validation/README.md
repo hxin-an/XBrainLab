@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-07-03`
+最後更新：`2026-07-04`
 
 這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
@@ -33,6 +33,31 @@
 
 交給使用者手測前，必須先把 branch 判定為 handoff candidate。這個 gate 的目的不是取代
 human Windows acceptance，而是避免使用者成為第一層 QA。
+
+## Desktop MVP Delivery Flow Gate
+
+Desktop MVP 期間，branch、validation、handoff 合併成一條流程：
+
+```text
+stabilize/desktop-mvp
+  -> short task branch
+      focused regression + same-class sweep + relevant validation
+  -> merge back to stabilize/desktop-mvp
+      happy path + edge/multi-dataset + artifact review
+  -> user manual acceptance
+      main merge decision
+```
+
+這個流程的目的不是增加儀式，而是避免兩種失敗：
+
+- 長期分支堆太多內容，最後 merge 風險和 review 成本過高。
+- 單點 bug 修完就交給使用者，導致使用者成為第一層 QA。
+
+因此：
+
+- task branch gate 只證明「這個小修復可合回 stabilization line」。
+- handoff candidate gate 才證明「可以交給使用者手測」。
+- main merge gate 要等使用者 acceptance 或明確同意的 release-candidate preflight。
 
 handoff candidate 必須同時具備：
 
