@@ -37,6 +37,46 @@
 
 ## 2026-07-04
 
+### 12:30 Desktop MVP audit gate repair
+
+- 做了什麼：
+  - 從 `stabilize/desktop-mvp` 建立 audit branch，先跑 Desktop MVP audit gates，再修阻擋 handoff
+    的問題。
+  - 修復 `run_public_cross_source_training_smoke.py --format json` stdout 被 MNE / training log 污染，
+    讓 JSON artifact 可直接被 parser 讀取。
+  - 修正 human-like walkthrough resource smoke：用 current RSS 判斷 retained-memory regression，
+    max RSS high-water 只作診斷資訊，避免正常訓練峰值造成假 fail。
+  - 修正 Data Splitting Preview 左側結果表格下方過大的空白 panel。
+  - 修正 Visualization Render artifact 的 repo-relative path 和 runtime-only 欄位，避免 RAM / elapsed
+    time / metrics 造成無意義 diff；visualization PNG 仍是 render evidence，不宣稱 byte-stable baseline。
+  - 將 `artifacts/audit/` 和 `artifacts/ui/human-like-walkthrough/` 設為 transient / ignored evidence。
+- 結果：
+  - `stabilize/desktop-mvp` 已 fast-forward 到 `01f76e8c` 並 push。
+  - 目前沒有已知 handoff blocker；可進入使用者手測候選。
+  - Claim boundary：offscreen gate 只驗證 headless PyQt / screenshot / multi-dataset workflow；Windows
+    launcher、DPI / dual monitor、interactive OpenGL 3D 仍需要真人桌面 acceptance。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_run_public_cross_source_training_smoke.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_visualization_render_walkthrough.py tests/unit/ui/test_data_splitting.py tests/unit/ui/dialogs/test_data_splitting.py tests/unit/ui/dataset/test_data_splitting.py -q`
+    -> `134 passed`
+  - `poetry run python scripts/dev/report_dataset_validation_matrix.py --strict --format json`
+  - `poetry run python scripts/dev/report_data_interpretation_format_matrix.py --format json`
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration/ui/test_data_import_wizard_format_matrix.py -q`
+    -> `9 passed`
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration/io/test_io_integration.py tests/integration/io/test_public_bids_fixture.py tests/integration/pipeline/test_public_cross_source_training_smoke.py -q`
+    -> `36 passed`
+  - `poetry run python scripts/dev/run_public_cross_source_training_smoke.py --format json --strict`
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_visualization_render_walkthrough.py`
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_import_wizard_steps.py`
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_ui_polish_surfaces.py`
+  - `poetry run mkdocs build --strict`
+  - `poetry run python scripts/dev/update_quality_dashboard.py`
+    -> `Overall status: PASS`, branch `stabilize/desktop-mvp`, commit `01f76e8c`, dirty worktree `no`
+- 接續 / 本輪剩餘：
+  - 使用者可開始 Desktop MVP 手測。
+  - 若手測再發現問題，需照 Desktop MVP Delivery Flow 開短 task branch，修完後回 `stabilize/desktop-mvp`
+    跑 handoff candidate gate。
+
 ### Desktop MVP audit requirement added
 
 - 做了什麼：
