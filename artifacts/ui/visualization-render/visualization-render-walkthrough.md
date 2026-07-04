@@ -16,7 +16,7 @@
 - metrics available: `True`
 - saliency available: `False`
 - ready screenshot: `artifacts/ui/visualization-render/visualization-render-saliency-map.png`
-- elapsed seconds: `9.093`
+- elapsed seconds: `<runtime-dependent>`
 - uncaught exceptions: `0`
 
 ## Rendered Tabs

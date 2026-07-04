@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
+import random
 import shutil
 import sys
 import tempfile
@@ -64,6 +66,8 @@ BLOCKED_TAB_SPECS: list[dict[str, str]] = [
     },
 ]
 UNCAUGHT_EXCEPTIONS: list[str] = []
+DETERMINISTIC_CAPTURE_SEED = 1729
+_RUNTIME_DEPENDENT = "<runtime-dependent>"
 
 
 def _install_uncaught_exception_capture() -> None:
@@ -131,6 +135,7 @@ def run_visualization_render_walkthrough(
 
     UNCAUGHT_EXCEPTIONS.clear()
     _install_uncaught_exception_capture()
+    _set_deterministic_capture_seed()
     started_at = time.monotonic()
     _clear_saved_main_window_geometry()
     source_path = write_synthetic_training_raw_fif()
@@ -349,7 +354,7 @@ def _capture_render_tab(
     )
     return {
         "tab": tab_name,
-        "screenshot": str(screenshot_path),
+        "screenshot": _artifact_path(screenshot_path),
         "ok": ok,
         "failure_reason": "" if ok else _render_failure_reason(tab_name, evidence),
         **evidence,
@@ -392,7 +397,7 @@ def _capture_blocked_tab(
     )
     return {
         "tab": tab_name,
-        "screenshot": str(screenshot_path),
+        "screenshot": _artifact_path(screenshot_path),
         "ok": ok,
         "failure_reason": ""
         if ok
@@ -692,6 +697,54 @@ def _validate_screenshot(path: Any, label: str) -> tuple[bool, str]:
     return True, ""
 
 
+def _artifact_path(path: Path) -> str:
+    try:
+        return path.resolve().relative_to(ROOT).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _set_deterministic_capture_seed() -> None:
+    """Keep tracked visualization screenshots stable across capture reruns."""
+    random.seed(DETERMINISTIC_CAPTURE_SEED)
+    try:
+        import numpy as np
+
+        np.random.seed(DETERMINISTIC_CAPTURE_SEED)
+    except Exception:
+        pass
+    try:
+        import torch
+
+        torch.manual_seed(DETERMINISTIC_CAPTURE_SEED)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(DETERMINISTIC_CAPTURE_SEED)
+    except Exception:
+        pass
+
+
+def stable_artifact_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Remove runtime-only values from the persisted visualization artifact."""
+    stable = copy.deepcopy(payload)
+    stable["elapsed_seconds"] = _RUNTIME_DEPENDENT
+    _mask_runtime_values(stable)
+    return stable
+
+
+def _mask_runtime_values(value: Any) -> None:
+    if isinstance(value, dict):
+        for key in list(value):
+            if key in {"available_ram_bytes", "available_vram_bytes"}:
+                value[key] = _RUNTIME_DEPENDENT
+            elif key == "metrics" and isinstance(value[key], dict):
+                value[key] = {"status": "available"}
+            else:
+                _mask_runtime_values(value[key])
+    elif isinstance(value, list):
+        for item in value:
+            _mask_runtime_values(item)
+
+
 def render_markdown(payload: dict[str, Any]) -> str:
     """Render a compact visualization render summary."""
     metadata = payload.get("artifact_metadata") or {}
@@ -856,6 +909,7 @@ def _section(payload: dict[str, Any], key: str) -> dict[str, Any]:
 
 
 def _write_artifacts(output_dir: Path, payload: dict[str, Any]) -> None:
+    payload = stable_artifact_payload(payload)
     (output_dir / JSON_ARTIFACT).write_text(
         json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",

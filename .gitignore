@@ -78,6 +78,8 @@ docs/_build/
 # Codex goal runtime artifacts
 artifacts/goal/*.jsonl
 artifacts/goal/*.pid
+artifacts/audit/
+artifacts/ui/human-like-walkthrough/
 
 # Jupyter Notebook
 .ipynb_checkpoints

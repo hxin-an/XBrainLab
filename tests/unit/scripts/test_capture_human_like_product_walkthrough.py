@@ -22,6 +22,7 @@ from scripts.dev.capture_human_like_product_walkthrough import (
     build_chat_geometry_review,
     build_observable_evidence_summary,
     build_pass_fail_summary,
+    build_resource_smoke_summary,
     build_ui_quality_review,
     chat_panel_geometry,
     dataset_page_geometry,
@@ -242,12 +243,14 @@ def test_build_pass_fail_summary_flags_unsettled_threads() -> None:
                 "python_threads": 1,
                 "qt_active_threads": 0,
                 "max_rss_kb": 100,
+                "current_rss_kb": 100,
             },
             {
                 "label": "after_close",
                 "python_threads": 4,
                 "qt_active_threads": 2,
                 "max_rss_kb": 900000,
+                "current_rss_kb": 1_300_100,
             },
         ],
     )
@@ -257,6 +260,31 @@ def test_build_pass_fail_summary_flags_unsettled_threads() -> None:
     assert "Python threads did not settle" in failed
     assert "Qt thread pool still active" in failed
     assert "RSS smoke delta exceeded" in failed
+
+
+def test_resource_smoke_records_max_rss_without_failing_high_water_only() -> None:
+    summary = build_resource_smoke_summary(
+        [
+            {
+                "label": "start",
+                "python_threads": 1,
+                "qt_active_threads": 0,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+            {
+                "label": "after_close",
+                "python_threads": 1,
+                "qt_active_threads": 0,
+                "max_rss_kb": 900000,
+                "current_rss_kb": 200,
+            },
+        ],
+    )
+
+    assert summary["passed"] is True
+    assert summary["rss_growth_kb"] == 100
+    assert summary["max_rss_growth_kb"] == 899900
 
 
 def test_observable_evidence_summary_indexes_phase_snapshots() -> None:

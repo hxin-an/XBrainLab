@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -246,6 +247,10 @@ class DataSplittingPreviewDialog(BaseDialog):
         left_layout.setSpacing(10)
         results_group = QFrame()
         results_group.setObjectName("SplitPreviewPanel")
+        results_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
         results_layout = QVBoxLayout(results_group)
         results_layout.setContentsMargins(12, 12, 12, 12)
         results_layout.setSpacing(10)
@@ -273,8 +278,8 @@ class DataSplittingPreviewDialog(BaseDialog):
                 )
         results_layout.addWidget(self.tree)
         self._resize_tree_to_rows()
-        results_layout.addStretch(1)
-        left_layout.addWidget(results_group, stretch=1)
+        left_layout.addWidget(results_group)
+        left_layout.addStretch(1)
 
         layout.addLayout(left_layout, stretch=3)
 

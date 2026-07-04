@@ -5,6 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import sys
+import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -394,6 +397,32 @@ def render_markdown(snapshot: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def build_snapshot_for_json_output() -> dict[str, Any]:
+    """Run the smoke while keeping noisy library stdout out of JSON stdout."""
+    original_stdout = sys.stdout
+    saved_stdout_fd = os.dup(1)
+    try:
+        with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as runner_stdout:
+            original_stdout.flush()
+            os.dup2(runner_stdout.fileno(), 1)
+            sys.stdout = runner_stdout
+            try:
+                snapshot = build_snapshot()
+                runner_stdout.flush()
+            finally:
+                os.dup2(saved_stdout_fd, 1)
+                sys.stdout = original_stdout
+            runner_stdout.seek(0)
+            captured = runner_stdout.read()
+    finally:
+        os.close(saved_stdout_fd)
+        sys.stdout = original_stdout
+
+    if captured:
+        print(captured, end="", file=sys.stderr)
+    return snapshot
+
+
 def main() -> int:
     """CLI entry point."""
     parser = argparse.ArgumentParser()
@@ -410,10 +439,11 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    snapshot = build_snapshot()
     if args.format == "json":
+        snapshot = build_snapshot_for_json_output()
         print(json.dumps(snapshot, indent=2, ensure_ascii=False))
     else:
+        snapshot = build_snapshot()
         print(render_markdown(snapshot))
 
     summary = snapshot["summary"]

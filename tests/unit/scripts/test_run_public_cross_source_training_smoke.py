@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
+import scripts.dev.run_public_cross_source_training_smoke as smoke_script
 from scripts.dev.run_public_cross_source_training_smoke import (
     PUBLIC_EPOCH_ONLY_FIXTURES,
     PUBLIC_TRAINING_FIXTURES,
@@ -112,3 +114,32 @@ def test_cnt_fixture_is_epoch_only_for_tiny_event_count():
 
     assert "mne-cnt" not in training_fixture_names
     assert epoch_fixture_by_name["mne-cnt"]["filename"] == "scan41_short.cnt"
+
+
+def test_json_output_keeps_runner_noise_off_stdout(monkeypatch, capsys):
+    def fake_build_snapshot():
+        print("mne progress that should not corrupt json")
+        return {
+            "repo_root": "/tmp/xbrainlab",
+            "public_data_dir": "/tmp/xbrainlab/tests/fixtures/data/public",
+            "results": [],
+            "summary": {
+                "passed": 0,
+                "missing": 0,
+                "failed": 0,
+                "message": "ok",
+            },
+        }
+
+    monkeypatch.setattr(smoke_script, "build_snapshot", fake_build_snapshot)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["run_public_cross_source_training_smoke.py", "--format", "json"],
+    )
+
+    assert smoke_script.main() == 0
+    captured = capsys.readouterr()
+
+    assert json.loads(captured.out)["summary"]["message"] == "ok"
+    assert "mne progress" not in captured.out
+    assert "mne progress that should not corrupt json" in captured.err

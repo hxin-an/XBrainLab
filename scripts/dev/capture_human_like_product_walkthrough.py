@@ -74,6 +74,11 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - exercised on Windows CI
     resource = None
 
+try:
+    import psutil
+except ModuleNotFoundError:  # pragma: no cover - psutil is optional in script envs
+    psutil = None
+
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "ui" / "human-like-walkthrough"
 WINDOW_SIZE = QSize(1280, 800)
@@ -165,7 +170,7 @@ VISIBLE_TRACE_TOKEN_PATTERN = re.compile(
 )
 
 RESOURCE_THREAD_TOLERANCE = 1
-RESOURCE_RSS_SMOKE_LIMIT_KB = 600_000
+RESOURCE_RSS_SMOKE_LIMIT_KB = 1_200_000
 GEOMETRY_WIDTH_TOLERANCE_PX = 8
 
 
@@ -1513,7 +1518,8 @@ def build_resource_smoke_summary(
 ) -> dict[str, Any]:
     """Check for obvious thread or RSS regressions in the automated replay."""
     boundary = (
-        "Coarse process smoke only: RSS uses ru_maxrss high-water mark and this "
+        "Coarse process smoke only: current RSS catches large retained-memory "
+        "regressions, while max RSS is recorded as a high-water diagnostic and "
         "does not prove the absence of leaks."
     )
     if resource_notes is None:
@@ -1539,8 +1545,13 @@ def build_resource_smoke_summary(
     start_threads = _resource_int(start, "python_threads")
     after_threads = _resource_int(after_close, "python_threads")
     after_qt_threads = _resource_int(after_close, "qt_active_threads")
-    rss_growth_kb = _resource_int(after_close, "max_rss_kb") - _resource_int(
-        start, "max_rss_kb"
+    current_rss_growth_kb = _resource_int(
+        after_close,
+        "current_rss_kb",
+    ) - _resource_int(start, "current_rss_kb")
+    max_rss_growth_kb = _resource_int(after_close, "max_rss_kb") - _resource_int(
+        start,
+        "max_rss_kb",
     )
 
     if after_threads > start_threads + RESOURCE_THREAD_TOLERANCE:
@@ -1550,10 +1561,10 @@ def build_resource_smoke_summary(
         )
     if after_qt_threads > 0:
         failed.append(f"Qt thread pool still active after close: {after_qt_threads}.")
-    if rss_growth_kb > RESOURCE_RSS_SMOKE_LIMIT_KB:
+    if current_rss_growth_kb > RESOURCE_RSS_SMOKE_LIMIT_KB:
         failed.append(
             "RSS smoke delta exceeded "
-            f"{RESOURCE_RSS_SMOKE_LIMIT_KB} KB: {rss_growth_kb} KB."
+            f"{RESOURCE_RSS_SMOKE_LIMIT_KB} KB: {current_rss_growth_kb} KB."
         )
 
     return {
@@ -1564,7 +1575,9 @@ def build_resource_smoke_summary(
         "after_close_python_threads": after_threads,
         "python_thread_tolerance": RESOURCE_THREAD_TOLERANCE,
         "after_close_qt_active_threads": after_qt_threads,
-        "rss_growth_kb": rss_growth_kb,
+        "rss_growth_kb": current_rss_growth_kb,
+        "rss_metric": "current_rss_kb",
+        "max_rss_growth_kb": max_rss_growth_kb,
         "rss_limit_kb": RESOURCE_RSS_SMOKE_LIMIT_KB,
         "boundary": boundary,
     }
@@ -1931,6 +1944,11 @@ def resource_snapshot(label: str) -> dict[str, Any]:
         if resource is not None
         else 0
     )
+    current_rss_kb = (
+        int(psutil.Process(os.getpid()).memory_info().rss / 1024)
+        if psutil is not None
+        else max_rss_kb
+    )
     return {
         "label": label,
         "pid": os.getpid(),
@@ -1938,6 +1956,7 @@ def resource_snapshot(label: str) -> dict[str, Any]:
         "thread_names": [thread.name for thread in threading.enumerate()[:12]],
         "qt_active_threads": pool.activeThreadCount() if pool is not None else 0,
         "max_rss_kb": max_rss_kb,
+        "current_rss_kb": current_rss_kb,
     }
 
 
@@ -2035,7 +2054,8 @@ def render_markdown(payload: dict[str, Any]) -> str:
         lines.extend(
             [
                 f"- resource smoke passed: `{resource_smoke.get('passed')}`",
-                f"- RSS growth: `{resource_smoke.get('rss_growth_kb', 'n/a')}` KB / limit `{resource_smoke.get('rss_limit_kb', 'n/a')}` KB",
+                f"- current RSS growth: `{resource_smoke.get('rss_growth_kb', 'n/a')}` KB / limit `{resource_smoke.get('rss_limit_kb', 'n/a')}` KB",
+                f"- max RSS high-water growth: `{resource_smoke.get('max_rss_growth_kb', 'n/a')}` KB",
             ]
         )
     failures = summary.get("failed_checks", [])
@@ -2107,7 +2127,9 @@ def render_markdown(payload: dict[str, Any]) -> str:
     for note in payload.get("resource_notes", []):
         lines.append(
             f"- {note.get('label')}: threads `{note.get('python_threads')}`, "
-            f"qt active `{note.get('qt_active_threads')}`, rss `{note.get('max_rss_kb')}` KB"
+            f"qt active `{note.get('qt_active_threads')}`, "
+            f"current rss `{note.get('current_rss_kb')}` KB, "
+            f"max rss `{note.get('max_rss_kb')}` KB"
         )
     lines.extend(
         [

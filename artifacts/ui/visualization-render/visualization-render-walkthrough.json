@@ -1413,8 +1413,8 @@
             "dataset_bytes": 37104,
             "estimated_ram_working_set_bytes": 74208,
             "estimated_gpu_batch_working_set_bytes": 98816,
-            "available_ram_bytes": 27062562816,
-            "available_vram_bytes": null,
+            "available_ram_bytes": "<runtime-dependent>",
+            "available_vram_bytes": "<runtime-dependent>",
             "gpu_index": null,
             "uses_cpu": true
           }
@@ -1444,24 +1444,7 @@
           "run_count": 1,
           "finished_run_count": 1,
           "metrics": {
-            "0": {
-              "precision": 0.0,
-              "recall": 0.0,
-              "f1-score": 0.0,
-              "support": 1
-            },
-            "1": {
-              "precision": 0.0,
-              "recall": 0.0,
-              "f1-score": 0.0,
-              "support": 0
-            },
-            "macro_avg": {
-              "precision": 0.0,
-              "recall": 0.0,
-              "f1-score": 0.0,
-              "support": 1
-            }
+            "status": "available"
           }
         }
       ]
@@ -2092,6 +2075,6 @@
       }
     }
   },
-  "elapsed_seconds": 9.093,
+  "elapsed_seconds": "<runtime-dependent>",
   "uncaught_exceptions": []
 }

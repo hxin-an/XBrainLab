@@ -8,10 +8,13 @@ from PIL import Image
 from scripts.dev.capture_visualization_render_walkthrough import (
     BLOCKED_TAB_SPECS,
     RENDER_TAB_SPECS,
+    ROOT,
+    _artifact_path,
     _command_payload,
     _control_label_pair_gaps,
     _prepare_tiny_trained_state,
     render_markdown,
+    stable_artifact_payload,
     validate_visualization_render_payload,
 )
 from XBrainLab.backend.application import TrainCommand
@@ -136,6 +139,47 @@ def test_render_tab_specs_cover_matplotlib_saliency_views():
 
 def test_blocked_tab_specs_cover_headless_3d_boundary():
     assert [spec["tab"] for spec in BLOCKED_TAB_SPECS] == ["3D Plot"]
+
+
+def test_artifact_path_prefers_repo_relative_paths():
+    path = ROOT / "artifacts" / "ui" / "visualization-render" / "plot.png"
+
+    assert _artifact_path(path) == "artifacts/ui/visualization-render/plot.png"
+
+
+def test_stable_artifact_payload_masks_runtime_only_values():
+    payload = {
+        "elapsed_seconds": 9.2,
+        "training": {
+            "commands": [
+                {
+                    "diagnostics": {
+                        "resource_preflight": {
+                            "available_ram_bytes": 123,
+                            "available_vram_bytes": None,
+                        }
+                    }
+                }
+            ],
+        },
+        "final_state": {
+            "evaluation": {
+                "metrics": {
+                    "0": {"precision": 0.0},
+                    "macro_avg": {"precision": 0.5},
+                }
+            }
+        },
+    }
+
+    stable = stable_artifact_payload(payload)
+
+    assert stable["elapsed_seconds"] == "<runtime-dependent>"
+    preflight = stable["training"]["commands"][0]["diagnostics"]["resource_preflight"]
+    assert preflight["available_ram_bytes"] == "<runtime-dependent>"
+    assert preflight["available_vram_bytes"] == "<runtime-dependent>"
+    assert stable["final_state"]["evaluation"]["metrics"] == {"status": "available"}
+    assert payload["elapsed_seconds"] == 9.2
 
 
 def test_validate_visualization_payload_accepts_rendered_tabs(tmp_path):
