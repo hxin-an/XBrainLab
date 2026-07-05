@@ -2817,7 +2817,7 @@ def test_bids_preset_surfaces_scope_labels_metadata_and_review(qtbot):
         for label in dialog.review_actions_panel.findChildren(QLabel)
         if label.text().strip()
     )
-    assert "Needs review" in action_text
+    assert "Needs your decision" in action_text
     assert "Confirm class names in Match Labels." in action_text
     assert any(
         button.text() == "Fix Match Labels"
@@ -2964,6 +2964,9 @@ def test_data_interpretation_preview_dialog_review_summary_shows_whole_rows(qtbo
     qtbot.wait(0)
 
     review_tree = dialog.review_tree
+    dialog.import_report_toggle.click()
+    qtbot.wait(0)
+    assert dialog.import_report_card.isVisibleTo(dialog)
     assert review_tree.topLevelItemCount() == 4
     viewport = review_tree.viewport()
     assert viewport is not None
@@ -3228,6 +3231,102 @@ def test_review_and_import_groups_file_scoped_issues_by_problem(qtbot):
     assert "A02T.gdf" in action_text
     assert "A03T.gdf" in action_text
     assert dialog.review_tree.topLevelItemCount() == 1
+
+
+def test_review_and_import_keeps_warning_items_in_report_not_primary_actions(qtbot):
+    warning = "Saved recipe choices were reapplied."
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={"source_path": "/tmp/source"},
+        preview={
+            "summary": "Found 3 EEG file(s).",
+            "action_items": [
+                {
+                    "target_step": "Review and Import",
+                    "issue": warning,
+                    "impact": "Import may still be usable.",
+                    "next_action": "Open the report for details.",
+                    "severity": "warning",
+                },
+            ],
+        },
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(1040, 760)
+    dialog.show()
+    qtbot.wait(0)
+    _show_step(dialog, "Review and Import")
+    qtbot.wait(0)
+
+    assert not dialog.review_actions_panel.isVisibleTo(dialog)
+    assert warning not in _visible_step_text(dialog, "Review and Import")
+    assert dialog.import_report_toggle.text() == "View import report"
+    assert warning in _tree_text(dialog.review_tree)
+
+    dialog.import_report_toggle.click()
+    qtbot.wait(0)
+
+    assert dialog.import_report_card.isVisibleTo(dialog)
+    assert dialog.import_report_toggle.text() == "Hide import report"
+
+
+def test_review_and_import_primary_actions_exclude_report_only_warnings(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={"source_path": "/tmp/source"},
+        preview={
+            "summary": "Found 1 EEG file(s).",
+            "action_items": [
+                {
+                    "target_step": "Load Labels",
+                    "issue": "Label file is missing.",
+                    "impact": "This import cannot be applied until labels are fixed.",
+                    "next_action": "Load the missing label file.",
+                    "severity": "blocked",
+                },
+                {
+                    "target_step": "Match Labels",
+                    "issue": "Confirm label placement.",
+                    "impact": "This choice affects training readiness.",
+                    "next_action": "Review Match Labels.",
+                    "severity": "needs_confirmation",
+                },
+                {
+                    "target_step": "Review and Import",
+                    "issue": "Saved recipe choices were reapplied.",
+                    "impact": "No action needed.",
+                    "next_action": "Open the report for details.",
+                    "severity": "warning",
+                },
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(1040, 760)
+    dialog.show()
+    qtbot.wait(0)
+    _show_step(dialog, "Review and Import")
+    qtbot.wait(0)
+
+    action_cards = dialog.review_actions_panel.findChildren(
+        QFrame,
+        "DataImportActionCard",
+    )
+    action_text = "\n".join(
+        label.text()
+        for label in dialog.review_actions_panel.findChildren(QLabel)
+        if label.text().strip()
+    )
+
+    assert len(action_cards) == 2
+    assert "Cannot import yet" in action_text
+    assert "Needs your decision" in action_text
+    assert "Label file is missing." in action_text
+    assert "Confirm label placement." in action_text
+    assert "Saved recipe choices were reapplied." not in action_text
+    assert "Saved recipe choices were reapplied." in _tree_text(dialog.review_tree)
 
 
 def test_data_interpretation_preview_dialog_returns_review_edits(qtbot):

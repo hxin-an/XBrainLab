@@ -27,6 +27,7 @@ from XBrainLab.ui.dialogs.dataset.review_import_presenter import (
 )
 from XBrainLab.ui.dialogs.dataset.review_presenter import (
     ReviewRow,
+    build_primary_review_rows,
     build_review_rows,
     compact_review_rows,
     is_metadata_review_row,
@@ -244,7 +245,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         )
 
     def _populate_review_action_cards(self) -> None:
-        rows = self._merged_review_rows(self._review_rows())
+        rows = self._merged_review_rows(self._primary_review_rows())
         if not rows:
             if self.decision == "blocked":
                 rows = [self._default_review_action_row()]
@@ -263,10 +264,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             grouped.setdefault(group_title, []).append(
                 (target_step, issue, impact, next_action)
             )
-        for group_title in (
-            "Cannot import yet",
-            "Needs review",
-        ):
+        for group_title in ("Cannot import yet", "Needs your decision"):
             items = grouped.get(group_title)
             if not items:
                 continue
@@ -285,9 +283,14 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         next_action: str,
     ) -> str:
         lowered = " ".join((issue, impact, next_action)).lower()
-        if self.decision == "blocked" or "cannot import" in lowered:
+        if (
+            self.decision == "blocked"
+            or "cannot import" in lowered
+            or "cannot be applied" in lowered
+            or "blocked" in lowered
+        ):
             return "Cannot import yet"
-        return "Needs review"
+        return "Needs your decision"
 
     def _action_item_card(
         self,
@@ -436,6 +439,28 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         if self._review_metadata_is_complete():
             rows = [row for row in rows if not is_metadata_review_row(row)]
         return rows
+
+    def _primary_review_rows(self) -> list[ReviewRow]:
+        rows = build_primary_review_rows(
+            preview=self.preview,
+            validation_decision=self.validation_decision,
+        )
+        if self._review_metadata_is_complete():
+            rows = [row for row in rows if not is_metadata_review_row(row)]
+        return rows
+
+    def _toggle_import_report(self) -> None:
+        visible = not self.import_report_card.isVisible()
+        self.import_report_card.setVisible(visible)
+        self.import_report_toggle.setText(
+            "Hide import report" if visible else "View import report"
+        )
+        self._fit_review_tree_height()
+        if visible:
+            self._fit_tree_columns_to_viewport(self.review_tree)
+            self.review_tree.updateGeometry()
+        self.import_report_card.updateGeometry()
+        self._sync_scroll_policy()
 
     def _review_metadata_is_complete(self) -> bool:
         _complete_count, missing_fields = self._metadata_completion_counts()

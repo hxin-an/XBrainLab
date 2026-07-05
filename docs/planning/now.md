@@ -55,7 +55,7 @@ line。只有 `stabilize/desktop-mvp` 通過 handoff candidate gate 後，才可
 | Area | Blocker / risk | Gate before handoff |
 | --- | --- | --- |
 | Data Import / labels | Remove label 後再 load 同一檔可能重複；auto-detected 與 user-added label source 移除語意容易混淆；Match Labels 可能沒同步 reload 後的 label state。 | focused label reload regression、Data Import wizard format matrix、多資料集 gate、wizard screenshot review。 |
-| Review and Import | confirm / review item 可能太碎；相同問題跨檔案應 group；metadata missing subject/session/run 不應變成過度嚴厲或重複 action。 | structured action item tests、review screenshot artifact、user-task wording review。 |
+| Review and Import | 第一層已改成 import summary + blocker / decision cards；warning、format、recipe trace 收到 `View import report`。仍需在整合線手測確認語氣是否夠新手友善。 | structured action item tests、review screenshot artifact、Data Import format matrix、多資料集 gate。 |
 | Epoch / preprocess | 先前出現過切頁或 PSD / time-series preview 造成 Qt native crash；epoch dialog 曾有背景色與 layout overflow。 | crash reproduction sweep、figure lifecycle / UI-thread guard、epoch/preprocess screenshots。 |
 | Dataset split | Step layout、preview title overlap、table dark background、confirm pattern、disabled select column、combo arrow 視覺一致性需要重新驗證。 | dataset split UI tests、screenshot review、same-class dialog sweep。 |
 | Model selection / training | model selection scroll、parameters layout、pretrained weights controls、training 完成後不要用 blocking dialog 打斷。 | model-selection dialog screenshot、training smoke、status-bar behavior check。 |

@@ -28,12 +28,58 @@ def build_review_rows(
     scan_result: dict[str, Any],
 ) -> list[ReviewRow]:
     """Build task-oriented review rows from backend preview/review payloads."""
-    action_items = action_item_rows(
+    rows: list[ReviewRow] = []
+    rows.extend(
+        action_item_rows(
+            preview.get("action_items") or validation_decision.get("action_items")
+        )
+    )
+    if not rows:
+        rows.extend(
+            _legacy_review_rows(
+                preview=preview,
+                validation_decision=validation_decision,
+            )
+        )
+    rows.extend(recipe_reload_rows(preview.get("recipe_reload_summary")))
+    format_capabilities = preview.get("format_capabilities") or scan_result.get(
+        "format_capabilities"
+    )
+    rows.extend(format_capability_rows(format_capabilities))
+    return compact_review_rows(rows)
+
+
+def build_primary_review_rows(
+    *,
+    preview: dict[str, Any],
+    validation_decision: dict[str, Any],
+) -> list[ReviewRow]:
+    """Build the first-layer review items that require user action."""
+    decision = str(validation_decision.get("decision") or "").strip().lower()
+    action_items = primary_action_item_rows(
         preview.get("action_items") or validation_decision.get("action_items")
     )
     if action_items:
         return compact_review_rows(action_items)
 
+    rows = _legacy_review_rows(
+        preview=preview,
+        validation_decision=validation_decision,
+        include_warnings=False,
+    )
+    if decision == "blocked":
+        rows = [row for row in rows if row[1] == "Cannot import yet"]
+    elif decision == "safe":
+        rows = []
+    return compact_review_rows(rows)
+
+
+def _legacy_review_rows(
+    *,
+    preview: dict[str, Any],
+    validation_decision: dict[str, Any],
+    include_warnings: bool = True,
+) -> list[ReviewRow]:
     rows: list[ReviewRow] = []
     warnings = unique_strings(preview.get("warnings"))
     confirmations = unique_strings(
@@ -45,20 +91,17 @@ def build_review_rows(
     blocked = unique_strings(
         validation_decision.get("blocked_reasons") or preview.get("blocked_reasons")
     )
-    rows.extend(recipe_reload_rows(preview.get("recipe_reload_summary")))
-    for label, status, values in (
-        ("Possible issue", "Check", warnings),
+    groups = [
         ("Required choice", "Confirm", confirmations),
         ("Cannot import yet", "Fix first", blocked),
-    ):
+    ]
+    if include_warnings:
+        groups.insert(0, ("Possible issue", "Check", warnings))
+    for label, status, values in groups:
         rows.extend(
             (target_step_for_review_text(item), label, item, status) for item in values
         )
-    format_capabilities = preview.get("format_capabilities") or scan_result.get(
-        "format_capabilities"
-    )
-    rows.extend(format_capability_rows(format_capabilities))
-    return compact_review_rows(rows)
+    return rows
 
 
 def unique_strings(values: Any) -> list[str]:
@@ -83,6 +126,27 @@ def action_item_rows(values: Any) -> list[ReviewRow]:
         rows.append(
             (
                 target_step,
+                str(value.get("issue") or "Review item"),
+                str(value.get("impact") or ""),
+                str(value.get("next_action") or ""),
+            )
+        )
+    return sorted(rows, key=lambda row: (_STEP_ORDER.get(row[0], 99), row[1]))
+
+
+def primary_action_item_rows(values: Any) -> list[ReviewRow]:
+    if not isinstance(values, list):
+        return []
+    rows: list[ReviewRow] = []
+    for value in values:
+        if not isinstance(value, dict):
+            continue
+        severity = str(value.get("severity") or "needs_confirmation").strip().lower()
+        if severity not in {"blocked", "needs_confirmation", "limited"}:
+            continue
+        rows.append(
+            (
+                str(value.get("target_step") or "Review and Import"),
                 str(value.get("issue") or "Review item"),
                 str(value.get("impact") or ""),
                 str(value.get("next_action") or ""),
