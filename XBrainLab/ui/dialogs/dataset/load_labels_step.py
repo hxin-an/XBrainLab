@@ -312,26 +312,23 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
 
     def _refresh_load_labels_static_state(self) -> None:
         has_bids_events = self._has_bids_events()
+        is_bids_source = self._is_bids_source()
         if hasattr(self, "label_sources_card_title_label"):
             self.label_sources_card_title_label.setText(
-                "BIDS events detected" if has_bids_events else "Label files"
+                "BIDS events.tsv" if is_bids_source else "Label files"
             )
         if hasattr(self, "label_detection_label"):
             self.label_detection_label.setText(self._label_detection_text())
         if hasattr(self, "add_label_file_btn"):
-            self.add_label_file_btn.setText(
-                "Add extra label file" if has_bids_events else "Load label file"
-            )
+            self.add_label_file_btn.setText("Load label file")
+            self.add_label_file_btn.setVisible(not is_bids_source)
         if hasattr(self, "add_label_folder_btn"):
-            self.add_label_folder_btn.setText(
-                "Add extra label folder" if has_bids_events else "Load label folder"
-            )
+            self.add_label_folder_btn.setText("Load label folder")
+            self.add_label_folder_btn.setVisible(not is_bids_source)
         if hasattr(self, "skip_labels_btn"):
-            self.skip_labels_btn.setVisible(not has_bids_events)
+            self.skip_labels_btn.setVisible(not is_bids_source and not has_bids_events)
         if hasattr(self, "label_source_mode_combo"):
-            loaded_label = (
-                "BIDS events.tsv" if has_bids_events else "Loaded label files"
-            )
+            loaded_label = "BIDS events.tsv" if is_bids_source else "Loaded label files"
             for index in range(self.label_source_mode_combo.count()):
                 if self.label_source_mode_combo.itemData(index) == "loaded_label_files":
                     self.label_source_mode_combo.setItemText(index, loaded_label)

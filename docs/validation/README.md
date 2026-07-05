@@ -152,8 +152,9 @@ current truth 以這些文件為準：
 `stabilize/bids-epoch-saliency-baseline` implements the 2026-06-17 progress-report
 decision for this slice:
 
-- BIDS / BIDS-like import recipes keep onset / duration / label-field placement as
-  epoch handoff hints, and Create Epochs can use interval duration defaults.
+- Strict BIDS folder import recipes keep onset / duration / label-field placement as
+  epoch handoff hints, and Create Epochs can use duration windows or event-locked
+  fallbacks depending on reviewed `events.tsv` duration values.
 - Visualization starts the fast saliency baseline (`Gradient` + `Gradient * Input`)
   in the background after training or when a metric-only run is opened.
 - SmoothGrad / SmoothGrad_Squared / VarGrad stay behind Saliency Settings; selecting
@@ -795,14 +796,15 @@ Offscreen screenshots include:
 
 - single-file selected-scope tests that still detect same-stem label carriers from nearby
   `label/` subfolders without importing sibling EEG files;
-- BIDS-like `events.tsv` warning coverage for missing sidecar, missing duration, and missing
-  onset blocking;
+- strict BIDS `events.tsv` coverage for missing sidecar, missing duration fallback,
+  missing selected-scope events blocking, and regular-folder `events.tsv` staying in
+  the general label-file flow;
 - internal-event evidence coverage for response/comment filtering and run-dependent `T1` / `T2`
   warnings;
 - external label placement coverage that blocks invalid selected target events and preserves
   selected event filters into reviewed label import recipe state;
-- UI coverage for BIDS-like event review cards and refreshed canonical wizard screenshots via
-  `scripts/dev/capture_data_import_wizard_steps.py`.
+- UI coverage for strict BIDS event review cards, class-value summaries, and refreshed
+  canonical wizard screenshots via `scripts/dev/capture_data_import_wizard_steps.py`.
 
 Latest focused validation for this slice:
 

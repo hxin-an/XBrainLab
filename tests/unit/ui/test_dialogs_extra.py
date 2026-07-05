@@ -344,6 +344,42 @@ class TestEpochingDialog:
         assert selected == ["Left hand", "Right hand"]
         assert "BIDS events" in dialog.handoff_label.text()
 
+    def test_bids_epoch_dialog_surfaces_duration_policy(self, qtbot):
+        from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
+
+        data = MagicMock()
+        data.get_event_list.return_value = (
+            None,
+            {"left": 1, "right": 2},
+        )
+        data.get_runtime_detail.return_value = {
+            "source": "BIDS events.tsv",
+            "placement_method": "interval",
+            "label_field": "trial_type",
+            "time_field": "onset",
+            "duration_field": "duration",
+            "duration_stats": {"numeric_count": 3, "min": 0.25, "max": 12.0},
+            "class_map": {"left": "left", "right": "right"},
+        }
+
+        dialog = EpochingDialog(None, [data])
+        qtbot.addWidget(dialog)
+        dialog.show()
+        qtbot.wait(0)
+
+        labels_text = "\n".join(
+            label.text()
+            for label in dialog.findChildren(QLabel)
+            if label.text().strip()
+        )
+
+        assert "BIDS events from import" in labels_text
+        assert "Use event duration" in labels_text
+        assert "review the epoch window" in labels_text
+        assert dialog.tmin_spin.value() == 0.0
+        assert dialog.tmax_spin.value() == 12.0
+        assert not dialog.baseline_check.isChecked()
+
     def test_import_handoff_uses_checked_events_not_stale_selection(self, qtbot):
         from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
 

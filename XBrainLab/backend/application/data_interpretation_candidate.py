@@ -125,6 +125,17 @@ def build_interpretation_candidate(
         scan.bids,
         bids,
     )
+    if (
+        scan.source_kind == "bids"
+        and scan.bids.get("is_bids")
+        and selected_files
+        and not _bids_selected_scope_has_events(bids)
+    ):
+        blocked_reasons.append(
+            "BIDS events.tsv was not found for the selected EEG file(s). "
+            "Choose a BIDS run with events.tsv, or use Import folder for non-BIDS "
+            "labels."
+        )
     label_carrier_choices = (
         {}
         if skip_labels
@@ -161,11 +172,6 @@ def build_interpretation_candidate(
                 "trial_type": "class label candidate",
             },
         )
-        if not scan.bids.get("events_files"):
-            warnings.append(
-                "BIDS-like source has no events.tsv carrier; supervised labels "
-                "may be limited.",
-            )
         event_roles.update(_string_mapping(choices.get("event_roles")))
         explicit_internal_event_selection = isinstance(
             choices.get("internal_event_selection"),
@@ -378,6 +384,13 @@ def _filter_bids_label_carriers_for_selected_scope(
         for carrier in label_carriers
         if carrier not in all_bids_events or carrier in selected_bids_events
     ]
+
+
+def _bids_selected_scope_has_events(bids: dict[str, Any]) -> bool:
+    selected_scope = bids.get("selected_scope")
+    if not isinstance(selected_scope, dict):
+        return bool(bids.get("events_files"))
+    return bool(selected_scope.get("events_files"))
 
 
 def _label_carrier_plan_warnings(

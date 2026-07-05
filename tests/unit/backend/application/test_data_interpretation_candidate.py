@@ -136,6 +136,45 @@ def test_build_interpretation_candidate_recomputes_bids_scope_for_selected_files
     assert [row["path"] for row in candidate.label_carrier_plan] == [selected_events]
 
 
+def test_bids_candidate_blocks_selected_scope_without_events_tsv():
+    selected_file = "/data/sub-01_task-mi_run-1_raw.fif"
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            source_kind="bids",
+            eeg_files=[selected_file],
+            label_carriers=[],
+            label_carrier_sources={},
+            bids={
+                "is_bids": True,
+                "events_files": [],
+                "layout": [
+                    {
+                        "file": selected_file,
+                        "subject": "01",
+                        "task": "mi",
+                        "run": "1",
+                        "datatype": "eeg",
+                        "events_file": "",
+                        "channels_file": "",
+                    }
+                ],
+            },
+            warnings=[],
+        ),
+        choices={"selected_eeg_files": [selected_file]},
+    )
+
+    assert candidate.label_carriers == []
+    assert candidate.bids["selected_scope"]["events_files"] == []
+    assert (
+        "BIDS events.tsv was not found for the selected EEG file(s). "
+        "Choose a BIDS run with events.tsv, or use Import folder for non-BIDS labels."
+        in candidate.blocked_reasons
+    )
+
+
 def test_build_interpretation_candidate_previews_tabular_label_class_values(tmp_path):
     events = tmp_path / "sub-01_task-mi_events.tsv"
     events.write_text(

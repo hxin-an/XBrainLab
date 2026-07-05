@@ -267,15 +267,15 @@ Data Import wizard baseline 和仍未完成的產品化差距，不是新增目�
 ### 目前已有支撐
 
 - Data Interpretation 已有 `scan -> preview -> validate -> apply -> recipe` command lifecycle。
-- `scan_source_path()` 能掃單一 file、folder、BIDS-like root，並找到 supported EEG files。
+- `scan_source_path()` 能掃單一 file、regular folder、strict BIDS folder，並找到 supported EEG files。
 - 單一 EEG file scan 不會把 sibling EEG file 自動納入 selected scope；但會從同資料夾和
   `label/`、`labels/`、`event/`、`events/` 近鄰子資料夾找同 stem label carrier。
 - label carrier discovery 目前支援 `.mat`、`.csv`、`.tsv`、`.txt` 和 BIDS `events.tsv`。
 - label carrier planner 能從 MAT variables、CSV / TSV headers、BIDS events columns 推出
   label field / anchor candidates，並保存到 candidate / recipe choices。
-- BIDS-like `events.tsv` preview 會保留 detected columns，對 missing `events.json` sidecar、
-  missing onset / duration 欄位產生 warning 或 blocked placement review；這仍不是 full BIDS
-  inheritance / validator support。
+- Strict BIDS folder import 會把 selected-scope `events.tsv` 當作 BIDS label/timing source，
+  保留 detected columns，對 missing `events.json` sidecar、missing onset / duration 欄位產生
+  warning 或 blocked placement review；這仍不是 full BIDS inheritance / validator support。
 - label carrier planner 也會為 active label carriers 建立 placement evidence：EEG event order、
   label time、label interval、label event code 四種模式各有可審查 review；目前 active
   `placement_review` 會保存到 candidate，供 UI / agent / recipe 使用。
@@ -287,8 +287,9 @@ Data Import wizard baseline 和仍未完成的產品化差距，不是新增目�
   `next_action` 和 `severity`，供 UI、agent、headless 讀同一份 command result。
 - import dialog 目前以 `QStackedWidget` step panels 呈現，一次只顯示一個 task panel：
   Choose EEG Data、Attach Labels、Review Metadata、Match Labels、Review and Import。
-- Dataset sidebar 主要入口已改成 `Import file`、`Import folder`、`Import BIDS folder`；BIDS
-  入口仍是 BIDS-like scan hint，不代表完整 BIDS support。
+- Dataset sidebar 主要入口已改成 `Import file`、`Import folder`、`Import BIDS folder`；
+  `Import BIDS folder` 是 strict BIDS path，一般 `Import folder` 即使掃到 `events.tsv`
+  仍走普通 label-file flow。
 - apply path 能在部分情況自動套 label：timestamp labels、sample-index anchored MAT labels、
   trial-order sequence labels。
 - metadata edit、smart parse、remove files 已有 `DataTableCommandService` command path。
@@ -299,7 +300,7 @@ Data Import wizard baseline 和仍未完成的產品化差距，不是新增目�
 | --- | --- | --- |
 | Attach label file / folder independent from EEG source | `ScanSourceCommand.label_sources`、dialog `Add label file` / `Add label folder`、service rescan loop、recipe `label_sources` preservation。 | Label source add currently rescans and reopens the wizard with the attached source; later polish can keep the user on the same visual step after rescan. |
 | Selected scope vs scan location | dialog shows selected scope separately from scan location in source summary cards; candidate metadata is filtered by selected EEG files. | More screenshot evidence is still useful for multi-file fixture walkthroughs. |
-| Match Labels task-oriented UI | 第一層分成 label source、file pairing、label values、placement task panel、class names、check；不再把 `Anchor` / `Time` / `Granularity` / `Role` / `Label unit` 當主 UI。BIDS-like events 另有可見 review card。 | Advanced event/class diagnostics still live in the same dialog instead of a collapsed details surface. |
+| Match Labels task-oriented UI | 第一層分成 label source、file pairing、label values、placement task panel、class names、check；不再把 `Anchor` / `Time` / `Granularity` / `Role` / `Label unit` 當主 UI。Strict BIDS import 另有 `events.tsv` review card 與 class-value summary。 | Advanced event/class diagnostics still live in the same dialog instead of a collapsed details surface. |
 | Mainstream label placement evidence | backend preview 會依資料結構支援 EEG event order、label time、label interval、label event code；UI 讀 `placement_reviews` 顯示 check，而不是靠前端硬猜。Blocked placement review 現在會成為 candidate blocker，不會只變成 confirmation。 | 仍不宣稱 full BIDS；BIDS inheritance、跨 datatype 和更複雜 run-level semantics 需要另外確認。 |
 | Actionable Review and Import checklist | preview / validation emits structured action items; UI renders only blockers / required decisions as first-layer cards with issue、impact、next action and target step. | `View import report` exposes report-only warnings、format capability、recipe trace and remap selectors; it is secondary detail, not the first-layer review layout. |
 | Import without labels / limited mode | `Skip labels for now` is saved in choices and produces a supervised-limited action item. | Downstream dataset/training capability policy should consume this limited state more explicitly. |

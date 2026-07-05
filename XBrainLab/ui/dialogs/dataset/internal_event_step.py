@@ -318,8 +318,8 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
     def _build_bids_source_card(self, layout: QVBoxLayout) -> None:
         layout.addWidget(
             self._inline_notice(
-                "BIDS-like EEG files and events.tsv were detected. XBrainLab "
-                "uses this as an import preset, not a full BIDS validator."
+                "BIDS EEG files and events.tsv were detected. XBrainLab uses "
+                "this as an EEG task import path, not a full BIDS validator."
             )
         )
         layout.addWidget(
@@ -352,7 +352,7 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
     def _bids_source_rows(self) -> list[tuple[str, str, str]]:
         return [
             (
-                "BIDS-like structure",
+                "BIDS folder",
                 self._bids_entities_summary_text(),
                 "All detected EEG runs in the selected folder are included.",
             ),
@@ -363,7 +363,7 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
             ),
             (
                 "Boundary",
-                "Full BIDS validation not claimed",
+                "Not a full BIDS validator",
                 "Review labels, metadata, and events before applying.",
             ),
         ]
@@ -382,14 +382,15 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
                 (
                     "events.tsv",
                     "Not detected",
-                    "Load label files manually or switch to labels inside EEG files.",
+                    "Required for this BIDS import. Use Import folder for "
+                    "non-BIDS labels.",
                 )
             ]
         return [
             (
                 "events.tsv",
                 events,
-                "Automatically loaded from the BIDS-like folder.",
+                "Automatically loaded from the BIDS folder.",
             ),
             (
                 "EEG pairing",
@@ -490,16 +491,12 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
             return []
         return [str(value).strip() for value in values if str(value).strip()]
 
-    def _is_bids_like_source(self) -> bool:
+    def _is_bids_source(self) -> bool:
         source_kind = str(self.scan_result.get("source_kind") or "").lower()
-        return (
-            source_kind == "bids"
-            or bool(self._bids_payload().get("is_bids"))
-            or self._has_bids_events()
-        )
+        return source_kind == "bids" and bool(self._bids_payload().get("is_bids"))
 
     def _has_bids_events(self) -> bool:
-        return bool(self._bids_event_carriers())
+        return self._is_bids_source() and bool(self._bids_event_carriers())
 
     def _bids_event_carriers(self) -> list[dict[str, Any]]:
         carriers: list[dict[str, Any]] = []
@@ -581,7 +578,18 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
         else:
             layout.addWidget(
                 self._empty_state(
-                    "No BIDS-like events.tsv carrier is available in this preview."
+                    "No BIDS events.tsv carrier is available in this preview."
+                )
+            )
+        class_rows = self._bids_class_review_rows()
+        if class_rows:
+            class_title = QLabel("Class labels from events.tsv")
+            class_title.setObjectName("DataImportSubsectionTitle")
+            layout.addWidget(class_title)
+            layout.addWidget(
+                self._event_rules_table(
+                    ["Label value", "Class name", "Rows", "Coverage"],
+                    class_rows,
                 )
             )
         self._bids_event_review_intro_label = intro
@@ -662,6 +670,45 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
                 )
             )
         return rows
+
+    def _bids_class_review_rows(self) -> list[tuple[str, str, str, str]]:
+        carriers = self._bids_event_carriers()
+        if not carriers:
+            return []
+        class_map = self._class_map_for_current_label_source()
+        totals: dict[str, int] = {}
+        coverage: dict[str, int] = {}
+        for carrier in carriers:
+            counts = carrier.get("label_value_counts") or {}
+            if not isinstance(counts, dict):
+                continue
+            for raw_value, raw_count in counts.items():
+                value = str(raw_value).strip()
+                count = self._safe_count(raw_count)
+                if not value or count <= 0:
+                    continue
+                totals[value] = totals.get(value, 0) + count
+                coverage[value] = coverage.get(value, 0) + 1
+        rows: list[tuple[str, str, str, str]] = []
+        total_carriers = max(len(carriers), 1)
+        for value in sorted(totals, key=str.casefold):
+            class_name = class_map.get(value, value)
+            rows.append(
+                (
+                    value,
+                    class_name,
+                    f"{totals[value]} rows",
+                    f"{coverage.get(value, 0)}/{total_carriers} files",
+                )
+            )
+        return rows
+
+    @staticmethod
+    def _safe_count(value: Any) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
 
     @staticmethod
     def _unique_values(values: Iterable[str]) -> list[str]:

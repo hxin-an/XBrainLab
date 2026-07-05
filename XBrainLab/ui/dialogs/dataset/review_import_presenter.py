@@ -21,13 +21,13 @@ def metadata_summary(
     row_count: int,
     complete_count: int,
     missing_fields: set[str],
-    is_bids_like: bool,
+    is_bids_source: bool,
     fallback_summary: str,
 ) -> str:
     """Return the metadata review summary shown before import."""
     if row_count <= 0:
         return "No metadata rows detected."
-    if is_bids_like and not missing_fields:
+    if is_bids_source and not missing_fields:
         file_word = "file" if row_count == 1 else "files"
         return f"BIDS entities reviewed · {row_count} {file_word}"
     _ = complete_count

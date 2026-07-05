@@ -58,7 +58,7 @@ Choose EEG data
 
 這個階段要處理的 UI/UX blocker 包含：
 
-- Data Import 的 duplicate label、remove/re-add、BIDS-like review、Match Labels / Review and Import 清楚度。
+- Data Import 的 duplicate label、remove/re-add、strict BIDS review、Match Labels / Review and Import 清楚度。
 - Epoch / preprocess / dataset split dialogs 的 layout、button state、confirmation pattern。
 - Training completion 不跳出煩躁的 blocking dialogs；長任務不卡 UI。
 - Evaluation / Visualization table、fold switch、model summary、saliency readiness、3D blocked/available state 不跑版、不白字白底、不崩潰。

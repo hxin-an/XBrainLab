@@ -17,7 +17,9 @@ def build_epoching_context(data_list: list[Any]) -> dict[str, Any]:
     event_names = [row["name"] for row in event_rows]
     hint = _first_epoch_hint(data_list)
     recommended_events = _recommended_events(hint, event_names)
-    t_min, t_max, baseline, evidence = _suggested_window(hint)
+    t_min, t_max, baseline, evidence, window_mode, window_warning = _suggested_window(
+        hint
+    )
     placement_method = str(hint.get("placement_method") or "").strip()
     source = str(hint.get("source") or "").strip() or "Manual epoch setup"
     return {
@@ -33,6 +35,8 @@ def build_epoching_context(data_list: list[Any]) -> dict[str, Any]:
         "suggested_t_max": t_max,
         "suggested_baseline": baseline,
         "window_evidence": evidence,
+        "window_mode": window_mode,
+        "window_warning": window_warning,
         "has_import_hint": bool(hint),
     }
 
@@ -120,7 +124,14 @@ def _recommended_events(hint: dict[str, Any], event_names: list[str]) -> list[st
 
 def _suggested_window(
     hint: dict[str, Any],
-) -> tuple[float, float, tuple[float | None, float | None] | None, str]:
+) -> tuple[
+    float,
+    float,
+    tuple[float | None, float | None] | None,
+    str,
+    str,
+    str,
+]:
     placement_method = str(hint.get("placement_method") or "").strip()
     if placement_method == "interval":
         duration_stats = hint.get("duration_stats")
@@ -128,15 +139,73 @@ def _suggested_window(
         max_duration = _positive_float(
             duration_stats.get("max") if isinstance(duration_stats, dict) else None
         )
+        min_duration = _positive_float(
+            duration_stats.get("min") if isinstance(duration_stats, dict) else None
+        )
         if max_duration is not None:
+            warning = _duration_policy_warning(min_duration, max_duration)
             return (
                 0.0,
                 max_duration,
                 None,
                 f"Suggested from imported {duration_field} field.",
+                "duration",
+                warning,
             )
-        return 0.0, 1.0, None, "duration not available; using 1.0s review default"
-    return -0.2, 1.0, (-0.2, 0.0), "standard event-locked review default"
+        if _is_bids_events_hint(hint):
+            return (
+                -0.2,
+                1.0,
+                (-0.2, 0.0),
+                (
+                    f"{duration_field} field has no positive values; using "
+                    "event-locked review default."
+                ),
+                "event_locked",
+                "",
+            )
+        return (
+            0.0,
+            1.0,
+            None,
+            "duration not available; using 1.0s review default",
+            "duration",
+            "",
+        )
+    return (
+        -0.2,
+        1.0,
+        (-0.2, 0.0),
+        "standard event-locked review default",
+        "event_locked",
+        "",
+    )
+
+
+def _is_bids_events_hint(hint: dict[str, Any]) -> bool:
+    source = str(hint.get("source") or "").casefold()
+    return "bids" in source and "event" in source
+
+
+def _duration_policy_warning(
+    min_duration: float | None,
+    max_duration: float,
+) -> str:
+    if max_duration > 10:
+        return (
+            "Some BIDS event durations are longer than 10 seconds; review the "
+            "epoch window before training."
+        )
+    if (
+        min_duration is not None
+        and min_duration > 0
+        and max_duration / min_duration > 3
+    ):
+        return (
+            "BIDS event durations vary by more than 3x; review the epoch window "
+            "before training."
+        )
+    return ""
 
 
 def _positive_float(value: Any) -> float | None:

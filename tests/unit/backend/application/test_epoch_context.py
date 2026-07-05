@@ -47,6 +47,54 @@ def test_epoching_context_uses_interval_duration_for_default_window():
     assert context["suggested_t_max"] == 1.25
     assert context["suggested_baseline"] is None
     assert context["window_evidence"] == "Suggested from imported duration field."
+    assert context["window_mode"] == "duration"
+
+
+def test_bids_epoching_context_missing_duration_uses_event_locked_default():
+    data = _Data(
+        np.array([[0, 0, 1], [250, 0, 2]], dtype=np.int32),
+        {"left": 1, "right": 2},
+        {
+            "source": "BIDS events.tsv",
+            "placement_method": "interval",
+            "label_field": "trial_type",
+            "time_field": "onset",
+            "duration_field": "duration",
+            "duration_stats": {"numeric_count": 0, "min": None, "max": None},
+            "class_map": {"left": "left", "right": "right"},
+        },
+    )
+
+    context = build_epoching_context([data])
+
+    assert context["suggested_t_min"] == -0.2
+    assert context["suggested_t_max"] == 1.0
+    assert context["suggested_baseline"] == (-0.2, 0.0)
+    assert context["window_mode"] == "event_locked"
+    assert "duration field has no positive values" in context["window_evidence"]
+
+
+def test_bids_epoching_context_flags_long_or_uneven_durations():
+    data = _Data(
+        np.array([[0, 0, 1], [250, 0, 2]], dtype=np.int32),
+        {"left": 1, "right": 2},
+        {
+            "source": "BIDS events.tsv",
+            "placement_method": "interval",
+            "label_field": "trial_type",
+            "time_field": "onset",
+            "duration_field": "duration",
+            "duration_stats": {"numeric_count": 3, "min": 0.25, "max": 12.0},
+            "class_map": {"left": "left", "right": "right"},
+        },
+    )
+
+    context = build_epoching_context([data])
+
+    assert context["suggested_t_min"] == 0.0
+    assert context["suggested_t_max"] == 12.0
+    assert context["window_mode"] == "duration"
+    assert "review the epoch window" in context["window_warning"]
 
 
 def test_epoching_context_maps_internal_class_codes_to_event_names():

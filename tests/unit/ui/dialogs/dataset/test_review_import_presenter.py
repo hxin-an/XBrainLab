@@ -24,7 +24,7 @@ def test_metadata_summary_hides_optional_session_run_noise():
             row_count=3,
             complete_count=3,
             missing_fields=set(),
-            is_bids_like=True,
+            is_bids_source=True,
             fallback_summary="3/3 rows reviewed",
         )
         == "BIDS entities reviewed · 3 files"
@@ -34,7 +34,7 @@ def test_metadata_summary_hides_optional_session_run_noise():
             row_count=0,
             complete_count=0,
             missing_fields={"subject"},
-            is_bids_like=False,
+            is_bids_source=False,
             fallback_summary="unused",
         )
         == "No metadata rows detected."

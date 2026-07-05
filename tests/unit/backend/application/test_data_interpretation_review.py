@@ -266,9 +266,7 @@ def test_build_interpretation_preview_does_not_ask_for_external_labels_when_embe
 
 
 def test_build_interpretation_preview_dedupes_bids_no_events_action_item_to_load_labels():
-    warning = (
-        "BIDS-like source has no events.tsv carrier; supervised labels may be limited."
-    )
+    warning = "BIDS folder has no events.tsv carrier for the selected scan scope."
     preview = build_interpretation_preview(
         preview_id="preview-1",
         candidate=_candidate(

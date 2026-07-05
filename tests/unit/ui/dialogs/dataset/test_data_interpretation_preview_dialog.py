@@ -2530,6 +2530,8 @@ def test_data_interpretation_preview_dialog_tables_fit_product_layout(qtbot):
             "label_carriers": ["/tmp/source/sub-01_task-mi_run-01_events.tsv"],
         },
         preview={
+            "class_map": {"left": "Left hand", "right": "Right hand"},
+            "class_map_source": "label_carriers",
             "label_carrier_preview": [
                 {
                     "path": "/tmp/source/sub-01_task-mi_run-01_events.tsv",
@@ -2597,6 +2599,7 @@ def test_match_labels_step_surfaces_bids_event_review(qtbot):
         parent=None,
         scan_result={
             "source_path": "/tmp/source",
+            "source_kind": "bids",
             "eeg_files": ["/tmp/source/sub-01_task-mi_run-01_raw.fif"],
             "label_carriers": [events_path],
             "bids": {
@@ -2609,6 +2612,8 @@ def test_match_labels_step_surfaces_bids_event_review(qtbot):
             },
         },
         preview={
+            "class_map": {"left": "Left hand", "right": "Right hand"},
+            "class_map_source": "label_carriers",
             "label_carrier_preview": [
                 {
                     "path": events_path,
@@ -2622,6 +2627,7 @@ def test_match_labels_step_surfaces_bids_event_review(qtbot):
                     "selected_label_field": "trial_type",
                     "selected_anchor": "onset",
                     "selected_duration_field": "duration",
+                    "label_value_counts": {"left": 3, "right": 3},
                     "time_model": "seconds",
                     "placement_method": "time_field",
                     "granularity": "trial",
@@ -2654,7 +2660,67 @@ def test_match_labels_step_surfaces_bids_event_review(qtbot):
     assert "trial_type recommended" in text
     assert "Timing fields" in text
     assert "onset + duration" in text
+    assert "Class labels from events.tsv" in text
+    assert "Left hand" in text
+    assert "3 rows" in text
     assert "events.json sidecar is missing" in text
+
+
+def test_regular_folder_events_tsv_uses_general_label_flow(qtbot):
+    events_path = "/tmp/source/events.tsv"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "source_kind": "folder",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+            "label_carriers": [events_path],
+            "bids": {
+                "is_bids": False,
+                "looks_like_bids": False,
+                "events_files": [events_path],
+            },
+        },
+        preview={
+            "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+            "label_carrier_preview": [
+                {
+                    "path": events_path,
+                    "name": "events.tsv",
+                    "format": "BIDS events",
+                    "bids_event_columns": ["onset", "duration", "trial_type"],
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                    "selected_duration_field": "duration",
+                    "time_model": "seconds",
+                    "placement_method": "interval",
+                    "granularity": "trial",
+                },
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(1040, 820)
+    dialog.show()
+    qtbot.wait(0)
+
+    _show_step(dialog, "Choose EEG Data")
+    choose_text = _visible_step_text(dialog, "Choose EEG Data")
+    assert "BIDS folder import" not in choose_text
+
+    _show_step(dialog, "Load Labels")
+    load_text = _visible_step_text(dialog, "Load Labels")
+    assert "Label files" in load_text
+    assert "BIDS events.tsv" not in load_text
+    assert dialog.add_label_file_btn.isVisibleTo(dialog)
+    assert dialog.add_label_folder_btn.isVisibleTo(dialog)
+    assert dialog.skip_labels_btn.isVisibleTo(dialog)
+
+    _show_step(dialog, "Match Labels")
+    qtbot.wait(0)
+    assert not dialog.bids_event_review_card.isVisibleTo(dialog)
+    assert dialog.label_source_mode_combo.currentText() == "Loaded label files"
 
 
 def test_load_labels_removing_bids_events_refreshes_active_bids_state(qtbot):
@@ -2700,6 +2766,8 @@ def test_load_labels_removing_bids_events_refreshes_active_bids_state(qtbot):
 
     assert dialog._has_bids_events()
     assert not dialog.skip_labels_btn.isVisibleTo(dialog)
+    assert not dialog.add_label_file_btn.isVisibleTo(dialog)
+    assert not dialog.add_label_folder_btn.isVisibleTo(dialog)
 
     _click_source_row_button(
         dialog,
@@ -2709,8 +2777,10 @@ def test_load_labels_removing_bids_events_refreshes_active_bids_state(qtbot):
     qtbot.wait(0)
 
     assert not dialog._has_bids_events()
-    assert dialog.skip_labels_btn.isVisibleTo(dialog)
-    assert "BIDS events detected" not in _visible_step_text(dialog, "Load Labels")
+    assert not dialog.skip_labels_btn.isVisibleTo(dialog)
+    assert not dialog.add_label_file_btn.isVisibleTo(dialog)
+    assert not dialog.add_label_folder_btn.isVisibleTo(dialog)
+    assert "BIDS events.tsv" in _visible_step_text(dialog, "Load Labels")
     _show_step(dialog, "Match Labels")
     qtbot.wait(0)
     assert not dialog.bids_event_review_card.isVisibleTo(dialog)
@@ -2737,7 +2807,7 @@ def test_bids_preset_surfaces_scope_labels_metadata_and_review(qtbot):
         },
         preview={
             "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
-            "source_selection": "BIDS-like folder",
+            "source_selection": "BIDS folder",
             "metadata_preview": [
                 {
                     "file": "sub-01_task-mi_run-01_raw.fif",
@@ -2783,19 +2853,21 @@ def test_bids_preset_surfaces_scope_labels_metadata_and_review(qtbot):
 
     _show_step(dialog, "Choose EEG Data")
     choose_text = _visible_step_text(dialog, "Choose EEG Data")
-    assert "BIDS-aware import" in choose_text
+    assert "BIDS folder import" in choose_text
     assert "1 subject" in choose_text
     assert "1 task" in choose_text
     assert "1 events.tsv file" in choose_text
-    assert "Full BIDS validation not claimed" in choose_text
+    assert "Not a full BIDS validator" in choose_text
 
     _show_step(dialog, "Load Labels")
     load_text = _visible_step_text(dialog, "Load Labels")
-    assert "BIDS events detected" in load_text
+    assert "BIDS events.tsv" in load_text
     assert "default label and timing source" in load_text
     assert "events.json" in load_text
     assert "Missing" in load_text
     assert not dialog.skip_labels_btn.isVisibleTo(dialog)
+    assert not dialog.add_label_file_btn.isVisibleTo(dialog)
+    assert not dialog.add_label_folder_btn.isVisibleTo(dialog)
 
     _show_step(dialog, "Review Metadata")
     metadata_text = _visible_step_text(dialog, "Review Metadata")

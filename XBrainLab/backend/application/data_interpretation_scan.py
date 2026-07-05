@@ -85,6 +85,7 @@ def scan_source_path(
     resolved = path.resolve()
     source_kind = _source_kind(resolved, source_hint)
     scan_root = resolved.parent if resolved.is_file() else resolved
+    looks_like_bids = _looks_like_bids(scan_root)
     skipped_nested_bids_roots: list[Path] = []
     scan_budget = _ScanBudget()
     files = _candidate_files(
@@ -118,6 +119,8 @@ def scan_source_path(
     ]
     all_files = _dedupe_paths([*files, *source_label_files])
     bids = _bids_summary(scan_root, source_kind, eeg_files, label_carriers)
+    bids["looks_like_bids"] = looks_like_bids
+    bids["is_bids"] = source_kind == "bids" and looks_like_bids
     format_capabilities = _format_capabilities(all_files)
     warnings = _scan_warnings(
         source_kind,
@@ -129,7 +132,12 @@ def scan_source_path(
     warnings.extend(_nested_bids_warnings(skipped_nested_bids_roots))
     warnings.extend(scan_budget.warnings)
     warnings.extend(source_warnings)
-    blocked_reasons = _scan_blocked_reasons(eeg_files, format_capabilities)
+    blocked_reasons = _scan_blocked_reasons(
+        eeg_files,
+        format_capabilities,
+        source_kind=source_kind,
+        bids=bids,
+    )
 
     return ScanResult(
         scan_id=scan_id,
@@ -395,10 +403,14 @@ def _scan_warnings(
         )
     if label_carriers:
         warnings.append("External label/event carriers require preview before apply.")
-    if source_kind == "bids" and not bids.get("events_files"):
+    if source_kind == "folder" and bids.get("looks_like_bids"):
         warnings.append(
-            "BIDS-like source has no events.tsv carrier; supervised labels "
-            "may be limited.",
+            "BIDS folder detected during regular folder import. Use Import BIDS "
+            "folder for BIDS-guided labels, metadata, and epoch setup."
+        )
+    if source_kind == "bids" and bids.get("is_bids") and not bids.get("events_files"):
+        warnings.append(
+            "BIDS folder has no events.tsv carrier for the selected scan scope.",
         )
     blocked_formats = [
         str(item.get("format"))
@@ -425,7 +437,15 @@ def _nested_bids_warnings(skipped_roots: list[Path]) -> list[str]:
 def _scan_blocked_reasons(
     eeg_files: list[str],
     format_capabilities: list[dict[str, Any]],
+    *,
+    source_kind: str,
+    bids: dict[str, Any],
 ) -> list[str]:
+    if source_kind == "bids" and not bids.get("is_bids"):
+        return [
+            "Selected folder does not look like a BIDS EEG dataset. Use Import "
+            "folder for regular EEG files."
+        ]
     if eeg_files:
         return []
     blocked = [

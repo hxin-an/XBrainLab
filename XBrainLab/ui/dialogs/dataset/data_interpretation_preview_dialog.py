@@ -543,8 +543,8 @@ class DataInterpretationPreviewDialog(
             2,
         )
         source_panel_layout.addLayout(source_overview_layout)
-        if self._is_bids_like_source():
-            bids_source_card, bids_source_layout = self._card("BIDS-aware import")
+        if self._is_bids_source():
+            bids_source_card, bids_source_layout = self._card("BIDS folder import")
             self._build_bids_source_card(bids_source_layout)
             source_panel_layout.addWidget(bids_source_card)
         source_panel_layout.addStretch()
@@ -558,7 +558,7 @@ class DataInterpretationPreviewDialog(
             )
         )
         label_sources_card, label_sources_layout = self._card(
-            "BIDS events detected" if self._has_bids_events() else "Label files"
+            "BIDS events.tsv" if self._is_bids_source() else "Label files"
         )
         self.label_sources_card_title_label = label_sources_card.findChild(
             QLabel,
@@ -586,25 +586,25 @@ class DataInterpretationPreviewDialog(
         label_button_layout.setContentsMargins(0, 0, 0, 0)
         label_button_layout.setSpacing(8)
         self.add_label_file_btn = QPushButton("Load label file")
-        if self._has_bids_events():
-            self.add_label_file_btn.setText("Add extra label file")
         self.add_label_file_btn.setObjectName("DataImportToolButton")
         self.add_label_file_btn.setToolTip("Load a label file from another location.")
+        self.add_label_file_btn.setVisible(not self._is_bids_source())
         self.add_label_file_btn.clicked.connect(self._add_label_file)
         self.add_label_folder_btn = QPushButton("Load label folder")
-        if self._has_bids_events():
-            self.add_label_folder_btn.setText("Add extra label folder")
         self.add_label_folder_btn.setObjectName("DataImportToolButton")
         self.add_label_folder_btn.setToolTip(
             "Load a folder of label files from another location.",
         )
+        self.add_label_folder_btn.setVisible(not self._is_bids_source())
         self.add_label_folder_btn.clicked.connect(self._add_label_folder)
         self.skip_labels_btn = QPushButton("Continue without labels")
         self.skip_labels_btn.setObjectName("DataImportTertiaryButton")
         self.skip_labels_btn.setToolTip(
             "Continue this import without labels; supervised workflows may be limited.",
         )
-        self.skip_labels_btn.setVisible(not self._has_bids_events())
+        self.skip_labels_btn.setVisible(
+            not self._is_bids_source() and not self._has_bids_events()
+        )
         self.skip_labels_btn.clicked.connect(self._skip_labels_for_now)
         label_button_layout.addWidget(self.add_label_file_btn)
         label_button_layout.addWidget(self.add_label_folder_btn)
@@ -623,7 +623,7 @@ class DataInterpretationPreviewDialog(
             )
         )
         self.smart_parse_btn = QPushButton(
-            "Adjust parsing" if self._is_bids_like_source() else "Smart Parse metadata"
+            "Adjust parsing" if self._is_bids_source() else "Smart Parse metadata"
         )
         self.smart_parse_btn.setObjectName("DataImportToolButton")
         self.smart_parse_btn.clicked.connect(self._run_smart_parse)
@@ -645,7 +645,7 @@ class DataInterpretationPreviewDialog(
         self._fit_compact_tree_height(self.file_tree, min_height=86, max_height=160)
         complete_count, missing_fields = self._metadata_completion_counts()
         missing_fields = self._metadata_required_missing_fields(missing_fields)
-        if self._is_bids_like_source():
+        if self._is_bids_source():
             bids_metadata_card, bids_metadata_layout = self._card("BIDS metadata")
             self._build_bids_metadata_card(bids_metadata_layout)
             metadata_panel_layout.addWidget(bids_metadata_card)
@@ -1027,7 +1027,7 @@ class DataInterpretationPreviewDialog(
 
     def _label_source_mode_choices(self) -> list[tuple[str, str]]:
         loaded_label = (
-            "BIDS events.tsv" if self._has_bids_events() else "Loaded label files"
+            "BIDS events.tsv" if self._is_bids_source() else "Loaded label files"
         )
         choices = [
             ("Labels inside EEG files", "internal_events"),
@@ -1048,12 +1048,14 @@ class DataInterpretationPreviewDialog(
         mode = self._label_source_mode()
         if mode == "loaded_label_files":
             if not self._label_carrier_items:
+                if self._is_bids_source():
+                    return (
+                        "BIDS events.tsv is required for this import. Use Import "
+                        "folder if these are regular label files."
+                    )
                 return "No label files are loaded. Load a label file or switch source."
-            if self._has_bids_events():
-                return (
-                    "Use BIDS events.tsv for labels and timing; add extra labels "
-                    "only if this dataset needs them."
-                )
+            if self._is_bids_source():
+                return "Use BIDS events.tsv for labels and timing in this import."
             return "Pair each label file, then choose how label values are placed."
         return (
             "Use events inside the EEG files, then confirm which events become classes."
@@ -1107,7 +1109,9 @@ class DataInterpretationPreviewDialog(
             self.pairing_card.setVisible(use_loaded)
         if hasattr(self, "bids_event_review_card"):
             self.bids_event_review_card.setVisible(
-                use_loaded and bool(self._bids_event_review_rows())
+                use_loaded
+                and self._is_bids_source()
+                and bool(self._bids_event_review_rows())
             )
         for widget in (
             getattr(self, "label_values_card", None),
@@ -1718,10 +1722,15 @@ class DataInterpretationPreviewDialog(
         return self._wizard_state.label_sources.label_sources_changed()
 
     def _label_detection_text(self) -> str:
-        if self._has_bids_events():
+        if self._is_bids_source() and self._has_bids_events():
             return (
                 f"{self._bids_event_count_text()} will be used as the default "
                 "label and timing source."
+            )
+        if self._is_bids_source():
+            return (
+                "No events.tsv is attached for the selected BIDS runs. Add the "
+                "missing BIDS sidecar or use Import folder for non-BIDS labels."
             )
         carriers = self.preview.get("label_carrier_preview") or []
         if not isinstance(carriers, list) or not carriers:
@@ -1740,15 +1749,15 @@ class DataInterpretationPreviewDialog(
         return ""
 
     def _load_labels_panel_detail(self) -> str:
-        if self._has_bids_events():
+        if self._is_bids_source():
             return (
-                "BIDS events.tsv files are detected automatically; add extra "
-                "label files only if this dataset needs them."
+                "BIDS events.tsv files are detected automatically and saved with "
+                "the import recipe."
             )
         return "Load the label files that will be matched to this EEG data."
 
     def _metadata_panel_detail(self) -> str:
-        if self._is_bids_like_source():
+        if self._is_bids_source():
             return (
                 "BIDS-style subject, session, task, and run entities are saved "
                 "into the recipe."

@@ -175,7 +175,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             row_count=self.file_tree.topLevelItemCount(),
             complete_count=complete_count,
             missing_fields=missing_fields,
-            is_bids_like=self._is_bids_like_source(),
+            is_bids_source=self._is_bids_source(),
             fallback_summary=self._metadata_review_summary(
                 complete_count,
                 missing_fields,

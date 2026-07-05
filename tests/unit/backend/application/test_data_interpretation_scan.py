@@ -50,6 +50,47 @@ def test_scan_source_path_collects_bids_files_labels_and_metadata(tmp_path: Path
     assert scan.bids["participants_file"] == str(tmp_path / "participants.tsv")
 
 
+def test_scan_explicit_folder_on_bids_root_does_not_enter_bids_mode(tmp_path: Path):
+    (tmp_path / "dataset_description.json").write_text("{}", encoding="utf-8")
+    eeg_file = tmp_path / "sub-01" / "ses-01" / "eeg" / "sub-01_ses-01_task-mi_raw.fif"
+    events_file = (
+        tmp_path / "sub-01" / "ses-01" / "eeg" / "sub-01_ses-01_task-mi_events.tsv"
+    )
+    eeg_file.parent.mkdir(parents=True)
+    eeg_file.write_text("", encoding="utf-8")
+    events_file.write_text("onset\tduration\ttrial_type\n", encoding="utf-8")
+
+    scan = scan_source_path(
+        scan_id="scan-1",
+        source_path=str(tmp_path),
+        source_hint="folder",
+    )
+
+    assert scan.source_kind == "folder"
+    assert scan.bids["is_bids"] is False
+    assert scan.bids["looks_like_bids"] is True
+    assert scan.label_carriers == [str(events_file.resolve())]
+    assert any("Use Import BIDS folder" in item for item in scan.warnings)
+
+
+def test_scan_explicit_bids_hint_blocks_non_bids_folder(tmp_path: Path):
+    eeg_file = tmp_path / "subject_raw.fif"
+    eeg_file.write_text("", encoding="utf-8")
+
+    scan = scan_source_path(
+        scan_id="scan-1",
+        source_path=str(tmp_path),
+        source_hint="bids",
+    )
+
+    assert scan.source_kind == "bids"
+    assert scan.bids["is_bids"] is False
+    assert scan.eeg_files == [str(eeg_file.resolve())]
+    assert scan.blocked_reasons == [
+        "Selected folder does not look like a BIDS EEG dataset. Use Import folder for regular EEG files."
+    ]
+
+
 def test_scan_regular_folder_with_sub_prefixed_file_is_not_bids(tmp_path: Path):
     eeg_file = tmp_path / "sub-01_task-mi_raw.fif"
     eeg_file.write_bytes(b"not loaded during scan")
@@ -59,9 +100,7 @@ def test_scan_regular_folder_with_sub_prefixed_file_is_not_bids(tmp_path: Path):
     assert scan.source_kind == "folder"
     assert scan.bids["is_bids"] is False
     assert scan.eeg_files == [str(eeg_file.resolve())]
-    assert not any(
-        "BIDS-like source has no events.tsv" in item for item in scan.warnings
-    )
+    assert not any("BIDS folder has no events.tsv" in item for item in scan.warnings)
 
 
 def test_scan_regular_folder_skips_nested_bids_dataset(tmp_path: Path):

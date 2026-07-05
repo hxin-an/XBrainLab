@@ -299,8 +299,15 @@ def _bids_events_dialog() -> DataInterpretationPreviewDialog:
         },
         preview={
             "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
-            "source_selection": "BIDS-like folder",
+            "source_selection": "BIDS folder",
             "metadata_preview": [_metadata_rows()[0]],
+            "class_map": {
+                "left_hand": "Left hand",
+                "right_hand": "Right hand",
+                "feet": "Feet",
+                "tongue": "Tongue",
+            },
+            "class_map_source": "label_carriers",
             "label_carrier_preview": [
                 {
                     "path": events_path,

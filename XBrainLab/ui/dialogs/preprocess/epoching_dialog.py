@@ -184,16 +184,22 @@ class EpochingDialog(BaseDialog):
 
         # 2. Parameters
         param_group, param_layout = self._build_section_card("Time Window")
+        window_mode_text = self._window_mode_text()
+        if window_mode_text:
+            mode_label = QLabel(window_mode_text)
+            mode_label.setObjectName("EpochWindowModeLabel")
+            mode_label.setWordWrap(True)
+            param_layout.addWidget(mode_label)
 
         self.tmin_spin = QDoubleSpinBox()
-        self.tmin_spin.setRange(-10, 10)
+        self.tmin_spin.setRange(-300, 300)
         self.tmin_spin.setValue(float(self.epoch_context.get("suggested_t_min", -0.2)))
         self.tmin_spin.setSingleStep(0.1)
         self._configure_compact_spinbox(self.tmin_spin)
         self.tmin_spin.valueChanged.connect(self.update_duration_info)
 
         self.tmax_spin = QDoubleSpinBox()
-        self.tmax_spin.setRange(-10, 10)
+        self.tmax_spin.setRange(-300, 300)
         self.tmax_spin.setValue(float(self.epoch_context.get("suggested_t_max", 1.0)))
         self.tmax_spin.setSingleStep(0.1)
         self._configure_compact_spinbox(self.tmax_spin)
@@ -243,7 +249,7 @@ class EpochingDialog(BaseDialog):
         param_layout.addWidget(self.baseline_check)
 
         self.b_min_spin = QDoubleSpinBox()
-        self.b_min_spin.setRange(-10, 10)
+        self.b_min_spin.setRange(-300, 300)
         baseline_min = (
             suggested_baseline[0]
             if isinstance(suggested_baseline, (list, tuple))
@@ -255,7 +261,7 @@ class EpochingDialog(BaseDialog):
         self._configure_compact_spinbox(self.b_min_spin)
 
         self.b_max_spin = QDoubleSpinBox()
-        self.b_max_spin.setRange(-10, 10)
+        self.b_max_spin.setRange(-300, 300)
         baseline_max = (
             suggested_baseline[1]
             if isinstance(suggested_baseline, (list, tuple))
@@ -365,7 +371,11 @@ class EpochingDialog(BaseDialog):
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(8)
         title_row = QHBoxLayout()
-        title = QLabel("Suggested from import")
+        title = QLabel(
+            "BIDS events from import"
+            if self._is_bids_epoch_context()
+            else "Suggested from import"
+        )
         title.setObjectName("EpochImportHintTitle")
         title_row.addWidget(title)
         title_row.addStretch()
@@ -405,6 +415,11 @@ class EpochingDialog(BaseDialog):
 
     def _event_hint_text(self) -> str:
         recommended = self.epoch_context.get("recommended_events") or []
+        if self._is_bids_epoch_context() and recommended:
+            return (
+                "These labels were confirmed in Match Labels. Uncheck a class only "
+                "if this epoch run should use a subset."
+            )
         if recommended:
             return (
                 "Suggested class events are checked. Adjust this list if the import "
@@ -420,6 +435,27 @@ class EpochingDialog(BaseDialog):
         if time_field:
             return time_field
         return "Event onset"
+
+    def _is_bids_epoch_context(self) -> bool:
+        source = str(self.epoch_context.get("source") or "").casefold()
+        return "bids" in source and "event" in source
+
+    def _window_mode_text(self) -> str:
+        mode = str(self.epoch_context.get("window_mode") or "").strip()
+        if not self._is_bids_epoch_context():
+            return ""
+        if mode == "duration":
+            return (
+                "Use event duration. The epoch starts at onset and ends at the "
+                "largest reviewed duration; adjust only if this dataset needs a "
+                "fixed training window."
+            )
+        if mode == "event_locked":
+            return (
+                "Event-locked window. The BIDS duration field is missing or not "
+                "usable, so this starts from the reviewed event onset."
+            )
+        return ""
 
     @staticmethod
     def _normalized_epoch_context(
@@ -467,6 +503,8 @@ class EpochingDialog(BaseDialog):
             if blockers:
                 blocker_text = "; ".join(str(item) for item in blockers)
                 return f"{source} needs review: {blocker_text}"
+            if self._is_bids_epoch_context():
+                return "BIDS events confirmed in Match Labels."
             return f"Suggested from {source}."
         if self.epoch_context.get("has_import_hint"):
             return "Import choices are available for this epoch setup."
@@ -632,6 +670,12 @@ class EpochingDialog(BaseDialog):
         self.duration_label.setText(
             f"{duration:.2f} s window ({tmin:.2f} to {tmax:.2f} s)"
         )
+
+        context_warning = str(self.epoch_context.get("window_warning") or "").strip()
+        if context_warning:
+            self.warning_label.setText(context_warning)
+            self.warning_label.show()
+            return
 
         # Check if duration might be too short for models
         # Most models need at least 1.0-1.2s at typical sampling rates
