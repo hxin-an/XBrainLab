@@ -339,9 +339,14 @@ class TestEpochingDialog:
 
         assert dialog.event_list is not None
         assert dialog.handoff_label is not None
-        selected = [item.text() for item in dialog.event_list.selectedItems()]
+        checked = [
+            dialog.event_list.item(index).text()
+            for index in range(dialog.event_list.count())
+            if dialog.event_list.item(index).checkState() == Qt.CheckState.Checked
+        ]
 
-        assert selected == ["Left hand", "Right hand"]
+        assert checked == ["Left hand", "Right hand"]
+        assert not dialog.event_list.selectedItems()
         assert "BIDS events" in dialog.handoff_label.text()
 
     def test_bids_epoch_dialog_surfaces_duration_policy(self, qtbot):
@@ -374,6 +379,7 @@ class TestEpochingDialog:
         )
 
         assert "BIDS events from import" in labels_text
+        assert "BIDS events confirmed in Match Labels" in labels_text
         assert "Use event duration" in labels_text
         assert "review the epoch window" in labels_text
         assert dialog.tmin_spin.value() == 0.0

@@ -171,14 +171,12 @@ class EpochingDialog(BaseDialog):
                 item.setToolTip(f"{event_name}: {count} event(s)")
             if event_name in recommended_events:
                 item.setCheckState(Qt.CheckState.Checked)
-                item.setSelected(True)
             else:
                 item.setCheckState(Qt.CheckState.Unchecked)
 
-        self.event_list.setMinimumHeight(
-            min(190, max(100, self.event_list.count() * 28 + 18)),
-        )
-        self.event_list.setMaximumHeight(190)
+        event_list_height = min(180, max(112, self.event_list.count() * 32 + 24))
+        self.event_list.setMinimumHeight(event_list_height)
+        self.event_list.setMaximumHeight(event_list_height)
         event_layout.addWidget(self.event_list)
         content_layout.addWidget(event_group)
 
@@ -507,6 +505,8 @@ class EpochingDialog(BaseDialog):
                 return "BIDS events confirmed in Match Labels."
             return f"Suggested from {source}."
         if self.epoch_context.get("has_import_hint"):
+            if self._is_bids_epoch_context():
+                return "BIDS events confirmed in Match Labels."
             return "Import choices are available for this epoch setup."
         return ""
 

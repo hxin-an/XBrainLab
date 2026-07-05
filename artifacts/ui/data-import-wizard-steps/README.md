@@ -23,7 +23,7 @@ Exploratory drafts and superseded discussion variants should not be kept here.
 
 Step 4 intentionally has multiple images because the product has different label
 source and fallback modes to review: labels inside EEG files, loaded label
-files, BIDS-like events, and unsupported custom label formats.
+files, strict BIDS events.tsv, and unsupported custom label formats.
 
 Loaded label file placement-mode review images live under
 `match-label-placement-modes/`:

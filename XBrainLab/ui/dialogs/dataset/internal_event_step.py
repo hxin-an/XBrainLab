@@ -642,6 +642,17 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
                 "Use onset/duration for timing and trial_type or value for labels.",
             )
         )
+        selected_eeg_count = len(self._selected_eeg_file_names())
+        carrier_count = len(carriers)
+        if selected_eeg_count:
+            matched_count = min(carrier_count, selected_eeg_count)
+            rows.append(
+                (
+                    "EEG/event pairing",
+                    f"{matched_count}/{selected_eeg_count} EEG files",
+                    "Matched by BIDS subject/session/task/run entities.",
+                )
+            )
         label_field_text = self._list_preview(label_fields) or "Choose in Label values"
         if "trial_type" in label_fields:
             label_field_text = "trial_type recommended"

@@ -141,7 +141,13 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             hidden_selector.setVisible(False)
         self._updating_label_rule = False
 
-        layout.addWidget(self._placement_method_selector())
+        self.placement_card = QWidget()
+        self.placement_card.setObjectName("DataImportPlacementControls")
+        placement_layout = QVBoxLayout(self.placement_card)
+        placement_layout.setContentsMargins(0, 0, 0, 0)
+        placement_layout.setSpacing(10)
+
+        placement_layout.addWidget(self._placement_method_selector())
         self.placement_detail_stack = QStackedWidget()
         self.placement_detail_stack.setObjectName("DataImportPlacementDetailStack")
         self.placement_detail_stack.setSizePolicy(
@@ -149,13 +155,14 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             QSizePolicy.Policy.Fixed,
         )
         self._build_placement_detail_pages()
-        layout.addWidget(self.placement_detail_stack)
+        placement_layout.addWidget(self.placement_detail_stack)
 
         self.placement_status_label = QLabel(self._placement_status_text())
         self.placement_status_label.setObjectName("DataImportRuleStatus")
         self.placement_status_label.setWordWrap(True)
         self.placement_status_label.setVisible(bool(self.placement_status_label.text()))
-        layout.addWidget(self.placement_status_label)
+        placement_layout.addWidget(self.placement_status_label)
+        layout.addWidget(self.placement_card)
 
         self.rule_placement_method_combo.currentIndexChanged.connect(
             self._handle_placement_method_change
@@ -780,6 +787,13 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
         if not field_value:
             return "Choose the field that contains the label values."
         value_summary = self._label_value_count_summary()
+        if self._is_bids_source():
+            if value_summary:
+                return (
+                    f"{field}: {value_summary}. BIDS timing is saved for import "
+                    "and epoch setup."
+                )
+            return f"{field} values will be imported from BIDS events.tsv."
         if value_summary:
             return (
                 f"{field}: {value_summary}. Use the preview below to verify placement."

@@ -2656,6 +2656,8 @@ def test_match_labels_step_surfaces_bids_event_review(qtbot):
     )
     assert "events.tsv columns" in text
     assert "onset, duration, trial_type" in text
+    assert "EEG/event pairing" in text
+    assert "Matched by BIDS subject/session/task/run entities" in text
     assert "Label field" in text
     assert "trial_type recommended" in text
     assert "Timing fields" in text
@@ -2664,6 +2666,12 @@ def test_match_labels_step_surfaces_bids_event_review(qtbot):
     assert "Left hand" in text
     assert "3 rows" in text
     assert "events.json sidecar is missing" in text
+    assert "BIDS label values" in text
+    assert "File pairing" not in text
+    assert "Place labels by" not in text
+    assert dialog.label_values_card.isVisibleTo(dialog)
+    assert not dialog.pairing_card.isVisibleTo(dialog)
+    assert not dialog.placement_card.isVisibleTo(dialog)
 
 
 def test_regular_folder_events_tsv_uses_general_label_flow(qtbot):
@@ -2720,6 +2728,8 @@ def test_regular_folder_events_tsv_uses_general_label_flow(qtbot):
     _show_step(dialog, "Match Labels")
     qtbot.wait(0)
     assert not dialog.bids_event_review_card.isVisibleTo(dialog)
+    assert dialog.pairing_card.isVisibleTo(dialog)
+    assert dialog.placement_card.isVisibleTo(dialog)
     assert dialog.label_source_mode_combo.currentText() == "Loaded label files"
 
 

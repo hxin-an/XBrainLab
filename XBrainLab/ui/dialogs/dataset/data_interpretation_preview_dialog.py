@@ -330,7 +330,8 @@ class DataInterpretationPreviewDialog(
         self.internal_event_status_label: QLabel
         self.pairing_card: QFrame
         self.label_values_card: QFrame
-        self.placement_card: QFrame
+        self.label_values_card_title: QLabel | None
+        self.placement_card: QWidget
         self.label_table_fallback_card: QFrame
         self.label_table_fallback_reason_label: QLabel
         self.view_label_table_format_btn: QPushButton
@@ -753,7 +754,10 @@ class DataInterpretationPreviewDialog(
         self.label_values_card, label_values_layout = self._card(
             "Label values and placement"
         )
-        self.placement_card = self.label_values_card
+        self.label_values_card_title = self.label_values_card.findChild(
+            QLabel,
+            "DataImportCardTitle",
+        )
         self._build_label_values_card(label_values_layout)
         self._build_placement_card(label_values_layout)
         label_panel_layout.addWidget(self.label_values_card)
@@ -1104,21 +1108,25 @@ class DataInterpretationPreviewDialog(
             self.label_source_status_label.setText(self._label_source_status_text())
         if hasattr(self, "pairing_status_label"):
             self.pairing_status_label.setText(self._pairing_summary_text())
+        is_bids_source = self._is_bids_source()
         fallback_visible = use_loaded and self._should_show_label_table_fallback()
         if hasattr(self, "pairing_card"):
-            self.pairing_card.setVisible(use_loaded)
+            self.pairing_card.setVisible(use_loaded and not is_bids_source)
         if hasattr(self, "bids_event_review_card"):
             self.bids_event_review_card.setVisible(
-                use_loaded
-                and self._is_bids_source()
-                and bool(self._bids_event_review_rows())
+                use_loaded and is_bids_source and bool(self._bids_event_review_rows())
             )
-        for widget in (
-            getattr(self, "label_values_card", None),
-            getattr(self, "placement_card", None),
-        ):
-            if widget is not None:
-                widget.setVisible(use_loaded and not fallback_visible)
+        if hasattr(self, "label_values_card"):
+            self.label_values_card.setVisible(use_loaded and not fallback_visible)
+        if hasattr(self, "placement_card"):
+            self.placement_card.setVisible(
+                use_loaded and not fallback_visible and not is_bids_source
+            )
+        label_values_card_title = getattr(self, "label_values_card_title", None)
+        if label_values_card_title is not None:
+            label_values_card_title.setText(
+                "BIDS label values" if is_bids_source else "Label values and placement"
+            )
         self._refresh_label_table_fallback()
         self._refresh_pairing_badges()
         if hasattr(self, "match_check_card"):
@@ -1166,7 +1174,7 @@ class DataInterpretationPreviewDialog(
         if self._label_source_mode() == "internal_events":
             self._build_internal_event_rules_view()
         elif self._class_map_items:
-            self.event_group.setTitle("Class names")
+            self.event_group.setTitle("")
             self._add_event_section_title("Class names")
             class_map_rows_widget = self._build_class_map_rows_widget()
             self.class_map_rows_widget = class_map_rows_widget
@@ -3194,7 +3202,7 @@ class DataInterpretationPreviewDialog(
         class_map = self._class_map_for_current_label_source()
         has_class_map = bool(class_map)
         if has_class_map:
-            self.event_group.setTitle("Class names")
+            self.event_group.setTitle("")
             for code, label in sorted(class_map.items(), key=self._class_map_sort_key):
                 tree_item = QTreeWidgetItem([str(code), "class name", str(label)])
                 self._class_map_items.append((tree_item, str(code), str(label)))
