@@ -2,7 +2,7 @@
 
 status: current release-candidate UI evidence
 generator: `scripts/dev/capture_data_import_wizard_steps.py`
-environment: Qt offscreen desktop capture on `/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`
+environment: Qt offscreen desktop capture on `/mnt/d/workspace_v2/projects/lab/xbrainlab`
 supports: Data Import wizard step layout, Load Labels, Match Labels source/placement modes, Review and Import visual review
 does_not_support: human Windows acceptance, full arbitrary BIDS compliance, scientific label semantics approval
 next_human_or_runtime_gate: manual Windows click-through on representative EEG/label files before release approval
@@ -19,6 +19,7 @@ Exploratory drafts and superseded discussion variants should not be kept here.
 - `04-match-labels-conversion-fallback.png`
 - `04-match-labels-conversion-table-format-dialog.png`
 - `05-review-and-import.png`
+- `05-review-and-import-report.png`
 
 Step 4 intentionally has multiple images because the product has different label
 source and fallback modes to review: labels inside EEG files, loaded label

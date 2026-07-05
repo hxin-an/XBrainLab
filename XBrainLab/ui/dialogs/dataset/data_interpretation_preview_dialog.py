@@ -368,6 +368,8 @@ class DataInterpretationPreviewDialog(
         self.review_tree: QTreeWidget
         self.review_actions_panel: QWidget
         self.review_actions_layout: QVBoxLayout
+        self.import_report_toggle: QPushButton
+        self.import_report_card: QFrame
         self.review_recipe_note_label: QLabel
         self.event_layout: QVBoxLayout
         self.scroll_area: QScrollArea
@@ -811,6 +813,16 @@ class DataInterpretationPreviewDialog(
         self.review_actions_layout.setSpacing(10)
         self._populate_review_action_cards()
         review_panel_layout.addWidget(self.review_actions_panel)
+
+        report_header = QHBoxLayout()
+        report_header.setContentsMargins(0, 0, 0, 0)
+        report_header.addStretch()
+        self.import_report_toggle = QPushButton("View import report")
+        self.import_report_toggle.setObjectName("DataImportInlineAction")
+        self.import_report_toggle.clicked.connect(self._toggle_import_report)
+        report_header.addWidget(self.import_report_toggle)
+        review_panel_layout.addLayout(report_header)
+
         self.review_tree = QTreeWidget()
         self.review_tree.setObjectName("InterpretationReviewSummary")
         self.review_tree.setHeaderLabels(
@@ -828,11 +840,22 @@ class DataInterpretationPreviewDialog(
         )
         self._populate_review_tree()
         self._fit_review_tree_height()
-        self.review_tree.setVisible(self._has_remap_options())
+        self.import_report_card, import_report_layout = self._card(
+            "Recipe replacements" if self._has_remap_options() else "Import report"
+        )
+        self.import_report_card.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Maximum,
+        )
+        self.review_tree.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Maximum,
+        )
+        import_report_layout.addWidget(self.review_tree)
+        self.import_report_card.setVisible(self._has_remap_options())
         if self._has_remap_options():
-            remap_card, remap_layout = self._card("Recipe replacements")
-            remap_layout.addWidget(self.review_tree)
-            review_panel_layout.addWidget(remap_card)
+            self.import_report_toggle.setText("Hide import report")
+        review_panel_layout.addWidget(self.import_report_card)
         review_panel_layout.addStretch()
         self.step_stack.addWidget(review_panel)
 
@@ -2933,10 +2956,16 @@ class DataInterpretationPreviewDialog(
             alternate = QColor("#242424")
         palette.setColor(QPalette.ColorRole.Base, base)
         palette.setColor(QPalette.ColorRole.AlternateBase, alternate)
+        palette.setColor(QPalette.ColorRole.Window, base)
+        palette.setColor(QPalette.ColorRole.Button, base)
         palette.setColor(QPalette.ColorRole.Text, QColor(Theme.TEXT_MUTED))
         palette.setColor(QPalette.ColorRole.Highlight, QColor(Theme.BLUE_PRESSED))
         palette.setColor(QPalette.ColorRole.HighlightedText, QColor(Theme.TEXT_MUTED))
         tree.setPalette(palette)
+        viewport = tree.viewport()
+        if viewport is not None:
+            viewport.setPalette(palette)
+            viewport.setAutoFillBackground(True)
 
     def _file_count(self) -> int:
         preview_count = self.preview.get("file_count")

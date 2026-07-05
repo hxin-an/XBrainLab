@@ -53,6 +53,13 @@ def main() -> int:
         _capture(dialog, path)
         dialog.close()
 
+    report_dialog = _review_import_dialog()
+    _show_step(report_dialog, "Review and Import", app)
+    report_dialog.import_report_toggle.click()
+    app.processEvents()
+    _capture(report_dialog, OUTPUT_DIR / "05-review-and-import-report.png")
+    report_dialog.close()
+
     style_source = _main_dialog()
     format_dialog = _ConvertedLabelTableDialog()
     format_dialog.setStyleSheet(style_source.styleSheet())
@@ -408,6 +415,7 @@ def _review_import_dialog() -> DataInterpretationPreviewDialog:
                         "metadata may need review."
                     ),
                     "next_action": "Open the target step and confirm the selected files.",
+                    "severity": "warning",
                 },
                 {
                     "target_step": "Review Metadata",
@@ -417,12 +425,14 @@ def _review_import_dialog() -> DataInterpretationPreviewDialog:
                         "downstream training readiness."
                     ),
                     "next_action": "Review the target step and confirm the choice.",
+                    "severity": "needs_confirmation",
                 },
                 {
                     "target_step": "Match Labels",
                     "issue": "Confirm label placement for A01T.mat.",
                     "impact": "Labels will be applied before supervised training.",
                     "next_action": "Check the target EEG events and class names.",
+                    "severity": "needs_confirmation",
                 },
             ],
         },
