@@ -703,7 +703,7 @@ def test_visualization_panel_preserves_selection_on_training_stopped(qtbot):
     assert panel.run_combo.currentText() == "Average"
 
 
-def test_visualization_panel_starts_configured_saliency_after_training_stopped(
+def test_visualization_panel_training_stopped_keeps_background_saliency_fast(
     qtbot,
     monkeypatch,
 ):
@@ -775,7 +775,11 @@ def test_visualization_panel_starts_configured_saliency_after_training_stopped(
 
     assert len(async_commands) == 1
     assert isinstance(async_commands[0], SaliencyCommand)
-    assert async_commands[0].params == configured_params
+    assert async_commands[0].method == "Gradient"
+    assert async_commands[0].params == {
+        "profile": "recommended",
+        "methods": ["Gradient", "Gradient * Input"],
+    }
 
 
 def test_visualization_panel_shows_placeholder_without_valid_selection(qtbot):

@@ -399,6 +399,64 @@ class TestDataSplittingPreviewDialogSplitters:
         assert dlg.preview_debounce_timer.isActive()
         dlg.preview_debounce_timer.stop()
 
+    def test_cross_validation_defaults_testing_to_kfold(self, qtbot):
+        from XBrainLab.backend.dataset import SplitByType, TrainingType, ValSplitByType
+
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator"
+            ) as MockGen,
+            patch("threading.Thread"),
+        ):
+            MockGen.return_value.preview_failed = None
+            MockGen.return_value.generate = MagicMock()
+            from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
+                DataSplitterHolder,
+                DataSplittingPreviewDialog,
+            )
+
+            epoch_data = MagicMock()
+            epoch_data.get_data_length.return_value = 100
+            epoch_data.subject_map = {"S01": list(range(100))}
+            epoch_data.session_map = {"sess1": list(range(100))}
+            epoch_data.label_map = {"left": 0, "right": 1}
+            epoch_data.data = list(range(100))
+            epoch_data.get_subject_map.return_value = epoch_data.subject_map
+            epoch_data.get_session_map.return_value = epoch_data.session_map
+
+            val_splitters = [
+                DataSplitterHolder(is_option=True, split_type=ValSplitByType.TRIAL),
+            ]
+            test_splitters = [
+                DataSplitterHolder(is_option=True, split_type=SplitByType.TRIAL),
+            ]
+
+            config = MagicMock()
+            config.train_type = TrainingType.FULL
+            config.is_cross_validation = True
+            config.get_splitter_option.return_value = (
+                val_splitters,
+                test_splitters,
+            )
+            dialog = DataSplittingPreviewDialog(None, "Preview", epoch_data, config)
+            qtbot.addWidget(dialog)
+            if hasattr(dialog, "timer"):
+                dialog.timer.stop()
+
+        test_combo, test_entry = dialog.test_widgets[0]
+        val_combo, val_entry = dialog.val_widgets[0]
+
+        assert test_combo.currentText() == "K Fold"
+        assert test_entry.text() == "5"
+        assert val_combo.currentText() == "Ratio"
+        assert val_entry.text() == "0.2"
+
+        payload = dialog.get_result()
+        assert payload["is_cross_validation"] is True
+        assert payload["test_splitters"][0]["split_unit"] == "K Fold"
+        assert payload["test_splitters"][0]["value"] == "5"
+        assert payload["val_splitters"][0]["split_unit"] == "Ratio"
+
     def test_on_split_type_manual(self, dlg):
         splitter = dlg.val_splitter_list[0]
         with patch(

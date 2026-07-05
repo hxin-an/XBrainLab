@@ -237,6 +237,7 @@ class EpochingDialog(BaseDialog):
         # Baseline
         suggested_baseline = self.epoch_context.get("suggested_baseline")
         self.baseline_check = QCheckBox("Apply baseline correction")
+        self.baseline_check.setObjectName("EpochBaselineCheck")
         self.baseline_check.setChecked(suggested_baseline is not None)
         self.baseline_check.toggled.connect(self.toggle_baseline)
         param_layout.addWidget(self.baseline_check)
@@ -299,6 +300,8 @@ class EpochingDialog(BaseDialog):
         if ok_button is not None:
             ok_button.setText("Create Epochs")
             ok_button.setObjectName("EpochPrimaryButton")
+            ok_button.setAutoDefault(False)
+            ok_button.setDefault(False)
         buttons.accepted.connect(self.accept)
         footer.addWidget(buttons)
         layout.addLayout(footer)
@@ -558,8 +561,20 @@ class EpochingDialog(BaseDialog):
             background: #202124;
         }
         QCheckBox {
+            background-color: transparent;
             color: #f2f5f8;
             spacing: 8px;
+        }
+        QCheckBox::indicator {
+            background: #25272a;
+            border: 1px solid #5d6670;
+            border-radius: 2px;
+            width: 14px;
+            height: 14px;
+        }
+        QCheckBox::indicator:checked {
+            background: #0069a8;
+            border-color: #0a7fc7;
         }
         QFrame#EpochFooterRule {
             color: #343941;

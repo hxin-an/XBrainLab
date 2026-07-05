@@ -12,6 +12,7 @@ from XBrainLab.backend.dataset import (
     SplitUnit,
     TrainingType,
     ValSplitByType,
+    audit_dataset_splits,
 )
 from XBrainLab.backend.study import Study
 
@@ -647,6 +648,40 @@ def test_dataset_generator_handle_full_cross_validation(
         X, _ = result[i].get_test_data()
         assert (((i + 1) * 100000) == (X // 100000 * 100000)).all()
         assert len(X) == block_size * len(session_list)
+
+
+def test_dataset_generator_trial_kfold_cross_validation_is_non_leaking(
+    epochs,  # noqa: F811
+):
+    config = DataSplittingConfig(
+        TrainingType.FULL,
+        True,
+        [DataSplitter(ValSplitByType.TRIAL, "0.2", SplitUnit.RATIO)],
+        [DataSplitter(SplitByType.TRIAL, "5", SplitUnit.KFOLD)],
+    )
+
+    datasets = DatasetGenerator(epochs, config).generate()
+    audit = audit_dataset_splits(datasets, protocol="trial-wise")
+
+    assert len(datasets) == 5
+    assert audit.ok
+    assert [dataset.get_name() for dataset in datasets] == [
+        "Fold_0",
+        "Fold_1",
+        "Fold_2",
+        "Fold_3",
+        "Fold_4",
+    ]
+    for dataset in datasets:
+        train = set(dataset.get_training_indices())
+        val = set(dataset.get_val_indices())
+        test = set(dataset.get_test_indices())
+        assert train
+        assert val
+        assert test
+        assert not (train & val)
+        assert not (train & test)
+        assert not (val & test)
 
 
 @pytest.mark.parametrize(

@@ -81,6 +81,7 @@ _PREVIEW_DIALOG_STYLE = f"""
         subcontrol-origin: padding;
         subcontrol-position: top right;
         border: none;
+        background: transparent;
         width: 24px;
     }}
     QComboBox::down-arrow {{
@@ -125,6 +126,26 @@ _RESULT_TREE_STYLE = f"""
         border-right: 1px solid {Theme.BACKGROUND_MID};
         padding: 6px 8px;
         font-weight: bold;
+    }}
+    QScrollBar:vertical {{
+        background: #1c1e21;
+        width: 10px;
+        margin: 0;
+    }}
+    QScrollBar::handle:vertical {{
+        background: #525963;
+        border-radius: 4px;
+        min-height: 24px;
+    }}
+    QScrollBar::add-line:vertical,
+    QScrollBar::sub-line:vertical {{
+        border: none;
+        background: transparent;
+        height: 0;
+    }}
+    QScrollBar::add-page:vertical,
+    QScrollBar::sub-page:vertical {{
+        background: transparent;
     }}
 """
 
@@ -249,7 +270,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         results_group.setObjectName("SplitPreviewPanel")
         results_group.setSizePolicy(
             QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Maximum,
+            QSizePolicy.Policy.Preferred,
         )
         results_layout = QVBoxLayout(results_group)
         results_layout.setContentsMargins(12, 12, 12, 12)
@@ -348,17 +369,20 @@ class DataSplittingPreviewDialog(BaseDialog):
 
                 combo = QComboBox()
                 opts = list(split_unit_list)
-                if self.config.is_cross_validation and idx == 1:
-                    opts.append(SplitUnit.KFOLD.value)
-                else:
-                    opts.append(SplitUnit.MANUAL.value)
+                opts.append(SplitUnit.MANUAL.value)
                 combo.addItems(opts)
+                combo.setCurrentText(SplitUnit.RATIO.value)
+                val_layout.addWidget(combo, row + 1, 0)
+
+                entry = QLineEdit(
+                    self._default_split_entry_value(
+                        splitter,
+                        split_unit=SplitUnit.RATIO,
+                    )
+                )
                 combo.currentTextChanged.connect(
                     lambda t, s=splitter: self.on_split_type_change(s, t),
                 )
-                val_layout.addWidget(combo, row + 1, 0)
-
-                entry = QLineEdit(DEFAULT_SPLIT_ENTRY_VALUE)
                 entry.textChanged.connect(
                     lambda t, s=splitter: self.on_entry_change(s, t),
                 )
@@ -402,12 +426,23 @@ class DataSplittingPreviewDialog(BaseDialog):
                 else:
                     opts.append(SplitUnit.MANUAL.value)
                 combo.addItems(opts)
+                default_unit = (
+                    SplitUnit.KFOLD
+                    if self.config.is_cross_validation and idx == 1
+                    else SplitUnit.RATIO
+                )
+                combo.setCurrentText(default_unit.value)
+                test_layout.addWidget(combo, row + 1, 0)
+
+                entry = QLineEdit(
+                    self._default_split_entry_value(
+                        splitter,
+                        split_unit=default_unit,
+                    )
+                )
                 combo.currentTextChanged.connect(
                     lambda t, s=splitter: self.on_split_type_change(s, t),
                 )
-                test_layout.addWidget(combo, row + 1, 0)
-
-                entry = QLineEdit(DEFAULT_SPLIT_ENTRY_VALUE)
                 entry.textChanged.connect(
                     lambda t, s=splitter: self.on_entry_change(s, t),
                 )
@@ -426,8 +461,11 @@ class DataSplittingPreviewDialog(BaseDialog):
         right_layout.addWidget(test_group)
 
         # Confirm
+        right_layout.addStretch(1)
         self.btn_confirm = QPushButton("Confirm")
         self.btn_confirm.setObjectName("PrimaryConfirmButton")
+        self.btn_confirm.setAutoDefault(False)
+        self.btn_confirm.setDefault(False)
         self.btn_confirm.clicked.connect(self.confirm)
         right_layout.addWidget(self.btn_confirm)
 
@@ -437,9 +475,10 @@ class DataSplittingPreviewDialog(BaseDialog):
     def _panel_grid(title: str) -> tuple[QFrame, QGridLayout]:
         panel = QFrame()
         panel.setObjectName("SplitPreviewPanel")
+        panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         panel_layout = QVBoxLayout(panel)
-        panel_layout.setContentsMargins(12, 12, 12, 12)
-        panel_layout.setSpacing(10)
+        panel_layout.setContentsMargins(12, 10, 12, 10)
+        panel_layout.setSpacing(8)
         title_label = QLabel(title)
         title_label.setObjectName("SplitPreviewSectionTitle")
         panel_layout.addWidget(title_label)
@@ -447,6 +486,48 @@ class DataSplittingPreviewDialog(BaseDialog):
         grid.setContentsMargins(0, 0, 0, 0)
         panel_layout.addLayout(grid)
         return panel, grid
+
+    def _default_split_entry_value(
+        self,
+        splitter: DataSplitter,
+        *,
+        split_unit: SplitUnit,
+    ) -> str:
+        if split_unit == SplitUnit.KFOLD:
+            return str(self._default_kfold_count(splitter))
+        return DEFAULT_SPLIT_ENTRY_VALUE
+
+    def _default_kfold_count(self, splitter: DataSplitter) -> int:
+        target_count = self._split_target_count(splitter)
+        if target_count <= 0:
+            return 2
+        return max(2, min(5, target_count))
+
+    def _split_target_count(self, splitter: DataSplitter) -> int:
+        split_type = getattr(splitter, "split_type", None)
+        if split_type in {SplitByType.SUBJECT, SplitByType.SUBJECT_IND}:
+            return len(getattr(self.epoch_data, "subject_map", {}) or {})
+        if split_type in {SplitByType.SESSION, SplitByType.SESSION_IND}:
+            return len(getattr(self.epoch_data, "session_map", {}) or {})
+        if split_type in {SplitByType.TRIAL, SplitByType.TRIAL_IND}:
+            get_data_length = getattr(self.epoch_data, "get_data_length", None)
+            if callable(get_data_length):
+                try:
+                    value = get_data_length()
+                except Exception:
+                    return self._epoch_data_length()
+                if isinstance(value, (int, float, str)):
+                    return int(value)
+                return self._epoch_data_length()
+            return self._epoch_data_length()
+        return 0
+
+    def _epoch_data_length(self) -> int:
+        data = getattr(self.epoch_data, "data", None)
+        try:
+            return len(data) if data is not None else 0
+        except TypeError:
+            return 0
 
     def on_split_type_change(self, splitter, text):
         """Handle changes to the split unit combo box.
@@ -595,13 +676,17 @@ class DataSplittingPreviewDialog(BaseDialog):
         header = self.tree.header()
         header_height = header.height() if header is not None else 32
         row_count = max(1, self.tree.topLevelItemCount())
-        target_height = min(420, max(140, header_height + row_count * 34 + 14))
+        target_height = min(420, max(92, header_height + row_count * 38 + 16))
         self.tree.setFixedHeight(target_height)
 
     def confirm(self):
         """Finalize dataset generation and accept the dialog."""
         if self.preview_worker and self.preview_worker.is_alive():
-            QMessageBox.warning(self, "Warning", "Generating dataset, please wait.")
+            self._show_message_box(
+                QMessageBox.Icon.Warning,
+                "Data splitting",
+                "Generating dataset, please wait.",
+            )
             return
 
         try:
@@ -609,7 +694,28 @@ class DataSplittingPreviewDialog(BaseDialog):
                 self.dataset_generator.prepare_result()
                 super().accept()
         except Exception as e:
-            QMessageBox.critical(self, "Error", str(e))
+            self._show_message_box(
+                QMessageBox.Icon.Critical,
+                "Data splitting failed",
+                str(e),
+            )
+
+    def _show_message_box(
+        self,
+        icon: QMessageBox.Icon,
+        title: str,
+        text: str,
+    ) -> None:
+        message = QMessageBox(self)
+        message.setIcon(icon)
+        message.setWindowTitle(title)
+        message.setText(text)
+        message.setStandardButtons(QMessageBox.StandardButton.Ok)
+        for button in message.buttons():
+            if isinstance(button, QPushButton):
+                button.setAutoDefault(False)
+                button.setDefault(False)
+        message.exec()
 
     def closeEvent(self, event):  # noqa: N802
         """Stop the polling timer and interrupt background workers on close."""

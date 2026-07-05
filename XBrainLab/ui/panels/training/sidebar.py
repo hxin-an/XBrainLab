@@ -351,8 +351,8 @@ class TrainingSidebar(QWidget):
 
                 def _handle_generate_result(result) -> None:
                     if result.failed:
-                        QMessageBox.critical(
-                            self,
+                        self._show_message_box(
+                            QMessageBox.Icon.Critical,
                             "Data Splitting Failed",
                             result.message,
                         )
@@ -362,8 +362,8 @@ class TrainingSidebar(QWidget):
 
                 def _handle_generate_error(error: tuple) -> None:
                     message = error[1] if len(error) > 1 else error
-                    QMessageBox.critical(
-                        self,
+                    self._show_message_box(
+                        QMessageBox.Icon.Critical,
                         "Data Splitting Failed",
                         str(message),
                     )
@@ -394,14 +394,31 @@ class TrainingSidebar(QWidget):
                     )
                     return
                 elif result.failed:
-                    QMessageBox.critical(
-                        self,
+                    self._show_message_box(
+                        QMessageBox.Icon.Critical,
                         "Data Splitting Failed",
                         result.message,
                     )
                     return
                 self._show_status("Data splitting configuration saved")
                 self._check_ready_after_command_result(result)
+
+    def _show_message_box(
+        self,
+        icon: QMessageBox.Icon,
+        title: str,
+        text: str,
+    ) -> None:
+        message = QMessageBox(self)
+        message.setIcon(icon)
+        message.setWindowTitle(title)
+        message.setText(text)
+        message.setStandardButtons(QMessageBox.StandardButton.Ok)
+        for button in message.buttons():
+            if isinstance(button, QPushButton):
+                button.setAutoDefault(False)
+                button.setDefault(False)
+        message.exec()
 
     def _compatibility_data_splitting_preflight_blocked(self) -> bool:
         available, data_list = self._compatibility_controller_value(

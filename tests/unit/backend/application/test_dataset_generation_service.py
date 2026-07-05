@@ -20,6 +20,7 @@ from XBrainLab.backend.application.results import ErrorType
 from XBrainLab.backend.dataset import (
     DataSplittingConfig,
     SplitByType,
+    SplitUnit,
     TrainingType,
     ValSplitByType,
 )
@@ -264,6 +265,50 @@ def test_dataset_generation_service_empty_split_payload_fails_through_audit() ->
         "split is empty" in issue["message"]
         for issue in error.diagnostics["split_audit"]["issues"]
     )
+
+
+def test_dataset_generation_service_accepts_trial_kfold_split_payload() -> None:
+    service, study, training = _service()
+    training.next_datasets = [
+        _Dataset(
+            train=[True, True, False, False],
+            val=[False, False, True, False],
+            test=[False, False, False, True],
+        ),
+    ]
+
+    _message, payload = _expect_payload(
+        service.handle_generate_dataset(
+            GenerateDatasetCommand(
+                split_config={
+                    "train_type": "Full Data",
+                    "is_cross_validation": True,
+                    "val_splitters": [
+                        {
+                            "split_type": "By Trial",
+                            "split_unit": "Ratio",
+                            "value": "0.2",
+                        },
+                    ],
+                    "test_splitters": [
+                        {
+                            "split_type": "By Trial",
+                            "split_unit": "K Fold",
+                            "value": "5",
+                        },
+                    ],
+                },
+            ),
+        ),
+    )
+
+    assert study.generated_config is not None
+    assert study.generated_config.is_cross_validation is True
+    assert study.generated_config.test_splitter_list[0].split_type == SplitByType.TRIAL
+    assert study.generated_config.test_splitter_list[0].split_unit == SplitUnit.KFOLD
+    assert study.generated_config.test_splitter_list[0].value_var == "5"
+    assert payload["protocol"] == "trial-wise"
+    assert payload["split_audit"]["ok"] is True
 
 
 def test_dataset_generation_service_rolls_back_failed_split_audit() -> None:

@@ -504,6 +504,7 @@ class DataSplittingDialog(BaseDialog):
         right_layout.addLayout(form_layout)
 
         self.cv_check = QCheckBox("Cross validation")
+        self.cv_check.setObjectName("DataSplitCrossValidationCheck")
         self.cv_check.stateChanged.connect(self.update_preview)
         right_layout.addWidget(self.cv_check)
 
@@ -519,6 +520,8 @@ class DataSplittingDialog(BaseDialog):
         action_layout.addStretch(1)
         self.btn_confirm = QPushButton("Confirm")
         self.btn_confirm.setObjectName("PrimaryConfirmButton")
+        self.btn_confirm.setAutoDefault(False)
+        self.btn_confirm.setDefault(False)
         self.btn_confirm.clicked.connect(self.confirm)
         action_layout.addWidget(self.btn_confirm)
         layout.addLayout(action_layout)
@@ -761,6 +764,7 @@ class DataSplittingDialog(BaseDialog):
             subcontrol-origin: padding;
             subcontrol-position: top right;
             border: none;
+            background: transparent;
             width: 24px;
         }
         QComboBox::down-arrow {
@@ -775,6 +779,7 @@ class DataSplittingDialog(BaseDialog):
             selection-color: #ffffff;
         }
         QCheckBox {
+            background: transparent;
             color: #f2f5f8;
             spacing: 8px;
         }

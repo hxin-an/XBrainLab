@@ -735,18 +735,12 @@ class VisualizationPanel(BasePanel):
             return False
         if int(diagnostics.get("finished_run_count") or 0) < 1:
             return False
-        params = self._configured_saliency_params()
-        profile = "configured"
-        if not params:
-            params = baseline_saliency_params()
-            profile = "recommended-baseline"
+        params = baseline_saliency_params()
         return self._start_saliency_compute(
             params=params,
-            method_name=self.method_combo.currentText()
-            if hasattr(self, "method_combo")
-            else "Gradient",
+            method_name="Gradient",
             current_widget=self.tabs.currentWidget() if hasattr(self, "tabs") else None,
-            attempt_key=("training_stopped", id(query_result), profile),
+            attempt_key=("training_stopped", id(query_result), "recommended-baseline"),
         )
 
     def _start_saliency_compute(

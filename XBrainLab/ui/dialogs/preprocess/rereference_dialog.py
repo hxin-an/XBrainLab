@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QListWidget,
     QMessageBox,
+    QPushButton,
     QVBoxLayout,
 )
 
@@ -46,11 +47,6 @@ class RereferenceDialog(BaseDialog):
         """Initialize the dialog UI with reference mode controls."""
         layout = QVBoxLayout(self)
 
-        self.avg_check = QCheckBox("Use Average Reference")
-        self.avg_check.setChecked(True)
-        self.avg_check.toggled.connect(self.toggle_avg)
-        layout.addWidget(self.avg_check)
-
         self.chan_group = QGroupBox("Select Reference Channels")
         self.chan_group.setEnabled(False)
         chan_layout = QVBoxLayout()
@@ -65,9 +61,18 @@ class RereferenceDialog(BaseDialog):
         self.chan_group.setLayout(chan_layout)
         layout.addWidget(self.chan_group)
 
+        self.avg_check = QCheckBox("Use average reference")
+        self.avg_check.setChecked(True)
+        self.avg_check.toggled.connect(self.toggle_avg)
+        layout.addWidget(self.avg_check)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
+        for button in buttons.buttons():
+            if isinstance(button, QPushButton):
+                button.setAutoDefault(False)
+                button.setDefault(False)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)

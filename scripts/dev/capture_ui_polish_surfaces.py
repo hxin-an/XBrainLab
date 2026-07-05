@@ -22,6 +22,8 @@ from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
     DataSplitterHolder,
     DataSplittingPreviewDialog,
 )
+from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
+from XBrainLab.ui.dialogs.preprocess.rereference_dialog import RereferenceDialog
 from XBrainLab.ui.dialogs.training.model_selection_dialog import ModelSelectionDialog
 from XBrainLab.ui.panels.evaluation.metrics_table import MetricsTableWidget
 
@@ -35,6 +37,8 @@ def main() -> int:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     captures = [
         ("model-selection-dialog.png", _model_selection_dialog()),
+        ("preprocess-rereference-dialog.png", _rereference_dialog()),
+        ("preprocess-epoching-dialog.png", _epoching_dialog()),
         ("data-splitting-dialog.png", _data_splitting_dialog()),
         ("data-splitting-preview-dialog.png", _data_splitting_preview_dialog()),
         ("evaluation-metrics-table.png", _metrics_table()),
@@ -60,6 +64,44 @@ def _model_selection_dialog() -> QWidget:
     return dialog
 
 
+def _rereference_dialog() -> QWidget:
+    data = MagicMock()
+    data.get_mne.return_value.ch_names = ["Fz", "C3", "Cz", "C4", "Pz"]
+    dialog = RereferenceDialog(None, [data])
+    dialog.resize(QSize(460, 340))
+    return dialog
+
+
+def _epoching_dialog() -> QWidget:
+    data = MagicMock()
+    data.get_event_list.return_value = (
+        None,
+        {"768": 1, "769": 2, "770": 3, "771": 4, "772": 5},
+    )
+    dialog = EpochingDialog(
+        None,
+        [data],
+        epoch_context={
+            "available_events": [
+                {"name": "769", "count": 72},
+                {"name": "770", "count": 72},
+                {"name": "771", "count": 72},
+                {"name": "772", "count": 72},
+            ],
+            "recommended_events": ["769", "770", "771", "772"],
+            "suggested_t_min": -0.2,
+            "suggested_t_max": 1.0,
+            "suggested_baseline": (-0.2, 0.0),
+            "has_import_hint": True,
+            "source": "labels inside EEG files",
+            "placement_label": "Events inside EEG files",
+            "window_evidence": "Suggested from the import label matching step.",
+        },
+    )
+    dialog.resize(QSize(640, 680))
+    return dialog
+
+
 def _data_splitting_dialog() -> QWidget:
     controller = MagicMock()
     controller.get_epoch_data.return_value = object()
@@ -75,11 +117,12 @@ def _data_splitting_preview_dialog() -> QWidget:
     epoch.session_map = {"session": [0, 1, 2, 3, 4, 5]}
     epoch.label_map = {"left": 0, "right": 1}
     epoch.data = list(range(120))
+    epoch.get_data_length.return_value = 120
     val_splitter = DataSplitterHolder(True, ValSplitByType.TRIAL)
     test_splitter = DataSplitterHolder(True, SplitByType.TRIAL)
     config = DataSplittingConfig(
         TrainingType.FULL,
-        False,
+        True,
         [val_splitter],
         [test_splitter],
     )
@@ -99,8 +142,11 @@ def _data_splitting_preview_dialog() -> QWidget:
     dialog._interrupt_preview_worker(0.2)
     dialog.tree.clear()
     for name, train, val, test in (
-        ("Dataset 1", 78, 21, 21),
-        ("Dataset 2", 80, 20, 20),
+        ("Fold_0", 76, 20, 24),
+        ("Fold_1", 76, 20, 24),
+        ("Fold_2", 77, 19, 24),
+        ("Fold_3", 77, 19, 24),
+        ("Fold_4", 78, 18, 24),
     ):
         item = QTreeWidgetItem(dialog.tree)
         item.setText(0, name)
@@ -178,6 +224,8 @@ def _write_readme() -> None:
         "Focused current screenshots for manual review of surfaces that are not "
         "fully represented by the Data Import wizard artifacts.\n\n"
         "- `model-selection-dialog.png`\n"
+        "- `preprocess-rereference-dialog.png`\n"
+        "- `preprocess-epoching-dialog.png`\n"
         "- `data-splitting-dialog.png`\n"
         "- `data-splitting-preview-dialog.png`\n"
         "- `evaluation-metrics-table.png`\n",

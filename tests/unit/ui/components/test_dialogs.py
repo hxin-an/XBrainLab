@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QLabel
+from PyQt6.QtWidgets import QCheckBox, QDialogButtonBox, QGroupBox, QLabel, QPushButton
 
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.ui.dialogs.dataset import ChannelSelectionDialog, SmartParserDialog
@@ -111,6 +111,26 @@ def test_epoching_dialog_init(qtbot):
         assert isinstance(params[3], float)  # tmax
 
 
+def test_epoching_dialog_baseline_and_primary_button_are_product_styled(qtbot):
+    mock_data = MagicMock(spec=Raw)
+    mock_data.get_event_list.return_value = (MagicMock(), {"Event1": 1})
+    mock_data.is_raw.return_value = True
+
+    dialog = EpochingDialog(None, [mock_data])
+    qtbot.addWidget(dialog)
+
+    baseline = dialog.findChild(QCheckBox, "EpochBaselineCheck")
+    assert baseline is not None
+    assert "QCheckBox" in dialog.styleSheet()
+    assert "background-color: transparent" in dialog.styleSheet()
+
+    create_button = dialog.findChild(QPushButton, "EpochPrimaryButton")
+    assert create_button is not None
+    assert create_button.text() == "Create Epochs"
+    assert not create_button.autoDefault()
+    assert not create_button.isDefault()
+
+
 def test_resample_dialog_init(qtbot):
     """Test ResampleDialog."""
     dialog = ResampleDialog(None)
@@ -155,6 +175,30 @@ def test_rereference_dialog_default(qtbot):
         assert dialog.avg_check.isChecked()
         dialog.accept()
         assert dialog.get_params() == "average"
+
+
+def test_rereference_dialog_channel_box_precedes_average_checkbox(qtbot):
+    """Average reference should read as an option below channel selection."""
+    mock_data = MagicMock(spec=Raw)
+    mock_data.get_mne.return_value.ch_names = ["C3", "C4"]
+
+    dialog = RereferenceDialog(None, [mock_data])
+    qtbot.addWidget(dialog)
+
+    group = dialog.findChild(QGroupBox)
+    assert group is dialog.chan_group
+    assert group.title() == "Select Reference Channels"
+    assert dialog.avg_check is not None
+    assert dialog.avg_check.text() == "Use average reference"
+
+    layout = dialog.layout()
+    assert layout is not None
+    assert layout.indexOf(dialog.chan_group) < layout.indexOf(dialog.avg_check)
+
+    buttons = dialog.findChild(QDialogButtonBox)
+    assert buttons is not None
+    assert all(not button.autoDefault() for button in buttons.buttons())
+    assert all(not button.isDefault() for button in buttons.buttons())
 
 
 def test_rereference_dialog_custom(qtbot):
