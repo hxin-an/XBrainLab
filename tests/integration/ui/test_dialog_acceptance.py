@@ -80,9 +80,16 @@ def test_epoching_dialog_accepts_selected_event_and_baseline_toggle(qtbot):
     _show_dialog(qtbot, dialog)
 
     assert dialog.event_list is not None
-    event_item = dialog.event_list.item(0)
-    assert event_item is not None
-    event_item.setSelected(True)
+    for row in range(dialog.event_list.rowCount()):
+        check_item = dialog.event_list.item(row, 0)
+        event_item = dialog.event_list.item(row, 1)
+        assert check_item is not None
+        assert event_item is not None
+        check_item.setCheckState(
+            Qt.CheckState.Checked
+            if event_item.text() == "left"
+            else Qt.CheckState.Unchecked
+        )
     assert dialog.baseline_check is not None
     assert dialog.tmin_spin is not None
     assert dialog.tmax_spin is not None
@@ -131,10 +138,11 @@ def test_epoching_dialog_uses_import_interval_defaults(qtbot):
     assert dialog.tmax_spin.value() == 1.25
     assert dialog.baseline_check.isChecked() is False
     checked = [
-        item.text()
-        for index in range(dialog.event_list.count())
-        if (item := dialog.event_list.item(index)) is not None
-        and item.checkState() == Qt.CheckState.Checked
+        event_item.text()
+        for row in range(dialog.event_list.rowCount())
+        if (check_item := dialog.event_list.item(row, 0)) is not None
+        and (event_item := dialog.event_list.item(row, 1)) is not None
+        and check_item.checkState() == Qt.CheckState.Checked
     ]
     assert checked == ["Left hand", "Right hand"]
 

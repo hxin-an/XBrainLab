@@ -1604,8 +1604,9 @@ class DataInterpretationPreviewDialog(
         current = self.step_stack.currentIndex()
         total = len(self._step_titles)
         title = self._step_titles[current] if current < total else "Review"
+        step_summary = "  >  ".join(self._step_titles)
         self.workflow_steps_label.setText(
-            f"Step {current + 1} of {total}: {title}\n" + " | ".join(self._step_titles)
+            f"Step {current + 1} of {total}: {title}\n{step_summary}"
         )
         self._sync_step_labels(current)
         self.back_button.setEnabled(current > 0)
@@ -3394,7 +3395,7 @@ class DataInterpretationPreviewDialog(
         source = str(value.get("source") or "unknown")
         decision = str(value.get("decision") or "unknown")
         reason = str(value.get("reason") or "")
-        return " | ".join(part for part in [source, decision, reason] if part)
+        return " - ".join(part for part in [source, decision, reason] if part)
 
     def _edited_choices(self) -> dict[str, Any]:
         choices: dict[str, Any] = {}

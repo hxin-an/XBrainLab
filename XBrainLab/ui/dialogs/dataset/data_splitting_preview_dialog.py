@@ -34,6 +34,7 @@ from XBrainLab.backend.dataset import (
     ValSplitByType,
 )
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.dialogs.common import checkbox_stylesheet
 from XBrainLab.ui.styles.theme import Theme
 
 from .manual_split_dialog import ManualSplitDialog
@@ -100,30 +101,31 @@ _PREVIEW_DIALOG_STYLE = f"""
     QPushButton#PrimaryConfirmButton:hover {{
         background-color: #0a7fc7;
     }}
+    {checkbox_stylesheet()}
 """
 
 _RESULT_TREE_STYLE = f"""
     QTreeWidget {{
-        background-color: #202225;
-        alternate-background-color: #27292d;
+        background-color: {Theme.METRICS_TABLE_BG};
+        alternate-background-color: {Theme.METRICS_TABLE_ALT_BG};
         color: {Theme.TEXT_PRIMARY};
-        border: 1px solid {Theme.BACKGROUND_LIGHT};
+        border: 1px solid {Theme.METRICS_TABLE_BORDER};
         border-radius: 4px;
-        gridline-color: {Theme.BACKGROUND_LIGHT};
+        gridline-color: transparent;
     }}
     QTreeWidget::item {{
         padding: 5px 8px;
         min-height: 26px;
     }}
     QTreeWidget::item:selected {{
-        background-color: #202225;
+        background-color: {Theme.METRICS_TABLE_SELECTION};
         color: {Theme.TEXT_PRIMARY};
     }}
     QHeaderView::section {{
-        background-color: {Theme.BACKGROUND_LIGHT};
-        color: {Theme.TEXT_PRIMARY};
+        background-color: {Theme.BACKGROUND_MID};
+        color: {Theme.TEXT_SECONDARY};
         border: none;
-        border-right: 1px solid {Theme.BACKGROUND_MID};
+        border-bottom: 1px solid {Theme.METRICS_TABLE_GRID};
         padding: 6px 8px;
         font-weight: bold;
     }}
@@ -258,7 +260,7 @@ class DataSplittingPreviewDialog(BaseDialog):
     def init_ui(self):
         """Initialize the dialog UI with tree view and split controls."""
         self.setStyleSheet(_PREVIEW_DIALOG_STYLE)
-        self.setMinimumSize(920, 620)
+        self.setMinimumSize(920, 560)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(18)
@@ -285,6 +287,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         self.tree.setAlternatingRowColors(True)
         self.tree.setUniformRowHeights(True)
         self.tree.setIndentation(0)
+        self.tree.setRootIsDecorated(False)
         self.tree.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.tree.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.tree.setStyleSheet(_RESULT_TREE_STYLE)
@@ -461,13 +464,13 @@ class DataSplittingPreviewDialog(BaseDialog):
         right_layout.addWidget(test_group)
 
         # Confirm
-        right_layout.addStretch(1)
         self.btn_confirm = QPushButton("Confirm")
         self.btn_confirm.setObjectName("PrimaryConfirmButton")
         self.btn_confirm.setAutoDefault(False)
         self.btn_confirm.setDefault(False)
         self.btn_confirm.clicked.connect(self.confirm)
         right_layout.addWidget(self.btn_confirm)
+        right_layout.addStretch(1)
 
         layout.addLayout(right_layout, stretch=1)
 

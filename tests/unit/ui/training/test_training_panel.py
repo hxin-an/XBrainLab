@@ -626,6 +626,45 @@ def test_training_panel_keeps_manual_selection_on_training_updated(
     assert panel._selection_pinned_by_user is True
 
 
+def test_training_panel_log_tab_follows_selected_history_row(
+    mock_main_window,
+    qtbot,
+):
+    """Selecting a history row should replace Log with that run's epoch lines."""
+    controller = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+
+    group_1 = _make_history_entry(epoch_count=1, run_name="1", repeat=2)
+    group_2 = _make_history_entry(epoch_count=1, run_name="2", repeat=2)
+    group_1["record"].train[TrainRecordKey.LOSS] = [0.5]
+    group_1["record"].train[TrainRecordKey.ACC] = [0.8]
+    group_1["record"].val[RecordKey.LOSS] = [0.6]
+    group_1["record"].val[RecordKey.ACC] = [0.75]
+    group_2["record"].train[TrainRecordKey.LOSS] = [0.33]
+    group_2["record"].train[TrainRecordKey.ACC] = [0.9]
+    group_2["record"].val[RecordKey.LOSS] = [0.44]
+    group_2["record"].val[RecordKey.ACC] = [0.85]
+    controller.get_formatted_history = MagicMock(return_value=[group_1, group_2])
+
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+
+    panel.on_history_selection_changed(group_1["record"])
+    assert "train loss=0.5" in panel.log_text.toPlainText()
+    assert "train loss=0.33" not in panel.log_text.toPlainText()
+
+    panel.on_history_selection_changed(group_2["record"])
+    assert "train loss=0.33" in panel.log_text.toPlainText()
+    assert "train loss=0.5" not in panel.log_text.toPlainText()
+
+
 def test_training_panel_refreshes_progress_and_plot_on_training_updated(
     mock_main_window,
     qtbot,
@@ -747,8 +786,8 @@ def test_training_panel_logs_each_epoch_on_training_updated(
     qtbot.wait(50)
 
     log_text = panel.log_text.toPlainText()
-    assert "Epoch 1 | train loss=0.5 acc=0.8" in log_text
-    assert "Epoch 2 | train loss=0.49 acc=0.81" in log_text
+    assert "Epoch 1: train loss=0.5 acc=0.8" in log_text
+    assert "Epoch 2: train loss=0.49 acc=0.81" in log_text
     assert "val loss=0.59 acc=0.76" in log_text
 
 

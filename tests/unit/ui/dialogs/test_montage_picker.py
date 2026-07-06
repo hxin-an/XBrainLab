@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 from PyQt6.QtCore import QSettings
 from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QComboBox, QTableWidget
+from PyQt6.QtWidgets import QComboBox, QDialogButtonBox, QTableWidget
 
 from XBrainLab.ui.styles.theme import Theme
 
@@ -83,11 +83,12 @@ class TestPickMontageInit:
     def test_mapping_table_uses_integrated_dark_table_style(self, dialog):
         assert dialog.table.objectName() == "MontageMappingTable"
         assert dialog.table.alternatingRowColors() is True
-        assert dialog.table.showGrid() is True
+        assert dialog.table.showGrid() is False
 
         stylesheet = dialog.table.styleSheet()
         assert "QTableWidget#MontageMappingTable" in stylesheet
         assert f"alternate-background-color: {Theme.METRICS_TABLE_ALT_BG}" in stylesheet
+        assert f"background-color: {Theme.BACKGROUND_MID}" in stylesheet
 
         first_item = dialog.table.item(0, 0)
         second_item = dialog.table.item(1, 0)
@@ -105,6 +106,17 @@ class TestPickMontageInit:
         assert "border: none" in stylesheet
         assert f"background-color: {Theme.METRICS_TABLE_BG}" in stylesheet
         assert "QAbstractItemView" in stylesheet
+
+    def test_ok_cancel_buttons_have_no_icons(self, dialog):
+        buttons = dialog.findChild(QDialogButtonBox)
+        assert buttons is not None
+        for standard in (
+            QDialogButtonBox.StandardButton.Ok,
+            QDialogButtonBox.StandardButton.Cancel,
+        ):
+            button = buttons.button(standard)
+            assert button is not None
+            assert button.icon().isNull()
 
 
 class TestMontageSelection:

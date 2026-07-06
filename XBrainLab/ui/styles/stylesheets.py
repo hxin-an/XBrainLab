@@ -4,7 +4,13 @@ All stylesheet constants reference ``Theme`` color tokens for
 consistent application-wide styling.
 """
 
+from pathlib import Path
+
 from XBrainLab.ui.styles.theme import Theme
+
+_CHECKMARK_ICON = (
+    Path(__file__).resolve().parents[2] / "resources" / "icons" / "checkmark.svg"
+).as_posix()
 
 
 class Stylesheets:
@@ -403,7 +409,25 @@ class Stylesheets:
     """
 
     # Muted Checkbox
-    CHECKBOX_MUTED = f"QCheckBox {{ color: {Theme.TEXT_MUTED}; }}"
+    CHECKBOX_MUTED = f"""
+        QCheckBox {{
+            background-color: transparent;
+            color: {Theme.TEXT_MUTED};
+            spacing: 8px;
+        }}
+        QCheckBox::indicator {{
+            background-color: {Theme.METRICS_TABLE_BG};
+            border: 1px solid {Theme.BACKGROUND_LIGHT};
+            border-radius: 3px;
+            width: 14px;
+            height: 14px;
+        }}
+        QCheckBox::indicator:checked {{
+            image: url("{_CHECKMARK_ICON}");
+            background-color: {Theme.BLUE_PRESSED};
+            border-color: {Theme.BLUE_HOVER};
+        }}
+    """
 
     # Metrics Table (Evaluation)
     METRICS_TABLE = f"""

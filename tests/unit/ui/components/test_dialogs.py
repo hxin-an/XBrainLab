@@ -83,9 +83,10 @@ def test_epoching_dialog_init(qtbot):
         dialog = EpochingDialog(None, [mock_data])
         qtbot.addWidget(dialog)
 
-        # Check if event list is populated
-        assert dialog.event_list.count() > 0
-        assert dialog.event_list.item(0).text() == "Event1"
+        # Check if event table is populated
+        assert dialog.event_list.rowCount() > 0
+        assert dialog.event_list.horizontalHeaderItem(0).text() == "Use"
+        assert dialog.event_list.item(0, 1).text() == "Event1"
 
         # Verify new UI elements exist (added for epoch duration validation)
         assert isinstance(dialog.duration_label, QLabel)
@@ -93,7 +94,7 @@ def test_epoching_dialog_init(qtbot):
         assert callable(dialog.update_duration_info)
 
         # Select event
-        dialog.event_list.item(0).setSelected(True)
+        dialog.event_list.item(0, 0).setCheckState(Qt.CheckState.Checked)
 
         # Accept
         dialog.accept()

@@ -36,6 +36,7 @@ from XBrainLab.backend.dataset import (
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.application_capabilities import find_study
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.dialogs.common import checkbox_stylesheet
 
 from .data_splitting_preview_dialog import (
     DataSplitterHolder,
@@ -466,9 +467,14 @@ class DataSplittingDialog(BaseDialog):
         options_group.setObjectName("DataSplitOptionsGroup")
         options_group.setMinimumWidth(260)
         options_group.setMaximumWidth(300)
+        options_group.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Maximum,
+        )
         right_layout = QVBoxLayout(options_group)
         right_layout.setContentsMargins(12, 12, 12, 12)
         right_layout.setSpacing(12)
+        right_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         settings_title = QLabel("Split settings")
         settings_title.setObjectName("DataSplitSectionTitle")
         right_layout.addWidget(settings_title)
@@ -512,8 +518,8 @@ class DataSplittingDialog(BaseDialog):
         self.blocked_label.setWordWrap(True)
         self.blocked_label.setStyleSheet("color: #f59e0b;")
         right_layout.addWidget(self.blocked_label)
-        right_layout.addStretch(1)
         content_layout.addWidget(options_group, stretch=0)
+        content_layout.setAlignment(options_group, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(content_layout)
 
         action_layout = QHBoxLayout()
@@ -716,7 +722,8 @@ class DataSplittingDialog(BaseDialog):
 
     @staticmethod
     def _dialog_style() -> str:
-        return """
+        return (
+            """
         QDialog#DataSplittingDialog {
             background: #1b1b1d;
             color: #f2f5f8;
@@ -778,22 +785,9 @@ class DataSplittingDialog(BaseDialog):
             selection-background-color: #0b5f94;
             selection-color: #ffffff;
         }
-        QCheckBox {
-            background: transparent;
-            color: #f2f5f8;
-            spacing: 8px;
-        }
-        QCheckBox::indicator {
-            width: 14px;
-            height: 14px;
-            border: 1px solid #5d6670;
-            border-radius: 2px;
-            background: #25272a;
-        }
-        QCheckBox::indicator:checked {
-            background: #0069a8;
-            border-color: #0a7fc7;
-        }
+        """
+            + checkbox_stylesheet()
+            + """
         QPushButton#PrimaryConfirmButton {
             min-width: 128px;
             padding: 7px 12px;
@@ -812,3 +806,4 @@ class DataSplittingDialog(BaseDialog):
             color: #87909b;
         }
         """.replace("__CHEVRON_DOWN_ICON__", _CHEVRON_DOWN_ICON)
+        )

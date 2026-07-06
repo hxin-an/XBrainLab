@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.visualization import all_saliency_methods
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.dialogs.common import normalize_dialog_button_box
 
 
 class ExportSaliencyDialog(BaseDialog):
@@ -79,6 +80,7 @@ class ExportSaliencyDialog(BaseDialog):
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
+        normalize_dialog_button_box(self.button_box, ok_text="Export")
         ok_btn = self.button_box.button(QDialogButtonBox.StandardButton.Ok)
         if ok_btn:
             ok_btn.setText("Export")

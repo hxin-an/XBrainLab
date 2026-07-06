@@ -90,12 +90,12 @@ class TestModelSelection:
         )
         assert dialog.params_table.height() <= 240
         assert dialog.params_table.palette().color(QPalette.ColorRole.Highlight) == (
-            QColor(Theme.BLUE_PRESSED)
+            QColor(Theme.METRICS_TABLE_SELECTION)
         )
         assert dialog.params_table.palette().color(
             QPalette.ColorGroup.Inactive,
             QPalette.ColorRole.Highlight,
-        ) == QColor(Theme.BLUE_PRESSED)
+        ) == QColor(Theme.METRICS_TABLE_SELECTION)
         assert dialog.params_table.palette().color(
             QPalette.ColorGroup.Inactive,
             QPalette.ColorRole.HighlightedText,

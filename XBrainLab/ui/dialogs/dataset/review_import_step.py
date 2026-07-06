@@ -264,7 +264,11 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             grouped.setdefault(group_title, []).append(
                 (target_step, issue, impact, next_action)
             )
-        for group_title in ("Cannot import yet", "Needs your decision"):
+        for group_title in (
+            "Cannot import yet",
+            "Needs your decision",
+            "Review before import",
+        ):
             items = grouped.get(group_title)
             if not items:
                 continue
@@ -290,6 +294,23 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             or "blocked" in lowered
         ):
             return "Cannot import yet"
+        if any(
+            token in lowered
+            for token in (
+                "choose",
+                "fix",
+                "select",
+                "resolve",
+                "provide",
+                "confirm",
+                "conversion",
+                "missing",
+                "needs review",
+            )
+        ):
+            return "Needs your decision"
+        if "review" in lowered:
+            return "Review before import"
         return "Needs your decision"
 
     def _action_item_card(

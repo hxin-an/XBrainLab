@@ -607,7 +607,12 @@ class VisualizationPanel(BasePanel):
         method_name = (
             self.method_combo.currentText() if hasattr(self, "method_combo") else ""
         ) or "Gradient"
-        params = recommended_saliency_params_for_method(method_name)
+        params = self._configured_saliency_params()
+        configured_methods = (
+            selected_saliency_methods_from_params(params) if params else set()
+        )
+        if not params or method_name not in configured_methods:
+            params = recommended_saliency_params_for_method(method_name)
         methods = params.get("methods")
         methods_key = tuple(methods) if isinstance(methods, (list, tuple, set)) else ()
         current_widget = self.tabs.currentWidget() if hasattr(self, "tabs") else None

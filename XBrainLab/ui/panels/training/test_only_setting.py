@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.backend.training import TestOnlyOption, parse_device_name
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.dialogs.common import normalize_dialog_button_box
 from XBrainLab.ui.dialogs.training.device_setting_dialog import DeviceSettingDialog
 
 
@@ -71,6 +72,7 @@ class TestOnlySettingWindow(BaseDialog):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
+        normalize_dialog_button_box(buttons)
         buttons.accepted.connect(self.confirm)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)

@@ -340,9 +340,9 @@ class TestEpochingDialog:
         assert dialog.event_list is not None
         assert dialog.handoff_label is not None
         checked = [
-            dialog.event_list.item(index).text()
-            for index in range(dialog.event_list.count())
-            if dialog.event_list.item(index).checkState() == Qt.CheckState.Checked
+            dialog.event_list.item(row, 1).text()
+            for row in range(dialog.event_list.rowCount())
+            if dialog.event_list.item(row, 0).checkState() == Qt.CheckState.Checked
         ]
 
         assert checked == ["Left hand", "Right hand"]
@@ -407,8 +407,8 @@ class TestEpochingDialog:
         qtbot.addWidget(dialog)
 
         assert dialog.event_list is not None
-        for index in range(dialog.event_list.count()):
-            dialog.event_list.item(index).setCheckState(Qt.CheckState.Unchecked)
+        for row in range(dialog.event_list.rowCount()):
+            dialog.event_list.item(row, 0).setCheckState(Qt.CheckState.Unchecked)
 
         with patch(
             "XBrainLab.ui.dialogs.preprocess.epoching_dialog.QMessageBox.warning"
@@ -430,7 +430,7 @@ class TestEpochingDialog:
         qtbot.addWidget(dialog)
 
         assert dialog.event_list is not None
-        dialog.event_list.item(0).setCheckState(Qt.CheckState.Checked)
+        dialog.event_list.item(0, 0).setCheckState(Qt.CheckState.Checked)
         dialog.tmin_spin.setValue(0.0)
         dialog.tmax_spin.setValue(1.0)
         dialog.baseline_check.setChecked(True)

@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 from PyQt6.QtCore import QModelIndex, Qt
-from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -33,7 +32,7 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend import model_base
 from XBrainLab.backend.training import ModelHolder
 from XBrainLab.ui.core.base_dialog import BaseDialog
-from XBrainLab.ui.styles.stylesheets import Stylesheets
+from XBrainLab.ui.dialogs.common import configure_dark_table
 from XBrainLab.ui.styles.theme import Theme
 
 ARG_DICT_SKIP_SET = {"self", "n_classes", "channels", "samples", "sfreq"}
@@ -135,8 +134,11 @@ class ModelSelectionDialog(BaseDialog):
         setup_layout.addWidget(QLabel("Pretrained weight"), 2, 0)
         self.weight_label = QLabel("None")
         self.weight_label.setObjectName("PretrainedWeightLabel")
+        self.weight_label.setMinimumHeight(28)
+        self.weight_label.setWordWrap(False)
         setup_layout.addWidget(self.weight_label, 2, 1)
         self.weight_btn = QPushButton("Load")
+        self.weight_btn.setFixedWidth(76)
         self.weight_btn.clicked.connect(self.load_pretrained_weight)
         setup_layout.addWidget(self.weight_btn, 2, 2)
         setup_layout.setColumnStretch(1, 1)
@@ -170,39 +172,11 @@ class ModelSelectionDialog(BaseDialog):
         )
         self.params_table.setMinimumHeight(140)
         self.params_table.setMaximumHeight(240)
-        self.params_table.setStyleSheet(Stylesheets.METRICS_TABLE)
-        palette = self.params_table.palette()
-        for group in (
-            QPalette.ColorGroup.Active,
-            QPalette.ColorGroup.Inactive,
-            QPalette.ColorGroup.Disabled,
-        ):
-            palette.setColor(
-                group,
-                QPalette.ColorRole.Base,
-                QColor(Theme.METRICS_TABLE_BG),
-            )
-            palette.setColor(
-                group,
-                QPalette.ColorRole.AlternateBase,
-                QColor(Theme.METRICS_TABLE_ALT_BG),
-            )
-            palette.setColor(
-                group,
-                QPalette.ColorRole.Text,
-                QColor(Theme.TEXT_PRIMARY),
-            )
-            palette.setColor(
-                group,
-                QPalette.ColorRole.Highlight,
-                QColor(Theme.BLUE_PRESSED),
-            )
-            palette.setColor(
-                group,
-                QPalette.ColorRole.HighlightedText,
-                QColor(Theme.TEXT_PRIMARY),
-            )
-        self.params_table.setPalette(palette)
+        configure_dark_table(
+            self.params_table,
+            object_name="ModelParamsTable",
+            no_selection=True,
+        )
         header = self.params_table.horizontalHeader()
         if header is not None:
             header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -265,7 +239,11 @@ class ModelSelectionDialog(BaseDialog):
             height: 10px;
         }}
         QDialog#ModelSelectionDialog QLabel#PretrainedWeightLabel {{
+            background: {Theme.METRICS_TABLE_BG};
             color: {Theme.TEXT_SECONDARY};
+            border: 1px solid {Theme.METRICS_TABLE_BORDER};
+            border-radius: 4px;
+            padding: 5px 8px;
         }}
         QDialog#ModelSelectionDialog QScrollArea#ModelSelectionContentScroll {{
             border: none;

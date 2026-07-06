@@ -58,7 +58,7 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
 
     assert dialog.windowTitle() == "Import EEG Data"
     assert dialog.decision == "needs_confirmation"
-    assert "Choose EEG Data | Load Labels | Review Metadata" in (
+    assert "Choose EEG Data  >  Load Labels  >  Review Metadata" in (
         dialog.workflow_steps_label.text()
     )
     assert dialog.file_tree.topLevelItemCount() == 1

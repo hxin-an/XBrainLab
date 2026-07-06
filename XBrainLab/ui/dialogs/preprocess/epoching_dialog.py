@@ -6,6 +6,7 @@ Provides controls for selecting events, specifying the time window
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QAbstractSpinBox,
     QCheckBox,
     QDialogButtonBox,
@@ -13,13 +14,14 @@ from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -27,6 +29,11 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.application.epoch_context import build_epoching_context
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.dialogs.common import (
+    checkbox_stylesheet,
+    configure_dark_table,
+    normalize_dialog_button_box,
+)
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
@@ -61,7 +68,7 @@ class EpochingDialog(BaseDialog):
     Attributes:
         data_list: List of loaded EEG data objects.
         params: Tuple of (baseline, selected_events, tmin, tmax) after acceptance.
-        event_list: QListWidget displaying available event types.
+        event_list: QTableWidget displaying available event types.
         tmin_spin: QDoubleSpinBox for epoch start time.
         tmax_spin: QDoubleSpinBox for epoch end time.
         duration_label: QLabel showing computed epoch duration.
@@ -89,7 +96,7 @@ class EpochingDialog(BaseDialog):
         self.params: tuple | None = None
 
         # UI Elements
-        self.event_list: QListWidget | None = None
+        self.event_list: QTableWidget | None = None
         self.handoff_label: QLabel | None = None
         self.tmin_spin: QDoubleSpinBox | None = None
         self.tmax_spin: QDoubleSpinBox | None = None
@@ -100,7 +107,7 @@ class EpochingDialog(BaseDialog):
         self.b_max_spin: QDoubleSpinBox | None = None
 
         super().__init__(parent, title="Time Epoching")
-        self.resize(640, 720)
+        self.resize(640, 740)
         self.setStyleSheet(self._dialog_style())
 
     def init_ui(self):
@@ -120,6 +127,7 @@ class EpochingDialog(BaseDialog):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setWidget(content)
 
         header = QLabel("Create Epochs")
@@ -146,8 +154,14 @@ class EpochingDialog(BaseDialog):
         event_hint = QLabel(self._event_hint_text())
         event_hint.setWordWrap(True)
         event_layout.addWidget(event_hint)
-        self.event_list = QListWidget()
-        self.event_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        self.event_list = QTableWidget()
+        self.event_list.setColumnCount(4)
+        self.event_list.setHorizontalHeaderLabels(["Use", "Event", "Type", "Count"])
+        configure_dark_table(self.event_list, object_name="EpochEventTable")
+        self.event_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.event_list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.event_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.event_list.setShowGrid(False)
 
         available_events = self.epoch_context.get("available_events") or []
         if not available_events:
@@ -157,24 +171,68 @@ class EpochingDialog(BaseDialog):
             available_events = [{"name": str(ev), "count": None} for ev in events]
 
         recommended_events = set(self.epoch_context.get("recommended_events") or [])
+        rows = []
         for event in sorted(available_events, key=self._event_item_sort_key):
             event_name = str(event.get("name") or "").strip()
             if not event_name:
                 continue
-            self.event_list.addItem(event_name)
-            item = self.event_list.item(self.event_list.count() - 1)
-            if item is None:
-                continue
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            count = event.get("count")
-            if count is not None:
-                item.setToolTip(f"{event_name}: {count} event(s)")
-            if event_name in recommended_events:
-                item.setCheckState(Qt.CheckState.Checked)
-            else:
-                item.setCheckState(Qt.CheckState.Unchecked)
+            rows.append((event_name, event))
 
-        event_list_height = min(180, max(112, self.event_list.count() * 32 + 24))
+        self.event_list.setRowCount(len(rows))
+        for row, (event_name, event) in enumerate(rows):
+            use_item = QTableWidgetItem("")
+            use_item.setFlags(
+                Qt.ItemFlag.ItemIsEnabled
+                | Qt.ItemFlag.ItemIsUserCheckable
+                | Qt.ItemFlag.ItemIsSelectable
+            )
+            use_item.setCheckState(
+                Qt.CheckState.Checked
+                if event_name in recommended_events
+                else Qt.CheckState.Unchecked
+            )
+            self.event_list.setItem(row, 0, use_item)
+
+            event_item = QTableWidgetItem(event_name)
+            event_item.setFlags(event_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.event_list.setItem(row, 1, event_item)
+
+            event_type = (
+                "Training label"
+                if event_name in recommended_events
+                else "Available event"
+            )
+            type_item = QTableWidgetItem(event_type)
+            type_item.setFlags(type_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.event_list.setItem(row, 2, type_item)
+
+            count = event.get("count")
+            count_text = f"{count} events" if count is not None else "-"
+            count_item = QTableWidgetItem(count_text)
+            count_item.setFlags(count_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.event_list.setItem(row, 3, count_item)
+            if count is not None:
+                for col in range(4):
+                    item = self.event_list.item(row, col)
+                    if item is not None:
+                        item.setToolTip(f"{event_name}: {count} event(s)")
+
+        header = self.event_list.horizontalHeader()
+        if header is not None:
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        if len(rows) <= 6:
+            self.event_list.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+            event_list_height = max(116, len(rows) * 30 + 36)
+        else:
+            self.event_list.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            )
+            event_list_height = 210
         self.event_list.setMinimumHeight(event_list_height)
         self.event_list.setMaximumHeight(event_list_height)
         event_layout.addWidget(self.event_list)
@@ -283,7 +341,6 @@ class EpochingDialog(BaseDialog):
         self.toggle_baseline(self.baseline_check.isChecked())
 
         content_layout.addWidget(param_group)
-        content_layout.addStretch(1)
         layout.addWidget(scroll, stretch=1)
 
         footer_rule = QFrame()
@@ -302,10 +359,8 @@ class EpochingDialog(BaseDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
         ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
         if ok_button is not None:
-            ok_button.setText("Create Epochs")
             ok_button.setObjectName("EpochPrimaryButton")
-            ok_button.setAutoDefault(False)
-            ok_button.setDefault(False)
+        normalize_dialog_button_box(buttons, ok_text="Create Epochs")
         buttons.accepted.connect(self.accept)
         footer.addWidget(buttons)
         layout.addLayout(footer)
@@ -519,7 +574,8 @@ class EpochingDialog(BaseDialog):
 
     @staticmethod
     def _dialog_style() -> str:
-        return """
+        return (
+            """
         QDialog {
             background: #1b1b1d;
             color: #f2f5f8;
@@ -570,22 +626,25 @@ class EpochingDialog(BaseDialog):
             color: #f2f5f8;
             font-weight: 700;
         }
-        QListWidget {
+        QTableWidget#EpochEventTable {
             background: #18191b;
             color: #f2f5f8;
             border: 1px solid #3d454d;
             border-radius: 4px;
-            padding: 5px;
             outline: 0;
         }
-        QListWidget::item {
+        QTableWidget#EpochEventTable::item {
             color: #f2f5f8;
-            min-height: 24px;
-            padding: 3px 6px;
-            border-radius: 3px;
+            padding: 4px 8px;
+            border: none;
         }
-        QListWidget::item:selected {
-            background: #263444;
+        QHeaderView::section {
+            background: #2d2d2d;
+            color: #bac2cc;
+            border: none;
+            border-bottom: 1px solid #3d454d;
+            padding: 5px 8px;
+            font-weight: 700;
         }
         QDoubleSpinBox {
             background: #25272a;
@@ -598,22 +657,9 @@ class EpochingDialog(BaseDialog):
             color: #7f8791;
             background: #202124;
         }
-        QCheckBox {
-            background-color: transparent;
-            color: #f2f5f8;
-            spacing: 8px;
-        }
-        QCheckBox::indicator {
-            background: #25272a;
-            border: 1px solid #5d6670;
-            border-radius: 2px;
-            width: 14px;
-            height: 14px;
-        }
-        QCheckBox::indicator:checked {
-            background: #0069a8;
-            border-color: #0a7fc7;
-        }
+        """
+            + checkbox_stylesheet()
+            + """
         QFrame#EpochFooterRule {
             color: #343941;
             background: #343941;
@@ -640,6 +686,7 @@ class EpochingDialog(BaseDialog):
             min-width: 84px;
         }
         """
+        )
 
     def toggle_baseline(self, checked):
         """Enable or disable baseline correction spin boxes.
@@ -714,28 +761,32 @@ class EpochingDialog(BaseDialog):
         ):
             return
 
-        checked_items: list[QListWidgetItem] = []
+        checked_events: list[str] = []
         has_checkable_items = False
-        for index in range(self.event_list.count()):
-            item = self.event_list.item(index)
-            if item is None:
+        for row in range(self.event_list.rowCount()):
+            check_item = self.event_list.item(row, 0)
+            event_item = self.event_list.item(row, 1)
+            if check_item is None or event_item is None:
                 continue
-            if item.flags() & Qt.ItemFlag.ItemIsUserCheckable:
+            if check_item.flags() & Qt.ItemFlag.ItemIsUserCheckable:
                 has_checkable_items = True
-            if item.checkState() == Qt.CheckState.Checked:
-                checked_items.append(item)
+            if check_item.checkState() == Qt.CheckState.Checked:
+                checked_events.append(event_item.text())
         recommended_events = set(self.epoch_context.get("recommended_events") or [])
-        if checked_items:
-            selected_items = checked_items
+        if checked_events:
+            selected_events = checked_events
         elif has_checkable_items and recommended_events:
-            selected_items = []
+            selected_events = []
         else:
-            selected_items = self.event_list.selectedItems()
-        if not selected_items:
+            selected_events = []
+            for row in range(self.event_list.rowCount()):
+                event_item = self.event_list.item(row, 1)
+                if event_item is not None:
+                    selected_events.append(event_item.text())
+        if not selected_events:
             QMessageBox.warning(self, "Warning", "Please select at least one event.")
             return
 
-        selected_events = [item.text() for item in selected_items]
         tmin = self.tmin_spin.value()
         tmax = self.tmax_spin.value()
 

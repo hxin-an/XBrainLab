@@ -25,7 +25,13 @@ from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
 from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
 from XBrainLab.ui.dialogs.preprocess.rereference_dialog import RereferenceDialog
 from XBrainLab.ui.dialogs.training.model_selection_dialog import ModelSelectionDialog
+from XBrainLab.ui.dialogs.training.training_setting_dialog import TrainingSettingDialog
+from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import PickMontageDialog
+from XBrainLab.ui.dialogs.visualization.saliency_setting_dialog import (
+    SaliencySettingDialog,
+)
 from XBrainLab.ui.panels.evaluation.metrics_table import MetricsTableWidget
+from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
 
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = ROOT / "artifacts" / "ui" / "app-polish"
@@ -37,10 +43,14 @@ def main() -> int:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     captures = [
         ("model-selection-dialog.png", _model_selection_dialog()),
+        ("training-setting-dialog.png", _training_setting_dialog()),
         ("preprocess-rereference-dialog.png", _rereference_dialog()),
         ("preprocess-epoching-dialog.png", _epoching_dialog()),
         ("data-splitting-dialog.png", _data_splitting_dialog()),
         ("data-splitting-preview-dialog.png", _data_splitting_preview_dialog()),
+        ("saliency-setting-dialog.png", _saliency_setting_dialog()),
+        ("set-montage-dialog.png", _set_montage_dialog()),
+        ("evaluation-controls-panel.png", _evaluation_controls_panel()),
         ("evaluation-metrics-table.png", _metrics_table()),
     ]
     for filename, widget in captures:
@@ -72,6 +82,24 @@ def _rereference_dialog() -> QWidget:
     return dialog
 
 
+def _training_setting_dialog() -> QWidget:
+    controller = MagicMock()
+    controller.get_training_option.return_value = None
+    with (
+        patch(
+            "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
+            return_value={"Adam": MagicMock(__name__="Adam")},
+        ),
+        patch(
+            "XBrainLab.ui.dialogs.training.training_setting_dialog.get_device_count",
+            return_value=0,
+        ),
+    ):
+        dialog = TrainingSettingDialog(None, controller)
+    dialog.resize(QSize(560, 420))
+    return dialog
+
+
 def _epoching_dialog() -> QWidget:
     data = MagicMock()
     data.get_event_list.return_value = (
@@ -98,7 +126,7 @@ def _epoching_dialog() -> QWidget:
             "window_evidence": "Suggested from the import label matching step.",
         },
     )
-    dialog.resize(QSize(640, 680))
+    dialog.resize(QSize(640, 740))
     return dialog
 
 
@@ -107,7 +135,7 @@ def _data_splitting_dialog() -> QWidget:
     controller.get_epoch_data.return_value = object()
     controller.get_dataset_generator.return_value = None
     dialog = DataSplittingDialog(None, controller)
-    dialog.resize(QSize(820, 600))
+    dialog.resize(QSize(820, 470))
     return dialog
 
 
@@ -157,6 +185,60 @@ def _data_splitting_preview_dialog() -> QWidget:
     dialog._resize_tree_to_rows()
     dialog.resize(QSize(980, 640))
     return dialog
+
+
+def _saliency_setting_dialog() -> QWidget:
+    dialog = SaliencySettingDialog(None, saliency_params=None)
+    dialog.resize(QSize(580, 560))
+    return dialog
+
+
+def _set_montage_dialog() -> QWidget:
+    positions = {
+        "Fz": (0.0, 0.8, 0.0),
+        "C3": (-0.4, 0.0, 0.0),
+        "Cz": (0.0, 0.0, 0.0),
+        "C4": (0.4, 0.0, 0.0),
+        "Pz": (0.0, -0.7, 0.0),
+    }
+    with (
+        patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_builtin_montages",
+            return_value=["standard_1020", "biosemi64"],
+        ),
+        patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_positions",
+            return_value={"ch_pos": positions},
+        ),
+        patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_channel_positions",
+            return_value=positions,
+        ),
+    ):
+        dialog = PickMontageDialog(None, ["Fz", "C3", "Cz", "C4", "Pz"])
+    dialog.resize(QSize(760, 420))
+    return dialog
+
+
+def _evaluation_controls_panel() -> QWidget:
+    controller = MagicMock()
+    panel = EvaluationPanel(controller=controller, parent=None)
+    panel.model_combo.blockSignals(True)
+    panel.run_combo.blockSignals(True)
+    panel.model_combo.addItem(
+        "Fold 1: EEGNet with a deliberately long model label for overflow review",
+        object(),
+    )
+    panel.run_combo.addItem("Repeat 1 (Finished, best validation accuracy)", object())
+    panel.model_combo.blockSignals(False)
+    panel.run_combo.blockSignals(False)
+    panel.chk_percentage.blockSignals(True)
+    panel.chk_percentage.setChecked(True)
+    panel.chk_percentage.blockSignals(False)
+    panel.plot_stack.setCurrentIndex(1)
+    panel.no_data_label.setText("Evaluation controls layout review")
+    panel.resize(QSize(900, 520))
+    return panel
 
 
 def _metrics_table() -> QWidget:
@@ -224,10 +306,14 @@ def _write_readme() -> None:
         "Focused current screenshots for manual review of surfaces that are not "
         "fully represented by the Data Import wizard artifacts.\n\n"
         "- `model-selection-dialog.png`\n"
+        "- `training-setting-dialog.png`\n"
         "- `preprocess-rereference-dialog.png`\n"
         "- `preprocess-epoching-dialog.png`\n"
         "- `data-splitting-dialog.png`\n"
         "- `data-splitting-preview-dialog.png`\n"
+        "- `saliency-setting-dialog.png`\n"
+        "- `set-montage-dialog.png`\n"
+        "- `evaluation-controls-panel.png`\n"
         "- `evaluation-metrics-table.png`\n",
         encoding="utf-8",
     )

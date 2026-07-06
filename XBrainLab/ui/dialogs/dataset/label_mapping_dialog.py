@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.dialogs.common import normalize_dialog_button_box
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 _LABEL_SUFFIX_RE = re.compile(
@@ -156,6 +157,7 @@ class LabelMappingDialog(BaseDialog):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
+        normalize_dialog_button_box(buttons)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)

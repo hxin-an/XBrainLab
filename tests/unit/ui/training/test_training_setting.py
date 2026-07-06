@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QDialogButtonBox, QWidget
 
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.dialogs.training import (
@@ -50,6 +50,17 @@ class TestTrainingSetting:
         assert window.output_dir == "./output"
         assert window.optim == torch.optim.Adam  # Real Adam class
         assert window.use_cpu is True
+
+    def test_ok_cancel_buttons_have_no_icons(self, window):
+        buttons = window.findChild(QDialogButtonBox)
+        assert buttons is not None
+        for standard in (
+            QDialogButtonBox.StandardButton.Ok,
+            QDialogButtonBox.StandardButton.Cancel,
+        ):
+            button = buttons.button(standard)
+            assert button is not None
+            assert button.icon().isNull()
 
     def test_set_values_and_confirm(self, window):
         # Set simple values

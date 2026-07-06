@@ -10,12 +10,13 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QDialogButtonBox,
     QFileDialog,
-    QFormLayout,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
 )
 
@@ -34,6 +35,10 @@ from XBrainLab.ui.application_capabilities import (
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.dialogs.common import (
+    dark_dialog_stylesheet,
+    normalize_dialog_button_box,
+)
 
 from .device_setting_dialog import DeviceSettingDialog
 from .optimizer_setting_dialog import OptimizerSettingDialog
@@ -85,7 +90,10 @@ class TrainingSettingDialog(BaseDialog):
         self.evaluation_combo = None
 
         super().__init__(parent, title="Training Setting", controller=controller)
-        self.resize(500, 600)
+        self.resize(520, 390)
+        self.setMinimumWidth(520)
+        self.setMaximumHeight(430)
+        self.setStyleSheet(dark_dialog_stylesheet())
 
         # Set default values in UI
         if self.optim and self.opt_label:
@@ -220,67 +228,100 @@ class TrainingSettingDialog(BaseDialog):
     def init_ui(self):
         """Initialize the dialog UI with training parameter controls."""
         layout = QVBoxLayout(self)
-        form_layout = QFormLayout()
+        layout.setContentsMargins(18, 16, 18, 14)
+        layout.setSpacing(12)
+        form_layout = QGridLayout()
+        form_layout.setContentsMargins(0, 0, 0, 0)
+        form_layout.setHorizontalSpacing(12)
+        form_layout.setVerticalSpacing(9)
+        form_layout.setColumnMinimumWidth(0, 128)
+        form_layout.setColumnStretch(1, 1)
+
+        def add_simple_row(row: int, label: str, widget) -> None:
+            lbl = QLabel(label)
+            lbl.setObjectName("TrainingSettingLabel")
+            form_layout.addWidget(lbl, row, 0)
+            widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            form_layout.addWidget(widget, row, 1)
+
+        def add_set_row(
+            row: int,
+            label: str,
+            value_label: QLabel,
+            button: QPushButton,
+        ) -> None:
+            lbl = QLabel(label)
+            lbl.setObjectName("TrainingSettingLabel")
+            value_label.setObjectName("TrainingSettingValue")
+            value_label.setMinimumHeight(28)
+            value_label.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Fixed,
+            )
+            button.setText("Set")
+            button.setFixedWidth(72)
+            button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            form_layout.addWidget(lbl, row, 0)
+            form_layout.addWidget(value_label, row, 1)
+            form_layout.addWidget(button, row, 2)
 
         # Entries with default values for easier testing
         self.epoch_entry = QLineEdit("10")
-        form_layout.addRow("Epoch", self.epoch_entry)
+        add_simple_row(0, "Epoch", self.epoch_entry)
 
         self.bs_entry = QLineEdit("32")
-        form_layout.addRow("Batch size", self.bs_entry)
+        add_simple_row(1, "Batch size", self.bs_entry)
 
         self.lr_entry = QLineEdit("0.001")
-        form_layout.addRow("Learning rate", self.lr_entry)
+        add_simple_row(2, "Learning rate", self.lr_entry)
 
         # Optimizer
-        optim_layout = QHBoxLayout()
         self.opt_label = QLabel("")
-        optim_layout.addWidget(self.opt_label)
-        self.opt_btn = QPushButton("set")
+        self.opt_btn = QPushButton("Set")
         self.opt_btn.clicked.connect(self.set_optimizer)
-        optim_layout.addWidget(self.opt_btn)
-        form_layout.addRow("Optimizer", optim_layout)
+        add_set_row(3, "Optimizer", self.opt_label, self.opt_btn)
 
         # Device
-        dev_layout = QHBoxLayout()
         self.dev_label = QLabel("")
-        dev_layout.addWidget(self.dev_label)
-        self.dev_btn = QPushButton("set")
+        self.dev_btn = QPushButton("Set")
         self.dev_btn.clicked.connect(self.set_device)
-        dev_layout.addWidget(self.dev_btn)
-        form_layout.addRow("device", dev_layout)
+        add_set_row(4, "Device", self.dev_label, self.dev_btn)
 
         # Output Directory
-        out_layout = QHBoxLayout()
         self.output_dir_label = QLabel("")
-        out_layout.addWidget(self.output_dir_label)
-        self.out_btn = QPushButton("set")
+        self.output_dir_label.setTextInteractionFlags(
+            self.output_dir_label.textInteractionFlags()
+        )
+        self.out_btn = QPushButton("Set")
         self.out_btn.clicked.connect(self.set_output_dir)
-        out_layout.addWidget(self.out_btn)
-        form_layout.addRow("Output Directory", out_layout)
+        add_set_row(5, "Output directory", self.output_dir_label, self.out_btn)
 
         self.checkpoint_entry = QLineEdit("0")
-        form_layout.addRow("CheckPoint epoch", self.checkpoint_entry)
+        add_simple_row(6, "Checkpoint epoch", self.checkpoint_entry)
 
         # Evaluation
         self.evaluation_combo = QComboBox()
         self.evaluation_list = [i.value for i in TrainingEvaluation]
         self.evaluation_combo.addItems(self.evaluation_list)
         self.evaluation_combo.setCurrentIndex(2)  # Default: Best testing performance
-        form_layout.addRow("Evaluation", self.evaluation_combo)
+        add_simple_row(7, "Evaluation", self.evaluation_combo)
 
         self.repeat_entry = QLineEdit("1")
-        form_layout.addRow("Repeat Number", self.repeat_entry)
+        add_simple_row(8, "Repeat number", self.repeat_entry)
 
         layout.addLayout(form_layout)
 
         # Buttons
+        footer = QHBoxLayout()
+        footer.addStretch(1)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
+        normalize_dialog_button_box(buttons)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        footer.addWidget(buttons)
+        layout.addLayout(footer)
 
     def set_optimizer(self):
         """Open the optimizer setting dialog and apply the result."""

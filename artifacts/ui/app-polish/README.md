@@ -10,8 +10,12 @@ next_human_or_runtime_gate: open the same dialogs in the Windows desktop app dur
 Focused current screenshots for manual review of surfaces that are not fully represented by the Data Import wizard artifacts.
 
 - `model-selection-dialog.png`
+- `training-setting-dialog.png`
 - `preprocess-rereference-dialog.png`
 - `preprocess-epoching-dialog.png`
 - `data-splitting-dialog.png`
 - `data-splitting-preview-dialog.png`
+- `saliency-setting-dialog.png`
+- `set-montage-dialog.png`
+- `evaluation-controls-panel.png`
 - `evaluation-metrics-table.png`

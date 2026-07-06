@@ -102,6 +102,7 @@ class TrainingPanel(BasePanel):
         self._last_plot_signature = None
         self._logged_epoch_signatures_by_record: dict[int, dict[int, tuple]] = {}
         self._selection_pinned_by_user = False
+        self._suppress_log_render_once = False
         self.plan_items = {}
         self.run_items = {}
 
@@ -229,6 +230,7 @@ class TrainingPanel(BasePanel):
         """Re-evaluate the ready-to-train state when configuration changes."""
         self.log_text.clear()
         self._logged_epoch_signatures_by_record.clear()
+        self._suppress_log_render_once = True
         refresh_after_observer(self, event_name="config_changed")
 
     def _on_training_started(self):
@@ -319,6 +321,7 @@ class TrainingPanel(BasePanel):
             self._selection_pinned_by_user = True
             self._last_plot_signature = None
             self.refresh_plot(record)
+            self._render_epoch_logs_for_record(record)
         else:
             self._selection_pinned_by_user = False
 
@@ -409,6 +412,10 @@ class TrainingPanel(BasePanel):
                 self._last_epoch_count = -1
                 self._last_plot_signature = None
                 self._selection_pinned_by_user = False
+                if self._suppress_log_render_once:
+                    self._suppress_log_render_once = False
+                else:
+                    self._render_epoch_logs_for_record(preferred_record)
 
         # 3. Update Plots if the current record is active and has new data
         if self.current_plotting_record:
@@ -465,6 +472,24 @@ class TrainingPanel(BasePanel):
                 continue
             record_logs[epoch_index] = signature
             self.log_text.append(self._format_epoch_log_line(record, epoch_index))
+
+    def _render_epoch_logs_for_record(self, record) -> None:
+        """Replace the log tab with epoch logs for the selected history row."""
+        self.log_text.clear()
+        if record is None:
+            return
+        completed_epochs = self._completed_epoch_count(record)
+        if completed_epochs <= 0:
+            self.log_text.setPlaceholderText("No epoch logs for the selected run yet.")
+            self._logged_epoch_signatures_by_record[id(record)] = {}
+            return
+
+        record_logs: dict[int, tuple] = {}
+        for epoch_index in range(completed_epochs):
+            signature = self._epoch_log_signature(record, epoch_index)
+            record_logs[epoch_index] = signature
+            self.log_text.append(self._format_epoch_log_line(record, epoch_index))
+        self._logged_epoch_signatures_by_record[id(record)] = record_logs
 
     @staticmethod
     def _completed_epoch_count(record) -> int:
@@ -533,16 +558,16 @@ class TrainingPanel(BasePanel):
         }
         epoch = epoch_index + 1
         return (
-            f"Epoch {epoch} | "
+            f"Epoch {epoch}: "
             f"train loss={self._format_metric(values['train_loss'])} "
             f"acc={self._format_metric(values['train_acc'])} "
-            f"auc={self._format_metric(values['train_auc'])} | "
+            f"auc={self._format_metric(values['train_auc'])}; "
             f"val loss={self._format_metric(values['val_loss'])} "
             f"acc={self._format_metric(values['val_acc'])} "
-            f"auc={self._format_metric(values['val_auc'])} | "
+            f"auc={self._format_metric(values['val_auc'])}; "
             f"test loss={self._format_metric(values['test_loss'])} "
             f"acc={self._format_metric(values['test_acc'])} "
-            f"auc={self._format_metric(values['test_auc'])} | "
+            f"auc={self._format_metric(values['test_auc'])}; "
             f"lr={self._format_metric(values['lr'])} "
             f"time={self._format_metric(values['time'])}"
         )

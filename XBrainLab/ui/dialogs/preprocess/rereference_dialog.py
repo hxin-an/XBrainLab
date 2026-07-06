@@ -10,11 +10,11 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QListWidget,
     QMessageBox,
-    QPushButton,
     QVBoxLayout,
 )
 
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.dialogs.common import normalize_dialog_button_box
 
 
 class RereferenceDialog(BaseDialog):
@@ -69,10 +69,7 @@ class RereferenceDialog(BaseDialog):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
-        for button in buttons.buttons():
-            if isinstance(button, QPushButton):
-                button.setAutoDefault(False)
-                button.setDefault(False)
+        normalize_dialog_button_box(buttons)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)

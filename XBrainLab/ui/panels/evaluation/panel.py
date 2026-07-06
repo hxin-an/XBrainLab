@@ -4,9 +4,11 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QSizePolicy,
     QStackedWidget,
     QTabWidget,
     QTextEdit,
@@ -619,26 +621,75 @@ class EvaluationPanel(BasePanel):
 
     def init_ui(self):
         """Build the evaluation panel layout with plots, toolbar, tabs, and sidebar."""
+        self.setObjectName("EvaluationPanel")
+        self.setStyleSheet(
+            f"""
+            QWidget#EvaluationPanel,
+            QWidget#EvaluationLeft,
+            QWidget#EvaluationControlsBar {{
+                background-color: {Theme.BACKGROUND_DARK};
+                color: {Theme.TEXT_SECONDARY};
+            }}
+            QGroupBox#EvaluationPlotsGroup {{
+                background-color: {Theme.BACKGROUND_DARK};
+                border: 1px solid {Theme.BACKGROUND_LIGHT};
+                border-radius: 4px;
+                margin-top: 18px;
+                color: {Theme.TEXT_PRIMARY};
+                font-weight: bold;
+            }}
+            QGroupBox#EvaluationPlotsGroup::title {{
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 4px;
+                color: {Theme.TEXT_PRIMARY};
+            }}
+            QLabel {{
+                background-color: transparent;
+                color: {Theme.TEXT_SECONDARY};
+            }}
+            QTabWidget::pane {{
+                border: 1px solid {Theme.BACKGROUND_LIGHT};
+                background-color: {Theme.BACKGROUND_DARK};
+            }}
+            QTabBar::tab {{
+                background-color: {Theme.BACKGROUND_MID};
+                color: {Theme.TEXT_MUTED};
+                border: 1px solid {Theme.BACKGROUND_LIGHT};
+                padding: 6px 12px;
+            }}
+            QTabBar::tab:selected {{
+                background-color: {Theme.BACKGROUND_DARK};
+                color: {Theme.TEXT_PRIMARY};
+            }}
+            """
+        )
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
         # --- Left Side: Main Content ---
         left_widget = QWidget()
+        left_widget.setObjectName("EvaluationLeft")
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(20, 20, 20, 20)
         left_layout.setSpacing(20)
 
         # 1. Plots Group (Top)
         plots_group = QGroupBox("EVALUATION PLOTS")
+        plots_group.setObjectName("EvaluationPlotsGroup")
         plots_layout = QVBoxLayout(plots_group)
         plots_layout.setContentsMargins(10, 20, 10, 10)
 
         # Stacked Widget for Data vs No Data
         self.plot_stack = QStackedWidget()
+        self.plot_stack.setStyleSheet(f"background-color: {Theme.BACKGROUND_DARK};")
 
         # Page 0: Charts View
         self.charts_container = QWidget()
+        self.charts_container.setStyleSheet(
+            f"background-color: {Theme.BACKGROUND_DARK};"
+        )
         charts_layout = QHBoxLayout(self.charts_container)
         charts_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -660,36 +711,60 @@ class EvaluationPanel(BasePanel):
 
         # Toolbar (Above Charts)
         self.evaluation_controls_bar = QWidget()
-        toolbar_layout = QHBoxLayout(self.evaluation_controls_bar)
+        self.evaluation_controls_bar.setObjectName("EvaluationControlsBar")
+        toolbar_layout = QGridLayout(self.evaluation_controls_bar)
         toolbar_layout.setContentsMargins(0, 0, 0, 8)
-        toolbar_layout.setSpacing(8)
+        toolbar_layout.setHorizontalSpacing(10)
+        toolbar_layout.setVerticalSpacing(8)
+        toolbar_layout.setColumnStretch(1, 1)
 
         # Model Selection
-        toolbar_layout.addWidget(QLabel("Model:"))
+        model_label = QLabel("Model:")
+        model_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        toolbar_layout.addWidget(model_label, 0, 0)
         self.model_combo = QComboBox()
-        self.model_combo.setMinimumWidth(96)
-        self.model_combo.setMaximumWidth(180)
+        self.model_combo.setMinimumWidth(360)
+        self.model_combo.setMinimumContentsLength(36)
+        self.model_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
+        )
+        self.model_combo.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.model_combo.setStyleSheet(Stylesheets.COMBO_BOX)
+        model_view = self.model_combo.view()
+        if model_view is not None:
+            model_view.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.model_combo.currentIndexChanged.connect(self.on_model_changed)
-        toolbar_layout.addWidget(self.model_combo)
-
-        toolbar_layout.addSpacing(4)
+        toolbar_layout.addWidget(self.model_combo, 0, 1, 1, 3)
 
         # Run Selection
-        toolbar_layout.addWidget(QLabel("Run:"))
+        run_label = QLabel("Run:")
+        run_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        toolbar_layout.addWidget(run_label, 1, 0)
         self.run_combo = QComboBox()
-        self.run_combo.setMinimumWidth(96)
-        self.run_combo.setMaximumWidth(180)
+        self.run_combo.setMinimumWidth(320)
+        self.run_combo.setMinimumContentsLength(32)
+        self.run_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
+        )
+        self.run_combo.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.run_combo.setStyleSheet(Stylesheets.COMBO_BOX)
+        run_view = self.run_combo.view()
+        if run_view is not None:
+            run_view.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.run_combo.currentIndexChanged.connect(self.update_views)
-        toolbar_layout.addWidget(self.run_combo)
-
-        toolbar_layout.addSpacing(4)
+        toolbar_layout.addWidget(self.run_combo, 1, 1)
 
         # Options
         self.chk_percentage = QCheckBox("Percent")
+        self.chk_percentage.setStyleSheet(Stylesheets.CHECKBOX_MUTED)
         self.chk_percentage.toggled.connect(self.update_views)
-        toolbar_layout.addWidget(self.chk_percentage)
-
-        toolbar_layout.addStretch()
+        toolbar_layout.addWidget(self.chk_percentage, 1, 2)
         plots_layout.addWidget(self.evaluation_controls_bar)
         plots_layout.addWidget(self.plot_stack, stretch=1)
 
@@ -711,6 +786,7 @@ class EvaluationPanel(BasePanel):
         self.summary_text = QTextEdit()
         self.summary_text.setReadOnly(True)
         self.summary_text.setFontFamily("Courier New")
+        self.summary_text.setStyleSheet(Stylesheets.LOG_TEXT)
         summary_layout.addWidget(self.summary_text)
         self.bottom_tabs.addTab(self.summary_tab, "Model Summary")
         self.bottom_tabs.currentChanged.connect(self._on_bottom_tab_changed)

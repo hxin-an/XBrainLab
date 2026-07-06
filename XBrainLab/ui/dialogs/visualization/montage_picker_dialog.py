@@ -27,6 +27,11 @@ from XBrainLab.backend.utils.mne_helper import (
     get_montage_positions,
 )
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.dialogs.common import (
+    configure_dark_table,
+    dark_dialog_stylesheet,
+    normalize_dialog_button_box,
+)
 from XBrainLab.ui.styles.theme import Theme
 
 
@@ -46,9 +51,10 @@ def _mapping_table_stylesheet() -> str:
             color: {Theme.TEXT_PRIMARY};
         }}
         QHeaderView::section {{
-            background-color: {Theme.METRICS_TABLE_HEADER_BG};
-            color: {Theme.TEXT_PRIMARY};
-            border: 1px solid {Theme.METRICS_TABLE_GRID};
+            background-color: {Theme.BACKGROUND_MID};
+            color: {Theme.TEXT_SECONDARY};
+            border: none;
+            border-bottom: 1px solid {Theme.METRICS_TABLE_GRID};
             padding: 5px 8px;
             font-weight: bold;
         }}
@@ -123,6 +129,8 @@ class PickMontageDialog(BaseDialog):
 
         super().__init__(parent, title="Set Montage")
         self.resize(700, 500)
+        self.setMinimumWidth(700)
+        self.setStyleSheet(dark_dialog_stylesheet())
 
         # Trigger initial montage load
         if self.montage_combo and self.montage_combo.currentText():
@@ -168,11 +176,13 @@ class PickMontageDialog(BaseDialog):
 
         # Clear Button
         self.btn_clear = QPushButton("Clear All")
+        self.btn_clear.setFixedWidth(96)
         self.btn_clear.clicked.connect(self.clear_selections)
         top_layout.addWidget(self.btn_clear)
 
         # Reset Saved Button (for demoing Smart Match)
         self.btn_reset_saved = QPushButton("Reset Saved")
+        self.btn_reset_saved.setFixedWidth(110)
         self.btn_reset_saved.setToolTip(
             "Clear saved settings for this montage and re-run Smart Match",
         )
@@ -183,9 +193,9 @@ class PickMontageDialog(BaseDialog):
 
         # Center: Mapping Table
         self.table = QTableWidget()
-        self.table.setObjectName("MontageMappingTable")
         self.table.setColumnCount(2)
         self.table.setHorizontalHeaderLabels(["Dataset Channel", "Montage Channel"])
+        configure_dark_table(self.table, object_name="MontageMappingTable")
         header = self.table.horizontalHeader()
         if header is not None:
             header.setMinimumSectionSize(160)
@@ -198,7 +208,7 @@ class PickMontageDialog(BaseDialog):
             v_header.setDefaultSectionSize(34)
             v_header.setMinimumSectionSize(32)
         self.table.setAlternatingRowColors(True)
-        self.table.setShowGrid(True)
+        self.table.setShowGrid(False)
         self.table.setWordWrap(False)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
@@ -219,6 +229,7 @@ class PickMontageDialog(BaseDialog):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
+        normalize_dialog_button_box(buttons)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
