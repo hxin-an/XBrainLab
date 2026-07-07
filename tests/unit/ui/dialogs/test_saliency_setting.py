@@ -10,8 +10,11 @@ from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
+    QFrame,
+    QSizePolicy,
     QSpinBox,
     QTabWidget,
+    QWidget,
 )
 
 
@@ -72,6 +75,34 @@ class TestSaliencySettingInit:
         assert buttons.button(QDialogButtonBox.StandardButton.Ok).objectName() == (
             "PrimaryConfirmButton"
         )
+
+    def test_compute_methods_is_lightweight_checkbox_row(self, dialog):
+        methods_row = dialog.findChild(QWidget, "SaliencyComputeMethodsRow")
+        assert methods_row is not None
+        assert dialog.findChild(QFrame, "SaliencyComputeMethodsGroup") is None
+        assert "border:" not in methods_row.styleSheet()
+
+    def test_parameter_pages_are_compact_forms_without_vertical_separators(
+        self, dialog
+    ):
+        assert dialog.findChildren(QFrame, "SaliencyMethodParamPage") == []
+        separators = [
+            frame
+            for frame in dialog.findChildren(QFrame)
+            if frame.frameShape() == QFrame.Shape.VLine
+            or "separator" in frame.objectName().lower()
+            or "divider" in frame.objectName().lower()
+        ]
+        assert separators == []
+
+        for editors in dialog.param_editors.values():
+            widths = [editor.minimumWidth() for editor in editors.values()]
+            assert min(widths) >= 180
+            assert len(set(widths)) == 1
+            assert all(
+                editor.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Fixed
+                for editor in editors.values()
+            )
 
     def test_creates_with_params(self, dialog_with_params):
         assert isinstance(dialog_with_params, QDialog)

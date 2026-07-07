@@ -201,6 +201,13 @@ def button_stylesheet() -> str:
         QPushButton#EpochPrimaryButton:hover {{
             background-color: {Theme.BLUE_HOVER};
         }}
+        QPushButton#PrimaryConfirmButton:disabled,
+        QPushButton#EpochPrimaryButton:disabled {{
+            background-color: {Theme.BTN_DISABLED_BG};
+            color: {Theme.BTN_DISABLED_TEXT};
+            border-color: {Theme.BTN_DISABLED_BORDER};
+            font-weight: 400;
+        }}
         QPushButton#SecondaryDialogButton {{
             background-color: {Theme.BACKGROUND_MID};
             border-color: {Theme.BACKGROUND_LIGHT};

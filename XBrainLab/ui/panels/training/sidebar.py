@@ -3,11 +3,10 @@
 from collections.abc import Callable
 from typing import Any
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QFrame,
     QGroupBox,
-    QLabel,
     QMessageBox,
     QPushButton,
     QVBoxLayout,
@@ -86,6 +85,11 @@ class TrainingSidebar(QWidget):
         """
         super().__init__()
         self.panel = panel
+        self._latest_resource_check_result = None
+        self._resource_check_timer = QTimer(self)
+        self._resource_check_timer.setSingleShot(True)
+        self._resource_check_timer.setInterval(350)
+        self._resource_check_timer.timeout.connect(self._update_cached_resource_check)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.init_ui()
 
@@ -172,14 +176,6 @@ class TrainingSidebar(QWidget):
         self.btn_start.setEnabled(False)
         exec_layout.addWidget(self.btn_start)
 
-        self.resource_check_label = QLabel("Resource check: configure training")
-        self.resource_check_label.setObjectName("TrainingResourceCheck")
-        self.resource_check_label.setWordWrap(True)
-        self.resource_check_label.setStyleSheet(
-            "color: #b8c0cc; font-size: 12px; padding: 2px 0;"
-        )
-        exec_layout.addWidget(self.resource_check_label)
-
         self.btn_stop = QPushButton("Stop Training")
         self.btn_stop.setStyleSheet(Stylesheets.BTN_WARNING)
         self.btn_stop.setEnabled(False)
@@ -249,7 +245,7 @@ class TrainingSidebar(QWidget):
                 )
         else:
             self.btn_start.setToolTip("Start Training")
-        self._refresh_resource_check_summary()
+        self._schedule_resource_check()
 
     def _compatibility_missing_training_config(self) -> list[str]:
         missing = []
@@ -282,47 +278,41 @@ class TrainingSidebar(QWidget):
             return {}
         return dict(value) if isinstance(value, dict) else {}
 
-    def _training_resource_check_result(self):
-        context = self._training_resource_context()
+    def _training_resource_check_result(self, context: dict[str, Any] | None = None):
+        if context is None:
+            context = self._training_resource_context()
         return ResourceChecker.check_training_config_safe(
             context.get("datasets", []),
             context.get("training_option"),
             context.get("model_holder"),
         )
 
+    def _schedule_resource_check(self) -> None:
+        timer = getattr(self, "_resource_check_timer", None)
+        if timer is not None:
+            timer.start()
+
+    def _update_cached_resource_check(self) -> None:
+        try:
+            self._latest_resource_check_result = self._training_resource_check_result()
+        except Exception:
+            self._latest_resource_check_result = None
+
     def _refresh_resource_check_summary(self) -> None:
-        label = getattr(self, "resource_check_label", None)
-        if label is None:
-            return
-        result = self._training_resource_check_result()
-        required = ResourceChecker.format_memory_size(result.required_memory_bytes)
-        available = ResourceChecker.format_memory_size(result.available_memory_bytes)
-        if result.risk_level == RISK_BLOCKING:
-            text = f"Resource check: Too large\nVRAM {required} / {available}"
-            color = "#ff9b9b"
-        elif result.risk_level == RISK_WARNING:
-            text = f"Resource check: Warning\nVRAM {required} / {available}"
-            color = "#ffd479"
-        elif result.risk_level == RISK_UNKNOWN:
-            text = "Resource check: Unknown\nGPU memory unavailable"
-            color = "#b8c0cc"
-        else:
-            if result.details.get("uses_cpu"):
-                text = "Resource check: CPU selected"
-            else:
-                text = f"Resource check: Safe\nVRAM {required} / {available}"
-            color = "#9fd3a4"
-        label.setText(text)
-        label.setToolTip(result.message)
-        label.setStyleSheet(f"color: {color}; font-size: 12px; padding: 2px 0;")
+        self._schedule_resource_check()
 
     def _confirm_training_resource_preflight(self) -> bool:
-        result = self._training_resource_check_result()
+        context = self._training_resource_context()
+        result = self._training_resource_check_result(context)
+        if (
+            result.risk_level == RISK_UNKNOWN
+            and result.details.get("reason") != "missing_training_option"
+        ):
+            context = self._training_resource_context()
+            result = self._training_resource_check_result(context)
         if result.risk_level == RISK_BLOCKING:
-            QMessageBox.critical(
-                self,
-                "Training Resource Check",
-                result.message,
+            self._show_training_resource_blocking_dialog(
+                self._training_resource_dialog_message(result, context),
             )
             return False
         if (
@@ -334,12 +324,100 @@ class TrainingSidebar(QWidget):
             reply = QMessageBox.question(
                 self,
                 "Training Resource Check",
-                result.message + "\n\nContinue starting training?",
+                self._training_resource_dialog_message(result, context)
+                + "\n\nContinue starting training?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
             return reply == QMessageBox.StandardButton.Yes
         return True
+
+    def _show_training_resource_blocking_dialog(self, message: str) -> None:
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Icon.Critical)
+        dialog.setWindowTitle("Training Resource Check")
+        dialog.setText("Training cannot start safely.")
+        dialog.setInformativeText(message)
+        adjust_button = dialog.addButton(
+            "Adjust Settings",
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+        dialog.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        dialog.setDefaultButton(adjust_button)
+        dialog.exec()
+        if dialog.clickedButton() is adjust_button:
+            self.training_setting()
+
+    def _training_resource_dialog_message(
+        self,
+        result,
+        context: dict[str, Any],
+    ) -> str:
+        details = dict(getattr(result, "details", {}) or {})
+        option = context.get("training_option")
+        model_holder = context.get("model_holder")
+        model_name = self._training_model_name(model_holder)
+        batch_size = details.get("batch_size") or getattr(option, "bs", None)
+        gpu_name = details.get("gpu_name")
+        risk_label = {
+            RISK_BLOCKING: "Too large",
+            RISK_WARNING: "Warning",
+            RISK_UNKNOWN: "Unknown",
+        }.get(result.risk_level, "Safe")
+        message_title = str(getattr(result, "message", "") or "Training resource check")
+        message_title = message_title.splitlines()[0]
+
+        lines = [
+            message_title,
+            "",
+            f"Model: {model_name}",
+            f"Batch size: {batch_size if batch_size is not None else 'Unknown'}",
+        ]
+        if gpu_name:
+            lines.append(f"GPU: {gpu_name}")
+        lines.extend(
+            [
+                "Estimated VRAM required: "
+                f"{ResourceChecker.format_memory_size(result.required_memory_bytes)}",
+                "Available VRAM: "
+                f"{ResourceChecker.format_memory_size(result.available_memory_bytes)}",
+                f"Risk level: {risk_label}",
+            ]
+        )
+        reason = self._training_resource_unknown_reason(result)
+        if reason:
+            lines.extend(["", f"Reason: {reason}"])
+        if result.suggestions:
+            lines.extend(["", "Suggestions:"])
+            lines.extend(f"- {suggestion}" for suggestion in result.suggestions)
+        return "\n".join(lines)
+
+    @staticmethod
+    def _training_model_name(model_holder: Any | None) -> str:
+        if model_holder is None:
+            return "Unknown"
+        target_model = getattr(model_holder, "target_model", None)
+        name = getattr(target_model, "__name__", None)
+        if name:
+            return str(name)
+        for attr in ("model_name", "name"):
+            value = getattr(model_holder, attr, None)
+            if value:
+                return str(value)
+        return "Unknown"
+
+    @staticmethod
+    def _training_resource_unknown_reason(result) -> str:
+        if result.risk_level != RISK_UNKNOWN:
+            return ""
+        reason = result.details.get("reason")
+        if reason == "missing_training_option":
+            return "Training settings have not been saved."
+        if result.details.get("uses_cpu"):
+            return "Selected device is CPU; GPU memory check is not required."
+        if result.details.get("gpu_index") is not None:
+            return "Failed to query GPU memory for the selected device."
+        return "CUDA is unavailable or did not report free GPU memory."
 
     def update_info(self):
         """Refresh the aggregate info panel (delegated to InfoPanelService)."""
@@ -778,7 +856,6 @@ class TrainingSidebar(QWidget):
                 return
             if self._should_start_training(train_capability):
                 if not self._confirm_training_resource_preflight():
-                    self._refresh_resource_check_summary()
                     return
                 # A direct button click is the user's confirmation for the
                 # desktop UI. The backend command remains confirmed so agent
