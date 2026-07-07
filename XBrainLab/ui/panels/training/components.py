@@ -1,5 +1,9 @@
 """Reusable metric-tab component for training loss and accuracy plots."""
 
+from contextlib import suppress
+from typing import Any
+
+import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
@@ -34,7 +38,7 @@ class MetricTab(QWidget):
         # 1. Plot
         self.fig = Figure(figsize=(5, 3), dpi=100)
         self.canvas = FigureCanvas(self.fig)
-        self.ax = self.fig.add_subplot(111)
+        self.ax: Any = self.fig.add_subplot(111)
 
         self.ax.set_title(f"{self.metric_name} vs Epoch")
         self.ax.set_xlabel("Epoch")
@@ -82,6 +86,8 @@ class MetricTab(QWidget):
 
     def _draw_series(self) -> None:
         """Render the current metric series in one canvas pass."""
+        if self.fig is None or self.canvas is None or self.ax is None:
+            return
         self.ax.clear()
 
         # Plot Lines
@@ -141,10 +147,14 @@ class MetricTab(QWidget):
 
     def _fit_axes(self):
         """Keep dark themed axis labels visible in compact panel captures."""
+        if self.fig is None:
+            return
         self.fig.subplots_adjust(left=0.14, right=0.95, top=0.88, bottom=0.16)
 
     def clear(self, *, redraw: bool = True):
         """Clear the plot and reset accumulated data history."""
+        if self.fig is None or self.canvas is None or self.ax is None:
+            return
         # Clear plot
         self.ax.clear()
         self.ax.set_title(f"{self.metric_name} vs Epoch")
@@ -169,3 +179,32 @@ class MetricTab(QWidget):
             self.train_vals = []
         if hasattr(self, "val_vals"):
             self.val_vals = []
+
+    def _release_canvas(self) -> None:
+        canvas = getattr(self, "canvas", None)
+        if canvas is None:
+            return
+        if hasattr(canvas, "_draw_pending"):
+            canvas._draw_pending = False
+        layout = self.layout()
+        if layout is not None:
+            with suppress(RuntimeError):
+                layout.removeWidget(canvas)
+        with suppress(RuntimeError):
+            canvas.setParent(None)
+        with suppress(RuntimeError):
+            canvas.close()
+        with suppress(RuntimeError):
+            canvas.deleteLater()
+        self.canvas = None
+
+    def _close_figure(self) -> None:
+        fig = getattr(self, "fig", None)
+        if fig is not None:
+            plt.close(fig)
+            self.fig = None
+
+    def closeEvent(self, event):  # noqa: N802
+        self._release_canvas()
+        self._close_figure()
+        super().closeEvent(event)

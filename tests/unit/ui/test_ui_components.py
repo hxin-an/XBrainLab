@@ -129,6 +129,7 @@ class TestConfusionMatrix:
         old_fig = w.fig
         old_canvas = w.canvas
         assert old_canvas is not None
+        old_canvas._draw_pending = True
         temporary_label = CleanupLabel("temporary")
         w.plot_layout.addWidget(temporary_label)
 
@@ -138,6 +139,7 @@ class TestConfusionMatrix:
         close_figure.assert_called_once_with(old_fig)
         assert temporary_label.deleted is True
         assert old_canvas.parent() is None
+        assert old_canvas._draw_pending is False
         assert w.fig is None
         assert w.canvas is None
 
@@ -174,12 +176,14 @@ class TestMetricsBarChart:
         old_fig = w.fig
         old_canvas = w.canvas
         assert old_canvas is not None
+        old_canvas._draw_pending = True
 
         with patch.object(plt, "close") as close_figure:
             w.closeEvent(QCloseEvent())
 
         close_figure.assert_called_once_with(old_fig)
         assert old_canvas.parent() is None
+        assert old_canvas._draw_pending is False
         assert w.fig is None
         assert w.canvas is None
 

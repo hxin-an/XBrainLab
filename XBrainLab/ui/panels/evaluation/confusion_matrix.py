@@ -1,5 +1,8 @@
 """Confusion matrix widget for displaying classification results."""
 
+from contextlib import suppress
+from typing import Any, cast
+
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -144,7 +147,11 @@ class ConfusionMatrixWidget(QWidget):
             if item:
                 widget = item.widget()
                 if widget:
+                    if hasattr(widget, "_draw_pending"):
+                        cast(Any, widget)._draw_pending = False
                     widget.setParent(None)
+                    with suppress(RuntimeError):
+                        widget.close()
                     widget.deleteLater()
         self.canvas = None
 

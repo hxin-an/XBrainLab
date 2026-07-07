@@ -61,3 +61,16 @@ def test_clear(metric_tab):
     assert metric_tab.ax.title.get_color() == Theme.TEXT_MUTED
     assert metric_tab.ax.xaxis.label.get_color() == Theme.TEXT_MUTED
     assert metric_tab.ax.yaxis.label.get_color() == Theme.TEXT_MUTED
+
+
+def test_close_releases_canvas_and_cancels_pending_draw(metric_tab, qtbot):
+    metric_tab.update_plot(1, 0.5, 0.6)
+    old_canvas = metric_tab.canvas
+    old_canvas._draw_pending = True
+
+    metric_tab.close()
+    qtbot.wait(0)
+
+    assert metric_tab.canvas is None
+    assert old_canvas.parent() is None
+    assert old_canvas._draw_pending is False

@@ -1,5 +1,6 @@
 """Bar chart widget for per-class precision, recall, and F1-score visualization."""
 
+from contextlib import suppress
 from typing import Any
 
 import matplotlib.pyplot as plt
@@ -182,9 +183,14 @@ class MetricsBarChartWidget(QWidget):
     def _release_canvas(self) -> None:
         if self.canvas is None:
             return
-        self.plot_layout.removeWidget(self.canvas)
-        self.canvas.setParent(None)
-        self.canvas.deleteLater()
+        canvas = self.canvas
+        if hasattr(canvas, "_draw_pending"):
+            canvas._draw_pending = False
+        self.plot_layout.removeWidget(canvas)
+        canvas.setParent(None)
+        with suppress(RuntimeError):
+            canvas.close()
+        canvas.deleteLater()
         self.canvas = None
 
     def _close_current_figure(self) -> None:
