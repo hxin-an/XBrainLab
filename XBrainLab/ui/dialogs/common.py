@@ -6,8 +6,10 @@ from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtGui import QColor, QIcon, QPalette
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QAbstractScrollArea,
     QDialogButtonBox,
     QPushButton,
+    QSizePolicy,
     QTableWidget,
 )
 
@@ -95,6 +97,44 @@ def configure_dark_table(
             QColor(Theme.TEXT_PRIMARY),
         )
     table.setPalette(palette)
+
+
+def fit_table_height_to_contents(
+    table: QTableWidget,
+    *,
+    max_visible_rows: int = 8,
+    minimum_rows: int = 1,
+    padding: int = 8,
+) -> int:
+    """Fit a table height to visible rows so small tables do not show empty areas."""
+    table.resizeRowsToContents()
+    header = table.horizontalHeader()
+    header_height = header.sizeHint().height() if header is not None else 28
+    row_count = table.rowCount()
+    visible_rows = max(minimum_rows, min(row_count, max_visible_rows))
+    if row_count > 0:
+        row_heights = [
+            table.rowHeight(row) for row in range(min(row_count, max_visible_rows))
+        ]
+        row_total = sum(row_heights)
+        if row_count < minimum_rows:
+            row_total += (minimum_rows - row_count) * (
+                row_heights[0] if row_heights else 30
+            )
+    else:
+        row_total = visible_rows * 30
+    target_height = header_height + row_total + padding
+    table.setFixedHeight(target_height)
+    table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+    table.setSizeAdjustPolicy(
+        QAbstractScrollArea.SizeAdjustPolicy.AdjustToContents,
+    )
+    table.setVerticalScrollBarPolicy(
+        Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        if row_count > max_visible_rows
+        else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    )
+    return target_height
 
 
 def dark_dialog_stylesheet() -> str:

@@ -6,6 +6,7 @@ from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QDialogButtonBox,
+    QHeaderView,
     QScrollArea,
     QTableWidgetItem,
 )
@@ -45,6 +46,11 @@ class ManyParamModel:
         omicron=15,
         pi=16,
     ):
+        pass
+
+
+class FiveParamModel:
+    def __init__(self, f1=8, f2=16, d=2, pool_1=4, pool_2=8):
         pass
 
 
@@ -104,6 +110,46 @@ class TestModelSelection:
         assert dialog.confirm_btn is not None
         assert dialog.confirm_btn.text() == "Confirm"
         assert "chevron-down.svg" in dialog.styleSheet()
+
+    def test_default_content_does_not_show_scrollbar_gutter(self, dialog, qtbot):
+        dialog.show()
+        qtbot.wait(50)
+
+        scroll = dialog.findChild(QScrollArea, "ModelSelectionContentScroll")
+        assert scroll is not None
+        scrollbar = scroll.verticalScrollBar()
+        assert scrollbar is not None
+        assert scrollbar.maximum() == 0
+
+    def test_realistic_parameter_count_does_not_force_outer_scrollbar(self, qtbot):
+        with patch("inspect.getmembers") as mock_getmembers:
+            mock_getmembers.return_value = [("FiveParamModel", FiveParamModel)]
+
+            dialog = ModelSelectionDialog(None, MagicMock())
+            qtbot.addWidget(dialog)
+
+        dialog.show()
+        qtbot.wait(50)
+
+        scroll = dialog.findChild(QScrollArea, "ModelSelectionContentScroll")
+        assert scroll is not None
+        scrollbar = scroll.verticalScrollBar()
+        assert scrollbar is not None
+        assert scrollbar.maximum() == 0
+
+    def test_params_table_height_fits_visible_rows(self, dialog):
+        assert dialog.params_table is not None
+        header = dialog.params_table.horizontalHeader()
+        assert isinstance(header, QHeaderView)
+        expected_max_height = (
+            header.height()
+            + sum(
+                dialog.params_table.rowHeight(row)
+                for row in range(dialog.params_table.rowCount())
+            )
+            + 12
+        )
+        assert dialog.params_table.height() <= expected_max_height
 
     def test_params_table_stays_visible_for_models_without_editable_params(self, qtbot):
         with patch("inspect.getmembers") as mock_getmembers:

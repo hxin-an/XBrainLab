@@ -293,6 +293,10 @@ class DataSplittingPreviewDialog(BaseDialog):
         self.tree.setRootIsDecorated(False)
         self.tree.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.tree.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.tree.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
         self.tree.setStyleSheet(_RESULT_TREE_STYLE)
         header = self.tree.header()
         if header is not None:
@@ -679,9 +683,24 @@ class DataSplittingPreviewDialog(BaseDialog):
         if self.tree is None:
             return
         header = self.tree.header()
-        header_height = header.sizeHint().height() if header is not None else 30
+        header_height = header.sizeHint().height() if header is not None else 28
         row_count = max(1, self.tree.topLevelItemCount())
-        target_height = min(360, max(64, header_height + row_count * 32 + 10))
+        max_visible_rows = 8
+        visible_rows = min(row_count, max_visible_rows)
+        row_height_total = 0
+        for row in range(visible_rows):
+            row_height = self.tree.sizeHintForRow(row)
+            row_height_total += row_height if row_height > 0 else 30
+        target_height = max(64, header_height + row_height_total + 8)
+        if row_count > max_visible_rows:
+            target_height = min(360, target_height)
+            self.tree.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded,
+            )
+        else:
+            self.tree.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+            )
         self.tree.setFixedHeight(target_height)
 
     def confirm(self):

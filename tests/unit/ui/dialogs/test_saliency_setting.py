@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QDoubleSpinBox,
     QFrame,
+    QGridLayout,
     QSizePolicy,
     QSpinBox,
     QTabWidget,
@@ -97,12 +98,27 @@ class TestSaliencySettingInit:
 
         for editors in dialog.param_editors.values():
             widths = [editor.minimumWidth() for editor in editors.values()]
-            assert min(widths) >= 180
+            assert 140 <= min(widths) <= 180
             assert len(set(widths)) == 1
             assert all(
                 editor.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Fixed
                 for editor in editors.values()
             )
+
+        for page in dialog.method_param_pages.values():
+            assert page.maximumWidth() <= 420
+            layout = page.layout()
+            assert isinstance(layout, QGridLayout)
+            assert layout.columnCount() == 2
+            assert layout.columnStretch(0) == 0
+            assert layout.columnStretch(1) == 0
+
+    def test_method_parameters_panel_is_lightweight_not_heavy_gray_block(self, dialog):
+        params_panel = dialog.findChild(QWidget, "SaliencyMethodParametersPanel")
+        assert params_panel is not None
+        assert params_panel.maximumWidth() <= 460
+        assert "background-color" not in params_panel.styleSheet()
+        assert "border:" not in params_panel.styleSheet()
 
     def test_creates_with_params(self, dialog_with_params):
         assert isinstance(dialog_with_params, QDialog)

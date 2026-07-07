@@ -32,7 +32,10 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend import model_base
 from XBrainLab.backend.training import ModelHolder
 from XBrainLab.ui.core.base_dialog import BaseDialog
-from XBrainLab.ui.dialogs.common import configure_dark_table
+from XBrainLab.ui.dialogs.common import (
+    configure_dark_table,
+    fit_table_height_to_contents,
+)
 from XBrainLab.ui.styles.theme import Theme
 
 ARG_DICT_SKIP_SET = {"self", "n_classes", "channels", "samples", "sfreq"}
@@ -80,13 +83,12 @@ class ModelSelectionDialog(BaseDialog):
         self.model_list = list(self.model_map.keys())
 
         super().__init__(parent, title="Model Selection")
-        self.resize(640, 430)
-        self.setMinimumSize(600, 400)
-        self.setMaximumHeight(460)
+        self.setMinimumSize(600, 360)
 
         # Init with first model
         if self.model_list:
             self.on_model_select(self.model_list[0])
+        self.resize(640, min(max(self.sizeHint().height(), 440), 620))
 
     def init_ui(self):
         """Initialize the dialog UI with model combo, parameter table, and buttons."""
@@ -101,6 +103,7 @@ class ModelSelectionDialog(BaseDialog):
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(12)
+        content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.content_scroll = QScrollArea()
         self.content_scroll.setObjectName("ModelSelectionContentScroll")
@@ -117,6 +120,10 @@ class ModelSelectionDialog(BaseDialog):
         # Model setup
         setup_frame = QFrame()
         setup_frame.setObjectName("ModelSection")
+        setup_frame.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
         setup_layout = QGridLayout(setup_frame)
         setup_layout.setContentsMargins(12, 12, 12, 12)
         setup_layout.setHorizontalSpacing(12)
@@ -170,7 +177,6 @@ class ModelSelectionDialog(BaseDialog):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
-        self.params_table.setMinimumHeight(140)
         self.params_table.setMaximumHeight(240)
         configure_dark_table(
             self.params_table,
@@ -185,8 +191,7 @@ class ModelSelectionDialog(BaseDialog):
             vertical_header.setVisible(False)
         group_layout.addWidget(self.params_table)
         content_layout.addWidget(self.params_group, stretch=0)
-        content_layout.addStretch(1)
-        layout.addWidget(self.content_scroll, stretch=1)
+        layout.addWidget(self.content_scroll, stretch=0)
 
         # Buttons
         action_layout = QHBoxLayout()
@@ -342,9 +347,10 @@ class ModelSelectionDialog(BaseDialog):
 
             if not rows:
                 self._show_no_editable_params()
-            self._resize_params_table_to_content()
-            self._clear_params_table_selection()
-            self.params_group.setVisible(True)
+        self._resize_params_table_to_content()
+        self._clear_params_table_selection()
+        self.params_group.setVisible(True)
+        self._resize_dialog_to_content()
 
     def _show_no_editable_params(self) -> None:
         """Render an explicit empty state instead of hiding the parameter table."""
@@ -365,17 +371,20 @@ class ModelSelectionDialog(BaseDialog):
         if not self.params_table:
             return
 
-        self.params_table.resizeRowsToContents()
-        header = self.params_table.horizontalHeader()
-        header_height = header.height() if header is not None else 28
-        row_total = sum(
-            self.params_table.rowHeight(row)
-            for row in range(self.params_table.rowCount())
+        target_height = fit_table_height_to_contents(
+            self.params_table,
+            max_visible_rows=7,
+            minimum_rows=1,
+            padding=8,
         )
-        target_height = max(140, min(240, header_height + row_total + 18))
-        self.params_table.setFixedHeight(target_height)
         if self.params_group:
             self.params_group.setMaximumHeight(target_height + 58)
+
+    def _resize_dialog_to_content(self) -> None:
+        """Resize normal content high enough so the scroll area is not a gutter."""
+        self.adjustSize()
+        target_height = min(max(self.sizeHint().height(), 440), 620)
+        self.resize(max(self.width(), 640), target_height)
 
     def _clear_params_table_selection(self) -> None:
         """Avoid a misleading initial selected row in the parameter table."""

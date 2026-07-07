@@ -66,11 +66,12 @@ def main() -> int:
 
 def _model_selection_dialog() -> QWidget:
     dialog = ModelSelectionDialog(None, MagicMock())
-    dialog.resize(QSize(680, 560))
     if dialog.model_combo is not None:
         index = dialog.model_combo.findText("EEGNet")
         if index >= 0:
             dialog.model_combo.setCurrentIndex(index)
+    dialog.adjustSize()
+    dialog.resize(QSize(680, max(dialog.sizeHint().height(), 440)))
     return dialog
 
 
@@ -168,6 +169,8 @@ def _data_splitting_preview_dialog() -> QWidget:
     if dialog.timer is not None:
         dialog.timer.stop()
     dialog._interrupt_preview_worker(0.2)
+    if dialog.tree is None:
+        raise RuntimeError("Data splitting preview tree was not initialized.")
     dialog.tree.clear()
     for name, train, val, test in (
         ("Fold_0", 76, 20, 24),
@@ -183,13 +186,15 @@ def _data_splitting_preview_dialog() -> QWidget:
         item.setText(3, str(test))
     dialog._clear_tree_current_item()
     dialog._resize_tree_to_rows()
-    dialog.resize(QSize(980, 640))
+    dialog.adjustSize()
+    dialog.resize(QSize(980, dialog.sizeHint().height()))
     return dialog
 
 
 def _saliency_setting_dialog() -> QWidget:
     dialog = SaliencySettingDialog(None, saliency_params=None)
-    dialog.resize(QSize(580, 560))
+    dialog.adjustSize()
+    dialog.resize(dialog.sizeHint())
     return dialog
 
 

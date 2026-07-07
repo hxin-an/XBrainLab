@@ -7,7 +7,15 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from PyQt6.QtWidgets import QComboBox, QDialog, QPushButton, QSizePolicy, QWidget
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QDialog,
+    QFrame,
+    QPushButton,
+    QSizePolicy,
+    QWidget,
+)
 
 
 def _split_config_payload() -> dict[str, object]:
@@ -470,6 +478,39 @@ class TestDataSplittingPreviewDialogSplitters:
             if panel.objectName() == "SplitPreviewPanel"
         ]
         assert QSizePolicy.Policy.Maximum in right_panel_heights
+
+    def test_step2_results_table_uses_width_without_small_row_scrollbar(self, dlg):
+        for i in range(5):
+            dataset = MagicMock()
+            dataset.get_treeview_row_info.return_value = [
+                "",
+                f"Fold_{i}",
+                80 - i,
+                10,
+                10 + i,
+            ]
+            dlg.datasets.append(dataset)
+
+        dlg.update_table()
+        dlg.show()
+
+        assert dlg.tree.topLevelItemCount() == 5
+        assert dlg.tree.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Expanding
+        assert (
+            dlg.tree.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        assert dlg.tree.verticalScrollBar().maximum() == 0
+        assert dlg.tree.width() > 400
+
+    def test_step2_cards_do_not_use_vertical_separator_frames(self, dlg):
+        separators = [
+            frame
+            for frame in dlg.findChildren(QFrame)
+            if frame.frameShape() == QFrame.Shape.VLine
+            or "separator" in frame.objectName().lower()
+            or "divider" in frame.objectName().lower()
+        ]
+        assert separators == []
 
     def test_on_split_type_manual(self, dlg):
         splitter = dlg.val_splitter_list[0]
