@@ -103,7 +103,7 @@ class Theme:
     # History Table
     HISTORY_TABLE_BORDER = "#333"
     HISTORY_TABLE_ROW_BORDER = "#2a2a2a"
-    HISTORY_TABLE_SELECTION = "#007acc"
+    HISTORY_TABLE_SELECTION = "#2f4f66"
 
     # Charts
     CHART_PRIMARY = "#2196F3"  # Blue

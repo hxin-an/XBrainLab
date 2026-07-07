@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLayout,
     QLineEdit,
     QMessageBox,
     QPushButton,
@@ -245,7 +246,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         # So we initialize members before super.
 
         super().__init__(parent, title=title)
-        self.resize(800, 600)
+        self.resize(920, self.sizeHint().height())
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_table)
@@ -260,19 +261,21 @@ class DataSplittingPreviewDialog(BaseDialog):
     def init_ui(self):
         """Initialize the dialog UI with tree view and split controls."""
         self.setStyleSheet(_PREVIEW_DIALOG_STYLE)
-        self.setMinimumSize(920, 560)
+        self.setMinimumWidth(920)
         layout = QHBoxLayout(self)
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(18)
 
         # Left: Tree
         left_layout = QVBoxLayout()
         left_layout.setSpacing(10)
+        left_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         results_group = QFrame()
         results_group.setObjectName("SplitPreviewPanel")
         results_group.setSizePolicy(
             QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Maximum,
         )
         results_layout = QVBoxLayout(results_group)
         results_layout.setContentsMargins(12, 12, 12, 12)
@@ -303,13 +306,13 @@ class DataSplittingPreviewDialog(BaseDialog):
         results_layout.addWidget(self.tree)
         self._resize_tree_to_rows()
         left_layout.addWidget(results_group)
-        left_layout.addStretch(1)
 
         layout.addLayout(left_layout, stretch=3)
 
         # Right: Controls
         right_layout = QVBoxLayout()
         right_layout.setSpacing(12)
+        right_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         # Dataset Info
         info_group, info_layout = self._panel_grid("Split overview")
@@ -470,9 +473,8 @@ class DataSplittingPreviewDialog(BaseDialog):
         self.btn_confirm.setDefault(False)
         self.btn_confirm.clicked.connect(self.confirm)
         right_layout.addWidget(self.btn_confirm)
-        right_layout.addStretch(1)
 
-        layout.addLayout(right_layout, stretch=1)
+        layout.addLayout(right_layout, stretch=0)
 
     @staticmethod
     def _panel_grid(title: str) -> tuple[QFrame, QGridLayout]:
@@ -677,9 +679,9 @@ class DataSplittingPreviewDialog(BaseDialog):
         if self.tree is None:
             return
         header = self.tree.header()
-        header_height = header.height() if header is not None else 32
+        header_height = header.sizeHint().height() if header is not None else 30
         row_count = max(1, self.tree.topLevelItemCount())
-        target_height = min(420, max(92, header_height + row_count * 38 + 16))
+        target_height = min(360, max(64, header_height + row_count * 32 + 10))
         self.tree.setFixedHeight(target_height)
 
     def confirm(self):

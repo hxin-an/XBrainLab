@@ -483,11 +483,12 @@ class DataSplittingDialog(BaseDialog):
         form_layout.setContentsMargins(0, 0, 0, 0)
         form_layout.setHorizontalSpacing(12)
         form_layout.setVerticalSpacing(10)
-        form_layout.setColumnStretch(1, 1)
+        form_layout.setColumnStretch(1, 0)
 
         # Training Type
         self.train_type_combo = QComboBox()
         self.train_type_combo.addItems([i.value for i in TrainingType])
+        self._configure_split_combo(self.train_type_combo)
         self.train_type_combo.currentTextChanged.connect(self.update_preview)
         form_layout.addWidget(QLabel("Training"), 0, 0)
         form_layout.addWidget(self.train_type_combo, 0, 1)
@@ -495,6 +496,7 @@ class DataSplittingDialog(BaseDialog):
         # Testing Set
         self.test_combo = QComboBox()
         self.test_combo.addItems([i.value for i in SplitByType])
+        self._configure_split_combo(self.test_combo)
         self.test_combo.setCurrentText(SplitByType.TRIAL.value)
         self.test_combo.currentTextChanged.connect(self.update_preview)
         form_layout.addWidget(QLabel("Testing"), 1, 0)
@@ -503,6 +505,7 @@ class DataSplittingDialog(BaseDialog):
         # Validation Set
         self.val_combo = QComboBox()
         self.val_combo.addItems([i.value for i in ValSplitByType])
+        self._configure_split_combo(self.val_combo)
         self.val_combo.setCurrentText(ValSplitByType.TRIAL.value)
         self.val_combo.currentTextChanged.connect(self.update_preview)
         form_layout.addWidget(QLabel("Validation"), 2, 0)
@@ -531,6 +534,12 @@ class DataSplittingDialog(BaseDialog):
         self.btn_confirm.clicked.connect(self.confirm)
         action_layout.addWidget(self.btn_confirm)
         layout.addLayout(action_layout)
+
+    @staticmethod
+    def _configure_split_combo(combo: QComboBox) -> None:
+        combo.setMinimumWidth(148)
+        combo.setMaximumWidth(178)
+        combo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
     def update_preview(self, *args):
         """Recalculate and redraw the split preview based on current settings."""
@@ -765,7 +774,6 @@ class DataSplittingDialog(BaseDialog):
             border: 1px solid #3d454d;
             border-radius: 4px;
             padding: 5px 28px 5px 8px;
-            min-width: 150px;
         }
         QComboBox::drop-down {
             subcontrol-origin: padding;
@@ -782,8 +790,12 @@ class DataSplittingDialog(BaseDialog):
         QComboBox QAbstractItemView {
             background: #25272a;
             color: #f2f5f8;
-            selection-background-color: #0b5f94;
+            selection-background-color: #2f4f66;
             selection-color: #ffffff;
+        }
+        QCheckBox#DataSplitCrossValidationCheck {
+            background: transparent;
+            border: none;
         }
         """
             + checkbox_stylesheet()

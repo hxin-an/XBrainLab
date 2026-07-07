@@ -67,7 +67,7 @@ class MetricsTableWidget(QTableWidget):
             palette.setColor(
                 group,
                 QPalette.ColorRole.Highlight,
-                QColor(Theme.BLUE_PRESSED),
+                QColor(Theme.METRICS_TABLE_SELECTION),
             )
             palette.setColor(
                 group,

@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QGroupBox,
+    QSizePolicy,
     QSplitter,
     QTableWidget,
     QWidget,
@@ -167,6 +168,23 @@ def test_evaluation_panel_layout(qtbot):
     )
 
 
+def test_evaluation_controls_are_compact_toolbar(qtbot):
+    main_window = MockMainWindow()
+    controller = main_window.study.get_controller("evaluation")
+    panel = EvaluationPanel(controller=controller, parent=main_window)
+    qtbot.addWidget(panel)
+    panel.resize(1180, 760)
+    panel.show()
+    qtbot.wait(50)
+
+    assert panel.model_combo.maximumWidth() <= 280
+    assert panel.run_combo.maximumWidth() <= 260
+    assert panel.model_combo.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Fixed
+    assert panel.run_combo.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Fixed
+    assert abs(panel.model_combo.y() - panel.run_combo.y()) <= 4
+    assert panel.chk_percentage.x() < panel.run_combo.x() + panel.run_combo.width() + 80
+
+
 def test_metrics_table_selection_uses_dark_theme(qtbot):
     table = MetricsTableWidget()
     qtbot.addWidget(table)
@@ -174,7 +192,7 @@ def test_metrics_table_selection_uses_dark_theme(qtbot):
     stylesheet = table.styleSheet()
 
     assert "selection-background-color" in stylesheet
-    assert f"selection-background-color: {Theme.BLUE_PRESSED}" in stylesheet
+    assert f"selection-background-color: {Theme.METRICS_TABLE_SELECTION}" in stylesheet
     assert f"alternate-background-color: {Theme.METRICS_TABLE_ALT_BG}" in stylesheet
     assert f"selection-color: {Theme.TEXT_PRIMARY}" in stylesheet
     assert "QTableView::item:selected:!active" in stylesheet
@@ -187,12 +205,12 @@ def test_metrics_table_selection_uses_dark_theme(qtbot):
     )
     assert table.palette().color(QPalette.ColorRole.Text) == QColor(Theme.TEXT_PRIMARY)
     assert table.palette().color(QPalette.ColorRole.Highlight) == QColor(
-        Theme.BLUE_PRESSED
+        Theme.METRICS_TABLE_SELECTION
     )
     assert table.palette().color(
         QPalette.ColorGroup.Inactive,
         QPalette.ColorRole.Highlight,
-    ) == QColor(Theme.BLUE_PRESSED)
+    ) == QColor(Theme.METRICS_TABLE_SELECTION)
     assert table.palette().color(
         QPalette.ColorGroup.Inactive,
         QPalette.ColorRole.HighlightedText,

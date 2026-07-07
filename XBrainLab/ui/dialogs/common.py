@@ -39,6 +39,10 @@ def normalize_dialog_button_box(
             button.setIconSize(QSize(0, 0))
             button.setAutoDefault(False)
             button.setDefault(False)
+            if standard_button == QDialogButtonBox.StandardButton.Ok:
+                button.setObjectName("PrimaryConfirmButton")
+            else:
+                button.setObjectName("SecondaryDialogButton")
 
 
 def configure_dark_table(
@@ -197,6 +201,15 @@ def button_stylesheet() -> str:
         QPushButton#EpochPrimaryButton:hover {{
             background-color: {Theme.BLUE_HOVER};
         }}
+        QPushButton#SecondaryDialogButton {{
+            background-color: {Theme.BACKGROUND_MID};
+            border-color: {Theme.BACKGROUND_LIGHT};
+            color: {Theme.TEXT_SECONDARY};
+        }}
+        QPushButton#SecondaryDialogButton:hover {{
+            background-color: {Theme.BACKGROUND_LIGHT};
+            color: {Theme.TEXT_PRIMARY};
+        }}
     """
 
 
@@ -218,7 +231,7 @@ def checkbox_stylesheet() -> str:
         }}
         QCheckBox::indicator:checked {{
             image: url("{checkmark}");
-            background-color: {Theme.BLUE_PRESSED};
+            background-color: {Theme.METRICS_TABLE_BG};
             border-color: {Theme.BLUE_HOVER};
         }}
         QTreeView::indicator,
@@ -234,7 +247,7 @@ def checkbox_stylesheet() -> str:
         QListView::indicator:checked,
         QTableView::indicator:checked {{
             image: url("{checkmark}");
-            background-color: {Theme.BLUE_PRESSED};
+            background-color: {Theme.METRICS_TABLE_BG};
             border-color: {Theme.BLUE_HOVER};
         }}
     """

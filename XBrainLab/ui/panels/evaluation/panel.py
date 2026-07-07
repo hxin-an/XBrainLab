@@ -4,7 +4,6 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -712,24 +711,23 @@ class EvaluationPanel(BasePanel):
         # Toolbar (Above Charts)
         self.evaluation_controls_bar = QWidget()
         self.evaluation_controls_bar.setObjectName("EvaluationControlsBar")
-        toolbar_layout = QGridLayout(self.evaluation_controls_bar)
+        toolbar_layout = QHBoxLayout(self.evaluation_controls_bar)
         toolbar_layout.setContentsMargins(0, 0, 0, 8)
-        toolbar_layout.setHorizontalSpacing(10)
-        toolbar_layout.setVerticalSpacing(8)
-        toolbar_layout.setColumnStretch(1, 1)
+        toolbar_layout.setSpacing(10)
 
         # Model Selection
         model_label = QLabel("Model:")
         model_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        toolbar_layout.addWidget(model_label, 0, 0)
+        toolbar_layout.addWidget(model_label)
         self.model_combo = QComboBox()
-        self.model_combo.setMinimumWidth(360)
-        self.model_combo.setMinimumContentsLength(36)
+        self.model_combo.setMinimumWidth(190)
+        self.model_combo.setMaximumWidth(260)
+        self.model_combo.setMinimumContentsLength(20)
         self.model_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
         )
         self.model_combo.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
             QSizePolicy.Policy.Fixed,
         )
         self.model_combo.setStyleSheet(Stylesheets.COMBO_BOX)
@@ -737,20 +735,22 @@ class EvaluationPanel(BasePanel):
         if model_view is not None:
             model_view.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.model_combo.currentIndexChanged.connect(self.on_model_changed)
-        toolbar_layout.addWidget(self.model_combo, 0, 1, 1, 3)
+        self.model_combo.currentTextChanged.connect(self.model_combo.setToolTip)
+        toolbar_layout.addWidget(self.model_combo)
 
         # Run Selection
         run_label = QLabel("Run:")
         run_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        toolbar_layout.addWidget(run_label, 1, 0)
+        toolbar_layout.addWidget(run_label)
         self.run_combo = QComboBox()
-        self.run_combo.setMinimumWidth(320)
-        self.run_combo.setMinimumContentsLength(32)
+        self.run_combo.setMinimumWidth(180)
+        self.run_combo.setMaximumWidth(240)
+        self.run_combo.setMinimumContentsLength(18)
         self.run_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
         )
         self.run_combo.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
             QSizePolicy.Policy.Fixed,
         )
         self.run_combo.setStyleSheet(Stylesheets.COMBO_BOX)
@@ -758,13 +758,15 @@ class EvaluationPanel(BasePanel):
         if run_view is not None:
             run_view.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.run_combo.currentIndexChanged.connect(self.update_views)
-        toolbar_layout.addWidget(self.run_combo, 1, 1)
+        self.run_combo.currentTextChanged.connect(self.run_combo.setToolTip)
+        toolbar_layout.addWidget(self.run_combo)
 
         # Options
         self.chk_percentage = QCheckBox("Percent")
         self.chk_percentage.setStyleSheet(Stylesheets.CHECKBOX_MUTED)
         self.chk_percentage.toggled.connect(self.update_views)
-        toolbar_layout.addWidget(self.chk_percentage, 1, 2)
+        toolbar_layout.addWidget(self.chk_percentage)
+        toolbar_layout.addStretch(1)
         plots_layout.addWidget(self.evaluation_controls_bar)
         plots_layout.addWidget(self.plot_stack, stretch=1)
 

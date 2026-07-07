@@ -424,7 +424,7 @@ class Stylesheets:
         }}
         QCheckBox::indicator:checked {{
             image: url("{_CHECKMARK_ICON}");
-            background-color: {Theme.BLUE_PRESSED};
+            background-color: {Theme.METRICS_TABLE_BG};
             border-color: {Theme.BLUE_HOVER};
         }}
     """
@@ -434,7 +434,7 @@ class Stylesheets:
         QTableWidget {{
             background-color: {Theme.METRICS_TABLE_BG};
             alternate-background-color: {Theme.METRICS_TABLE_ALT_BG};
-            selection-background-color: {Theme.BLUE_PRESSED};
+            selection-background-color: {Theme.METRICS_TABLE_SELECTION};
             selection-color: {Theme.TEXT_PRIMARY};
             gridline-color: {Theme.METRICS_TABLE_GRID};
             border: 1px solid {Theme.METRICS_TABLE_BORDER};
@@ -453,7 +453,7 @@ class Stylesheets:
         QTableView::item:selected,
         QTableView::item:selected:active,
         QTableView::item:selected:!active {{
-            background-color: {Theme.BLUE_PRESSED};
+            background-color: {Theme.METRICS_TABLE_SELECTION};
             color: {Theme.TEXT_PRIMARY};
         }}
     """

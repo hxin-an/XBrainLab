@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from PyQt6.QtWidgets import QComboBox, QDialog, QPushButton, QWidget
+from PyQt6.QtWidgets import QComboBox, QDialog, QPushButton, QSizePolicy, QWidget
 
 
 def _split_config_payload() -> dict[str, object]:
@@ -452,10 +452,24 @@ class TestDataSplittingPreviewDialogSplitters:
         assert val_entry.text() == "0.2"
 
         payload = dialog.get_result()
+        assert payload is not None
         assert payload["is_cross_validation"] is True
         assert payload["test_splitters"][0]["split_unit"] == "K Fold"
         assert payload["test_splitters"][0]["value"] == "5"
         assert payload["val_splitters"][0]["split_unit"] == "Ratio"
+
+    def test_step2_layout_shrinks_to_content_without_footer_stretch(self, dlg):
+        assert dlg.layout().sizeConstraint().name != "SetDefaultConstraint"
+        assert dlg.minimumHeight() < 500
+        assert dlg.height() <= 520
+        assert dlg.tree.height() <= 84
+
+        right_panel_heights = [
+            panel.sizePolicy().verticalPolicy()
+            for panel in dlg.findChildren(QWidget)
+            if panel.objectName() == "SplitPreviewPanel"
+        ]
+        assert QSizePolicy.Policy.Maximum in right_panel_heights
 
     def test_on_split_type_manual(self, dlg):
         splitter = dlg.val_splitter_list[0]
