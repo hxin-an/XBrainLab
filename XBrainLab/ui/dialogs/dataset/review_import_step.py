@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QSizePolicy,
     QTreeWidgetItem,
     QVBoxLayout,
 )
@@ -22,8 +21,10 @@ from XBrainLab.ui.dialogs.dataset.review_import_presenter import (
     eeg_data_summary,
     internal_label_placement_summary,
     label_source_summary,
-    metadata_summary,
     recipe_note,
+)
+from XBrainLab.ui.dialogs.dataset.review_import_presenter import (
+    metadata_summary as metadata_review_summary_text,
 )
 from XBrainLab.ui.dialogs.dataset.review_presenter import (
     ReviewRow,
@@ -50,93 +51,172 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
     """Render helpers for final review, action items, and recipe trace."""
 
     def _build_review_import_summary(self, layout: QVBoxLayout) -> None:
-        layout.addWidget(self.decision_label)
-        rows_layout = QGridLayout()
-        rows_layout.setContentsMargins(0, 0, 0, 0)
-        rows_layout.setHorizontalSpacing(12)
-        rows_layout.setVerticalSpacing(6)
-        for index, (label, value) in enumerate(self._review_import_summary_rows()):
-            rows_layout.addWidget(
-                self._review_summary_cell(label, value),
-                index // 2,
-                index % 2,
+        self.save_recipe_check.setText("Save recipe")
+        self._review_import_rows_layout = QGridLayout()
+        self._review_import_rows_layout.setContentsMargins(0, 0, 0, 0)
+        self._review_import_rows_layout.setHorizontalSpacing(10)
+        self._review_import_rows_layout.setVerticalSpacing(6)
+        self._render_review_import_rows()
+        layout.addLayout(self._review_import_rows_layout)
+
+        if hasattr(self, "import_report_toggle"):
+            footer = QHBoxLayout()
+            footer.setContentsMargins(0, 2, 0, 0)
+            footer.addStretch()
+            footer.addWidget(self.import_report_toggle)
+            layout.addLayout(footer)
+
+    def _render_review_import_rows(self) -> None:
+        self._clear_review_import_rows()
+        self._review_summary_value_labels.clear()
+        for row_index, row in enumerate(self._review_import_status_rows()):
+            item_label = QLabel(row["item"])
+            item_label.setObjectName("DataImportReviewItem")
+            status_label = QLabel(row["status"])
+            status_label.setObjectName(self._review_status_object_name(row["status"]))
+            summary_label = QLabel(row["summary"])
+            summary_label.setObjectName("DataImportReviewSummary")
+            summary_label.setWordWrap(True)
+            summary_label.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse
             )
-        rows_layout.setColumnStretch(0, 1)
-        rows_layout.setColumnStretch(1, 1)
-        layout.addLayout(rows_layout)
-        layout.addWidget(self._review_recipe_note_panel())
+            self._review_summary_value_labels[row["item"]] = summary_label
 
-    def _review_recipe_note_panel(self) -> QFrame:
-        panel = QFrame()
-        panel.setObjectName("DataImportApplyConfirmPanel")
-        rows_layout = QGridLayout()
-        rows_layout.setContentsMargins(10, 8, 10, 8)
-        rows_layout.setHorizontalSpacing(12)
-        rows_layout.setVerticalSpacing(4)
-        note_title = QLabel("Recipe")
-        note_title.setObjectName("DataImportSummaryLabel")
-        self.review_recipe_note_label = QLabel(self._review_recipe_note_text())
-        self.review_recipe_note_label.setObjectName("DataImportSummaryValue")
-        self.review_recipe_note_label.setWordWrap(True)
-        self.review_recipe_note_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
-        rows_layout.addWidget(note_title, 0, 0)
-        rows_layout.addWidget(self.review_recipe_note_label, 0, 1)
-        rows_layout.addWidget(self.confirmation_label, 1, 1)
-        rows_layout.addWidget(
-            self.save_recipe_check,
-            0,
-            2,
-            2,
-            1,
-            alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-        )
-        rows_layout.setColumnMinimumWidth(0, 100)
-        rows_layout.setColumnStretch(1, 1)
-        panel.setLayout(rows_layout)
-        return panel
+            self._review_import_rows_layout.addWidget(item_label, row_index, 0)
+            self._review_import_rows_layout.addWidget(status_label, row_index, 1)
+            self._review_import_rows_layout.addWidget(summary_label, row_index, 2)
+            action = row.get("action", "")
+            if action:
+                self._review_import_rows_layout.addWidget(
+                    self._review_import_action(row),
+                    row_index,
+                    3,
+                    alignment=Qt.AlignmentFlag.AlignRight,
+                )
+        self._review_import_rows_layout.setColumnMinimumWidth(0, 118)
+        self._review_import_rows_layout.setColumnMinimumWidth(1, 96)
+        self._review_import_rows_layout.setColumnStretch(2, 1)
+        self.save_recipe_check.setVisible(True)
 
-    def _review_import_summary_rows(self) -> list[tuple[str, str]]:
+    @staticmethod
+    def _review_status_object_name(status: str) -> str:
+        return {
+            "Ready": "DataImportReviewStatusReady",
+            "Completed": "DataImportReviewStatusReady",
+            "Needs review": "DataImportReviewStatusNeedsReview",
+            "Missing": "DataImportReviewStatusMissing",
+            "Incomplete": "DataImportReviewStatusIncomplete",
+        }.get(status, "DataImportReviewStatus")
+
+    def _clear_review_import_rows(self) -> None:
+        if not hasattr(self, "_review_import_rows_layout"):
+            return
+        while self._review_import_rows_layout.count():
+            item = self._review_import_rows_layout.takeAt(0)
+            if item is None:
+                continue
+            widget = item.widget()
+            if widget is not None:
+                if widget is self.save_recipe_check:
+                    widget.setParent(None)
+                else:
+                    widget.deleteLater()
+
+    def _review_import_action(self, row: dict[str, str]) -> QPushButton:
+        action = row.get("action", "")
+        if action == "Save recipe":
+            return self.save_recipe_check
+        button = QPushButton(action)
+        button.setObjectName("DataImportReviewAction")
+        target_step = row.get("target_step", "")
+        if target_step:
+            button.clicked.connect(
+                lambda _checked=False, step=target_step: self._go_to_review_target(step)
+            )
+        return button
+
+    def _review_import_status_rows(self) -> list[dict[str, str]]:
+        complete_count, missing_fields = self._metadata_completion_counts()
+        missing_required = self._metadata_required_missing_fields(missing_fields)
+        metadata_file_count = self.file_tree.topLevelItemCount()
+        if missing_required:
+            metadata_status = "Needs review"
+            metadata_row_summary = self._metadata_missing_text(missing_required)
+            if metadata_file_count:
+                file_word = "file" if metadata_file_count == 1 else "files"
+                metadata_row_summary = (
+                    f"{metadata_row_summary} · "
+                    f"{metadata_file_count} {file_word} affected"
+                )
+            metadata_action = "Edit Metadata"
+        else:
+            metadata_status = "Ready"
+            metadata_row_summary = metadata_review_summary_text(
+                row_count=metadata_file_count,
+                complete_count=complete_count,
+                missing_fields=missing_required,
+                is_bids_source=self._is_bids_source(),
+                fallback_summary=self._metadata_review_summary(
+                    complete_count,
+                    missing_required,
+                ),
+            )
+            metadata_action = ""
+
+        label_source_status = "Ready"
+        if (
+            self._label_source_mode() == "loaded_label_files"
+            and self._active_label_carrier_count() <= 0
+        ):
+            label_source_status = "Missing"
+        label_placement_status = "Ready"
+        label_placement_summary = self._review_label_placement_text()
+        if self._should_show_label_table_fallback():
+            label_placement_status = "Incomplete"
+        elif "need review" in label_placement_summary.lower():
+            label_placement_status = "Needs review"
+
+        recipe_status = "Ready" if self._apply_allowed() else "Incomplete"
         return [
-            ("EEG data", self._review_eeg_data_text()),
-            ("Metadata", self._review_metadata_text()),
-            ("Label source", self._review_label_source_text()),
-            ("Label placement", self._review_label_placement_text()),
+            {
+                "item": "EEG data",
+                "status": "Ready" if self._file_count() else "Missing",
+                "summary": self._review_eeg_data_text(),
+            },
+            {
+                "item": "Metadata",
+                "status": metadata_status,
+                "summary": metadata_row_summary,
+                "action": metadata_action,
+                "target_step": "Review Metadata",
+            },
+            {
+                "item": "Label source",
+                "status": label_source_status,
+                "summary": self._review_label_source_text(),
+            },
+            {
+                "item": "Label placement",
+                "status": label_placement_status,
+                "summary": label_placement_summary,
+                "target_step": "Match Labels",
+                "action": (
+                    "Go to Label Placement"
+                    if label_placement_status in {"Needs review", "Incomplete"}
+                    else ""
+                ),
+            },
+            {
+                "item": "Recipe",
+                "status": recipe_status,
+                "summary": self._review_recipe_note_text(),
+                "action": "Save recipe",
+            },
         ]
 
-    def _review_summary_cell(self, label: str, value: str) -> QFrame:
-        cell = QFrame()
-        cell.setObjectName("DataImportSummaryCell")
-        cell.setSizePolicy(
-            QSizePolicy.Policy.Preferred,
-            QSizePolicy.Policy.Maximum,
-        )
-        layout = QVBoxLayout(cell)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
-        label_widget = QLabel(label)
-        label_widget.setObjectName("DataImportSummaryLabel")
-        value_widget = QLabel(value)
-        value_widget.setObjectName("DataImportSummaryValue")
-        value_widget.setWordWrap(True)
-        value_widget.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
-        self._review_summary_value_labels[label] = value_widget
-        layout.addWidget(label_widget)
-        layout.addWidget(value_widget)
-        return cell
-
     def _refresh_review_import_summary(self) -> None:
-        if not hasattr(self, "_review_summary_value_labels"):
-            return
-        for label, value in self._review_import_summary_rows():
-            value_label = self._review_summary_value_labels.get(label)
-            if value_label is not None:
-                value_label.setText(value)
-        if hasattr(self, "review_recipe_note_label"):
-            self.review_recipe_note_label.setText(self._review_recipe_note_text())
+        if hasattr(self, "_review_import_rows_layout"):
+            self._render_review_import_rows()
 
     def _default_review_action_row(self) -> tuple[str, str, str, str]:
         if self.decision == "blocked":
@@ -171,7 +251,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
     def _review_metadata_text(self) -> str:
         complete_count, missing_fields = self._metadata_completion_counts()
         missing_fields = self._metadata_required_missing_fields(missing_fields)
-        return metadata_summary(
+        return metadata_review_summary_text(
             row_count=self.file_tree.topLevelItemCount(),
             complete_count=complete_count,
             missing_fields=missing_fields,
@@ -261,13 +341,17 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
                 impact,
                 next_action,
             )
+            if not group_title:
+                continue
             grouped.setdefault(group_title, []).append(
                 (target_step, issue, impact, next_action)
             )
+        if not grouped:
+            self.review_actions_panel.setVisible(False)
+            return
         for group_title in (
             "Cannot import yet",
             "Needs your decision",
-            "Review before import",
         ):
             items = grouped.get(group_title)
             if not items:
@@ -294,24 +378,32 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             or "blocked" in lowered
         ):
             return "Cannot import yet"
+        if target_step == "Review Metadata":
+            return ""
+        if target_step == "Review and Import":
+            return ""
+        if target_step == "Match Labels" and any(
+            token in lowered
+            for token in ("alignment", "placement", "event role", "event mapping")
+        ):
+            return "Needs your decision"
         if any(
             token in lowered
             for token in (
-                "choose",
-                "fix",
-                "select",
-                "resolve",
-                "provide",
-                "confirm",
+                "ambiguous",
+                "unresolved",
+                "incomplete",
+                "not paired",
+                "cannot tell",
                 "conversion",
-                "missing",
-                "needs review",
+                "choose",
+                "select",
+                "provide",
+                "resolve",
             )
         ):
             return "Needs your decision"
-        if "review" in lowered:
-            return "Review before import"
-        return "Needs your decision"
+        return ""
 
     def _action_item_card(
         self,
@@ -325,17 +417,25 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         layout = QVBoxLayout(row)
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(5)
-        issue_label = QLabel(issue)
+        issue_label = QLabel(
+            self._review_action_issue_title(target_step, issue, impact, next_action)
+        )
         issue_label.setObjectName("DataImportActionIssue")
         issue_label.setWordWrap(True)
         layout.addWidget(issue_label)
 
         details: list[str] = []
         is_local_review_item = target_step == "Review and Import"
-        if impact:
+        if impact and not self._review_action_detail_is_generic(impact):
             details.append(impact)
-        if next_action and next_action not in details:
+        if (
+            next_action
+            and next_action not in details
+            and not self._review_action_detail_is_generic(next_action)
+        ):
             details.append(next_action)
+        if not details and not is_local_review_item:
+            details.append(self._review_action_default_detail(target_step))
         for detail in details:
             detail_label = QLabel(detail)
             detail_label.setObjectName("DataImportActionMeta")
@@ -345,25 +445,108 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             action_row = QHBoxLayout()
             action_row.setContentsMargins(0, 2, 0, 0)
             action_row.addStretch()
-            button = QPushButton(self._review_action_button_text(target_step))
+            button = QPushButton(
+                self._review_action_button_text(target_step, issue, next_action)
+            )
             button.setObjectName("DataImportInlineAction")
             button.clicked.connect(
-                lambda _checked=False, step=target_step: self._go_to_step(
-                    self._step_titles.index(step)
-                )
+                lambda _checked=False, step=target_step: self._go_to_review_target(step)
             )
             action_row.addWidget(button)
             layout.addLayout(action_row)
         return row
 
     @staticmethod
-    def _review_action_button_text(target_step: str) -> str:
+    def _review_action_detail_is_generic(text: str) -> bool:
+        lowered = " ".join(str(text).strip().lower().split())
+        if not lowered:
+            return True
+        generic_phrases = (
+            "this choice affects imported metadata, labels, or downstream "
+            "training readiness.",
+            "this choice affects imported metadata, labels, and downstream "
+            "training readiness.",
+            "this choice affects training readiness.",
+            "review the target step and confirm the choice.",
+            "review match labels.",
+            "confirm the choice.",
+        )
+        return lowered in generic_phrases
+
+    @staticmethod
+    def _review_action_default_detail(target_step: str) -> str:
         return {
-            "Choose EEG Data": "Review EEG Data",
-            "Load Labels": "Fix Labels",
-            "Review Metadata": "Review Metadata",
-            "Match Labels": "Fix Match Labels",
+            "Choose EEG Data": "Confirm which EEG files belong in this import.",
+            "Load Labels": (
+                "Load or choose the label source before import can continue."
+            ),
+            "Review Metadata": "Fill required metadata fields before import.",
+            "Match Labels": (
+                "Choose how label values align with EEG events before import."
+            ),
+        }.get(target_step, "Review this setting before import.")
+
+    @staticmethod
+    def _review_action_issue_title(
+        target_step: str,
+        issue: str,
+        impact: str,
+        next_action: str,
+    ) -> str:
+        lowered = " ".join((issue, impact, next_action)).lower()
+        if target_step == "Review Metadata":
+            return "Required metadata is missing"
+        if target_step == "Match Labels":
+            if "alignment" in lowered or "pair" in lowered or "carrier" in lowered:
+                return "Label alignment is unresolved"
+            if "event role" in lowered or "event mapping" in lowered:
+                return "Event role mapping is incomplete"
+            if "placement" in lowered or "class" in lowered or "event" in lowered:
+                return "Label placement is ambiguous"
+            return "Label matching is incomplete"
+        if target_step == "Load Labels":
+            return "Label source is incomplete"
+        if target_step == "Choose EEG Data":
+            return "EEG data is incomplete"
+        return issue.removeprefix("Confirm ").removeprefix("Review ").strip() or issue
+
+    @staticmethod
+    def _review_action_button_text(
+        target_step: str,
+        issue: str = "",
+        next_action: str = "",
+    ) -> str:
+        lowered = " ".join((issue, next_action)).lower()
+        if target_step == "Match Labels":
+            if "alignment" in lowered or "pair" in lowered or "carrier" in lowered:
+                return "Go to Label Alignment"
+            if "event role" in lowered or "event mapping" in lowered:
+                return "Go to Event Mapping"
+            return "Go to Label Placement"
+        return {
+            "Choose EEG Data": "Go to EEG Data",
+            "Load Labels": "Go to Labels",
+            "Review Metadata": "Go to Metadata",
         }.get(target_step, target_step)
+
+    def _go_to_review_target(self, target_step: str) -> None:
+        if target_step not in self._step_titles:
+            return
+        self._go_to_step(self._step_titles.index(target_step))
+        self._focus_review_target(target_step)
+
+    def _focus_review_target(self, target_step: str) -> None:
+        if target_step == "Review Metadata" and hasattr(self, "file_tree"):
+            self.file_tree.setFocus(Qt.FocusReason.OtherFocusReason)
+            item = self.file_tree.topLevelItem(0)
+            if item is not None:
+                self.file_tree.setCurrentItem(item)
+            return
+        if target_step == "Match Labels" and hasattr(self, "placement_card"):
+            self.placement_card.setFocus(Qt.FocusReason.OtherFocusReason)
+            return
+        if target_step == "Load Labels" and hasattr(self, "label_carrier_tree"):
+            self.label_carrier_tree.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _populate_review_tree(self) -> None:
         rows = self._review_rows()

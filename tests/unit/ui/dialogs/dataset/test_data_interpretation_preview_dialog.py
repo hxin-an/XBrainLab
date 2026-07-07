@@ -2899,9 +2899,11 @@ def test_bids_preset_surfaces_scope_labels_metadata_and_review(qtbot):
         for label in dialog.review_actions_panel.findChildren(QLabel)
         if label.text().strip()
     )
-    assert "Needs your decision" in action_text
-    assert "Confirm class names in Match Labels." in action_text
-    assert any(
+    assert "Import review" in review_text
+    assert "Review before import" not in review_text
+    assert "Needs your decision" not in action_text
+    assert "Confirm class names in Match Labels." not in action_text
+    assert not any(
         button.text() == "Fix Match Labels"
         for button in dialog.review_actions_panel.findChildren(QPushButton)
     )
@@ -3115,7 +3117,8 @@ def test_review_and_import_saves_label_choices_for_later_epoch_setup(qtbot):
 
     review_text = _visible_step_text(dialog, "Review and Import")
 
-    assert "Import summary" in review_text
+    assert "Import review" in review_text
+    assert "Import summary" not in review_text
     assert "EEG data" in review_text
     assert "1 EEG file" in review_text
     assert "A01T.gdf" in review_text
@@ -3125,7 +3128,7 @@ def test_review_and_import_saves_label_choices_for_later_epoch_setup(qtbot):
     assert "Recipe" in review_text
     assert "Label matching saved" in review_text
     assert "Epoch setup comes later" in review_text
-    assert dialog.save_recipe_check.text() == "Save reusable import recipe"
+    assert dialog.save_recipe_check.text() == "Save recipe"
     assert dialog.save_recipe_check.isVisibleTo(dialog)
     assert "Ready to import" not in review_text
     assert "No blocking review items" not in review_text
@@ -3169,9 +3172,75 @@ def test_review_and_import_metadata_summary_uses_manual_edits(qtbot):
     qtbot.wait(0)
     review_text = _visible_step_text(dialog, "Review and Import")
 
-    assert "Metadata complete" in review_text
+    assert "Import review" in review_text
+    assert "Metadata" in review_text
+    assert "Ready" in review_text
     assert "Missing subject" not in review_text
     assert "Missing session" not in review_text
+
+
+def test_review_and_import_metadata_missing_task_uses_compact_review_row(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": [
+                "/tmp/source/A01T.gdf",
+                "/tmp/source/A02T.gdf",
+                "/tmp/source/A03T.gdf",
+            ],
+        },
+        preview={
+            "summary": "Found 3 EEG file(s).",
+            "metadata_preview": [
+                {
+                    "file": f"A0{index}T.gdf",
+                    "subject": {"value": f"A0{index}", "decision": "safe"},
+                    "session": {"value": "", "decision": "needs_confirmation"},
+                    "task": {"value": "", "decision": "needs_confirmation"},
+                    "run": {"value": "", "decision": "needs_confirmation"},
+                }
+                for index in range(1, 4)
+            ],
+            "action_items": [
+                {
+                    "target_step": "Review Metadata",
+                    "issue": "Review metadata",
+                    "impact": "Task metadata is missing.",
+                    "next_action": "Review the metadata table.",
+                },
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(1040, 760)
+    dialog.show()
+    qtbot.wait(0)
+    _show_step(dialog, "Review and Import")
+    qtbot.wait(0)
+
+    review_text = _visible_step_text(dialog, "Review and Import")
+    action_text = "\n".join(
+        label.text()
+        for label in dialog.review_actions_panel.findChildren(QLabel)
+        if label.text().strip()
+    )
+
+    assert "Import review" in review_text
+    assert "Metadata" in review_text
+    assert "Needs review" in review_text
+    assert "Missing: task" in review_text
+    assert "3 files affected" in review_text
+    assert "Review before import" not in review_text
+    assert "Review metadata" not in action_text
+    assert any(
+        button.text() == "Edit Metadata" for button in dialog.findChildren(QPushButton)
+    )
+
+    _click_button(dialog, "Edit Metadata")
+
+    assert dialog._step_titles[dialog.step_stack.currentIndex()] == "Review Metadata"
 
 
 def test_review_and_import_drops_stale_metadata_action_after_manual_edits(qtbot):
@@ -3219,7 +3288,9 @@ def test_review_and_import_drops_stale_metadata_action_after_manual_edits(qtbot)
     qtbot.wait(0)
     review_text = _visible_step_text(dialog, "Review and Import")
 
-    assert "Metadata complete" in review_text
+    assert "Import review" in review_text
+    assert "Metadata" in review_text
+    assert "Ready" in review_text
     assert "Review metadata" not in review_text
     assert "Subject metadata is missing" not in review_text
 
@@ -3259,17 +3330,16 @@ def test_review_and_import_groups_repeated_file_action_items(qtbot):
         if label.text().strip()
     )
 
-    assert len(action_cards) == 1
-    assert "Review metadata" in action_text
-    assert "Required fields need review: subject." in action_text
-    assert "3 files" in action_text
-    assert "A01T.gdf" in action_text
-    assert "A02T.gdf" in action_text
-    assert "A03T.gdf" in action_text
+    assert len(action_cards) == 0
+    assert not dialog.review_actions_panel.isVisibleTo(dialog)
+    assert "Review metadata" not in action_text
     assert dialog.review_tree.topLevelItemCount() == 1
     review_item = dialog.review_tree.topLevelItem(0)
     assert review_item is not None
     assert "3 files" in review_item.text(2)
+    assert "A01T.gdf" in review_item.text(2)
+    assert "A02T.gdf" in review_item.text(2)
+    assert "A03T.gdf" in review_item.text(2)
 
 
 def test_review_and_import_groups_file_scoped_issues_by_problem(qtbot):
@@ -3307,11 +3377,9 @@ def test_review_and_import_groups_file_scoped_issues_by_problem(qtbot):
         if label.text().strip()
     )
 
-    assert len(action_cards) == 1
-    assert "3 files" in action_text
-    assert "A01T.gdf" in action_text
-    assert "A02T.gdf" in action_text
-    assert "A03T.gdf" in action_text
+    assert len(action_cards) == 0
+    assert not dialog.review_actions_panel.isVisibleTo(dialog)
+    assert action_text == ""
     assert dialog.review_tree.topLevelItemCount() == 1
 
 
@@ -3405,10 +3473,19 @@ def test_review_and_import_primary_actions_exclude_report_only_warnings(qtbot):
     assert len(action_cards) == 2
     assert "Cannot import yet" in action_text
     assert "Needs your decision" in action_text
-    assert "Label file is missing." in action_text
-    assert "Confirm label placement." in action_text
+    assert "Label source is incomplete" in action_text
+    assert "Confirm label placement." not in action_text
+    assert "Label placement is ambiguous" in action_text
     assert "Saved recipe choices were reapplied." not in action_text
     assert "Saved recipe choices were reapplied." in _tree_text(dialog.review_tree)
+    assert not any(
+        button.text() == "Fix Match Labels"
+        for button in dialog.review_actions_panel.findChildren(QPushButton)
+    )
+    assert any(
+        button.text() == "Go to Label Placement"
+        for button in dialog.review_actions_panel.findChildren(QPushButton)
+    )
 
 
 def test_data_interpretation_preview_dialog_returns_review_edits(qtbot):

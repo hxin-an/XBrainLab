@@ -371,7 +371,6 @@ class DataInterpretationPreviewDialog(
         self.review_actions_layout: QVBoxLayout
         self.import_report_toggle: QPushButton
         self.import_report_card: QFrame
-        self.review_recipe_note_label: QLabel
         self.event_layout: QVBoxLayout
         self.scroll_area: QScrollArea
         self.step_stack: QStackedWidget
@@ -791,7 +790,7 @@ class DataInterpretationPreviewDialog(
         self.confirmation_label = QLabel(self._confirmation_text())
         self.confirmation_label.setObjectName("InterpretationConfirmation")
         self.confirmation_label.setWordWrap(True)
-        self.save_recipe_check = QCheckBox("Save reusable import recipe")
+        self.save_recipe_check = QCheckBox("Save recipe")
         self.save_recipe_check.setObjectName("DataImportSaveRecipeCheck")
         apply_allowed = self._apply_allowed()
         self.save_recipe_check.setChecked(apply_allowed)
@@ -807,9 +806,6 @@ class DataInterpretationPreviewDialog(
                 "Review what will be imported. Epoch settings are configured later.",
             )
         )
-        import_summary_card, import_summary_layout = self._card("Import summary")
-        self._build_review_import_summary(import_summary_layout)
-        review_panel_layout.addWidget(import_summary_card)
         self.review_actions_panel = QWidget()
         self.review_actions_panel.setObjectName("DataImportActionItemsPanel")
         self.review_actions_layout = QVBoxLayout(self.review_actions_panel)
@@ -818,14 +814,12 @@ class DataInterpretationPreviewDialog(
         self._populate_review_action_cards()
         review_panel_layout.addWidget(self.review_actions_panel)
 
-        report_header = QHBoxLayout()
-        report_header.setContentsMargins(0, 0, 0, 0)
-        report_header.addStretch()
         self.import_report_toggle = QPushButton("View import report")
         self.import_report_toggle.setObjectName("DataImportInlineAction")
         self.import_report_toggle.clicked.connect(self._toggle_import_report)
-        report_header.addWidget(self.import_report_toggle)
-        review_panel_layout.addLayout(report_header)
+        import_review_card, import_review_layout = self._card("Import review")
+        self._build_review_import_summary(import_review_layout)
+        review_panel_layout.addWidget(import_review_card)
 
         self.review_tree = QTreeWidget()
         self.review_tree.setObjectName("InterpretationReviewSummary")
@@ -2236,10 +2230,43 @@ class DataInterpretationPreviewDialog(
                 font-size: 12px;
             }}
             QLabel#DataImportSourceTitle,
-            QLabel#DataImportActionIssue {{
+            QLabel#DataImportActionIssue,
+            QLabel#DataImportReviewItem {{
                 color: #eeeeee;
                 font-size: 12px;
                 font-weight: 600;
+            }}
+            QLabel#DataImportReviewSummary {{
+                color: {Theme.TEXT_SECONDARY};
+                background-color: transparent;
+                border: none;
+                font-size: 12px;
+            }}
+            QLabel#DataImportReviewStatusReady,
+            QLabel#DataImportReviewStatusNeedsReview,
+            QLabel#DataImportReviewStatusMissing,
+            QLabel#DataImportReviewStatusIncomplete,
+            QLabel#DataImportReviewStatus {{
+                border-radius: 4px;
+                padding: 3px 7px;
+                font-size: 11px;
+                font-weight: 700;
+            }}
+            QLabel#DataImportReviewStatusReady {{
+                color: #d9f7df;
+                background-color: #173424;
+                border: 1px solid #2b6a44;
+            }}
+            QLabel#DataImportReviewStatusNeedsReview {{
+                color: #ffe3b0;
+                background-color: #3a2a12;
+                border: 1px solid #7a5520;
+            }}
+            QLabel#DataImportReviewStatusMissing,
+            QLabel#DataImportReviewStatusIncomplete {{
+                color: #ffd0d0;
+                background-color: #3a1717;
+                border: 1px solid #783030;
             }}
             QLabel#DataImportCodeBlock {{
                 color: #d8ecff;
@@ -2319,8 +2346,7 @@ class DataInterpretationPreviewDialog(
             QFrame#DataImportEventRulesTable,
             QFrame#DataImportClassMapTable,
             QFrame#DataImportInternalLabelsTable,
-            QFrame#DataImportInternalOtherEventsTable,
-            QFrame#DataImportApplyConfirmPanel {{
+            QFrame#DataImportInternalOtherEventsTable {{
                 background-color: #202020;
                 border: 1px solid #343434;
                 border-radius: 5px;
@@ -2507,11 +2533,6 @@ class DataInterpretationPreviewDialog(
                 border: none;
                 padding: 2px 0;
             }}
-            QFrame#DataImportSummaryCell {{
-                background-color: transparent;
-                border: none;
-                padding: 2px 0;
-            }}
             QLabel#DataImportStatusLabel {{
                 color: {Theme.TEXT_SECONDARY};
                 background-color: transparent;
@@ -2650,6 +2671,24 @@ class DataInterpretationPreviewDialog(
             }}
             QPushButton#DataImportInlineAction:pressed {{
                 background-color: #1f2b36;
+            }}
+            QPushButton#DataImportReviewAction {{
+                background-color: #2b2b2b;
+                color: #f1f1f1;
+                border: 1px solid #4a4a4a;
+                border-radius: 4px;
+                padding: 5px 10px;
+                min-height: 18px;
+                min-width: 112px;
+                font-size: 12px;
+                font-weight: 600;
+            }}
+            QPushButton#DataImportReviewAction:hover {{
+                background-color: #333333;
+                border-color: #5a5a5a;
+            }}
+            QPushButton#DataImportReviewAction:pressed {{
+                background-color: #242424;
             }}
             QDialogButtonBox QPushButton {{
                 background-color: {Theme.BACKGROUND_MID};
