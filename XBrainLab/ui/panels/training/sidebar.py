@@ -267,6 +267,12 @@ class TrainingSidebar(QWidget):
         getter = getattr(self.controller, "get_resource_preflight_context", None)
         if not callable(getter):
             return {}
+        return self._compatibility_training_resource_context(getter)
+
+    def _compatibility_training_resource_context(
+        self,
+        getter: Callable[[], Any],
+    ) -> dict[str, Any]:
         try:
             value = run_controller_compatibility_call(
                 self,
@@ -319,6 +325,11 @@ class TrainingSidebar(QWidget):
                 result.message,
             )
             return False
+        if (
+            result.risk_level == RISK_UNKNOWN
+            and result.details.get("reason") == "missing_training_option"
+        ):
+            return True
         if result.risk_level in {RISK_WARNING, RISK_UNKNOWN}:
             reply = QMessageBox.question(
                 self,

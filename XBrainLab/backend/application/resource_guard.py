@@ -10,8 +10,6 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
-import torch
-
 from XBrainLab.backend.utils.cuda_errors import (
     is_cuda_oom_error as _is_cuda_oom_error,
 )
@@ -256,6 +254,7 @@ class ResourceChecker:
                 "allocated_bytes": None,
                 "reserved_bytes": None,
             }
+        torch_module = _torch_module()
         device_index = 0 if gpu_idx is None else int(gpu_idx)
         available = available_vram_bytes(device_index)
         total = None
@@ -263,17 +262,17 @@ class ResourceChecker:
         reserved = None
         gpu_name = None
         try:
-            _free, total = torch.cuda.mem_get_info(device_index)
+            _free, total = torch_module.cuda.mem_get_info(device_index)
             total = int(total)
         except Exception:
             pass
         try:
-            allocated = int(torch.cuda.memory_allocated(device_index))
-            reserved = int(torch.cuda.memory_reserved(device_index))
+            allocated = int(torch_module.cuda.memory_allocated(device_index))
+            reserved = int(torch_module.cuda.memory_reserved(device_index))
         except Exception:
             pass
         try:
-            gpu_name = str(torch.cuda.get_device_name(device_index))
+            gpu_name = str(torch_module.cuda.get_device_name(device_index))
         except Exception:
             gpu_name = None
         used = None
@@ -529,10 +528,11 @@ def available_ram_bytes() -> int | None:
 def available_vram_bytes(gpu_idx: int | None = None) -> int | None:
     """Return free CUDA memory for the selected device, if CUDA is available."""
     try:
-        if not torch.cuda.is_available():
+        torch_module = _torch_module()
+        if not torch_module.cuda.is_available():
             return None
         device_index = 0 if gpu_idx is None else int(gpu_idx)
-        free_bytes, _total = torch.cuda.mem_get_info(device_index)
+        free_bytes, _total = torch_module.cuda.mem_get_info(device_index)
         return int(free_bytes)
     except Exception:
         return None
@@ -545,7 +545,7 @@ def is_cuda_oom_error(exc: BaseException) -> bool:
 
 def release_cuda_cache() -> None:
     """Release cached CUDA memory when CUDA is available."""
-    _release_cuda_cache(torch)
+    _release_cuda_cache(_torch_module())
 
 
 def _training_dataset_ram_check(datasets: Iterable[Any]) -> ResourceCheckResult:
@@ -713,9 +713,13 @@ def _normalized_suffix(path: Path) -> str:
 
 def _cuda_available() -> bool:
     try:
-        return bool(torch.cuda.is_available())
+        return bool(_torch_module().cuda.is_available())
     except Exception:
         return False
+
+
+def _torch_module() -> Any:
+    return import_module("torch")
 
 
 def _uses_cpu(option: Any) -> bool:

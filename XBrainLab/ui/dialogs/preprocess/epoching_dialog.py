@@ -357,10 +357,10 @@ class EpochingDialog(BaseDialog):
         footer.addStretch()
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        normalize_dialog_button_box(buttons, ok_text="Create Epochs")
         ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
         if ok_button is not None:
             ok_button.setObjectName("EpochPrimaryButton")
-        normalize_dialog_button_box(buttons, ok_text="Create Epochs")
         buttons.accepted.connect(self.accept)
         footer.addWidget(buttons)
         layout.addLayout(footer)

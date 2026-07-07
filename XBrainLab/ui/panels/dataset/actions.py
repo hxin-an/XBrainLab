@@ -35,11 +35,6 @@ from XBrainLab.backend.application.commands import (
     UpdateMetadataCommand,
     ValidateInterpretationCommand,
 )
-from XBrainLab.backend.application.resource_guard import (
-    RISK_BLOCKING,
-    RISK_WARNING,
-    ResourceChecker,
-)
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -169,6 +164,12 @@ class DatasetActionHandler:
     def _confirm_import_resource_preflight(self, paths: list[str]) -> bool:
         if not paths:
             return True
+        from XBrainLab.backend.application.resource_guard import (  # noqa: PLC0415
+            RISK_BLOCKING,
+            RISK_WARNING,
+            ResourceChecker,
+        )
+
         result = ResourceChecker.check_dataset_load_safe(paths)
         if result.risk_level == RISK_BLOCKING:
             QMessageBox.critical(
@@ -678,6 +679,7 @@ class DatasetActionHandler:
     ) -> bool:
         scan = review_state.scan
         preview = review_state.preview
+        candidate = review_state.candidate
         decision = review_state.decision
         candidate_id = review_state.candidate_id
         resume_dialog_step = ""
@@ -731,14 +733,12 @@ class DatasetActionHandler:
                         review_result.message,
                     )
                     return True
-                scan = self._diagnostic_payload(review_result, "scan_result")
-                preview = self._diagnostic_payload(review_result, "preview")
-                candidate = self._diagnostic_payload(review_result, "candidate")
-                candidate_id = self._optional_payload_id(candidate, "candidate_id")
-                decision = self._diagnostic_payload(
-                    review_result,
-                    "validation_decision",
-                )
+                review_state = self._review_state_from_review_result(review_result)
+                scan = review_state.scan
+                preview = review_state.preview
+                candidate = review_state.candidate
+                candidate_id = review_state.candidate_id
+                decision = review_state.decision
                 continue
 
             if str(decision.get("decision")) == "blocked":
@@ -770,14 +770,12 @@ class DatasetActionHandler:
                     review_result.message,
                 )
                 return True
-            scan = self._diagnostic_payload(review_result, "scan_result")
-            preview = self._diagnostic_payload(review_result, "preview")
-            candidate = self._diagnostic_payload(review_result, "candidate")
-            candidate_id = self._optional_payload_id(candidate, "candidate_id")
-            decision = self._diagnostic_payload(
-                review_result,
-                "validation_decision",
-            )
+            review_state = self._review_state_from_review_result(review_result)
+            scan = review_state.scan
+            preview = review_state.preview
+            candidate = review_state.candidate
+            candidate_id = review_state.candidate_id
+            decision = review_state.decision
             if str(decision.get("decision")) == "blocked":
                 QMessageBox.critical(
                     self.panel,
