@@ -3,6 +3,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PyQt6.QtWidgets import QPushButton
 
+from XBrainLab.backend.application.resource_guard import (
+    RISK_BLOCKING,
+    ResourceCheckResult,
+)
 from XBrainLab.ui.panels.training.sidebar import TrainingSidebar
 
 
@@ -47,6 +51,39 @@ def test_on_start_clicked(sidebar):
     sidebar.controller.start_training.assert_not_called()
     # It acts as idempotent or safe start?
     # Logic: if not self.controller.is_training(): start()
+
+
+def test_start_training_blocks_when_resource_check_is_too_large(sidebar):
+    resource_result = ResourceCheckResult(
+        required_memory_bytes=10 * 1024**3,
+        available_memory_bytes=4 * 1024**3,
+        total_memory_bytes=8 * 1024**3,
+        used_memory_bytes=4 * 1024**3,
+        risk_level=RISK_BLOCKING,
+        message="Training configuration may exceed available GPU memory.",
+        suggestions=("reduce batch size",),
+        details={},
+    )
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+            return_value=MagicMock(enabled=True),
+        ),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar."
+            "ResourceChecker.check_training_config_safe",
+            return_value=resource_result,
+        ),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+        ) as execute,
+        patch("XBrainLab.ui.panels.training.sidebar.QMessageBox.critical") as critical,
+    ):
+        sidebar.start_training_ui_action()
+
+    execute.assert_not_called()
+    critical.assert_called_once()
+    assert critical.call_args.args[1] == "Training Resource Check"
 
 
 def test_stop_training(sidebar):

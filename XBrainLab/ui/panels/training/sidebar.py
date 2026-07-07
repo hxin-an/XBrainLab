@@ -7,6 +7,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
     QGroupBox,
+    QLabel,
     QMessageBox,
     QPushButton,
     QVBoxLayout,
@@ -22,6 +23,12 @@ from XBrainLab.backend.application import (
     QueryStateCommand,
     StopTrainingCommand,
     TrainCommand,
+)
+from XBrainLab.backend.application.resource_guard import (
+    RISK_BLOCKING,
+    RISK_UNKNOWN,
+    RISK_WARNING,
+    ResourceChecker,
 )
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -165,6 +172,14 @@ class TrainingSidebar(QWidget):
         self.btn_start.setEnabled(False)
         exec_layout.addWidget(self.btn_start)
 
+        self.resource_check_label = QLabel("Resource check: configure training")
+        self.resource_check_label.setObjectName("TrainingResourceCheck")
+        self.resource_check_label.setWordWrap(True)
+        self.resource_check_label.setStyleSheet(
+            "color: #b8c0cc; font-size: 12px; padding: 2px 0;"
+        )
+        exec_layout.addWidget(self.resource_check_label)
+
         self.btn_stop = QPushButton("Stop Training")
         self.btn_stop.setStyleSheet(Stylesheets.BTN_WARNING)
         self.btn_stop.setEnabled(False)
@@ -234,6 +249,7 @@ class TrainingSidebar(QWidget):
                 )
         else:
             self.btn_start.setToolTip("Start Training")
+        self._refresh_resource_check_summary()
 
     def _compatibility_missing_training_config(self) -> list[str]:
         missing = []
@@ -244,6 +260,75 @@ class TrainingSidebar(QWidget):
         if not self.controller.has_training_option():
             missing.append("Training Settings")
         return missing
+
+    def _training_resource_context(self) -> dict[str, Any]:
+        if self.controller is None:
+            return {}
+        getter = getattr(self.controller, "get_resource_preflight_context", None)
+        if not callable(getter):
+            return {}
+        try:
+            value = run_controller_compatibility_call(
+                self,
+                getter,
+            )
+        except ControllerCompatibilityUnavailableError:
+            return {}
+        return dict(value) if isinstance(value, dict) else {}
+
+    def _training_resource_check_result(self):
+        context = self._training_resource_context()
+        return ResourceChecker.check_training_config_safe(
+            context.get("datasets", []),
+            context.get("training_option"),
+            context.get("model_holder"),
+        )
+
+    def _refresh_resource_check_summary(self) -> None:
+        label = getattr(self, "resource_check_label", None)
+        if label is None:
+            return
+        result = self._training_resource_check_result()
+        required = ResourceChecker.format_memory_size(result.required_memory_bytes)
+        available = ResourceChecker.format_memory_size(result.available_memory_bytes)
+        if result.risk_level == RISK_BLOCKING:
+            text = f"Resource check: Too large\nVRAM {required} / {available}"
+            color = "#ff9b9b"
+        elif result.risk_level == RISK_WARNING:
+            text = f"Resource check: Warning\nVRAM {required} / {available}"
+            color = "#ffd479"
+        elif result.risk_level == RISK_UNKNOWN:
+            text = "Resource check: Unknown\nGPU memory unavailable"
+            color = "#b8c0cc"
+        else:
+            if result.details.get("uses_cpu"):
+                text = "Resource check: CPU selected"
+            else:
+                text = f"Resource check: Safe\nVRAM {required} / {available}"
+            color = "#9fd3a4"
+        label.setText(text)
+        label.setToolTip(result.message)
+        label.setStyleSheet(f"color: {color}; font-size: 12px; padding: 2px 0;")
+
+    def _confirm_training_resource_preflight(self) -> bool:
+        result = self._training_resource_check_result()
+        if result.risk_level == RISK_BLOCKING:
+            QMessageBox.critical(
+                self,
+                "Training Resource Check",
+                result.message,
+            )
+            return False
+        if result.risk_level in {RISK_WARNING, RISK_UNKNOWN}:
+            reply = QMessageBox.question(
+                self,
+                "Training Resource Check",
+                result.message + "\n\nContinue starting training?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            return reply == QMessageBox.StandardButton.Yes
+        return True
 
     def update_info(self):
         """Refresh the aggregate info panel (delegated to InfoPanelService)."""
@@ -681,6 +766,9 @@ class TrainingSidebar(QWidget):
                 )
                 return
             if self._should_start_training(train_capability):
+                if not self._confirm_training_resource_preflight():
+                    self._refresh_resource_check_summary()
+                    return
                 # A direct button click is the user's confirmation for the
                 # desktop UI. The backend command remains confirmed so agent
                 # and headless paths still honor the command policy boundary.

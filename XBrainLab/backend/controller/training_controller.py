@@ -367,6 +367,14 @@ class TrainingController(Observable):
         """
         return self._study.training_option
 
+    def get_resource_preflight_context(self) -> dict[str, Any]:
+        """Return runtime objects needed for resource preflight estimates."""
+        return {
+            "datasets": list(getattr(self._study, "datasets", []) or []),
+            "training_option": getattr(self._study, "training_option", None),
+            "model_holder": getattr(self._study, "model_holder", None),
+        }
+
     def get_model_holder(self) -> Any:
         """Return the current model holder.
 

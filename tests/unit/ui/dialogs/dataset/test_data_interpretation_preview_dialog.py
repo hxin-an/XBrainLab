@@ -14,6 +14,10 @@ from PyQt6.QtWidgets import (
     QScrollArea,
 )
 
+from XBrainLab.backend.application.resource_guard import (
+    RISK_SAFE,
+    ResourceCheckResult,
+)
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
     _ConvertedLabelTableDialog,
@@ -84,9 +88,10 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
     assert "Single file" in scope_text
     assert "Scan location" in scope_text
     assert "Type" not in scope_text
+    review_header = dialog.review_tree.headerItem()
+    assert review_header is not None
     assert [
-        dialog.review_tree.headerItem().text(index)
-        for index in range(dialog.review_tree.columnCount())
+        review_header.text(index) for index in range(dialog.review_tree.columnCount())
     ] == ["Target step", "Issue", "Impact", "Next action"]
     assert dialog.confirmation_label.text() == ""
     assert "Review import choices" in review_text
@@ -100,6 +105,53 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
         "save_recipe": True,
         "choices": {"label_carrier": "embedded_events"},
     }
+
+
+def test_review_and_import_shows_resource_check_row(qtbot, monkeypatch):
+    monkeypatch.setattr(
+        "XBrainLab.ui.dialogs.dataset.review_import_step."
+        "ResourceChecker.check_dataset_load_safe",
+        staticmethod(
+            lambda _paths: ResourceCheckResult(
+                required_memory_bytes=2 * 1024**3,
+                available_memory_bytes=8 * 1024**3,
+                total_memory_bytes=16 * 1024**3,
+                used_memory_bytes=8 * 1024**3,
+                risk_level=RISK_SAFE,
+                message="Resource check: Safe",
+                details={},
+            )
+        ),
+    )
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s).",
+            "selected_eeg_files": ["/tmp/source/A01T.gdf"],
+            "metadata_preview": [
+                {
+                    "file": "A01T.gdf",
+                    "subject": {"value": "A01", "decision": "safe"},
+                    "session": {"value": "", "decision": "safe"},
+                    "task": {"value": "mi", "decision": "safe"},
+                    "run": {"value": "", "decision": "safe"},
+                },
+            ],
+        },
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+
+    _show_step(dialog, "Review and Import")
+    review_text = _visible_step_text(dialog, "Review and Import")
+
+    assert "Resource check" in review_text
+    assert "Safe" in review_text
+    assert "Estimated RAM 2.0 GB / Available RAM 8.0 GB" in review_text
 
 
 def test_data_interpretation_preview_dialog_uses_one_panel_per_step(qtbot):
@@ -255,7 +307,9 @@ def test_choose_eeg_data_cards_stay_compact_for_small_selection(qtbot):
     ]
     assert metric_cards
     assert max(card.height() for card in metric_cards) <= 150
-    assert dialog.scroll_area.verticalScrollBar().maximum() == 0
+    vertical_scrollbar = dialog.scroll_area.verticalScrollBar()
+    assert vertical_scrollbar is not None
+    assert vertical_scrollbar.maximum() == 0
     assert (
         dialog.scroll_area.verticalScrollBarPolicy()
         == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
@@ -295,6 +349,7 @@ def test_load_labels_step_does_not_hidden_scroll_when_content_fits(qtbot):
     qtbot.wait(0)
 
     scrollbar = dialog.scroll_area.verticalScrollBar()
+    assert scrollbar is not None
     assert (
         dialog.scroll_area.verticalScrollBarPolicy()
         == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
@@ -336,8 +391,10 @@ def test_data_interpretation_preview_dialog_uses_task_oriented_label_headers(qtb
     )
     qtbot.addWidget(dialog)
 
+    label_header = dialog.label_carrier_tree.headerItem()
+    assert label_header is not None
     headers = [
-        dialog.label_carrier_tree.headerItem().text(index)
+        label_header.text(index)
         for index in range(dialog.label_carrier_tree.columnCount())
     ]
 
@@ -1643,10 +1700,12 @@ def test_match_labels_shows_conversion_fallback_when_label_field_is_missing(
     assert "Matched" not in visible_text
     assert "XBrainLab cannot match this label file yet" in visible_text
     assert "cannot tell which column or variable contains the labels" in visible_text
+    current_widget = dialog.step_stack.currentWidget()
+    assert current_widget is not None
     visible_buttons = [
         button.text()
-        for button in dialog.step_stack.currentWidget().findChildren(QPushButton)
-        if button.isVisibleTo(dialog.step_stack.currentWidget())
+        for button in current_widget.findChildren(QPushButton)
+        if button.isVisibleTo(current_widget)
     ]
     assert "View required format" in visible_buttons
     assert "One row per label" not in visible_text

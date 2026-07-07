@@ -10,6 +10,10 @@ import numpy as np
 import torch
 import torch.utils.data as torch_data
 
+from XBrainLab.backend.utils.cuda_errors import (
+    is_cuda_oom_error,
+    release_cuda_cache,
+)
 from XBrainLab.backend.utils.logger import logger
 
 # ... (Previous imports remain, but remove captum/sklearn if unused locally)
@@ -278,8 +282,17 @@ class TrainingPlanHolder:
                 self.status = Status.PENDING.value
         except Exception as e:
             logger.error("Training plan execution failed: %s", e, exc_info=True)
-            self.error = str(e)
-            self.status = Status.PENDING.value
+            if is_cuda_oom_error(e):
+                release_cuda_cache(torch)
+                self.error = (
+                    "CUDA out of memory during training. The current "
+                    "configuration is too large for the available GPU memory. "
+                    "Try reducing batch size, input length, or model size."
+                )
+                self.status = "Failed: CUDA out of memory"
+            else:
+                self.error = str(e)
+                self.status = Status.PENDING.value
         finally:
             # Ensure GPU models are moved back to CPU to prevent VRAM leaks
             for tr in self.train_record_list:

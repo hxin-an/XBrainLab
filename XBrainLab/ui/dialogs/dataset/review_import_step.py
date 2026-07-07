@@ -17,6 +17,13 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from XBrainLab.backend.application.resource_guard import (
+    RISK_BLOCKING,
+    RISK_SAFE,
+    RISK_UNKNOWN,
+    RISK_WARNING,
+    ResourceChecker,
+)
 from XBrainLab.ui.dialogs.dataset.review_import_presenter import (
     eeg_data_summary,
     internal_label_placement_summary,
@@ -103,6 +110,10 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         return {
             "Ready": "DataImportReviewStatusReady",
             "Completed": "DataImportReviewStatusReady",
+            "Safe": "DataImportReviewStatusReady",
+            "Warning": "DataImportReviewStatusNeedsReview",
+            "Too large": "DataImportReviewStatusMissing",
+            "Unknown": "DataImportReviewStatusNeedsReview",
             "Needs review": "DataImportReviewStatusNeedsReview",
             "Missing": "DataImportReviewStatusMissing",
             "Incomplete": "DataImportReviewStatusIncomplete",
@@ -206,6 +217,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
                     else ""
                 ),
             },
+            self._resource_check_status_row(),
             {
                 "item": "Recipe",
                 "status": recipe_status,
@@ -314,6 +326,74 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             active_carrier_count=self._active_label_carrier_count(),
             needs_label_conversion=self._should_show_label_table_fallback(),
         )
+
+    def _resource_check_status_row(self) -> dict[str, str]:
+        result = self._import_resource_check_result()
+        status = {
+            RISK_SAFE: "Safe",
+            RISK_WARNING: "Warning",
+            RISK_BLOCKING: "Too large",
+            RISK_UNKNOWN: "Unknown",
+        }.get(result.risk_level, "Unknown")
+        action = "Go to EEG Data" if result.risk_level == RISK_BLOCKING else ""
+        return {
+            "item": "Resource check",
+            "status": status,
+            "summary": self._review_resource_check_text(result),
+            "action": action,
+            "target_step": "Choose EEG Data",
+        }
+
+    def _review_resource_check_text(self, result) -> str:
+        required = ResourceChecker.format_memory_size(result.required_memory_bytes)
+        available = ResourceChecker.format_memory_size(result.available_memory_bytes)
+        if result.risk_level == RISK_SAFE:
+            return f"Estimated RAM {required} / Available RAM {available}"
+        if result.risk_level == RISK_WARNING:
+            return (
+                f"Estimated RAM {required} / Available RAM {available} · "
+                "review before import"
+            )
+        if result.risk_level == RISK_BLOCKING:
+            return (
+                f"Estimated RAM {required} / Available RAM {available} · "
+                "select fewer files"
+            )
+        return "RAM availability could not be estimated on this system"
+
+    def _resource_check_blocks_import(self) -> bool:
+        return self._import_resource_check_result().risk_level == RISK_BLOCKING
+
+    def _import_resource_check_result(self):
+        paths = tuple(self._selected_eeg_file_paths())
+        cached_paths = getattr(self, "_import_resource_check_paths", None)
+        cached_result = getattr(self, "_import_resource_check", None)
+        if cached_result is not None and cached_paths == paths:
+            return cached_result
+        result = ResourceChecker.check_dataset_load_safe(paths)
+        self._import_resource_check_paths = paths
+        self._import_resource_check = result
+        return result
+
+    def _selected_eeg_file_paths(self) -> list[str]:
+        selected_files = self.preview.get("selected_eeg_files")
+        if isinstance(selected_files, list) and selected_files:
+            return [str(path) for path in selected_files if str(path).strip()]
+        scan_files = [
+            str(path)
+            for path in self.scan_result.get("eeg_files", []) or []
+            if str(path).strip()
+        ]
+        file_count = self.preview.get("file_count")
+        selection = str(self.preview.get("source_selection") or "").lower()
+        if (
+            isinstance(file_count, int)
+            and file_count >= 0
+            and "selected" in selection
+            and file_count < len(scan_files)
+        ):
+            return scan_files[:file_count]
+        return scan_files
 
     def _active_label_carrier_count(self) -> int:
         return sum(

@@ -108,6 +108,7 @@ class TrainingCommandService:
         preflight = check_training_resource_preflight(
             context.get("datasets", []),
             context.get("training_option"),
+            context.get("model_holder"),
         )
         if not preflight.ok:
             raise PreconditionError(

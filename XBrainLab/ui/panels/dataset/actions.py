@@ -35,6 +35,11 @@ from XBrainLab.backend.application.commands import (
     UpdateMetadataCommand,
     ValidateInterpretationCommand,
 )
+from XBrainLab.backend.application.resource_guard import (
+    RISK_BLOCKING,
+    RISK_WARNING,
+    ResourceChecker,
+)
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -160,6 +165,44 @@ class DatasetActionHandler:
 
     def _show_status(self, message: str) -> None:
         show_status_message(self.panel, message)
+
+    def _confirm_import_resource_preflight(self, paths: list[str]) -> bool:
+        if not paths:
+            return True
+        result = ResourceChecker.check_dataset_load_safe(paths)
+        if result.risk_level == RISK_BLOCKING:
+            QMessageBox.critical(
+                self.panel,
+                "Dataset Resource Check",
+                result.message,
+            )
+            return False
+        if result.risk_level == RISK_WARNING:
+            reply = QMessageBox.question(
+                self.panel,
+                "Dataset Resource Check",
+                result.message + "\n\nContinue importing this dataset?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            return reply == QMessageBox.StandardButton.Yes
+        return True
+
+    @staticmethod
+    def _interpretation_apply_paths(
+        candidate: dict[str, Any],
+        preview: dict[str, Any],
+        scan: dict[str, Any],
+    ) -> list[str]:
+        for payload, key in (
+            (candidate, "selected_eeg_files"),
+            (preview, "selected_eeg_files"),
+            (scan, "eeg_files"),
+        ):
+            values = payload.get(key) if isinstance(payload, dict) else None
+            if isinstance(values, list) and values:
+                return [str(path) for path in values if str(path).strip()]
+        return []
 
     def _compatibility_controller_value(
         self,
@@ -301,6 +344,8 @@ class DatasetActionHandler:
                             "Interpretation unavailable",
                             "Data Interpretation command service is unavailable.",
                         )
+                        return
+                    if not self._confirm_import_resource_preflight(list(filepaths)):
                         return
                     result = execute_application_command(
                         self.panel,
@@ -748,6 +793,9 @@ class DatasetActionHandler:
             or candidate_id,
             confirmed=confirmed,
         )
+        apply_paths = self._interpretation_apply_paths(candidate, preview, scan)
+        if not self._confirm_import_resource_preflight(apply_paths):
+            return True
 
         def _handle_apply_result(apply_result) -> None:
             if apply_result.failed:

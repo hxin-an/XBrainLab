@@ -138,8 +138,19 @@ class TrainingHistoryTable(QTableWidget):
             # Determine status
             epoch = record.get_epoch()
             max_epochs = plan.option.epoch
+            plan_status = ""
+            get_status = getattr(plan, "get_training_status", None)
+            if callable(get_status):
+                try:
+                    plan_status = str(get_status() or "")
+                except Exception:
+                    plan_status = ""
 
-            if record.is_finished():
+            if "out of memory" in plan_status.lower() or plan_status.startswith(
+                "Failed",
+            ):
+                status = "Failed"
+            elif record.is_finished():
                 status = "Done"
             elif is_current_run:
                 status = "Running"

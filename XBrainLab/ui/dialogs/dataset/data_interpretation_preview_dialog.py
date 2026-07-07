@@ -3813,6 +3813,11 @@ class DataInterpretationPreviewDialog(
         )
 
     def _apply_allowed(self) -> bool:
+        if (
+            hasattr(self, "_resource_check_blocks_import")
+            and self._resource_check_blocks_import()
+        ):
+            return False
         return self.decision != "blocked" or self._has_complete_remap_choices()
 
     def _has_complete_remap_choices(self) -> bool:
