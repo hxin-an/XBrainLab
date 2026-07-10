@@ -1,18 +1,17 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-07-10`
+最後更新：`2026-07-11`
 
 這頁只回答一件事：**現在能相信什麼，還不能宣稱什麼，下一步該做什麼。**
 完整階段安排看 [Roadmap](planning/roadmap.md)，下一輪施工看 [Now](planning/now.md)。
 
 ## 一句話
 
-XBrainLab 已完成本輪 Desktop MVP audit、blocker repair 與 handoff-candidate gate。
-Application command serialization、assistant 執行政策與 Qt worker lifecycle、Data Import
-pairing/review truth、真實 GDF event/evaluation 路徑、UI repaint artifact 和多資料集 validation
-都有 current evidence；完整 dashboard 與 architecture/UI/test-EEG reviewer gates 已通過。
-目前下一步是從本輪驗證並 push 的 `stabilize/desktop-mvp` 進行 Windows 真人 acceptance，
-通過後才決定是否合併 `main`。
+`2026-07-11` 重新稽核已撤銷先前的 handoff-candidate 判定。UI worker lifecycle 與 Windows
+launcher 已有 current 修復與 focused evidence，但稽核找到會影響產品與科學正確性的 blocker：
+test split 參與 checkpoint selection、長命令期間同步 UI query 可能卡住 event loop、agent 會把
+混合說明文字中的 JSON 當成 tool call、以及 walkthrough/dashboard evidence 沒有完整綁定目前
+HEAD。這些問題修完並重跑完整 gate 前，不應交給使用者作第一層 QA。
 
 MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測試與 artifacts 只代表
 歷史探索或相容性證據，不再是 MVP、release candidate 或 thesis evidence 的必要路線。
@@ -32,8 +31,15 @@ MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測�
 
 ## 下一個真正 blocker
 
-**Windows 真人 acceptance：啟動、Data Import、preprocess/epoch、split/train、evaluation、
-visualization/saliency 與 assistant click-through。**
+**先修完重新稽核的 correctness / reliability blockers，再重建 current-HEAD handoff gate。**
+
+目前優先順序：
+
+1. training selection 不再使用 test split；undefined metrics 不再偽裝成 `0.0`。
+2. UI read model 在長命令期間不等待 mutation lock；post-command/state reliability fail closed。
+3. agent 只接受完整 tool-call envelope，repair context 可見且 loop guard 以單一 user turn 為界。
+4. 補 BIDS event bounds、run-dependent mapping、overlapping-window split leakage 與 saliency atomicity。
+5. 重跑完整 unit/dashboard/multi-dataset/真 workflow artifact，再進 Windows 真人 acceptance。
 
 Rebaseline 後的工程入口：
 
@@ -82,11 +88,11 @@ Desktop MVP 前仍要先把 backend / UI 穩定化繼續收乾淨：
 | Gate | 最近結果 | 用途 |
 | --- | --- | --- |
 | `mkdocs build --strict` | PASS | 文件站可建。 |
-| fast quality dashboard | Product baseline `2168f0a0` 為 clean `PASS`：Ruff、Basedpyright `0 errors`、architecture、startup、7 UI baselines、dialog、product walkthrough、real IO；final handoff commit 以 generated `artifacts/quality/latest.md` 為準。 | lint、type、architecture、startup、UI baseline、UI product walkthrough、UI unit、real-data IO。 |
+| fast quality dashboard | 最近 committed artifact 屬於較舊 commit `8e3b32d7`，不能支撐目前 HEAD；待 blocker 修復後重建。 | 目前只能作歷史 baseline，不能作 handoff claim。 |
 | UI unit suite in latest lifecycle checkpoint | `1375 passed`；worker/shutdown focused + architecture batch `746 passed`。 | 支撐目前 UI regression、queued command fence、deleted-widget cleanup、Data Splitting Esc/X 與 async interpretation baseline，不取代人工 Windows UX approval。 |
 | Data Interpretation format matrix | expected capabilities observed / match | 支撐代表性 scan / preview / validation format boundary。 |
 | Required multi-dataset gate | strict dataset / format matrix OK；expanded IO + public BIDS + cross-source + checked-in real GDF pipeline `46 passed`；strict cross-source smoke `4 passed`（3 training + 1 CNT epoch-only） | 支撐 checked-in GDF/MAT、compact multiformat、public event-rich fixtures、public BIDS EEG fixture，並避免把 epoch-only CNT 誤稱可訓練。 |
-| Human-like desktop walkthrough | `27/27` phases PASS；Data Import 實際擷取 Step 1/3/4/5，且 glyph、main navigation、visible right-panel paint guards clean。 | 支撐 Xvfb 自動化產品證據；不等於 Windows DPI、多螢幕或長時間真人 acceptance。 |
+| Human-like desktop walkthrough | current script 已要求 epoch/dataset/train/evaluate/visualize 真正成功，且明確把注入的 assistant 文案限制為 layout evidence；artifact 仍需在最終整合 HEAD 重建。 | 支撐 Xvfb workflow/UI evidence；不支撐 local-model tool-call correctness，也不等於 Windows acceptance。 |
 | Assistant focused regression | command policy、controller/worker lifecycle、refresh、UI wiring focused suites 已通過；核心合併批次最高 `283 passed`，後續 thread/UI targeted tests 亦通過 | 支撐 One Step / Workflow policy、owner-thread teardown、changed-state refresh；不代表本地模型長時間 session。 |
 | Saliency / visualization focused tests | ApplicationService / training / UI saliency regression passed on `stabilize/bids-epoch-saliency-baseline`. | 支撐 background baseline、advanced settings recompute boundary、BIDS epoch handoff 和 resource preflight；不取代人工 UX review。 |
 | Windows launcher walkthrough | PASS | 自動化 launcher command / bounded startup evidence，不是 signed installer 或真人 click-through。 |

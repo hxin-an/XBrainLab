@@ -14,7 +14,7 @@ MVP stabilization；not product complete.
 
 <div markdown>
 <span class="xlb-kicker">主要缺口</span>
-下一步從唯一工程基底做 Desktop MVP audit，再修 blockers；Windows acceptance 仍 pending。
+重新稽核已找到 scientific、UI concurrency、agent control-loop 與 validation-truth blockers；Windows acceptance 尚未開始。
 </div>
 
 <div markdown>
@@ -34,7 +34,7 @@ local quality dashboard；screenshot index；private docs portal visual review.
 
 <div markdown>
 <span class="xlb-kicker">Next Work</span>
-Desktop MVP audit; blocker queue; repair; handoff gate before user manual test.
+Correctness blocker repair; current-HEAD handoff gate; then user manual test.
 </div>
 
 </div>
@@ -43,7 +43,7 @@ Desktop MVP audit; blocker queue; repair; handoff gate before user manual test.
 
 | Area | Current Read | Best Evidence | Next Work |
 | --- | --- | --- | --- |
-| Product readiness | Baseline exists; not product complete. | [Current](current.md), [Roadmap](planning/roadmap.md) | Desktop MVP audit, blocker repair, then human-observable desktop smoke. |
+| Product readiness | Re-audit open; not handoff-ready or product complete. | [Current](current.md), [Now](planning/now.md) | Repair correctness/reliability blockers, rebuild evidence, then human Windows acceptance. |
 | Backend architecture | `ApplicationService / Command API` is the shared backend spine; `BackendFacade` is physically removed. | [Architecture](architecture/README.md), [Validation](validation/README.md) | Keep guards green while UX continues. |
 | Data Import | `scan -> preview -> validate -> apply -> recipe` works as baseline; placement evidence covers four mainstream modes. | [Data Interpretation target](target/data_interpretation_system.md), `artifacts/ui/data-import-wizard-steps/README.md` | Record UX debt; do not redesign tonight. |
 | Validation | Handoff candidate gate is the required standard before user manual testing. | [Validation](validation/README.md); local generated `artifacts/quality/latest.md` | Run focused regression, same-class sweep, happy path, edge/multi-dataset, screenshot artifact, and claim boundary per branch. |

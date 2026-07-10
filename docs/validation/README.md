@@ -247,7 +247,12 @@ This supports a manual-test candidate after final dashboard/docs/branch hygiene 
 It still does not claim human Windows acceptance, full BIDS validator compliance,
 arbitrary public dataset certification, or scientific model-quality evidence.
 
-## 2026-07-10 Desktop MVP Stabilization Evidence
+## 2026-07-10 Historical Desktop MVP Checkpoint
+
+> This checkpoint was invalidated by the 2026-07-11 re-audit. The listed runs remain
+> historical evidence, but they do not support a current handoff-ready claim because
+> the dashboard, walkthrough, and reviewer conclusions were not fully bound to the
+> current HEAD.
 
 本輪 audit 不是用單一 dashboard 取代產品驗收，而是分別修正 command/runtime、assistant/UI、
 真實 EEG evidence 和 validation truth：
@@ -265,7 +270,7 @@ arbitrary public dataset certification, or scientific model-quality evidence.
 - dataset matrix 不再把 MNE CNT epoch-only fixture 誤稱為 training pass；strict runner 現在明確回報
   3 個 training source family + 1 個 epoch-only CNT source。
 
-已通過的 current checkpoint：
+當時通過的 checkpoint：
 
 ```text
 Core assistant / refresh / lifecycle focused merge: 283 passed
@@ -277,8 +282,9 @@ Dataset matrix: strict_validation.ok = true
 Data Interpretation format matrix: observed = true, match = true
 ```
 
-這些結果和本頁最新 clean dashboard、獨立 reviewer evidence 共同支撐 handoff candidate；仍不能
-取代 Windows 真人 click-through、approved local model cache smoke 或長時間 assistant session。
+這些結果只能說明當時的局部工程狀態。重新稽核找到 scientific correctness、UI command
+concurrency、agent control-loop 與 validation traceability blockers；修復並在目前 HEAD 重建完整
+gate 前，不支撐 handoff candidate，也不能取代 Windows 真人 click-through。
 
 ### 2026-06-20 Clean-Code Boundary Follow-Up
 

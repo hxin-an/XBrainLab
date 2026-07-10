@@ -1,16 +1,16 @@
 # XBrainLab Now
 
-最後更新：`2026-07-10`
+最後更新：`2026-07-11`
 
 這頁只放下一輪施工焦點。
 
 ## 目前焦點
 
-**Run Windows acceptance on the verified Desktop MVP handoff candidate.**
+**Close the 2026-07-11 product, scientific-correctness, and agent reliability audit.**
 
-Desktop MVP audit、主要 blocker repair、完整 dashboard、多資料集 gate、human-like walkthrough
-與 architecture/UI/test-EEG 三個 reviewer gates 已通過。現在不再擴張產品範圍；final docs
-checkpoint push 到 `stabilize/desktop-mvp` 後，下一步只做 Windows 真人 acceptance。
+新的 source/runtime/artifact 稽核發現先前 gate 有假陽性與 current-HEAD traceability 缺口，
+因此目前不是 Windows acceptance 階段。先逐一修復 blocker、用短 task branch 合回
+`stabilize/desktop-mvp`，最後重跑完整 handoff gate，才交給使用者手測。
 
 ## 本輪 To-do
 
@@ -25,8 +25,12 @@ checkpoint push 到 `stabilize/desktop-mvp` 後，下一步只做 Windows 真人
 | Done | Delivery flow unified | Branch 規則與 handoff 規則已統一為 Desktop MVP Delivery Flow：short task branch -> stabilization line -> handoff candidate -> user acceptance -> main。 |
 | Done | Desktop MVP audit | Architecture、UI、test/EEG reviewer 已盤點 command concurrency、Qt lifecycle、assistant policy、validation truth、窄螢幕 layout 與 artifact determinism。 |
 | Done | Desktop MVP blocker repair | ApplicationService serialization、assistant refresh/lifecycle、Data Import review truth、real GDF event/evaluation evidence、validation matrix truth、narrow UI artifacts 已修復。 |
-| Done | Handoff candidate closure | current docs、lint/type/test/dashboard/multi-dataset/artifact gates 與三個獨立 reviewer 全數通過。 |
-| Next | Windows user acceptance | 從已 commit/push 的 `stabilize/desktop-mvp` 進行真人 click-through；通過後才決定合併 `main`。 |
+| Invalidated | Previous handoff candidate | 舊 dashboard、walkthrough 與 reviewer 結論未完整綁定目前 HEAD，已撤銷 handoff-ready claim；只保留為歷史 checkpoint。 |
+| In progress | Validation truth reset | Windows launcher 已改指向唯一 active repo；walkthrough 必須讓核心 command 真成功，scripted assistant transcript 只算 layout evidence。 |
+| Next | Scientific training correctness | test split 不參與 checkpoint selection；undefined AUC 顯示 N/A；補 leakage 與 event bounds。 |
+| Next | Non-blocking application view | 長 mutation 期間 UI navigation/query 不等待 command lock；state read error 與 post-state failure fail closed。 |
+| Next | Agent verified turn loop | tool-only envelope、repair context、turn-scoped loop guard、user-safe error text與真 runtime evidence。 |
+| Pending | Windows user acceptance | 只在 current-HEAD dashboard、完整 unit、multi-dataset、產品 walkthrough 與 reviewer gates 全數重建後進行。 |
 
 ## 2026-07-04 Rebaseline 結論
 

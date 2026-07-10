@@ -31,6 +31,7 @@ from scripts.dev.capture_human_like_product_walkthrough import (
     build_ui_quality_review,
     build_workflow_contract_failures,
     chat_panel_geometry,
+    claim_boundary,
     dataset_page_geometry,
     forbidden_visible_text,
     is_nearly_black,
@@ -346,6 +347,50 @@ def test_workflow_contract_rejects_failed_happy_path_command() -> None:
 
     assert "epoch_creation command create_epoch did not succeed" in failures
     assert "epoch_creation did not produce epochs" in failures
+
+
+def test_workflow_contract_requires_reapply_after_recipe_reload() -> None:
+    phases = [
+        {
+            "phase": "data_interpretation_reapply_recipe",
+            "workflow_state": {},
+            "notes": {
+                "reapply": {"command": "apply_interpretation", "ok": False},
+            },
+        }
+    ]
+
+    failures = build_workflow_contract_failures(phases)
+
+    assert (
+        "data_interpretation_reapply_recipe command apply_interpretation did not succeed"
+        in failures
+    )
+
+
+def test_workflow_contract_requires_observed_training_completion() -> None:
+    phases = [
+        {
+            "phase": "training_readiness",
+            "workflow_state": {"training": {"finished_run_count": 1}},
+            "notes": {
+                "training": {"command": "configure_training", "ok": True},
+                "train": {"command": "train", "ok": True},
+                "training_wait": {"completed": False},
+            },
+        }
+    ]
+
+    failures = build_workflow_contract_failures(phases)
+
+    assert "training_readiness did not observe training completion" in failures
+
+
+def test_walkthrough_claim_marks_chat_as_scripted_layout_evidence() -> None:
+    boundary = claim_boundary()
+
+    assert "scripted layout evidence" in boundary
+    assert "not local-model or tool-call correctness evidence" in boundary
 
 
 def test_nearly_black_guard_rejects_uniform_dark_ui_frame(tmp_path) -> None:

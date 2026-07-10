@@ -104,7 +104,7 @@ fast dashboard clean 必須同時滿足：
 1. `artifacts/quality/latest.json` 的 `overall_status` 是 `pass`。
 2. `checks[*].status` 全部是 `pass`。
 3. `artifacts/quality/latest.md` summary table 沒有 `FAIL` 或 `WARN`。
-4. `workspace` 是本次 release-candidate worktree：`/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`。
+4. `workspace` 是目前唯一 active repo：`/mnt/d/workspace_v2/projects/lab/xbrainlab`。
 5. `generated_at` 是本次驗證時間，不是舊 artifact。
 
 這可以支撐日常工程健康判斷，但不能證明 model quality、scientific reproducibility 或 thesis claim。
@@ -241,9 +241,10 @@ poetry run python scripts/dev/inspect_local_assistant_runtime.py \
 
 這些 checks 只能支撐 local runtime smoke，不等於 thesis-grade tool-call eval。
 
-## 2026-05-30 現況
+## 2026-05-30 Historical Evidence
 
-目前 `docs/validation/README.md` 記錄的 refresh 狀態：
+以下保留當時 release-candidate worktree 的歷史紀錄，不是目前 active workspace 或 current
+handoff evidence：
 
 - latest fast dashboard artifact：local generated `artifacts/quality/latest.*`
 - generated at / exact commit：see local generated `artifacts/quality/latest.md`

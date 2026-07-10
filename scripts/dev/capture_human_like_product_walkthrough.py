@@ -101,6 +101,7 @@ SCREENSHOT_NAMES: dict[str, str] = {
     "wizard_review": "05-interpretation-review-import.png",
     "applied": "06-interpretation-applied.png",
     "recipe_reloaded": "07-recipe-reloaded.png",
+    "recipe_reapplied": "07-recipe-reapplied.png",
     "preprocess": "08-preprocessing.png",
     "dataset_ready": "09-dataset-ready.png",
     "training_readiness": "10-training-readiness.png",
@@ -129,6 +130,7 @@ REQUIRED_PHASES = (
     "data_interpretation_apply",
     "data_interpretation_save_recipe",
     "data_interpretation_reload_recipe",
+    "data_interpretation_reapply_recipe",
     "preprocessing",
     "epoch_creation",
     "dataset_generation",
@@ -440,6 +442,11 @@ def _run_walkthrough_steps(
         ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path)),
         command_results,
     )
+    reload_apply = execute_recorded(
+        service,
+        ApplyInterpretationCommand(confirmed=True),
+        command_results,
+    )
     tool_transcript.extend(
         command_summary(item)
         for item in [
@@ -449,6 +456,7 @@ def _run_walkthrough_steps(
             apply_confirmed,
             save_recipe,
             reload_recipe,
+            reload_apply,
         ]
     )
 
@@ -490,6 +498,7 @@ def _run_walkthrough_steps(
         scan_result=reload_recipe.diagnostics["scan_result"],
         preview=reload_recipe.diagnostics["preview"],
         validation_decision=reload_recipe.diagnostics["validation_decision"],
+        initial_step="Review and Import",
     )
     reload_dialog.show()
     app.processEvents()
@@ -499,11 +508,22 @@ def _run_walkthrough_steps(
         widget=reload_dialog,
         notes={
             "reload": command_summary(reload_recipe),
+            "reapply": command_summary(reload_apply),
             "review_summary_rows": tree_rows(reload_dialog.review_tree),
             "ui_geometry": sanitize(interpretation_dialog_geometry(reload_dialog)),
         },
     )
     reload_dialog.close()
+    app.processEvents()
+    window.dataset_panel.update_panel()
+    capture_step(
+        "data_interpretation_reapply_recipe",
+        "recipe_reapplied",
+        notes={
+            "reapply": command_summary(reload_apply),
+            "ui_geometry": dataset_page_geometry(window),
+        },
+    )
 
     preprocess = execute_recorded(
         service,
@@ -577,6 +597,11 @@ def _run_walkthrough_steps(
         TrainCommand(confirmed=True, interactive=False),
         command_results,
     )
+    training_wait = (
+        wait_for_training_completion(app, service)
+        if train.ok
+        else {"completed": False, "reason": "training command failed"}
+    )
     evaluate = execute_recorded(service, EvaluateCommand(), command_results)
     visualize = execute_recorded(service, VisualizeCommand(), command_results)
     saliency = execute_recorded(service, SaliencyCommand(), command_results)
@@ -592,6 +617,7 @@ def _run_walkthrough_steps(
         notes={
             "training": command_summary(configure_training),
             "train": command_summary(train),
+            "training_wait": training_wait,
         },
     )
     window.switch_page(3)
@@ -819,12 +845,12 @@ def run_chatpanel_walkthrough(
         )
     )
 
-    add_chat_message(window, user_transcript, "user", "Load my brainwave data.")
+    add_chat_message(window, user_transcript, "user", "Show details for a file.")
     add_chat_message(
         window,
         user_transcript,
         "assistant",
-        "Choose a file, folder, BIDS root, or saved recipe before I can scan it.",
+        "Which loaded EEG file should I summarize?",
     )
     app.processEvents()
     screenshots["assistant_clarification"] = capture_named(
@@ -838,16 +864,16 @@ def run_chatpanel_walkthrough(
             screenshots["assistant_clarification"],
             panel,
             service,
-            {"clarification": "missing source path"},
+            {"clarification": "missing file selection"},
         )
     )
 
-    add_chat_message(window, user_transcript, "user", "Train it now.")
+    add_chat_message(window, user_transcript, "user", "Import another dataset now.")
     add_chat_message(
         window,
         user_transcript,
         "assistant",
-        "Training is not ready until data, epochs, a dataset, a model, and settings are ready.",
+        "Start a new session before importing another dataset into this completed workflow.",
     )
     app.processEvents()
     screenshots["assistant_blocked"] = capture_named(
@@ -861,7 +887,7 @@ def run_chatpanel_walkthrough(
             screenshots["assistant_blocked"],
             panel,
             service,
-            {"blocked_reason": "training readiness boundary"},
+            {"blocked_reason": "active workflow replacement boundary"},
         )
     )
 
@@ -872,7 +898,7 @@ def run_chatpanel_walkthrough(
         window,
         user_transcript,
         "assistant",
-        "The dataset and training settings are ready; evaluation needs a completed run.",
+        "Training is complete. Evaluation and visualization are ready.",
     )
     app.processEvents()
     screenshots["assistant_success"] = capture_named(
@@ -1044,6 +1070,35 @@ def execute_recorded(
     return result
 
 
+def wait_for_training_completion(
+    app: QApplication,
+    service: ApplicationService,
+    *,
+    timeout_seconds: float = 90.0,
+) -> dict[str, Any]:
+    """Keep the UI responsive while the tiny training smoke finishes."""
+    deadline = time.monotonic() + timeout_seconds
+    last_state = service.get_state()
+    while time.monotonic() < deadline:
+        app.processEvents()
+        last_state = service.get_state()
+        if (
+            not last_state.training.is_running
+            and last_state.training.finished_run_count > 0
+        ):
+            return {
+                "completed": True,
+                "finished_run_count": last_state.training.finished_run_count,
+            }
+        time.sleep(0.02)
+    return {
+        "completed": False,
+        "reason": "training did not finish before the walkthrough timeout",
+        "is_running": last_state.training.is_running,
+        "finished_run_count": last_state.training.finished_run_count,
+    }
+
+
 def command_summary(result: CommandResult) -> dict[str, Any]:
     """Return a compact command/tool transcript row."""
     return {
@@ -1082,6 +1137,7 @@ def chat_phase(
 ) -> dict[str, Any]:
     """Build a ChatPanel phase payload."""
     phase_notes = dict(notes)
+    phase_notes.setdefault("evidence_scope", "scripted_chat_layout_only")
     chat_geometry = chat_panel_geometry(panel)
     if chat_geometry:
         phase_notes["chat_geometry"] = chat_geometry
@@ -1731,6 +1787,7 @@ def build_workflow_contract_failures(phases: list[dict[str, Any]]) -> list[str]:
     for phase_name, note_names in {
         "data_interpretation_apply": ("applied", "recipe"),
         "data_interpretation_reload_recipe": ("reload",),
+        "data_interpretation_reapply_recipe": ("reapply",),
         "preprocessing": ("preprocess",),
         "epoch_creation": ("epoch",),
         "dataset_generation": ("dataset",),
@@ -1760,6 +1817,14 @@ def build_workflow_contract_failures(phases: list[dict[str, Any]]) -> list[str]:
         ("training", "finished_run_count"),
         "did not finish a training run",
     )
+    training_phase = by_name.get("training_readiness")
+    training_wait = (
+        (training_phase.get("notes") or {}).get("training_wait")
+        if training_phase is not None
+        else None
+    )
+    if not isinstance(training_wait, dict) or not bool(training_wait.get("completed")):
+        failures.append("training_readiness did not observe training completion")
     require_state(
         "evaluation_visualization_saliency_readiness",
         ("evaluation", "available"),
@@ -2330,8 +2395,10 @@ def claim_boundary() -> str:
     """Return the validation claim boundary."""
     return (
         "Automated UI-observable PyQt replay; not human Windows desktop "
-        "acceptance. Windows launcher click-through, dual-monitor/DPI behavior, "
-        "and long real local-model desktop sessions remain human verification."
+        "acceptance. Assistant messages in this artifact are scripted layout "
+        "evidence, not local-model or tool-call correctness evidence. Windows "
+        "launcher click-through, dual-monitor/DPI behavior, and long real local-model "
+        "desktop sessions remain human verification."
     )
 
 
