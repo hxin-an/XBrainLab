@@ -159,6 +159,27 @@ class TestTrainingController:
         mock_study.set_training_option.assert_called_once_with(option)
         cb.assert_called_once()
 
+    def test_apply_configuration_notifies_once(self, controller, mock_study):
+        cb = MagicMock()
+        controller.subscribe("config_changed", cb)
+        holder = MagicMock()
+        option = MagicMock()
+
+        controller.apply_configuration(
+            model_holder=holder,
+            training_option=option,
+            update_model=True,
+            update_option=True,
+        )
+
+        mock_study.apply_training_configuration.assert_called_once_with(
+            model_holder=holder,
+            training_option=option,
+            update_model=True,
+            update_option=True,
+        )
+        cb.assert_called_once()
+
     def test_apply_data_splitting_notifies_config_changed(
         self,
         controller,

@@ -296,6 +296,22 @@ class Study:
         """Set model holder via TrainingManager."""
         self.training_manager.set_model_holder(model_holder, force_update)
 
+    def apply_training_configuration(
+        self,
+        *,
+        model_holder: ModelHolder | None,
+        training_option: TrainingOption | None,
+        update_model: bool,
+        update_option: bool,
+    ) -> None:
+        """Atomically apply a validated training configuration."""
+        self.training_manager.apply_configuration(
+            model_holder=model_holder,
+            training_option=training_option,
+            update_model=update_model,
+            update_option=update_option,
+        )
+
     def generate_plan(self, force_update: bool = False, append: bool = False) -> None:
         """Generate training plan via TrainingManager.
 

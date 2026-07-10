@@ -44,6 +44,41 @@ class TestSetModelHolder:
             tm.set_model_holder(cast(Any, "not_a_holder"))
 
 
+class TestApplyConfiguration:
+    def test_applies_model_and_option_together(self):
+        tm = TrainingManager()
+        holder = ModelHolder(int, {})
+        option = MagicMock(spec=TrainingOption)
+
+        tm.apply_configuration(
+            model_holder=holder,
+            training_option=option,
+            update_model=True,
+            update_option=True,
+        )
+
+        assert tm.model_holder is holder
+        assert tm.training_option is option
+
+    def test_validation_failure_leaves_existing_configuration_unchanged(self):
+        tm = TrainingManager()
+        existing_holder = ModelHolder(str, {})
+        existing_option = MagicMock(spec=TrainingOption)
+        tm.model_holder = existing_holder
+        tm.training_option = existing_option
+
+        with pytest.raises(TypeError):
+            tm.apply_configuration(
+                model_holder=ModelHolder(int, {}),
+                training_option=cast(Any, "not-an-option"),
+                update_model=True,
+                update_option=True,
+            )
+
+        assert tm.model_holder is existing_holder
+        assert tm.training_option is existing_option
+
+
 class TestGeneratePlan:
     def test_no_datasets_raises(self):
         tm = TrainingManager()

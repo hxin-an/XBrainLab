@@ -357,6 +357,23 @@ class TrainingController(Observable):
         self._study.set_training_option(option)
         self.notify("config_changed")
 
+    def apply_configuration(
+        self,
+        *,
+        model_holder: Any | None,
+        training_option: Any | None,
+        update_model: bool,
+        update_option: bool,
+    ) -> None:
+        """Apply one validated configuration and publish one observer event."""
+        self._study.apply_training_configuration(
+            model_holder=model_holder,
+            training_option=training_option,
+            update_model=update_model,
+            update_option=update_option,
+        )
+        self.notify("config_changed")
+
     # --- Data Accessors (for UI decoupling) ---
     def get_training_option(self) -> Any:
         """Return the current training option.

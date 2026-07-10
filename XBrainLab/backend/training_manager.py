@@ -69,6 +69,28 @@ class TrainingManager:
         # Do not clean trainer here to allow multi-experiment history
         self.model_holder = model_holder
 
+    def apply_configuration(
+        self,
+        *,
+        model_holder: ModelHolder | None,
+        training_option: TrainingOption | None,
+        update_model: bool,
+        update_option: bool,
+    ) -> None:
+        """Atomically apply a validated model/training configuration."""
+        if update_model:
+            from .training import ModelHolder as ModelHolderType  # noqa: PLC0415
+
+            validate_type(model_holder, ModelHolderType, "model_holder")
+        if update_option:
+            from .training import TrainingOption  # noqa: PLC0415
+
+            validate_type(training_option, TrainingOption, "training_option")
+        if update_model:
+            self.model_holder = model_holder
+        if update_option:
+            self.training_option = training_option
+
     # --- Plan Generation ---
 
     def generate_plan(

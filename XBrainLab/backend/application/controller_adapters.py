@@ -77,6 +77,14 @@ class _PreprocessControllerPort(_ObservableControllerPort, Protocol):
 class _TrainingControllerPort(_ObservableControllerPort, Protocol):
     def set_training_option(self, option: Any) -> None: ...
     def set_model_holder(self, holder: Any) -> None: ...
+    def apply_configuration(
+        self,
+        *,
+        model_holder: Any | None,
+        training_option: Any | None,
+        update_model: bool,
+        update_option: bool,
+    ) -> None: ...
     def start_training(
         self,
         *,
@@ -287,6 +295,21 @@ class TrainingControllerAdapter(LazyControllerAdapter):
 
     def set_model_holder(self, holder: Any) -> Any:
         return self._controller().set_model_holder(holder)
+
+    def apply_configuration(
+        self,
+        *,
+        model_holder: Any | None,
+        training_option: Any | None,
+        update_model: bool,
+        update_option: bool,
+    ) -> Any:
+        return self._controller().apply_configuration(
+            model_holder=model_holder,
+            training_option=training_option,
+            update_model=update_model,
+            update_option=update_option,
+        )
 
     def start_training(self, *, append: bool = True, interactive: bool = True) -> None:
         return self._controller().start_training(

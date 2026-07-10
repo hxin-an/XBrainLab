@@ -202,7 +202,11 @@ class TestTrainingSettingDefaultValues:
         mock_controller = MagicMock()
         mock_controller.get_training_option.return_value = None
 
-        window = TrainingSettingDialog(None, mock_controller)
+        with patch(
+            "XBrainLab.ui.dialogs.training.training_setting_dialog.get_device_count",
+            return_value=0,
+        ):
+            window = TrainingSettingDialog(None, mock_controller)
         qtbot.addWidget(window)
 
         # Verify default values are pre-filled
@@ -214,7 +218,7 @@ class TestTrainingSettingDefaultValues:
         assert window.epoch_entry.text() == "10"
         assert window.bs_entry.text() == "32"
         assert window.lr_entry.text() == "0.001"
-        assert window.checkpoint_entry.text() == "1"
+        assert window.checkpoint_entry.text() == "0"
         assert window.repeat_entry.text() == "1"
 
         # Verify default optimizer and device

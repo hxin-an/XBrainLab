@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from typing import Any
 
@@ -43,13 +44,57 @@ class TrainingCommandService:
         if not isinstance(command, ConfigureTrainingCommand):
             raise TypeError("Invalid command for configure_training")
         if command.training_option is not None:
-            self.training.set_training_option(command.training_option)
+            self.training.apply_configuration(
+                model_holder=None,
+                training_option=command.training_option,
+                update_model=False,
+                update_option=True,
+            )
             return "Training configured.", {
                 "training_option": self.training_option_snapshot(
                     command.training_option,
                 ),
             }
 
+        option_values = (command.epoch, command.batch_size, command.learning_rate)
+        wants_option = any(value is not None for value in option_values)
+        if wants_option and not all(value is not None for value in option_values):
+            raise PreconditionError(
+                "epoch, batch_size, and learning_rate are required.",
+            )
+        if not command.model_name and not wants_option:
+            raise PreconditionError(
+                "epoch, batch_size, and learning_rate are required.",
+            )
+
+        option: TrainingOption | None = None
+        if wants_option:
+            self._validate_training_numbers(command)
+            epoch = command.epoch
+            batch_size = command.batch_size
+            learning_rate = command.learning_rate
+            if epoch is None or batch_size is None or learning_rate is None:
+                raise AssertionError("Validated training values must be present")
+            optim_class = self._resolve_optimizer(command.optimizer)
+            use_cpu, gpu_idx = self._resolve_training_device(command.device)
+            evaluation_option = self._resolve_training_evaluation(
+                command.evaluation_option,
+            )
+            option = TrainingOption(
+                output_dir=command.output_dir,
+                optim=optim_class,
+                optim_params=dict(command.optimizer_params),
+                use_cpu=use_cpu,
+                gpu_idx=gpu_idx,
+                epoch=epoch,
+                bs=batch_size,
+                lr=learning_rate,
+                checkpoint_epoch=command.save_checkpoints_every,
+                evaluation_option=evaluation_option,
+                repeat_num=command.repeat,
+            )
+
+        holder: ModelHolder | None = None
         if command.model_name:
             model_class = self._resolve_model_class(command.model_name)
             holder = ModelHolder(
@@ -57,49 +102,21 @@ class TrainingCommandService:
                 dict(command.model_params),
                 command.pretrained_weight_path,
             )
-            self.training.set_model_holder(holder)
 
-        if (
-            command.epoch is None
-            and command.batch_size is None
-            and command.learning_rate is None
-        ):
-            if command.model_name:
-                return f"Model configured: {command.model_name}."
-            raise PreconditionError(
-                "epoch, batch_size, and learning_rate are required.",
-            )
-        if (
-            command.epoch is None
-            or command.batch_size is None
-            or command.learning_rate is None
-        ):
-            raise PreconditionError(
-                "epoch, batch_size, and learning_rate are required.",
-            )
-
-        optim_class = self._resolve_optimizer(command.optimizer)
-        use_cpu, gpu_idx = self._resolve_training_device(command.device)
-        evaluation_option = self._resolve_training_evaluation(
-            command.evaluation_option,
+        self.training.apply_configuration(
+            model_holder=holder,
+            training_option=option,
+            update_model=holder is not None,
+            update_option=option is not None,
         )
-        option = TrainingOption(
-            output_dir=command.output_dir,
-            optim=optim_class,
-            optim_params=dict(command.optimizer_params),
-            use_cpu=use_cpu,
-            gpu_idx=gpu_idx,
-            epoch=command.epoch,
-            bs=command.batch_size,
-            lr=command.learning_rate,
-            checkpoint_epoch=command.save_checkpoints_every,
-            evaluation_option=evaluation_option,
-            repeat_num=command.repeat,
-        )
-        self.training.set_training_option(option)
-        return "Training configured.", {
+        if option is None:
+            return f"Model configured: {command.model_name}."
+        diagnostics: dict[str, Any] = {
             "training_option": self.training_option_snapshot(option),
         }
+        if holder is not None:
+            diagnostics["model_name"] = self.model_name(holder)
+        return "Training configured.", diagnostics
 
     def handle_train(self, command: Command) -> HandlerResult:
         if not isinstance(command, TrainCommand):
@@ -225,7 +242,10 @@ class TrainingCommandService:
             "sgd": torch.optim.SGD,
             "adamw": torch.optim.AdamW,
         }
-        return optimizers_map.get(name.lower(), torch.optim.Adam)
+        optimizer = optimizers_map.get(str(name).strip().lower())
+        if optimizer is None:
+            raise ValueError(f"Unknown optimizer: {name}")
+        return optimizer
 
     @staticmethod
     def _resolve_training_device(device: str) -> tuple[bool, int | None]:
@@ -236,13 +256,19 @@ class TrainingCommandService:
             return False, 0
         if normalized.startswith("cuda:"):
             try:
-                return False, int(normalized.split(":", 1)[1])
+                index = int(normalized.split(":", 1)[1])
             except (TypeError, ValueError):
-                return False, 0
+                raise ValueError(f"Unknown training device: {device}") from None
+            if index < 0:
+                raise ValueError(f"Unknown training device: {device}")
+            return False, index
         try:
-            return False, int(normalized)
+            index = int(normalized)
         except ValueError:
-            return False, 0
+            raise ValueError(f"Unknown training device: {device}") from None
+        if index < 0:
+            raise ValueError(f"Unknown training device: {device}")
+        return False, index
 
     @staticmethod
     def _resolve_training_evaluation(
@@ -254,4 +280,21 @@ class TrainingCommandService:
         for option in TrainingEvaluation:
             if normalized in {option.name.lower(), option.value.lower()}:
                 return option
-        return TrainingEvaluation.LAST_EPOCH
+        raise ValueError(f"Unknown training evaluation: {value}")
+
+    @staticmethod
+    def _validate_training_numbers(command: ConfigureTrainingCommand) -> None:
+        if command.epoch is None or command.epoch <= 0:
+            raise ValueError("epoch must be greater than zero")
+        if command.batch_size is None or command.batch_size <= 0:
+            raise ValueError("batch_size must be greater than zero")
+        if (
+            command.learning_rate is None
+            or not math.isfinite(command.learning_rate)
+            or command.learning_rate <= 0
+        ):
+            raise ValueError("learning_rate must be greater than zero")
+        if command.repeat <= 0:
+            raise ValueError("repeat must be greater than zero")
+        if command.save_checkpoints_every < 0:
+            raise ValueError("save_checkpoints_every cannot be negative")

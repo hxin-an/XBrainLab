@@ -51,6 +51,19 @@ class _TrainingController:
     def set_training_option(self, option: Any) -> None:
         self.training_option = option
 
+    def apply_configuration(
+        self,
+        *,
+        model_holder: Any | None,
+        training_option: Any | None,
+        update_model: bool,
+        update_option: bool,
+    ) -> None:
+        if update_model:
+            self.model_holder = model_holder
+        if update_option:
+            self.training_option = training_option
+
     def start_training(self, *, append: bool = True, interactive: bool = True) -> None:
         self.started = True
         self.started_append = append
@@ -191,6 +204,64 @@ def test_training_service_rejects_unknown_model_without_facade() -> None:
         service.handle_configure_training(
             ConfigureTrainingCommand(model_name="nonexistent_model"),
         )
+
+
+def test_incomplete_training_configuration_does_not_mutate_model() -> None:
+    service, training = _service()
+    existing_model = object()
+    existing_option = object()
+    training.model_holder = existing_model
+    training.training_option = existing_option
+
+    with pytest.raises(PreconditionError, match="epoch, batch_size"):
+        service.handle_configure_training(
+            ConfigureTrainingCommand(
+                model_name="EEGNet",
+                epoch=3,
+                batch_size=8,
+            ),
+        )
+
+    assert training.model_holder is existing_model
+    assert training.training_option is existing_option
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"optimizer": "mystery"}, "Unknown optimizer"),
+        ({"device": "cuda:not-an-index"}, "Unknown training device"),
+        ({"evaluation_option": "mystery"}, "Unknown training evaluation"),
+        ({"epoch": 0}, "epoch must be greater than zero"),
+        ({"batch_size": 0}, "batch_size must be greater than zero"),
+        ({"learning_rate": 0.0}, "learning_rate must be greater than zero"),
+        ({"repeat": 0}, "repeat must be greater than zero"),
+        ({"save_checkpoints_every": -1}, "save_checkpoints_every cannot be negative"),
+    ],
+)
+def test_invalid_training_configuration_is_rejected_without_mutation(
+    overrides: dict[str, Any],
+    message: str,
+) -> None:
+    service, training = _service()
+    existing_model = object()
+    existing_option = object()
+    training.model_holder = existing_model
+    training.training_option = existing_option
+    params: dict[str, Any] = {
+        "model_name": "EEGNet",
+        "epoch": 3,
+        "batch_size": 8,
+        "learning_rate": 0.001,
+        "device": "cpu",
+    }
+    params.update(overrides)
+
+    with pytest.raises((PreconditionError, ValueError), match=message):
+        service.handle_configure_training(ConfigureTrainingCommand(**params))
+
+    assert training.model_holder is existing_model
+    assert training.training_option is existing_option
 
 
 def test_training_service_maps_adamw_optimizer_without_facade() -> None:
