@@ -24,6 +24,7 @@ from XBrainLab.ui.application_capabilities import (
     execute_application_command,
     execute_application_command_async,
     get_command_capability,
+    local_result_payload,
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
@@ -394,7 +395,7 @@ class ControlSidebar(QWidget):
         diagnostics = getattr(result, "diagnostics", {}) or {}
         if diagnostics.get("payload_type") != "visualization_summary":
             return []
-        trainers = diagnostics.get("trainer_objects")
+        trainers = local_result_payload(result).get("trainer_objects")
         if not isinstance(trainers, list):
             return []
         return list(trainers)

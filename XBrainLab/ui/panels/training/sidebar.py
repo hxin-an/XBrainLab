@@ -37,6 +37,7 @@ from XBrainLab.ui.application_capabilities import (
     execute_application_command_async,
     get_command_capability,
     has_real_application_context,
+    local_result_payload,
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
@@ -695,9 +696,10 @@ class TrainingSidebar(QWidget):
         diagnostics = getattr(result, "diagnostics", {}) or {}
         if diagnostics.get("payload_type") != "dataset_generation_context":
             return {}
+        payload = local_result_payload(result)
         return {
-            "epoch_data": diagnostics.get("epoch_data"),
-            "dataset_generator": diagnostics.get("dataset_generator"),
+            "epoch_data": payload.get("epoch_data"),
+            "dataset_generator": payload.get("dataset_generator"),
         }
 
     def _should_clear_datasets_before_split(self) -> bool:

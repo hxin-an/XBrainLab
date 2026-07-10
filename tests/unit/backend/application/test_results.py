@@ -32,8 +32,10 @@ def test_command_result_to_dict_is_json_serializable_with_runtime_objects() -> N
 
     json.dumps(payload)
     assert payload["diagnostics"]["path"] == "example.edf"
-    assert payload["diagnostics"]["array"] == [1.0, 2.0]
-    assert payload["diagnostics"]["runtime_object"] == {
-        "object_type": "_OpaqueRuntimeObject",
-        "repr": "<opaque-runtime-object>",
-    }
+    assert "array" not in payload["diagnostics"]
+    assert "runtime_object" not in payload["diagnostics"]
+    assert "runtime" not in payload
+    assert result.runtime["array"].tolist() == [1.0, 2.0]
+    assert isinstance(result.runtime["runtime_object"], _OpaqueRuntimeObject)
+    assert result.local_payload["runtime_object"] is result.runtime["runtime_object"]
+    json.dumps(result.diagnostics)

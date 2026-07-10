@@ -16,6 +16,7 @@ from XBrainLab.ui.application_capabilities import (
     ControllerCompatibilityUnavailableError,
     execute_application_command,
     get_controller_for_compatibility_context,
+    local_result_payload,
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.core.base_panel import BasePanel
@@ -599,7 +600,7 @@ class TrainingPanel(BasePanel):
         diagnostics = getattr(result, "diagnostics", {}) or {}
         if diagnostics.get("payload_type") != "training_history":
             return None
-        rows = diagnostics.get("rows")
+        rows = local_result_payload(result).get("rows")
         return list(rows) if isinstance(rows, list) else []
 
     def _compatibility_history_for_render(self):

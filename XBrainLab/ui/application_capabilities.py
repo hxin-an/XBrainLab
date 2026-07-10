@@ -300,3 +300,12 @@ def get_controller_for_compatibility_context(
         )
     except ControllerCompatibilityUnavailableError:
         return None
+
+
+def local_result_payload(result) -> dict:
+    """Return serializable diagnostics plus process-local UI references."""
+    diagnostics = dict(getattr(result, "diagnostics", {}) or {})
+    runtime = getattr(result, "runtime", {}) or {}
+    if isinstance(runtime, dict):
+        diagnostics.update(runtime)
+    return diagnostics

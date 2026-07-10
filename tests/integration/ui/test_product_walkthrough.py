@@ -62,7 +62,7 @@ def _query_diagnostics(study, query: str, *, include_objects: bool = False):
         QueryStateCommand(query=query, include_objects=include_objects),
     )
     assert result.ok, result.message
-    return result.diagnostics
+    return result.local_payload
 
 
 def _write_synthetic_raw_fif(tmp_path):

@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any
 
-from .serialization import serialize_json_value
+from .serialization import serialize_json_value, split_runtime_fields
 
 
 class CommandStatus(str, Enum):
@@ -70,6 +70,16 @@ class CommandResult:
     recoverable: bool = True
     error_message: str | None = None
     diagnostics: dict[str, Any] = field(default_factory=dict)
+    runtime: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        safe_diagnostics, extracted_runtime = split_runtime_fields(self.diagnostics)
+        object.__setattr__(self, "diagnostics", safe_diagnostics)
+        object.__setattr__(
+            self,
+            "runtime",
+            {**extracted_runtime, **self.runtime},
+        )
 
     @property
     def success(self) -> bool:
@@ -83,6 +93,11 @@ class CommandResult:
     def failed(self) -> bool:
         return self.status == CommandStatus.FAILED
 
+    @property
+    def local_payload(self) -> dict[str, Any]:
+        """Return diagnostics plus process-local UI references."""
+        return {**self.diagnostics, **self.runtime}
+
     @classmethod
     def success_result(
         cls,
@@ -91,6 +106,7 @@ class CommandResult:
         state: Any,
         changed_state: ChangedState,
         diagnostics: dict[str, Any] | None = None,
+        runtime: dict[str, Any] | None = None,
     ) -> CommandResult:
         return cls(
             status=CommandStatus.OK,
@@ -99,6 +115,7 @@ class CommandResult:
             state=state,
             changed_state=changed_state,
             diagnostics=diagnostics or {},
+            runtime=runtime or {},
         )
 
     @classmethod
@@ -112,6 +129,7 @@ class CommandResult:
         recoverable: bool,
         error_message: str | None = None,
         diagnostics: dict[str, Any] | None = None,
+        runtime: dict[str, Any] | None = None,
     ) -> CommandResult:
         return cls(
             status=CommandStatus.FAILED,
@@ -123,7 +141,20 @@ class CommandResult:
             recoverable=recoverable,
             error_message=error_message or message,
             diagnostics=diagnostics or {},
+            runtime=runtime or {},
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return serialize_json_value(self)
+        return serialize_json_value(
+            {
+                "status": self.status,
+                "command_name": self.command_name,
+                "message": self.message,
+                "state": self.state,
+                "changed_state": self.changed_state,
+                "error_type": self.error_type,
+                "recoverable": self.recoverable,
+                "error_message": self.error_message,
+                "diagnostics": self.diagnostics,
+            },
+        )

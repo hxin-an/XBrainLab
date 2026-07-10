@@ -34,6 +34,7 @@ from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
     execute_application_command,
     execute_application_shutdown_command,
+    local_result_payload,
 )
 from XBrainLab.ui.controller_compatibility_bootstrap import (
     get_compatibility_workflow_controllers_for_panel_bootstrap,
@@ -266,9 +267,10 @@ class _StartupInfoPanelService:
             return [], []
         if result is None or result.failed:
             return [], []
+        payload = local_result_payload(result)
         return (
-            list(result.diagnostics.get("loaded_data_list", [])),
-            list(result.diagnostics.get("preprocessed_data_list", [])),
+            list(payload.get("loaded_data_list", [])),
+            list(payload.get("preprocessed_data_list", [])),
         )
 
 

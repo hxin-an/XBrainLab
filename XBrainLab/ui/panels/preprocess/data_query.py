@@ -5,7 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 from XBrainLab.backend.application import QueryStateCommand
-from XBrainLab.ui.application_capabilities import execute_application_command
+from XBrainLab.ui.application_capabilities import (
+    execute_application_command,
+    local_result_payload,
+)
 
 
 def query_preprocess_render_lists(context: Any) -> tuple[list[Any], list[Any]] | None:
@@ -19,9 +22,9 @@ def query_preprocess_render_lists(context: Any) -> tuple[list[Any], list[Any]] |
         return None
     if result.failed:
         return [], []
-    diagnostics = result.diagnostics
-    preprocessed = diagnostics.get("preprocessed_data_list")
-    loaded = diagnostics.get("loaded_data_list")
+    payload = local_result_payload(result)
+    preprocessed = payload.get("preprocessed_data_list")
+    loaded = payload.get("loaded_data_list")
     return (
         list(preprocessed) if isinstance(preprocessed, list) else [],
         list(loaded) if isinstance(loaded, list) else [],

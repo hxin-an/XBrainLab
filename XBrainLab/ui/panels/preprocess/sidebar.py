@@ -30,6 +30,7 @@ from XBrainLab.ui.application_capabilities import (
     execute_application_command_async,
     get_command_capability,
     has_real_application_context,
+    local_result_payload,
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
@@ -230,7 +231,7 @@ class PreprocessSidebar(QWidget):
         if result.failed:
             self._show_command_failure(failure_title, result.message)
             return None
-        data_list = result.diagnostics.get("preprocessed_data_list")
+        data_list = local_result_payload(result).get("preprocessed_data_list")
         return list(data_list) if isinstance(data_list, list) else []
 
     def _compatibility_preprocessed_data_list_for_dialog(

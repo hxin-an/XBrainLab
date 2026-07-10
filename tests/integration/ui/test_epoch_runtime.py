@@ -34,7 +34,7 @@ def test_real_gdf_epoching_does_not_block_on_success_modal(qtbot, monkeypatch):
     query_result = service.execute(
         QueryStateCommand(query="data_lists", include_objects=True),
     )
-    data_list = query_result.diagnostics.get("preprocessed_data_list") or []
+    data_list = query_result.runtime.get("preprocessed_data_list") or []
     selected_events = sorted(
         {
             str(event_name)

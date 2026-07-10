@@ -26,6 +26,7 @@ from XBrainLab.ui.application_capabilities import (
     execute_application_command,
     get_command_capability,
     get_controller_for_compatibility_context,
+    local_result_payload,
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.core.base_panel import BasePanel
@@ -397,7 +398,7 @@ class DatasetPanel(BasePanel):
             return None
         if result.failed:
             return []
-        data_list = result.diagnostics.get("loaded_data_list")
+        data_list = local_result_payload(result).get("loaded_data_list")
         return list(data_list) if isinstance(data_list, list) else []
 
     def _compatibility_loaded_data_list_for_render(self, controller) -> list[Any]:

@@ -11,6 +11,7 @@ from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
     execute_application_command,
     get_controller_for_compatibility_context,
+    local_result_payload,
 )
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 
@@ -162,9 +163,10 @@ class InfoPanelService(QObject):
                 )
                 return [], []
             if result.ok:
+                payload = local_result_payload(result)
                 return (
-                    list(result.diagnostics.get("loaded_data_list", [])),
-                    list(result.diagnostics.get("preprocessed_data_list", [])),
+                    list(payload.get("loaded_data_list", [])),
+                    list(payload.get("preprocessed_data_list", [])),
                 )
             logger.debug("Info panel state query failed: %s", result.message)
             return [], []

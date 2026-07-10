@@ -88,7 +88,7 @@ def _query_first_preprocessed(service: ApplicationService):
         QueryStateCommand(query="data_lists", include_objects=True)
     )
     assert result.ok is True
-    preprocessed = result.diagnostics["preprocessed_data_list"]
+    preprocessed = result.runtime["preprocessed_data_list"]
     assert preprocessed
     return preprocessed[0]
 

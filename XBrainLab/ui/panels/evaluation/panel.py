@@ -22,6 +22,7 @@ from XBrainLab.ui.application_capabilities import (
     execute_application_command,
     execute_application_command_async,
     get_controller_for_compatibility_context,
+    local_result_payload,
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
@@ -217,7 +218,7 @@ class EvaluationPanel(BasePanel):
         diagnostics = getattr(result, "diagnostics", {}) or {}
         if diagnostics.get("payload_type") != "evaluation_summary":
             return None
-        return diagnostics
+        return local_result_payload(result)
 
     def _refresh_application_query(
         self,

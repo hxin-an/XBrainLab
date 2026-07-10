@@ -27,6 +27,7 @@ from XBrainLab.ui.application_capabilities import (
     blocked_reason,
     execute_application_command,
     get_command_capability,
+    local_result_payload,
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
@@ -635,7 +636,7 @@ class DatasetSidebar(QWidget):
             return []
         if result.failed:
             return []
-        data_list = result.diagnostics.get("loaded_data_list")
+        data_list = local_result_payload(result).get("loaded_data_list")
         return list(data_list) if isinstance(data_list, list) else []
 
     def clear_dataset(self):

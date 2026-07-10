@@ -80,7 +80,7 @@ def test_real_data_pipeline():
     )
     assert data_lists_result.ok is True
     assert data_lists_result.diagnostics["preprocessed_count"] == 1
-    processed_raw = data_lists_result.diagnostics["preprocessed_data_list"][0]
+    processed_raw = data_lists_result.runtime["preprocessed_data_list"][0]
 
     # Get available events
     events, event_id = processed_raw.get_event_list()
