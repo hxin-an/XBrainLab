@@ -207,6 +207,93 @@ def test_apply_interpretation_rolls_back_when_metadata_apply_raises(
     assert result.state.interpretation.has_applied_interpretation is False
 
 
+def test_failed_replacement_restores_raw_interpretation_and_recipe(
+    tmp_path: Path,
+) -> None:
+    old_source = tmp_path / "old_source"
+    new_source = tmp_path / "new_source"
+    old_source.mkdir()
+    new_source.mkdir()
+    old_eeg = old_source / "subject01_run1.fif"
+    new_eeg = new_source / "subject02_run1.fif"
+    old_eeg.write_bytes(b"old scan fixture")
+    new_eeg.write_bytes(b"new scan fixture")
+    recipe_path = tmp_path / "old-recipe.json"
+    service = ApplicationService(Study())
+    manager = service.study.data_manager
+
+    def import_files(paths: list[str]) -> tuple[int, list[str]]:
+        imported = []
+        for path in paths:
+            raw = _raw_mock()
+            raw.get_filename.return_value = Path(path).name
+            raw.get_filepath.return_value = path
+            imported.append(raw)
+        manager.loaded_data_list = imported
+        manager.preprocessed_data_list = list(imported)
+        return len(imported), []
+
+    service.dataset.import_files = MagicMock(side_effect=import_files)
+    service.execute(ScanSourceCommand(source_path=str(old_source)))
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "metadata_overrides": {
+                    old_eeg.name: {
+                        "subject": "subject01",
+                        "session": "session-01",
+                        "task": "rest",
+                        "run": "1",
+                    },
+                },
+            },
+        ),
+    )
+    service.execute(ValidateInterpretationCommand())
+    first_apply = service.execute(ApplyInterpretationCommand(confirmed=True))
+    saved = service.execute(
+        SaveInterpretationRecipeCommand(recipe_path=str(recipe_path)),
+    )
+    assert first_apply.ok is True
+    assert saved.ok is True
+    old_raw = manager.loaded_data_list[0]
+    old_interpretation_id = first_apply.state.interpretation.latest_interpretation_id
+    old_recipe_id = saved.state.interpretation.latest_recipe_id
+
+    service.execute(ScanSourceCommand(source_path=str(new_source)))
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "metadata_overrides": {
+                    new_eeg.name: {
+                        "subject": "subject02",
+                        "session": "session-01",
+                        "task": "rest",
+                        "run": "1",
+                    },
+                },
+            },
+        ),
+    )
+    service.execute(ValidateInterpretationCommand())
+    interpretation = service.interpretation._service()
+    interpretation.apply_service.apply_candidate_metadata_to_loaded_data = MagicMock(
+        side_effect=RuntimeError("replacement metadata failed"),
+    )
+
+    failed = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert failed.failed is True
+    assert manager.loaded_data_list == [old_raw]
+    assert failed.state.interpretation.latest_interpretation_id == (
+        old_interpretation_id
+    )
+    assert failed.state.interpretation.latest_recipe_id == old_recipe_id
+    assert failed.state.interpretation.recipe_path == str(recipe_path)
+    assert interpretation.state.resolve_recipe(None).recipe_id == old_recipe_id
+    assert interpretation.state.resolve_recipe(None).label_imports == []
+
+
 def test_reset_preprocess_is_blocked_while_training_is_running() -> None:
     state = replace(
         ApplicationStateSnapshot.empty(),
