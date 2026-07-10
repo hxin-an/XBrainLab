@@ -296,8 +296,7 @@ def _evaluation_controls_panel() -> QWidget:
     panel.chk_percentage.blockSignals(True)
     panel.chk_percentage.setChecked(True)
     panel.chk_percentage.blockSignals(False)
-    panel.plot_stack.setCurrentIndex(1)
-    panel.no_data_label.setText("Evaluation controls layout review")
+    panel.plot_stack.setCurrentIndex(0)
     panel.resize(QSize(900, 520))
     return panel
 
@@ -382,6 +381,14 @@ def _assert_capture_geometry(filename: str, widget: QWidget) -> None:
         bottom_right = button.mapTo(widget, button.rect().bottomRight())
         if bottom_right.x() >= widget.width() or bottom_right.y() >= widget.height():
             raise RuntimeError(f"{filename} clips its Confirm button.")
+        for control in (
+            widget.options_group,
+            widget.train_type_combo,
+            widget.test_combo,
+            widget.val_combo,
+        ):
+            if control is None or not control.isVisibleTo(widget):
+                raise RuntimeError(f"{filename} hides a core split setting.")
 
     if isinstance(widget, DataSplittingPreviewDialog) and widget.tree is not None:
         last_row = widget.tree.topLevelItem(widget.tree.topLevelItemCount() - 1)
@@ -390,6 +397,20 @@ def _assert_capture_geometry(filename: str, widget: QWidget) -> None:
             unused_height = widget.tree.viewport().height() - row_rect.bottom()
             if unused_height > 12:
                 raise RuntimeError(f"{filename} leaves an empty results viewport.")
+
+    if isinstance(widget, MetricsTableWidget) and widget.rowCount():
+        last_item = widget.item(widget.rowCount() - 1, 0)
+        last_row = widget.visualItemRect(last_item)
+        if not last_row.isValid() or not widget.viewport().rect().contains(last_row):
+            raise RuntimeError(f"{filename} clips its final metrics row.")
+        if (
+            widget.rowCount() <= widget.MAX_VISIBLE_ROWS
+            and widget.verticalScrollBar().isVisible()
+        ):
+            raise RuntimeError(f"{filename} scrolls a small metrics result.")
+        unused_height = widget.viewport().height() - last_row.bottom()
+        if unused_height > 4:
+            raise RuntimeError(f"{filename} leaves an empty metrics viewport.")
 
     if isinstance(widget, ChatPanel):
         viewport = widget.scroll_area.viewport()

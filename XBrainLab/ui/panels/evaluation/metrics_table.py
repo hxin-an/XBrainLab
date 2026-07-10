@@ -2,7 +2,7 @@
 
 from PyQt6.QtCore import QModelIndex, Qt
 from PyQt6.QtGui import QColor, QPalette
-from PyQt6.QtWidgets import QHeaderView, QTableWidget, QTableWidgetItem
+from PyQt6.QtWidgets import QHeaderView, QSizePolicy, QTableWidget, QTableWidgetItem
 
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
@@ -14,6 +14,8 @@ class MetricsTableWidget(QTableWidget):
     Renders per-class rows followed by an optional macro-average summary row.
     Read-only, non-selectable, dark-theme styled.
     """
+
+    MAX_VISIBLE_ROWS = 12
 
     def __init__(self, parent=None):
         """Initialize the metrics table widget.
@@ -44,6 +46,8 @@ class MetricsTableWidget(QTableWidget):
         self.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
 
         # Dark mode friendly style
         self.setStyleSheet(Stylesheets.METRICS_TABLE)
@@ -87,6 +91,7 @@ class MetricsTableWidget(QTableWidget):
 
         if not metrics:
             self._clear_current_selection()
+            self._fit_height_to_rows()
             return
 
         # Sort keys to ensure order (integers first, then macro_avg)
@@ -101,6 +106,25 @@ class MetricsTableWidget(QTableWidget):
             self._add_row("Macro Avg", metrics["macro_avg"], is_summary=True)
 
         self._clear_current_selection()
+        self._fit_height_to_rows()
+
+    def _fit_height_to_rows(self) -> None:
+        """Fit small metric sets and cap larger tables behind a scrollbar."""
+        visible_rows = min(max(self.rowCount(), 1), self.MAX_VISIBLE_ROWS)
+        row_heights = [
+            self.rowHeight(index) for index in range(min(self.rowCount(), visible_rows))
+        ]
+        default_row_height = self.verticalHeader().defaultSectionSize()
+        content_height = sum(
+            height if height > 0 else default_row_height for height in row_heights
+        )
+        if not row_heights:
+            content_height = default_row_height
+        header = self.horizontalHeader()
+        header_height = header.sizeHint().height() if header is not None else 0
+        target_height = header_height + content_height + (self.frameWidth() * 2) + 2
+        self.setMinimumHeight(target_height)
+        self.setMaximumHeight(target_height)
 
     def _clear_current_selection(self) -> None:
         self.clearSelection()

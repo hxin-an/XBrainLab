@@ -121,22 +121,26 @@ class TestAgentManagerPrepareModelDeletion:
     def test_no_engine(self):
         """L235: Returns True when engine not initialized."""
         m = _make_manager()
-        m.agent_controller.worker.engine = None
+        m.agent_controller.runtime_snapshot.return_value = {"initialized": False}
         assert m.prepare_model_deletion("test") is True
 
     def test_active_local_model_blocks_deletion(self):
         """Deletion should fail closed instead of auto-switching to Gemini."""
         m = _make_manager()
-        m.agent_controller.worker.engine.config.active_mode = "local"
-        m.agent_controller.worker.engine.config.inference_mode = "local"
+        m.agent_controller.runtime_snapshot.return_value = {
+            "initialized": True,
+            "backend_mode": "local",
+        }
         with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
             assert m.prepare_model_deletion("test") is False
         m.agent_controller.set_model.assert_not_called()
 
     def test_inference_mode_truth_blocks_deletion_even_if_active_mode_stale(self):
         m = _make_manager()
-        m.agent_controller.worker.engine.config.active_mode = "gemini"
-        m.agent_controller.worker.engine.config.inference_mode = "local"
+        m.agent_controller.runtime_snapshot.return_value = {
+            "initialized": True,
+            "backend_mode": "local",
+        }
         with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
             assert m.prepare_model_deletion("test") is False
 

@@ -10,6 +10,7 @@ from typing import Any, Protocol, cast
 
 import numpy as np
 
+from XBrainLab.backend.event_semantics import mark_gdf_rejected_trials
 from XBrainLab.backend.load_data.label_loader import load_label_file
 from XBrainLab.backend.utils.logger import logger
 
@@ -467,6 +468,7 @@ class DataInterpretationApplyService:
             "recommended_events": selected_events,
         }
         for data in list(self.dataset.get_loaded_data_list() or []):
+            mark_gdf_rejected_trials(data)
             setter = getattr(data, "set_runtime_detail", None)
             if not callable(setter):
                 continue

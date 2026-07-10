@@ -289,6 +289,40 @@ def test_metrics_table_has_no_initial_selection_after_refresh(qtbot):
     assert table.currentRow() == -1
 
 
+def test_metrics_table_fits_small_result_without_empty_viewport(qtbot):
+    table = MetricsTableWidget()
+    qtbot.addWidget(table)
+    table.update_data(
+        {
+            index: {
+                "precision": 0.8,
+                "recall": 0.9,
+                "f1-score": 0.85,
+                "support": 10,
+            }
+            for index in range(4)
+        }
+        | {
+            "macro_avg": {
+                "precision": 0.8,
+                "recall": 0.9,
+                "f1-score": 0.85,
+                "support": 40,
+            }
+        }
+    )
+    table.show()
+    qtbot.wait(1)
+
+    last_row = table.visualItemRect(table.item(table.rowCount() - 1, 0))
+    unused_height = table.viewport().height() - last_row.bottom()
+
+    assert last_row.isValid()
+    assert table.viewport().rect().contains(last_row)
+    assert not table.verticalScrollBar().isVisible()
+    assert unused_height <= 4
+
+
 def test_metrics_table_sets_dark_background_on_every_metric_cell(qtbot):
     table = MetricsTableWidget()
     qtbot.addWidget(table)

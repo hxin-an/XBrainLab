@@ -41,6 +41,12 @@ def main() -> int:
         dialog.resize(WINDOW_SIZE)
         dialog.show()
         app.processEvents()
+        if dialog.size() != WINDOW_SIZE:
+            raise RuntimeError(
+                "Placement-mode capture needs a 1220x1320 virtual screen. "
+                "Run it with QT_QPA_PLATFORM=xcb xvfb-run -a -s "
+                "'-screen 0 1600x1400x24'."
+            )
         dialog._go_to_step(dialog._step_titles.index("Match Labels"))
         app.processEvents()
         dialog.repaint()

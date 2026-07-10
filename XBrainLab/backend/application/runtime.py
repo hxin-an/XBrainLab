@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from threading import RLock
+
 from XBrainLab.backend.study import Study
 
 from .service import ApplicationService
+
+_SERVICE_CREATION_LOCK = RLock()
 
 
 def get_application_service(study: Study | None = None) -> ApplicationService:
@@ -12,10 +16,8 @@ def get_application_service(study: Study | None = None) -> ApplicationService:
     if study is None:
         return ApplicationService(Study())
 
-    cached_service = getattr(study, "_application_service", None)
-    if isinstance(cached_service, ApplicationService):
-        return cached_service
-
-    service = ApplicationService(study)
-    study._application_service = service
-    return service
+    with _SERVICE_CREATION_LOCK:
+        cached_service = getattr(study, "_application_service", None)
+        if isinstance(cached_service, ApplicationService):
+            return cached_service
+        return ApplicationService(study)

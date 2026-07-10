@@ -539,16 +539,12 @@ class AgentManager(QObject):
             ``True`` if it is safe to proceed with deletion.
 
         """
-        if not self.agent_controller or not self.agent_controller.worker:
+        if not self.agent_controller:
             return True
-
-        worker = self.agent_controller.worker
-        if not worker.engine:
+        snapshot = self.agent_controller.runtime_snapshot()
+        if not snapshot.get("initialized"):
             return True  # Not initialized
-
-        # Check if active
-        config = worker.engine.config
-        current_mode = LLMConfig.assistant_runtime_selection_from(config).backend_mode
+        current_mode = str(snapshot.get("backend_mode") or "")
 
         # Heuristic: If we are in local mode, and the model name matches (roughly)
         # Detailed check: verify if the deleting model is the one loaded.
@@ -1055,7 +1051,10 @@ class AgentManager(QObject):
     def _product_next_steps(state, capabilities) -> list[str]:
         """Return the same next-step truth used by Workflow execution policy."""
         command_name = recommended_next_step(state, capabilities)
-        return [command_name] if command_name else []
+        if not command_name:
+            return []
+        capability = capabilities.get(command_name)
+        return [command_name] if getattr(capability, "enabled", False) else []
 
     def close(self) -> bool:
         """Clean up the agent controller resources."""

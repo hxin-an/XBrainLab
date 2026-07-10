@@ -177,8 +177,10 @@ class TestAgentManagerMethods:
 
     def test_prepare_model_deletion_local_mode(self, agent_mgr):
         ctrl = MagicMock()
-        ctrl.worker.engine.config.active_mode = "local"
-        ctrl.worker.engine.config.inference_mode = "local"
+        ctrl.runtime_snapshot.return_value = {
+            "initialized": True,
+            "backend_mode": "local",
+        }
         agent_mgr.agent_controller = ctrl
         with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
             assert agent_mgr.prepare_model_deletion("test") is False
@@ -186,16 +188,20 @@ class TestAgentManagerMethods:
 
     def test_prepare_model_deletion_stale_remote_mode_still_blocks(self, agent_mgr):
         ctrl = MagicMock()
-        ctrl.worker.engine.config.active_mode = "gemini"
-        ctrl.worker.engine.config.inference_mode = "gemini"
+        ctrl.runtime_snapshot.return_value = {
+            "initialized": True,
+            "backend_mode": "local",
+        }
         agent_mgr.agent_controller = ctrl
         with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
             assert agent_mgr.prepare_model_deletion("test") is False
 
     def test_prepare_model_deletion_uses_inference_mode_truth(self, agent_mgr):
         ctrl = MagicMock()
-        ctrl.worker.engine.config.active_mode = "gemini"
-        ctrl.worker.engine.config.inference_mode = "local"
+        ctrl.runtime_snapshot.return_value = {
+            "initialized": True,
+            "backend_mode": "local",
+        }
         agent_mgr.agent_controller = ctrl
         with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
             assert agent_mgr.prepare_model_deletion("test") is False

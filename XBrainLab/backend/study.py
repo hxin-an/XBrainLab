@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from threading import RLock
 from typing import TYPE_CHECKING, Any
 
 from .data_manager import DataManager
@@ -51,6 +52,7 @@ class Study:
         # Controller cache for singleton-like access
         self._controllers: dict = {}
         self._application_service: Any | None = None
+        self._application_command_lock = RLock()
 
         logger.info("Study initialized (with DataManager + TrainingManager)")
 

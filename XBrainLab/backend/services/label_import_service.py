@@ -4,9 +4,9 @@ import re
 from collections import Counter
 from typing import Any
 
-import mne
 import numpy as np
 
+from XBrainLab.backend.event_semantics import mark_gdf_rejected_trials
 from XBrainLab.backend.load_data import EventLoader
 from XBrainLab.backend.utils.logger import logger
 
@@ -216,7 +216,7 @@ class LabelImportService:
 
             loader.create_event(mapping, selected_event_ids=selected_ids)
 
-        _mark_standard_rejected_trials(data)
+        mark_gdf_rejected_trials(data)
         loader.apply()
         data.set_labels_imported(True)
         logger.info("Successfully applied labels to %s", data.get_filename())
@@ -365,28 +365,3 @@ def infer_event_ids_for_label_count(
         event_id for event_id, count in counts.items() if count == label_count
     )
     return exact_single_ids if len(exact_single_ids) == 1 else None
-
-
-def _mark_standard_rejected_trials(data: Any) -> None:
-    """Preserve GDF rejected-trial markers as MNE BAD annotations."""
-    mne_data = data.get_mne()
-    annotations = getattr(mne_data, "annotations", None)
-    if annotations is None or len(annotations) == 0:
-        return
-    descriptions = list(annotations.description)
-    changed = False
-    for index, description in enumerate(descriptions):
-        normalized = " ".join(str(description).strip().split()).casefold()
-        if normalized in {"1023", "stimulus/s 1023", "event/e 1023"}:
-            descriptions[index] = "BAD_rejected_trial"
-            changed = True
-    if not changed:
-        return
-    mne_data.set_annotations(
-        mne.Annotations(
-            onset=annotations.onset,
-            duration=annotations.duration,
-            description=descriptions,
-            orig_time=annotations.orig_time,
-        ),
-    )

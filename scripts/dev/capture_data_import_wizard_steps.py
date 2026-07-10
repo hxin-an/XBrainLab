@@ -61,6 +61,7 @@ def main() -> int:
     _show_step(report_dialog, "Review and Import", app)
     report_dialog.import_report_toggle.click()
     app.processEvents()
+    _assert_report_row_visible(report_dialog)
     _capture(report_dialog, OUTPUT_DIR / "05-review-and-import-report.png")
     report_dialog.close()
 
@@ -87,11 +88,28 @@ def _show_step(
     dialog.resize(WINDOW_SIZE)
     dialog.show()
     app.processEvents()
+    if dialog.size() != WINDOW_SIZE:
+        raise RuntimeError(
+            "Data Import capture needs a 1220x1320 virtual screen. "
+            "Run it with QT_QPA_PLATFORM=xcb xvfb-run -a -s "
+            "'-screen 0 1600x1400x24'."
+        )
     QTest.qWait(50)
     dialog._go_to_step(dialog._step_titles.index(step_title))
     app.processEvents()
     dialog.repaint()
     QTest.qWait(50)
+
+
+def _assert_report_row_visible(dialog: DataInterpretationPreviewDialog) -> None:
+    tree = dialog.review_tree
+    first = tree.topLevelItem(0)
+    if first is None:
+        raise RuntimeError("Import report contains no review rows.")
+    row_rect = tree.visualItemRect(first)
+    viewport = tree.viewport()
+    if viewport is None or not row_rect.intersects(viewport.rect()):
+        raise RuntimeError("Import report does not show a review row in the viewport.")
 
 
 def _capture(widget: QWidget, output_path: Path) -> None:
@@ -103,7 +121,29 @@ def _capture(widget: QWidget, output_path: Path) -> None:
         raise RuntimeError(f"Could not save {output_path}.")
     if _is_nearly_black(output_path):
         raise RuntimeError(f"Screenshot is nearly black: {output_path}.")
+    _assert_step_navigation_visible(widget, output_path)
     _assert_no_clipped_inline_actions(widget, output_path)
+
+
+def _assert_step_navigation_visible(widget: QWidget, output_path: Path) -> None:
+    step_labels = getattr(widget, "step_labels", [])
+    for label in step_labels:
+        top_left = widget.mapFromGlobal(label.mapToGlobal(label.rect().topLeft()))
+        bottom_right = widget.mapFromGlobal(
+            label.mapToGlobal(label.rect().bottomRight())
+        )
+        if (
+            top_left.x() < 0
+            or top_left.y() < 0
+            or bottom_right.x() >= widget.width()
+            or bottom_right.y() >= widget.height()
+        ):
+            raise RuntimeError(
+                "Step navigation appears clipped in "
+                f"{output_path.name}: {label.text()} at "
+                f"({top_left.x()}, {top_left.y()})-"
+                f"({bottom_right.x()}, {bottom_right.y()})"
+            )
 
 
 def _assert_no_clipped_inline_actions(widget: QWidget, output_path: Path) -> None:

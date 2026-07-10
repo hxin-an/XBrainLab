@@ -573,21 +573,22 @@ class DataSplittingDialog(BaseDialog):
         self.btn_confirm.clicked.connect(self.confirm)
         action_layout.addWidget(self.btn_confirm)
         layout.addLayout(action_layout)
-        self._update_content_flow(self.width())
+        self._update_content_flow(self.width(), self.height())
 
     def resizeEvent(self, event):  # noqa: N802
         """Reflow preview and settings before narrow layouts can clip them."""
-        self._update_content_flow(event.size().width())
+        self._update_content_flow(event.size().width(), event.size().height())
         super().resizeEvent(event)
 
-    def _update_content_flow(self, width: int) -> None:
+    def _update_content_flow(self, width: int, height: int) -> None:
         if (
             self.content_layout is None
             or self.preview_group is None
             or self.options_group is None
         ):
             return
-        is_narrow = width < _NARROW_FLOW_BREAKPOINT
+        is_short = height < 600
+        is_narrow = width < _NARROW_FLOW_BREAKPOINT and not is_short
         direction = (
             QBoxLayout.Direction.TopToBottom
             if is_narrow

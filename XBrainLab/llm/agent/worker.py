@@ -84,6 +84,7 @@ class AgentWorker(QObject):
     log = pyqtSignal(str)
     generation_stop_finished = pyqtSignal(bool)
     shutdown_finished = pyqtSignal(bool)
+    runtime_snapshot_changed = pyqtSignal(dict)
 
     def __init__(self):
         """Initializes the AgentWorker with no engine loaded."""
@@ -184,6 +185,7 @@ class AgentWorker(QObject):
 
             self.engine = LLMEngine(config)
             self.engine.load_model()
+            self._emit_runtime_snapshot()
 
             self.log.emit(f"AI Model Loaded: {selection.model_id}")
             logger.info("Local Agent initialized successfully")
@@ -455,6 +457,7 @@ class AgentWorker(QObject):
             engine.config.save_to_file()
 
             self.log.emit(f"Switched to local model: {new_model_id}")
+            self._emit_runtime_snapshot()
             logger.info("Model switch successful to local model %s", new_model_id)
 
         except Exception as e:
@@ -476,5 +479,23 @@ class AgentWorker(QObject):
             if callable(close):
                 close()
             self.engine = None
+        self._emit_runtime_snapshot()
         self.shutdown_finished.emit(True)
         return True
+
+    def _emit_runtime_snapshot(self) -> None:
+        """Publish runtime state without exposing worker-owned objects to the UI."""
+        snapshot: dict[str, object] = {
+            "initialized": self.engine is not None,
+            "backend_mode": "",
+            "model_id": "",
+        }
+        if self.engine is not None:
+            selection = LLMConfig.assistant_runtime_selection_from(self.engine.config)
+            snapshot.update(
+                {
+                    "backend_mode": selection.backend_mode,
+                    "model_id": selection.model_id,
+                }
+            )
+        self.runtime_snapshot_changed.emit(snapshot)

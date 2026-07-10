@@ -28,6 +28,7 @@ def worker():
     w.chunk_received = MagicMock()
     w.error = MagicMock()
     w.log = MagicMock()
+    w.runtime_snapshot_changed = MagicMock()
     return w
 
 

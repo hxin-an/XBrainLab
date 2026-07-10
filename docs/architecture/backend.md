@@ -14,7 +14,7 @@
 | `ApplicationService` 是不是 god object？ | 已從早期 god-object 形狀拆成 focused services；目前主要負責 dispatch、capability / confirmation gate、state/result envelope。 |
 | UI 是否完全不碰 controllers？ | 還不是。controllers 仍存在於 panel bootstrap、observer bridge、mock / compatibility compatibility、部分 readonly display fallback。 |
 | product success 應該怎麼證明？ | 用 command result、`QueryStateCommand` / state snapshot、typed diagnostics、UI-visible state、exact event/epoch/split/history evidence；不要用 facade、controller compatibility、direct mutable `Study` state、generic non-empty / no-crash assertion。 |
-| UI 和 assistant 同時下 command 怎麼辦？ | 同一個 Study-scoped `ApplicationService` 以 reentrant lock 序列化 `execute()`、state snapshot 與 capability snapshot，避免並行 mutation 或讀到半完成狀態。 |
+| UI 和 assistant 同時下 command 怎麼辦？ | lock 由 `Study` 擁有；同一個 Study 上即使出現多個 `ApplicationService` instance，也會共用 reentrant lock，序列化 `execute()`、state snapshot 與 capability snapshot。cached service 的首次建立另有 process-local lock，避免競態建立兩個入口。 |
 
 ## Current Target Gap
 

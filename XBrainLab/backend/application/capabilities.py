@@ -344,6 +344,7 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
     capabilities[CommandName.EVALUATE.value] = _cap(
         CommandName.EVALUATE,
         evaluate_reasons,
+        stop_after_success=True,
     )
 
     visualize_reasons = []

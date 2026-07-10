@@ -340,8 +340,12 @@ class ApplicationService:
     """Command-oriented application layer over the existing backend controllers."""
 
     def __init__(self, study: Study | None = None):
-        self._command_lock = RLock()
         self.study = study if study is not None else Study()
+        self._command_lock = getattr(
+            self.study,
+            "_application_command_lock",
+            RLock(),
+        )
         self.study._application_service = self
         self.dataset = DatasetControllerAdapter(self.study)
         self.preprocess = PreprocessControllerAdapter(self.study)

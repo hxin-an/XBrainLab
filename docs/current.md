@@ -22,10 +22,10 @@ MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測�
 
 | 區域 | 目前狀態 | 邊界 |
 | --- | --- | --- |
-| Backend | `ApplicationService / Command API` 是主要 command spine；同一個 Study scope 的 UI、assistant、headless command 由 service lock 序列化，避免同時 mutation。`CommandResult.diagnostics` 保持 JSON-safe，runtime object 只放在 `runtime`。 | 仍要持續防止 controller compatibility 與 duplicate state truth 回流。 |
+| Backend | `ApplicationService / Command API` 是主要 command spine；lock 由 Study 擁有，因此 cached 或直接建立的 service 都會序列化同一份 state，首次 cached service 建立也有競態保護。`CommandResult.diagnostics` 保持 JSON-safe，runtime object 只放在 `runtime`。 | 仍要持續防止 controller compatibility 與 duplicate state truth 回流。 |
 | UI | PyQt 主流程、Data Interpretation wizard、training / evaluation / visualization surface 都有 baseline；command 執行期間會抑制 observer duplicate refresh，完成後依 `changed_state` 走 shared refresh coordinator。 | automated walkthrough 不等於 human Windows desktop acceptance；仍需真人 Windows click-through 才能宣稱產品驗收完成。 |
 | Data Interpretation | `scan -> preview -> validate -> apply -> recipe` baseline 已存在；Data Import wizard 已補強 Tier 1/Tier 2 label-source、strict BIDS folder events、internal event evidence、external label placement、structured review coverage，並把 reviewed label placement 寫成 epoch 建議。 | BIDS 支援目前是 EEG task import MVP，不是 full BIDS validator；一般 folder 掃到 `events.tsv` 仍走普通 label-file flow。P300/SSVEP/clinical/XDF/LSL/MOABB/proprietary converters 不能誇大。 |
-| Assistant / Agent | in-app assistant 提供 `One Step` 與 `Workflow`：前者只做一個可執行步驟，後者可持續到真正的 confirmation / decision / UI dialog 邊界。兩者共用 backend state、capability policy、ApplicationService command 與 `changed_state` refresh。 | approved local model cache 目前仍缺；不能宣稱長時間本地模型 session、thesis-grade tool-call accuracy 或 Windows assistant acceptance。 |
+| Assistant / Agent | in-app assistant 提供 `One Step` 與 `Workflow`：前者只做一個可執行步驟，後者可持續到真正的 confirmation / decision / UI dialog / terminal-command 邊界。工具曝光只由 backend capability policy 決定；單次 tool execution 已抽到 coordinator，UI 只讀 worker runtime snapshot。 | approved local model cache 目前仍缺；不能宣稱長時間本地模型 session、thesis-grade tool-call accuracy 或 Windows assistant acceptance。 |
 | MCP | 從 active plan 移除。 | 不再追求 MCP hardening、MCP client certification、MCP external-agent product path 或 MCP thesis evidence。 |
 | Packaging | Windows launcher / startup smoke 有 evidence。 | 還不是 signed installer，也不是 release approval。 |
 
@@ -81,7 +81,7 @@ Desktop MVP 前仍要先把 backend / UI 穩定化繼續收乾淨：
 | --- | --- | --- |
 | `mkdocs build --strict` | PASS | 文件站可建。 |
 | fast quality dashboard | Clean evidence lives in generated `artifacts/quality/latest.md` for the current branch/commit. | lint、type、architecture、startup、UI baseline、UI product walkthrough、UI unit、real-data IO。 |
-| UI unit suite in最近 dashboard | `1330 passed` | 支撐目前 UI regression baseline，不取代人工 UX approval；final clean-commit dashboard 仍需重跑。 |
+| UI unit suite in最近 dashboard | 以 generated `artifacts/quality/latest.md` 的 current commit 結果為準。 | 支撐目前 UI regression baseline，不取代人工 UX approval；final clean-commit dashboard 仍需重跑。 |
 | Data Interpretation format matrix | expected capabilities observed / match | 支撐代表性 scan / preview / validation format boundary。 |
 | Required multi-dataset gate | strict dataset / format matrix OK；expanded IO + public BIDS + cross-source + checked-in real GDF pipeline `44 passed`；strict cross-source smoke `4 passed`（3 training + 1 CNT epoch-only） | 支撐 checked-in GDF/MAT、compact multiformat、public event-rich fixtures、public BIDS EEG fixture，並避免把 epoch-only CNT 誤稱可訓練。 |
 | Assistant focused regression | command policy、controller/worker lifecycle、refresh、UI wiring focused suites 已通過；核心合併批次最高 `283 passed`，後續 thread/UI targeted tests 亦通過 | 支撐 One Step / Workflow policy、owner-thread teardown、changed-state refresh；不代表本地模型長時間 session。 |

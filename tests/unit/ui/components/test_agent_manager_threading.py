@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
+from PyQt6 import sip
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 from PyQt6.QtWidgets import QApplication, QMainWindow
 
@@ -136,6 +137,7 @@ def test_real_controller_worker_shutdown_runs_through_qt_owner_thread(qtbot):
     )
 
     controller = LLMController(Study())
+    worker = controller.worker
     worker_thread = controller.worker_thread
     dispatcher = AssistantCommandDispatcher()
     dispatcher.bind(controller)
@@ -143,8 +145,27 @@ def test_real_controller_worker_shutdown_runs_through_qt_owner_thread(qtbot):
 
     assert isinstance(command_thread, QThread)
     assert dispatcher.close() is True
+    qtbot.waitUntil(lambda: sip.isdeleted(worker), timeout=2000)
+    assert controller.worker is None
     assert worker_thread.isRunning() is False
     assert command_thread.isRunning() is False
+
+
+def test_real_controller_can_be_created_and_disposed_repeatedly(qtbot):
+    from XBrainLab.backend.study import Study
+    from XBrainLab.llm.agent.controller import LLMController
+    from XBrainLab.ui.components.assistant_command_dispatcher import (
+        AssistantCommandDispatcher,
+    )
+
+    for _index in range(2):
+        controller = LLMController(Study())
+        worker = controller.worker
+        dispatcher = AssistantCommandDispatcher()
+        dispatcher.bind(controller)
+
+        assert dispatcher.close() is True
+        qtbot.waitUntil(lambda target=worker: sip.isdeleted(target), timeout=2000)
 
 
 def test_failed_shutdown_retains_thread_ownership_for_retry(qtbot):

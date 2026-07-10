@@ -9,7 +9,6 @@ import json
 import logging
 import re
 import threading
-import time as _time
 from ast import literal_eval
 from collections import deque
 from contextlib import suppress
@@ -27,9 +26,7 @@ from XBrainLab.llm.tools.application_surface import (
     CapabilityPolicyUnavailable,
     ToolAvailability,
     ToolCommandResult,
-    execute_application_tool_command,
     get_tool_availability,
-    normalize_tool_result,
 )
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
@@ -42,6 +39,7 @@ from .intent import command_for_intent, infer_user_intent, path_label_for_intent
 from .metrics import AgentMetricsTracker
 from .parser import CommandParser
 from .tool_call_normalizer import normalize_tool_call
+from .tool_execution_coordinator import ToolExecutionCoordinator
 from .verifier import VerificationLayer
 from .worker import AgentWorker
 
@@ -160,6 +158,7 @@ class LLMController(QObject):
         self.worker_thread = QThread()
         self.worker = AgentWorker()
         self.worker.moveToThread(self.worker_thread)
+        self.worker_thread.finished.connect(self.worker.deleteLater)
 
         self._conversation = ConversationHistory(max_size=self.MAX_HISTORY)
 
@@ -175,11 +174,17 @@ class LLMController(QObject):
         self.sig_reinit.connect(self.worker.reinitialize_agent)  # M3.4
         self.sig_cancel_generation.connect(self.worker.cancel_generation)
         self.sig_shutdown_worker.connect(self.worker.shutdown)
+        self.worker.runtime_snapshot_changed.connect(self._on_runtime_snapshot_changed)
 
         # Start thread
         self.worker_thread.start()
 
         self.current_response = ""
+        self._worker_runtime_snapshot: dict[str, Any] = {
+            "initialized": False,
+            "backend_mode": "",
+            "model_id": "",
+        }
         self.is_processing = False
         self._emitted_len = 0
         self._is_buffering = False
@@ -1147,96 +1152,7 @@ class LLMController(QObject):
             keep their existing string result.
 
         """
-        tool = self.registry.get_tool(command_name)
-        if tool:
-            availability = self._check_tool_availability(command_name)
-            if availability is not None:
-                result = self._tool_block_result(command_name, availability)
-                logger.warning(result.message)
-                if self.metrics.current_turn:
-                    self.metrics.current_turn.record_tool(
-                        command_name,
-                        False,
-                        0,
-                        result.message,
-                    )
-                self.status_update.emit(
-                    self._summarize_tool_result(command_name, False, result)
-                )
-                return False, result
-
-            t0 = _time.monotonic()
-            is_application_command = command_name in TOOL_TO_COMMAND
-            if is_application_command:
-                self.application_command_started.emit()
-            try:
-                raw_result = execute_application_tool_command(
-                    self.study,
-                    command_name,
-                    params,
-                )
-                if raw_result is None:
-                    raw_result = tool.execute(self.study, **params)
-            except Exception as e:
-                elapsed = (_time.monotonic() - t0) * 1000
-                error_msg = f"Tool execution failed: {e}"
-                if command_name in TOOL_TO_COMMAND:
-                    result = ToolCommandResult.failure(
-                        command_name,
-                        error_msg,
-                        command_name=TOOL_TO_COMMAND[command_name].value,
-                        state=self._application_state_payload(),
-                        raw_result=str(e),
-                    )
-                else:
-                    result = error_msg
-                if self.metrics.current_turn:
-                    self.metrics.current_turn.record_tool(
-                        command_name,
-                        False,
-                        elapsed,
-                        str(e),
-                    )
-                self.status_update.emit(error_msg)
-                if is_application_command and isinstance(result, ToolCommandResult):
-                    self.application_command_completed.emit(result)
-                return False, result
-            else:
-                elapsed = (_time.monotonic() - t0) * 1000
-                result = raw_result
-                success = True
-                if command_name in TOOL_TO_COMMAND or command_name in READ_ONLY_TOOLS:
-                    tool_result = normalize_tool_result(
-                        self.study,
-                        command_name,
-                        raw_result,
-                    )
-                    result = tool_result
-                    success = tool_result.ok
-                    if is_application_command:
-                        self.application_command_completed.emit(tool_result)
-                if self.metrics.current_turn:
-                    self.metrics.current_turn.record_tool(
-                        command_name,
-                        success,
-                        elapsed,
-                        None if success else str(result),
-                    )
-                if not success:
-                    self.status_update.emit(
-                        self._summarize_tool_result(command_name, success, result)
-                    )
-                return success, result
-        else:
-            if self.metrics.current_turn:
-                self.metrics.current_turn.record_tool(
-                    command_name,
-                    False,
-                    0,
-                    "unknown tool",
-                )
-            self.status_update.emit(f"Unknown tool: {command_name}")
-            return False, f"Error: Unknown tool '{command_name}'"
+        return ToolExecutionCoordinator(self).execute(command_name, params)
 
     def _check_tool_availability(
         self,
@@ -1798,7 +1714,16 @@ class LLMController(QObject):
             if not self.worker_thread.wait(WORKER_THREAD_SHUTDOWN_WAIT_MS):
                 logger.error("Agent worker thread did not stop within timeout")
                 return False
+        self.worker = None
         return True
+
+    def runtime_snapshot(self) -> dict[str, Any]:
+        """Return the latest worker-published runtime state."""
+        return dict(self._worker_runtime_snapshot)
+
+    def _on_runtime_snapshot_changed(self, snapshot: object) -> None:
+        if isinstance(snapshot, dict):
+            self._worker_runtime_snapshot = dict(snapshot)
 
     def _shutdown_worker(self) -> bool:
         worker = cast(Any, getattr(self, "worker", None))

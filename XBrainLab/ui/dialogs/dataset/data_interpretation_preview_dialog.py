@@ -869,7 +869,7 @@ class DataInterpretationPreviewDialog(
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll_area.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
         self.scroll_area.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
@@ -1591,13 +1591,27 @@ class DataInterpretationPreviewDialog(
     def _go_to_step(self, index: int) -> None:
         bounded_index = max(0, min(index, self.step_stack.count() - 1))
         if bounded_index == self.step_stack.currentIndex():
+            self._reset_step_scroll_position()
             self._sync_step_state()
             self.step_stack.updateGeometry()
             self._sync_scroll_policy()
+            QTimer.singleShot(0, self._reset_step_scroll_position)
             return
         self.step_stack.setCurrentIndex(bounded_index)
         self.step_stack.updateGeometry()
+        self._reset_step_scroll_position()
         self._sync_step_state()
+        QTimer.singleShot(0, self._reset_step_scroll_position)
+
+    def _reset_step_scroll_position(self) -> None:
+        if not hasattr(self, "scroll_area"):
+            return
+        horizontal = self.scroll_area.horizontalScrollBar()
+        vertical = self.scroll_area.verticalScrollBar()
+        if horizontal is not None:
+            horizontal.setValue(horizontal.minimum())
+        if vertical is not None:
+            vertical.setValue(vertical.minimum())
 
     def _sync_step_state(self) -> None:
         if not hasattr(self, "step_stack"):
@@ -3851,7 +3865,9 @@ class DataInterpretationPreviewDialog(
             and self._resource_check_blocks_import()
         ):
             return False
-        return self.decision != "blocked" or self._has_complete_remap_choices()
+        if self.decision == "blocked":
+            return self._has_complete_remap_choices()
+        return not self._has_unresolved_required_decisions()
 
     def _has_complete_remap_choices(self) -> bool:
         option_count = len(self._eeg_file_remap_options()) + len(

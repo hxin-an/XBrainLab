@@ -1,6 +1,6 @@
 # XBrainLab 目前架構
 
-最後更新：`2026-07-03`
+最後更新：`2026-07-10`
 
 這裡描述目前實作，不描述理想終局。目標態請看 [target/architecture.md](../target/architecture.md)。
 
@@ -24,7 +24,8 @@ claim boundary。讀本頁時先看下方「目前距離目標多遠」，再進
 
 | Area | 現況 | 距離目標 |
 | --- | --- | --- |
-| Backend command spine | `ApplicationService / Command API` 是 product runtime 主入口；`BackendFacade` 已物理移除。 | 還要防止新 wrapper / direct manager mutation 回流。 |
+| Backend command spine | `ApplicationService / Command API` 是 product runtime 主入口；`BackendFacade` 已物理移除。同一 Study 的 service instance 共用 command/state lock。 | 還要防止新 wrapper / direct manager mutation 回流。 |
+| Assistant boundary | mapped tool exposure 由 backend capability policy 決定；單次 tool execution 有 coordinator，UI 只讀 worker runtime snapshot。 | 還缺 approved local-model cache、長時間 session 與 Windows 真人 assistant acceptance。 |
 | UI refresh | command-result、navigation、known observer event 已集中到 refresh coordinator。 | panel constructor / observer bridge 還依賴 injected controllers，不是 full zero-controller UI。 |
 | Product evidence | guarded product smokes、real-tools evidence、real GDF full-pipeline smoke 已轉向 command/query truth；product-success tests 也開始阻擋 no-crash / generic panel assertion 形狀。 | lower-level integration tests 仍有 setup/domain 目的的 direct `Study` access，不能全部當 product smoke。 |
 | Desktop acceptance | startup、UI baseline、dialog/unit、real-data IO dashboard PASS。 | 還缺人手 Windows desktop click-through 和長時間 local-model session。 |

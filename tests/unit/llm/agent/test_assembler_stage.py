@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from XBrainLab.llm.agent.assembler import ContextAssembler
-from XBrainLab.llm.pipeline_state import PipelineStage
+from XBrainLab.llm.pipeline_state import STAGE_CONFIG, PipelineStage
 from XBrainLab.llm.tools.base import BaseTool
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
@@ -51,9 +51,21 @@ class TestStageBasedFiltering:
 
         study = MagicMock()
 
-        with patch(
-            "XBrainLab.llm.agent.assembler.compute_pipeline_stage",
-            return_value=stage,
+        with (
+            patch(
+                "XBrainLab.llm.agent.assembler.compute_pipeline_stage",
+                return_value=stage,
+            ),
+            patch(
+                "XBrainLab.llm.agent.assembler.enabled_tool_names",
+                return_value=list(
+                    STAGE_CONFIG.get(stage, STAGE_CONFIG[PipelineStage.EMPTY])["tools"]
+                ),
+            ),
+            patch(
+                "XBrainLab.llm.agent.assembler.blocked_tool_reasons",
+                return_value={},
+            ),
         ):
             assembler = ContextAssembler(registry, study)
             return assembler.build_system_prompt()

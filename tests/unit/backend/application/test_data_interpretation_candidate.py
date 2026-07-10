@@ -722,9 +722,23 @@ def test_build_interpretation_candidate_uses_real_internal_event_evidence(
     def fake_read(path: str):
         name = Path(path).name
         counts_by_file = {
-            "A01T.gdf": {"768": 108, "769": 36, "770": 36, "772": 36, "1023": 2},
-            "A02T.gdf": {"768": 108, "769": 36, "770": 36, "772": 36, "1023": 2},
-            "A03T.gdf": {"768": 72, "769": 36, "770": 36, "1023": 2},
+            "A01T.gdf": {
+                "768": 108,
+                "769": 36,
+                "770": 36,
+                "772": 36,
+                "1023": 2,
+                "32766": 1,
+            },
+            "A02T.gdf": {
+                "768": 108,
+                "769": 36,
+                "770": 36,
+                "772": 36,
+                "1023": 2,
+                "32766": 1,
+            },
+            "A03T.gdf": {"768": 72, "769": 36, "770": 36, "1023": 2, "32766": 1},
         }
         return {
             "events": {
@@ -772,7 +786,10 @@ def test_build_interpretation_candidate_uses_real_internal_event_evidence(
     assert rows_by_code["772"]["missing_files"] == ["A03T.gdf"]
     assert "missing A03T.gdf" in rows_by_code["772"]["evidence"]
     assert other_by_code["768"]["use_as"] == "Trial timing"
-    assert other_by_code["1023"]["reason"] == "Event role needs review"
+    assert other_by_code["1023"]["use_as"] == "Exclude bad trials"
+    assert other_by_code["1023"]["reason"] == "Rejected / artifact trial"
+    assert other_by_code["32766"]["use_as"] == "Ignore"
+    assert other_by_code["32766"]["reason"] == "System / boundary marker"
     assert candidate.class_map == {}
     assert candidate.class_map_source == ""
 

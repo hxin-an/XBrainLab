@@ -2,7 +2,8 @@
 
 Assembles system prompts with dynamic tool definitions, RAG context,
 and conversation history for the AI agent.  Tools and system-prompt text
-are selected based on the current :class:`PipelineStage`.
+use the current pipeline stage for guidance and backend capability policy for
+availability.
 """
 
 import json
@@ -15,7 +16,7 @@ from ..tools.application_surface import (
     blocked_tool_reasons,
     enabled_tool_names,
 )
-from ..tools.schema_contract import tool_contract_for_llm
+from ..tools.schema_contract import LEGACY_COMPATIBILITY_TOOLS, tool_contract_for_llm
 from ..tools.tool_registry import ToolRegistry
 from .decision_context import (
     STEP_BY_STEP_MODE,
@@ -28,7 +29,7 @@ class ContextAssembler:
     """Assembles the full context for the AI agent.
 
     Constructs the system prompt by combining ReAct-style instructions,
-    **stage-filtered** tool definitions, pipeline system prompt, optional RAG
+    **capability-filtered** tool definitions, pipeline system prompt, optional RAG
     context, and conversation history into a message list suitable for
     LLM inference.
 
@@ -151,22 +152,21 @@ Workflow tool choices:
     def _application_allowed_tools(self, fallback: list[str]) -> list[str]:
         """Return tool names allowed by ApplicationService capability policy."""
         registered_names = {tool.name for tool in self.registry.get_all_tools()}
-        stage_names = set(fallback)
-        try:
-            app_allowed = set(enabled_tool_names(self.study_state))
-        except Exception:
-            return fallback
-        policy_allowed = {
-            name
-            for name in app_allowed
-            if name in stage_names and name in registered_names
-        }
         non_policy_stage_tools = {
             name
             for name in fallback
             if name in registered_names
             and name not in TOOL_TO_COMMAND
             and name not in READ_ONLY_TOOLS
+        }
+        try:
+            app_allowed = set(enabled_tool_names(self.study_state))
+        except Exception:
+            return sorted(non_policy_stage_tools)
+        policy_allowed = {
+            name
+            for name in app_allowed
+            if name in registered_names and name not in LEGACY_COMPATIBILITY_TOOLS
         }
         return sorted(policy_allowed | non_policy_stage_tools)
 

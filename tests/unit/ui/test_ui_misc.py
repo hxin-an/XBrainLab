@@ -2797,18 +2797,20 @@ class TestAgentManagerDeep:
 
     def test_prepare_model_deletion_local_mode(self, mgr):
         mgr.agent_controller = MagicMock()
-        worker = MagicMock()
-        mgr.agent_controller.worker = worker
-        worker.engine.config.active_mode = "local"
+        mgr.agent_controller.runtime_snapshot.return_value = {
+            "initialized": True,
+            "backend_mode": "local",
+        }
         with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
             assert mgr.prepare_model_deletion("model") is False
         mgr.agent_controller.set_model.assert_not_called()
 
     def test_prepare_model_deletion_gemini(self, mgr):
         mgr.agent_controller = MagicMock()
-        worker = MagicMock()
-        mgr.agent_controller.worker = worker
-        worker.engine.config.active_mode = "gemini"
+        mgr.agent_controller.runtime_snapshot.return_value = {
+            "initialized": True,
+            "backend_mode": "local",
+        }
         with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
             assert mgr.prepare_model_deletion("model") is False
         mgr.agent_controller.set_model.assert_not_called()

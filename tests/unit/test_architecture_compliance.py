@@ -18,6 +18,7 @@ from tests.architecture_compliance import (
     check_product_success_direct_study_state_tests,
     check_product_success_generic_panel_instance_assertions,
     check_product_success_legacy_fallback_tests,
+    check_ui_agent_worker_internal_access,
     check_ui_capability_gated_controller_readiness,
     check_ui_command_execution_suppresses_observer_refresh,
     check_ui_controller_fallbacks,
@@ -43,6 +44,33 @@ def _write_ui_file(root, source: str) -> None:
     path = root / "XBrainLab" / "ui" / "panels" / "demo" / "sidebar.py"
     path.parent.mkdir(parents=True)
     path.write_text(source, encoding="utf-8")
+
+
+def test_ui_agent_worker_internal_guard_flags_engine_access(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def current_model(agent_controller):
+    return agent_controller.worker.engine.config.model_name
+""",
+    )
+
+    violations = check_ui_agent_worker_internal_access(tmp_path)
+
+    assert len(violations) == 2
+    assert "runtime_snapshot" in violations[0]
+
+
+def test_ui_agent_worker_internal_guard_allows_runtime_snapshot(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def current_model(agent_controller):
+    return agent_controller.runtime_snapshot().get("model_name")
+""",
+    )
+
+    assert check_ui_agent_worker_internal_access(tmp_path) == []
 
 
 def _write_llm_file(root, source: str) -> None:

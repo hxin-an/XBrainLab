@@ -8,6 +8,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from XBrainLab.backend.event_semantics import gdf_event_semantic
+
 INTERNAL_EVENT_EXTENSIONS = (
     ".gdf",
     ".edf",
@@ -331,6 +333,12 @@ def _looks_like_prefixed_marker(text: str) -> bool:
 
 
 def _semantic_for_event(stats: dict[str, Any]) -> dict[str, str]:
+    format_semantic = gdf_event_semantic(
+        str(stats.get("code") or ""),
+        set(stats.get("suffixes") or set()),
+    )
+    if format_semantic is not None:
+        return format_semantic
     descriptions = [str(item) for item in stats.get("descriptions", set())]
     if _description_has_any(descriptions, ("artifact", "artefact", "reject", "bad")):
         return {

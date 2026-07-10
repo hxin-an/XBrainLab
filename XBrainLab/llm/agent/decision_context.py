@@ -162,7 +162,7 @@ def recommended_next_step(
 
     for command_name in candidates:
         capability = capabilities.get(command_name)
-        if capability.enabled:
+        if capability is not None and capability.enabled:
             return command_name
     return candidates[0] if candidates else None
 

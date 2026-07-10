@@ -552,6 +552,7 @@ def test_analysis_tools_are_application_service_backed():
 
     policy = build_agent_tool_policy(study)
     assert policy["evaluate"].command_name == CommandName.EVALUATE.value
+    assert policy["evaluate"].stop_after_success is True
     assert policy["visualize"].command_name == CommandName.VISUALIZE.value
     assert policy["saliency"].command_name == CommandName.SALIENCY.value
 

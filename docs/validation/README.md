@@ -123,6 +123,10 @@ poetry run python scripts/dev/run_public_cross_source_training_smoke.py \
 - public event-rich sources：至少 3 個 public event-rich fixtures，且來自至少 3 個 source families。
 - public BIDS EEG：必須有 downloaded tiny BIDS EEG root，包含 `events.tsv` / sidecar path。
 
+這個 strict matrix 是 fixture inventory 與 capability-boundary gate，不是完整 workflow 證據。
+import、epoch、training、evaluation 或 OOM recovery 的 claim 必須另外由下方 real integration tests
+與 cross-source runner 支撐，不能只看 matrix JSON 為 true。
+
 `test_data_import_wizard_format_matrix.py` 會把 Data Interpretation format matrix 裡的每個
 format-boundary case 送進真實 `ApplicationService scan -> preview -> validate`，再打開
 `DataInterpretationPreviewDialog` 走完 `Choose EEG Data`、`Load Labels`、`Review Metadata`、
@@ -228,8 +232,12 @@ arbitrary public dataset certification, or scientific model-quality evidence.
   command completion 共用 observer suppression 與 serialized `changed_state` refresh。
 - assistant `One Step` / `Workflow` policy、existing-dialog decision boundary、worker/QTimer owner-thread
   teardown、failed shutdown retry ownership 有 focused regression。
-- checked-in A01T/A02T/A03T 真實 GDF 路徑直接讀取 769-772 class events，排除 768/1023/32766，
-  建立 288 epochs，並執行 non-mocked evaluation evidence。
+- shared GDF semantics 將 1023 視為 rejected trial、32766 視為 system boundary；內部 event path
+  與外部 MAT label path 使用同一套 artifact exclusion。A01T 內部事件路徑因此建立 273 個有效
+  epochs，而不是把 rejected trials 算進 288 個 cue events。
+- 真實 A01T GDF+MAT 已走完整 Data Interpretation wizard contract：scan、preview、validate、apply、
+  preprocess、epoch、split、EEGNet one-epoch training、evaluate；另有 async CUDA OOM failure
+  狀態與成功 retry 的整合測試。
 - dataset matrix 不再把 MNE CNT epoch-only fixture 誤稱為 training pass；strict runner 現在明確回報
   3 個 training source family + 1 個 epoch-only CNT source。
 

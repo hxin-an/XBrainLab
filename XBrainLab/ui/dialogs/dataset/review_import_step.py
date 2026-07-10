@@ -230,7 +230,36 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         ]
 
     def _has_review_action_for_step(self, target_step: str) -> bool:
+        if target_step == "Match Labels":
+            return self._label_placement_needs_review()
         return any(row[0] == target_step for row in self._primary_review_rows())
+
+    def _label_placement_needs_review(self) -> bool:
+        if self._label_source_mode() == "internal_events":
+            return not bool(self._class_map_items or self._event_role_items)
+        if self._label_source_mode() == "loaded_label_files":
+            if self._active_label_carrier_count() <= 0:
+                return True
+            if self._should_show_label_table_fallback():
+                return True
+        summary = self._review_label_placement_text().casefold()
+        return any(
+            marker in summary
+            for marker in (
+                "need review",
+                "needs review",
+                "needs conversion",
+                "no external labels selected",
+            )
+        )
+
+    def _has_unresolved_required_decisions(self) -> bool:
+        _complete_count, missing_fields = self._metadata_completion_counts()
+        if self._metadata_required_missing_fields(missing_fields):
+            return True
+        if self._file_count() <= 0:
+            return True
+        return self._label_placement_needs_review()
 
     def _refresh_review_import_summary(self) -> None:
         if hasattr(self, "_review_import_rows_layout"):
@@ -467,6 +496,8 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         if target_step == "Review Metadata":
             return ""
         if target_step == "Review and Import":
+            return ""
+        if target_step == "Match Labels" and not self._label_placement_needs_review():
             return ""
         if target_step == "Match Labels" and any(
             token in lowered
@@ -726,18 +757,19 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             validation_decision=self.validation_decision,
             scan_result=self.scan_result,
         )
-        if self._review_metadata_is_complete():
-            rows = [row for row in rows if not is_metadata_review_row(row)]
-        return rows
+        return [row for row in rows if not self._review_row_is_resolved(row)]
 
     def _primary_review_rows(self) -> list[ReviewRow]:
         rows = build_primary_review_rows(
             preview=self.preview,
             validation_decision=self.validation_decision,
         )
-        if self._review_metadata_is_complete():
-            rows = [row for row in rows if not is_metadata_review_row(row)]
-        return rows
+        return [row for row in rows if not self._review_row_is_resolved(row)]
+
+    def _review_row_is_resolved(self, row: ReviewRow) -> bool:
+        if self._review_metadata_is_complete() and is_metadata_review_row(row):
+            return True
+        return row[0] == "Match Labels" and not self._label_placement_needs_review()
 
     def _toggle_import_report(self) -> None:
         visible = not self.import_report_card.isVisible()

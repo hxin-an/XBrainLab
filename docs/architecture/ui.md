@@ -179,6 +179,8 @@ blocked reason copy、command execution、post-command refresh，以及 mock / c
   surface。UI request 打開後 workflow 停在明確 waiting state，不在 chat 裡重做第二套表單。
 - MainWindow 關閉時若 assistant worker 尚未安全停止，會拒絕第一次 close 並重試 teardown；
   不會在仍存活的 QThread 上直接銷毀 worker/QTimer。
+- worker thread 結束時由 Qt owner-thread lifecycle 執行 `deleteLater()`；UI 只讀 controller 發布的
+  runtime snapshot，不再讀 worker/engine internals。architecture guard 保護這條邊界。
 
 ### Guarded boundary
 

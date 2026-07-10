@@ -150,6 +150,11 @@ PRODUCT_SUCCESS_TEST_DIRS = (
     Path("tests/integration/ui"),
 )
 UI_DIRECT_STUDY_CONTROLLER_LOOKUP_ALLOWED_FILES: tuple[str, ...] = ()
+UI_AGENT_WORKER_INTERNAL_TOKENS = (
+    ".worker.engine",
+    ".worker.generation_thread",
+    "agent_controller.worker",
+)
 UI_OBSERVER_REFRESH_EVENTS = (
     "data_changed",
     "preprocess_changed",
@@ -420,6 +425,13 @@ def check_architecture(root_dir: str) -> int:
     if controller_lookup_test_violations:
         print("\nProduct Success Controller Lookup Assertion Violations Found:")
         for violation in controller_lookup_test_violations:
+            print(f" - {violation}")
+        return 1
+
+    worker_internal_violations = check_ui_agent_worker_internal_access(Path(root_dir))
+    if worker_internal_violations:
+        print("\nUI Agent Worker Internal Access Violations Found:")
+        for violation in worker_internal_violations:
             print(f" - {violation}")
         return 1
 
@@ -2061,6 +2073,28 @@ def check_ui_direct_study_state_reads(root_dir: Path) -> list[str]:
                 "Study state reads limited to explicit legacy/fallback helpers."
                 for attr in visitor.violations
             )
+    return violations
+
+
+def check_ui_agent_worker_internal_access(root_dir: Path) -> list[str]:
+    """Keep UI code behind the controller's immutable runtime snapshot."""
+    violations: list[str] = []
+    ui_dir = root_dir / "XBrainLab" / "ui"
+    if not ui_dir.exists():
+        return violations
+    for py_file in ui_dir.rglob("*.py"):
+        if py_file.name == "__init__.py":
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        for line_number, line in enumerate(source.splitlines(), start=1):
+            for token in UI_AGENT_WORKER_INTERNAL_TOKENS:
+                if token not in line:
+                    continue
+                violations.append(
+                    f"{py_file.relative_to(root_dir)}:{line_number} reads {token}; "
+                    "UI code must use AgentController.runtime_snapshot() instead "
+                    "of worker or engine internals."
+                )
     return violations
 
 

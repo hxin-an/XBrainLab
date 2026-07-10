@@ -55,7 +55,9 @@ from XBrainLab.backend.study import Study
 
 
 def test_application_service_serializes_commands_across_calling_threads(monkeypatch):
-    service = ApplicationService(Study())
+    study = Study()
+    service = ApplicationService(study)
+    second_service = ApplicationService(study)
     original_execute_allowed = service._execute_allowed
     counter_lock = Lock()
     active_calls = 0
@@ -74,10 +76,16 @@ def test_application_service_serializes_commands_across_calling_threads(monkeypa
                 active_calls -= 1
 
     monkeypatch.setattr(service, "_execute_allowed", tracked_execute_allowed)
+    monkeypatch.setattr(second_service, "_execute_allowed", tracked_execute_allowed)
     commands = [QueryStateCommand(query="state") for _ in range(2)]
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        results = list(executor.map(service.execute, commands))
+        results = list(
+            executor.map(
+                lambda item: item[0].execute(item[1]),
+                zip((service, second_service), commands, strict=True),
+            )
+        )
 
     assert all(result.ok for result in results)
     assert max_active_calls == 1
