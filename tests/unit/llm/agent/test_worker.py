@@ -447,6 +447,21 @@ class TestOnGenerationError:
 
 
 class TestReinitializeAgent:
+    def test_model_switch_is_rejected_while_generation_is_running(self, worker):
+        engine = MagicMock()
+        engine.config = LLMConfig()
+        worker.engine = engine
+        running_thread = MagicMock()
+        running_thread.isRunning.return_value = True
+        worker.generation_thread = running_thread
+
+        worker.reinitialize_agent(LLMConfig.fallback_local_model_id())
+
+        engine.switch_backend.assert_not_called()
+        running_thread.requestInterruption.assert_not_called()
+        worker.error.emit.assert_called_once()
+        assert "generation" in worker.error.emit.call_args.args[0].lower()
+
     def test_legacy_remote_mode_is_rejected(self, worker):
         engine = MagicMock()
         engine.config = LLMConfig()

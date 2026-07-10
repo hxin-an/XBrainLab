@@ -65,6 +65,7 @@ class TestAgentManagerMethods:
     def test_stop_generation(self, agent_mgr):
         agent_mgr.stop_generation()
         agent_mgr.agent_controller.stop_generation.assert_called_once()
+        agent_mgr.chat_controller.set_processing.assert_not_called()
 
     def test_set_model(self, agent_mgr):
         agent_mgr.set_model("Gemini")

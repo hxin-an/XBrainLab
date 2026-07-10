@@ -75,6 +75,9 @@ class LLMEngine:
             )
         logger.info("Switching backend to: %s", mode)
 
+        stale_backend: Any | None = None
+        stale_model_id = ""
+
         # 1. Check Cache and Validity (compare snapshots, not shared refs)
         if mode in self.backends:
             cached_id = self._backend_model_ids.get(mode, "")
@@ -94,10 +97,14 @@ class LLMEngine:
                 return
             # Remove stale backend
             stale_backend = self.backends[mode]
+            stale_model_id = cached_id
             unload = getattr(stale_backend, "unload", None)
             if callable(unload):
                 unload()
             del self.backends[mode]
+            self._backend_model_ids.pop(mode, None)
+            if self.active_backend is stale_backend:
+                self.active_backend = None
 
         # 2. Create if missing
         new_backend: Any = None
@@ -107,11 +114,32 @@ class LLMEngine:
         new_backend = LocalBackend(self.config)
         try:
             new_backend.load()
-        except Exception:
+        except Exception as load_error:
             unload = getattr(new_backend, "unload", None)
             if callable(unload):
                 with contextlib.suppress(Exception):
                     unload()
+            if stale_backend is not None and stale_model_id:
+                try:
+                    self.config.apply_runtime_selection(
+                        "local",
+                        model_id=stale_model_id,
+                        ui_active_mode="local",
+                    )
+                    stale_backend.load()
+                except Exception as rollback_error:
+                    logger.error(
+                        "Failed to restore previous local model after hot-swap: %s",
+                        rollback_error,
+                        exc_info=True,
+                    )
+                    raise RuntimeError(
+                        "Local model switch failed and the previous model could "
+                        "not be restored.",
+                    ) from load_error
+                self.backends[mode] = stale_backend
+                self._backend_model_ids[mode] = stale_model_id
+                self.active_backend = stale_backend
             raise
 
         self.backends[mode] = new_backend

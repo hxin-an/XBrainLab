@@ -3,6 +3,9 @@
 from threading import Event, Lock
 from unittest.mock import MagicMock, patch
 
+from PyQt6.QtCore import QObject, pyqtSignal
+
+from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.agent.worker import AgentWorker
 from XBrainLab.llm.core.config import LLMConfig
 
@@ -145,3 +148,72 @@ class TestAgentWorkerTimeout:
 
         if worker.timeout_timer is not None:
             worker.timeout_timer.stop()
+
+    def test_cancel_ack_reaches_controller_only_after_thread_exit(self, qtbot):
+        started = Event()
+        release = Event()
+
+        class BlockingEngine:
+            def __init__(self) -> None:
+                self.config = LLMConfig()
+                self.config.timeout = 60
+                self.config.available_local_model_id = MagicMock(
+                    return_value=(
+                        self.config.model_name,
+                        "Local runtime ready.",
+                    ),
+                )
+
+            def generate_stream(self, _messages):
+                started.set()
+                release.wait(timeout=2)
+                yield "done"
+
+            def cancel_generation(self, *, wait_timeout: float) -> bool:
+                del wait_timeout
+                return False
+
+        class CancellationController(QObject):
+            status_update = pyqtSignal(str)
+            processing_finished = pyqtSignal()
+            _on_generation_stop_finished = LLMController._on_generation_stop_finished
+
+            def __init__(self) -> None:
+                super().__init__()
+                self._turn_cancelled = True
+                self.is_processing = True
+
+        worker = AgentWorker()
+        engine = BlockingEngine()
+        worker.engine = engine
+        controller = CancellationController()
+        statuses: list[str] = []
+        completions: list[bool] = []
+        controller.status_update.connect(statuses.append)
+        controller.processing_finished.connect(lambda: completions.append(True))
+        worker.generation_stop_finished.connect(
+            controller._on_generation_stop_finished,
+        )
+        with (
+            patch(
+                "XBrainLab.llm.agent.worker.LLMConfig.load_from_file",
+                return_value=engine.config,
+            ),
+            patch(
+                "XBrainLab.llm.agent.worker.GENERATION_THREAD_SHUTDOWN_WAIT_MS",
+                20,
+            ),
+        ):
+            worker.generate_from_messages([{"role": "user", "content": "run"}])
+            qtbot.waitUntil(started.is_set, timeout=1000)
+
+            worker.cancel_generation()
+
+            assert controller.is_processing is True
+            assert statuses[-1] == "Stopping..."
+            assert completions == []
+            release.set()
+            qtbot.waitUntil(lambda: not controller.is_processing, timeout=2000)
+
+        assert statuses[-1] == "Stopped"
+        assert completions == [True]

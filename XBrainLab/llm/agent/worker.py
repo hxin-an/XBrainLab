@@ -219,6 +219,21 @@ class AgentWorker(QObject):
             self._cancel_pending = False
             self.generation_stop_finished.emit(True)
 
+    def _generation_is_active(self) -> bool:
+        """Return whether the worker still owns a running generation thread."""
+        thread = self.generation_thread
+        if thread is None:
+            return False
+        try:
+            running = thread.isRunning()
+        except RuntimeError:
+            self._release_generation_thread(thread)
+            return False
+        if not running:
+            self._release_generation_thread(thread)
+            return False
+        return True
+
     @staticmethod
     def _disconnect_generation_thread(thread: GenerationThread) -> None:
         """Disconnect generation callbacks if they are still connected."""
@@ -457,6 +472,12 @@ class AgentWorker(QObject):
             model_id: Identifier or display name of the target local model.
 
         """
+        if self._generation_is_active():
+            self.error.emit(
+                "Switch Failed: wait for the active generation to finish or stop it.",
+            )
+            return
+
         logger.info("Worker switching model to: %s", model_id)
         self.log.emit(f"Switching to {model_id}...")
 
@@ -467,6 +488,7 @@ class AgentWorker(QObject):
 
         old_inference_mode = engine.config.inference_mode
         old_active_mode = engine.config.active_mode
+        old_model_id = engine.config.model_name
 
         try:
             allowed_models = LLMConfig.allowed_local_model_ids()
@@ -490,18 +512,27 @@ class AgentWorker(QObject):
             )
             engine.switch_backend("local")
 
-            # Persist change so Settings Dialog sees it
-            engine.config.save_to_file()
-
-            self.log.emit(f"Switched to local model: {new_model_id}")
-            self._emit_runtime_snapshot()
-            logger.info("Model switch successful to local model %s", new_model_id)
-
         except Exception as e:
-            engine.config.inference_mode = old_inference_mode
-            engine.config.active_mode = old_active_mode
+            engine.config.apply_runtime_selection(
+                old_inference_mode,
+                model_id=old_model_id,
+                ui_active_mode=old_active_mode,
+            )
             logger.error("Failed to switch model: %s", e, exc_info=True)
             self.error.emit(f"Switch Failed: {e}")
+            return
+
+        try:
+            engine.config.save_to_file()
+        except Exception as e:
+            logger.warning("Model switch settings could not be saved: %s", e)
+            self.error.emit(
+                "Model switched for this session, but the setting could not be saved.",
+            )
+
+        self.log.emit(f"Switched to local model: {new_model_id}")
+        self._emit_runtime_snapshot()
+        logger.info("Model switch successful to local model %s", new_model_id)
 
     def shutdown(self, wait_ms: int = GENERATION_THREAD_SHUTDOWN_WAIT_MS) -> bool:
         """Stop generation work and release the loaded local model backend."""

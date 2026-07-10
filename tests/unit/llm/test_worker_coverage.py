@@ -172,10 +172,10 @@ class TestAgentWorkerGenerate:
             worker.generate_from_messages([{"role": "user", "content": long_msg}])
 
         worker.log.emit.assert_called()
-        all_log_calls = " ".join(str(call) for call in mock_logger.method_calls)
-        assert "SECRET_EEG" not in all_log_calls
-        assert "SUBJECT_42" not in all_log_calls
-        assert str(len(long_msg)) in all_log_calls
+        mock_logger.info.assert_called_once_with(
+            "Agent generation requested (message_chars=%s)",
+            len(long_msg),
+        )
 
     @patch("XBrainLab.llm.agent.worker.LLMConfig")
     @patch("XBrainLab.llm.agent.worker.GenerationThread")
