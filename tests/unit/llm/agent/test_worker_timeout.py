@@ -138,5 +138,10 @@ class TestAgentWorkerTimeout:
             release.set()
             qtbot.waitUntil(lambda: worker.generation_thread is None, timeout=2000)
 
+            worker.generate_from_messages(messages)
+            qtbot.waitUntil(lambda: engine.calls == 2, timeout=1000)
+            qtbot.waitUntil(lambda: worker.generation_thread is None, timeout=2000)
+            assert engine.max_active == 1
+
         if worker.timeout_timer is not None:
             worker.timeout_timer.stop()

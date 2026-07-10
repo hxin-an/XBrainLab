@@ -68,15 +68,36 @@ class TestAgentWorkerCleanup:
         assert worker.generation_thread is mock_thread
 
     def test_finished_thread_releases_worker_ownership(self):
-        from XBrainLab.llm.agent.worker import AgentWorker
+        from XBrainLab.llm.agent.worker import ACTIVE_GENERATION_THREADS, AgentWorker
 
         worker = AgentWorker()
         mock_thread = MagicMock()
         worker.generation_thread = mock_thread
+        ACTIVE_GENERATION_THREADS.add(mock_thread)
 
         worker._release_generation_thread(mock_thread)
 
         assert worker.generation_thread is None
+        assert mock_thread not in ACTIVE_GENERATION_THREADS
+
+    def test_cancel_waits_for_finished_acknowledgement(self):
+        from XBrainLab.llm.agent.worker import AgentWorker
+
+        worker = AgentWorker()
+        worker.timeout_timer = MagicMock()
+        worker.generation_stop_finished = MagicMock()
+        mock_thread = MagicMock()
+        mock_thread.isRunning.return_value = True
+        mock_thread.wait.return_value = False
+        worker.generation_thread = mock_thread
+
+        worker.cancel_generation()
+
+        worker.timeout_timer.stop.assert_called_once()
+        worker.generation_stop_finished.emit.assert_called_once_with(False)
+        assert worker.generation_thread is mock_thread
+        worker._release_generation_thread(mock_thread)
+        assert worker.generation_stop_finished.emit.call_args_list[-1].args == (True,)
 
     def test_shutdown_waits_for_generation_and_closes_engine(self):
         from XBrainLab.llm.agent.worker import AgentWorker
@@ -146,14 +167,15 @@ class TestAgentWorkerGenerate:
         mock_thread = MagicMock()
         mock_gt_cls.return_value = mock_thread
 
-        long_msg = "x" * 100
+        long_msg = "SECRET_EEG_SUBJECT_42_" + "x" * 100
         with patch("XBrainLab.llm.agent.worker.logger") as mock_logger:
             worker.generate_from_messages([{"role": "user", "content": long_msg}])
 
         worker.log.emit.assert_called()
-        log_args = " ".join(str(value) for value in mock_logger.info.call_args.args)
-        assert long_msg not in log_args
-        assert "100" in log_args
+        all_log_calls = " ".join(str(call) for call in mock_logger.method_calls)
+        assert "SECRET_EEG" not in all_log_calls
+        assert "SUBJECT_42" not in all_log_calls
+        assert str(len(long_msg)) in all_log_calls
 
     @patch("XBrainLab.llm.agent.worker.LLMConfig")
     @patch("XBrainLab.llm.agent.worker.GenerationThread")

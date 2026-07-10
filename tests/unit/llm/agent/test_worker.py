@@ -246,11 +246,13 @@ class TestGenerateFromMessages:
             patch(
                 "XBrainLab.llm.agent.worker.LLMConfig.load_from_file",
                 return_value=cfg,
-            ),
+            ) as load_config,
         ):
             worker.generate_from_messages([{"role": "user", "content": "retry"}])
 
         thread_class.assert_not_called()
+        load_config.assert_not_called()
+        engine.switch_backend.assert_not_called()
         assert worker.generation_thread is running_thread
         worker.error.emit.assert_called_once()
         assert "still stopping" in worker.error.emit.call_args.args[0].lower()

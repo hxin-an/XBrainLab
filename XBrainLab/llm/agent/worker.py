@@ -93,6 +93,7 @@ class AgentWorker(QObject):
         self.generation_thread: GenerationThread | None = None
         self.timeout_timer: QTimer | None = None
         self._is_timed_out = False
+        self._cancel_pending = False
 
     @staticmethod
     def _load_runtime_config(fallback: LLMConfig | None = None):
@@ -211,8 +212,12 @@ class AgentWorker(QObject):
     def _release_generation_thread(self, thread: GenerationThread) -> None:
         """Release ownership only after Qt confirms the thread has finished."""
         ACTIVE_GENERATION_THREADS.discard(thread)
-        if self.generation_thread is thread:
-            self.generation_thread = None
+        if self.generation_thread is not thread:
+            return
+        self.generation_thread = None
+        if self._cancel_pending:
+            self._cancel_pending = False
+            self.generation_stop_finished.emit(True)
 
     @staticmethod
     def _disconnect_generation_thread(thread: GenerationThread) -> None:
@@ -261,10 +266,20 @@ class AgentWorker(QObject):
 
     def cancel_generation(self) -> None:
         """Cancel generation on the worker's owning Qt thread."""
+        if self.timeout_timer is not None:
+            self.timeout_timer.stop()
+        if self.generation_thread is None:
+            self.generation_stop_finished.emit(True)
+            return
+        self._cancel_pending = True
         stopped = self._cleanup_generation_thread(
             wait_ms=GENERATION_THREAD_SHUTDOWN_WAIT_MS,
         )
-        self.generation_stop_finished.emit(stopped)
+        if stopped and self._cancel_pending:
+            self._cancel_pending = False
+            self.generation_stop_finished.emit(True)
+        elif not stopped:
+            self.generation_stop_finished.emit(False)
 
     def generate_from_messages(self, messages):
         """Runs LLM generation using a full message history.
@@ -284,6 +299,13 @@ class AgentWorker(QObject):
                 self.error.emit("Failed to initialize LLM engine.")
                 self.finished.emit([])
                 return
+
+        if not self._cleanup_generation_thread():
+            self.error.emit(
+                "Previous generation is still stopping. Please wait and retry.",
+            )
+            self.finished.emit([])
+            return
 
         last_msg = messages[-1]
         if last_msg["role"] == "user":
@@ -355,14 +377,6 @@ class AgentWorker(QObject):
             self.finished.emit([])
             return
 
-        # Start Generation Thread — clean up any previous thread first
-        if not self._cleanup_generation_thread():
-            self.error.emit(
-                "Previous generation is still stopping. Please wait and retry.",
-            )
-            self.finished.emit([])
-            return
-
         self.generation_thread = GenerationThread(self.engine, messages)
         self.generation_thread.chunk_received.connect(self.chunk_received)
         self.generation_thread.finished_generation.connect(self._on_generation_finished)
@@ -392,6 +406,8 @@ class AgentWorker(QObject):
         """
         if self.generation_thread and self.generation_thread.isRunning():
             self._is_timed_out = True
+            if self.timeout_timer is not None:
+                self.timeout_timer.stop()
             logger.error("Agent generation timed out.")
 
             # We can't safely kill the thread in Python, but we can ignore its

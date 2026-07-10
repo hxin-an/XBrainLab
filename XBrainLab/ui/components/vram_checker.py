@@ -106,8 +106,18 @@ class VRAMConflictChecker:
         stack = getattr(self.main_window, "stack", None)
         if viz_panel is None or stack is None:
             return switching_to_3d
+        tabs = getattr(viz_panel, "tabs", None)
+        current_tab = getattr(tabs, "currentIndex", None)
+        is_hidden = getattr(viz_panel, "isHidden", None)
+        current_panel = getattr(stack, "currentIndex", None)
+        if (
+            not callable(current_tab)
+            or not callable(is_hidden)
+            or not callable(current_panel)
+        ):
+            return switching_to_3d
         return switching_to_3d or (
-            viz_panel.tabs.currentIndex() == VIZ_TAB_3D_PLOT
-            and not viz_panel.isHidden()
-            and stack.currentIndex() == PANEL_VISUALIZATION
+            current_tab() == VIZ_TAB_3D_PLOT
+            and not is_hidden()
+            and current_panel() == PANEL_VISUALIZATION
         )

@@ -310,11 +310,13 @@ class TestClose:
 class TestStopGeneration:
     def test_stops_when_processing(self, ctrl):
         ctrl.is_processing = True
-        ctrl.worker.generation_thread = MagicMock()
-        ctrl.worker.generation_thread.isRunning.return_value = True
         ctrl.stop_generation()
+        assert ctrl.is_processing
+        ctrl.worker.cancel_generation.assert_called_once()
+
+        ctrl._on_generation_stop_finished(True)
+
         assert not ctrl.is_processing
-        ctrl.worker._cleanup_generation_thread.assert_called_once()
 
 
 # --- set_model ---

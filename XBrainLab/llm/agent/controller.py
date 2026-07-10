@@ -174,6 +174,9 @@ class LLMController(QObject):
         self.sig_reinit.connect(self.worker.reinitialize_agent)  # M3.4
         self.sig_cancel_generation.connect(self.worker.cancel_generation)
         self.sig_shutdown_worker.connect(self.worker.shutdown)
+        self.worker.generation_stop_finished.connect(
+            self._on_generation_stop_finished,
+        )
         self.worker.runtime_snapshot_changed.connect(self._on_runtime_snapshot_changed)
 
         # Start thread
@@ -1761,12 +1764,11 @@ class LLMController(QObject):
         return completed["done"] and completed["ok"]
 
     def stop_generation(self):
-        """Stops the current generation process and resets processing state."""
+        """Request generation cancellation and wait for worker acknowledgement."""
         if self.is_processing:
             self._turn_cancelled = True
             self.status_update.emit("Stopping...")
             self.metrics.finish_turn()
-            self.is_processing = False
             worker = getattr(self, "worker", None)
             if (
                 isinstance(worker, QObject)
@@ -1774,14 +1776,22 @@ class LLMController(QObject):
             ):
                 self.sig_cancel_generation.emit()
             else:
-                cleanup_generation = getattr(
-                    worker,
-                    "_cleanup_generation_thread",
-                    None,
-                )
-                if callable(cleanup_generation):
-                    cleanup_generation(wait_ms=WORKER_THREAD_SHUTDOWN_WAIT_MS)
-            self.processing_finished.emit()
+                cancel_generation = getattr(worker, "cancel_generation", None)
+                if callable(cancel_generation):
+                    cancel_generation()
+                else:
+                    self._on_generation_stop_finished(True)
+
+    def _on_generation_stop_finished(self, stopped: bool) -> None:
+        """Keep the UI in Stopping state until the worker owns no live thread."""
+        if not self._turn_cancelled:
+            return
+        if not stopped:
+            self.status_update.emit("Stopping...")
+            return
+        self.is_processing = False
+        self.status_update.emit("Stopped")
+        self.processing_finished.emit()
 
     def set_model(self, model_display_name: str):
         """Switches the active LLM model.

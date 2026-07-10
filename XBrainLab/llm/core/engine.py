@@ -5,6 +5,7 @@ the local HuggingFace backend. Legacy remote backend requests are migrated to
 local and never instantiate remote clients.
 """
 
+import contextlib
 import logging
 from typing import Any
 
@@ -104,7 +105,14 @@ class LLMEngine:
         from .backends.local import LocalBackend
 
         new_backend = LocalBackend(self.config)
-        new_backend.load()
+        try:
+            new_backend.load()
+        except Exception:
+            unload = getattr(new_backend, "unload", None)
+            if callable(unload):
+                with contextlib.suppress(Exception):
+                    unload()
+            raise
 
         self.backends[mode] = new_backend
         self._backend_model_ids[mode] = self._get_current_model_id(mode)
