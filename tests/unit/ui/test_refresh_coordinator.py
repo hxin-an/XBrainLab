@@ -9,6 +9,7 @@ from XBrainLab.ui.refresh_coordinator import (
     refresh_after_command,
     refresh_after_navigation,
     refresh_after_observer,
+    refresh_after_serialized_command,
     refresh_panel,
     suppress_observer_refresh_during_command,
 )
@@ -84,6 +85,23 @@ def test_raw_change_refreshes_workflow_panels_and_assistant_status():
     assert main_window.visualization_panel.update_calls == 0
     assert info.update_calls == 1
     assert main_window.agent_manager.refresh_calls == 1
+
+
+def test_serialized_agent_change_uses_the_same_refresh_routes():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    context = SimpleNamespace(main_window=main_window)
+
+    refreshed = refresh_after_serialized_command(
+        context,
+        {"epoch_changed": True},
+    )
+
+    assert refreshed is True
+    assert main_window.preprocess_panel.update_calls == 1
+    assert main_window.training_panel.update_calls == 1
+    assert main_window.visualization_panel.update_calls == 1
+    assert info.update_calls == 1
 
 
 def test_analysis_changes_refresh_only_analysis_panels_and_shared_status():

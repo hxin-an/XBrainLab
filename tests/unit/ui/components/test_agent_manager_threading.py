@@ -62,6 +62,19 @@ class _ThreadedAgentController(QObject):
         self.worker_thread.wait(1000)
 
 
+class _RetryShutdownController(_ThreadedAgentController):
+    def __init__(self):
+        super().__init__()
+        self.close_calls = 0
+
+    def close(self):
+        self.close_calls += 1
+        if self.close_calls == 1:
+            return False
+        super().close()
+        return True
+
+
 def test_controller_commands_run_off_gui_thread(qtbot):
     from XBrainLab.backend.study import Study
     from XBrainLab.ui.components.agent_manager import AgentManager
@@ -112,4 +125,43 @@ def test_close_is_idempotent_after_queued_shutdown(qtbot):
 
     manager.close()
     manager.close()
+    assert controller.worker_thread.isRunning() is False
+
+
+def test_real_controller_worker_shutdown_runs_through_qt_owner_thread(qtbot):
+    from XBrainLab.backend.study import Study
+    from XBrainLab.llm.agent.controller import LLMController
+    from XBrainLab.ui.components.assistant_command_dispatcher import (
+        AssistantCommandDispatcher,
+    )
+
+    controller = LLMController(Study())
+    worker_thread = controller.worker_thread
+    dispatcher = AssistantCommandDispatcher()
+    dispatcher.bind(controller)
+    command_thread = dispatcher.command_thread
+
+    assert isinstance(command_thread, QThread)
+    assert dispatcher.close() is True
+    assert worker_thread.isRunning() is False
+    assert command_thread.isRunning() is False
+
+
+def test_failed_shutdown_retains_thread_ownership_for_retry(qtbot):
+    from XBrainLab.ui.components.assistant_command_dispatcher import (
+        AssistantCommandDispatcher,
+    )
+
+    controller = _RetryShutdownController()
+    dispatcher = AssistantCommandDispatcher()
+    dispatcher.bind(controller)
+    command_thread = dispatcher.command_thread
+
+    assert isinstance(command_thread, QThread)
+    assert dispatcher.close() is False
+    assert dispatcher.command_thread is command_thread
+    assert command_thread.isRunning() is True
+
+    assert dispatcher.close() is True
+    assert command_thread.isRunning() is False
     assert controller.worker_thread.isRunning() is False

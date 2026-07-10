@@ -362,13 +362,16 @@ class SaliencySettingDialog(BaseDialog):
             ok_button.setEnabled(has_methods)
         if activated_method in selected_methods and is_multi_method:
             self.method_tabs.setCurrentWidget(self.method_param_pages[activated_method])
-        if self.layout() is not None:
-            self.layout().activate()
+        dialog_layout = self.layout()
+        if dialog_layout is not None:
+            dialog_layout.activate()
         self.adjustSize()
 
     def _clear_single_method_host(self) -> None:
         while self.single_method_layout.count():
             item = self.single_method_layout.takeAt(0)
+            if item is None:
+                break
             widget = item.widget()
             if widget is not None:
                 widget.setParent(None)

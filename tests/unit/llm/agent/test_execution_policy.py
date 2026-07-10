@@ -100,11 +100,6 @@ def test_ask_never_continues_after_a_tool_attempt() -> None:
             "requires_confirmation",
         ),
         (
-            _availability(decision_boundary="semantic_apply"),
-            _snapshot(),
-            "decision_boundary",
-        ),
-        (
             _availability(stop_after_success=True),
             _snapshot(),
             "stop_after_success",
@@ -121,11 +116,6 @@ def test_ask_never_continues_after_a_tool_attempt() -> None:
             _snapshot(next_requires_confirmation=True),
             "next_requires_confirmation",
         ),
-        (
-            _availability(),
-            _snapshot(next_decision_boundary="model_choice"),
-            "next_decision_boundary",
-        ),
     ],
 )
 def test_workflow_host_stop_conditions(availability, snapshot, reason) -> None:
@@ -139,6 +129,26 @@ def test_workflow_host_stop_conditions(availability, snapshot, reason) -> None:
 
     assert decision.continue_workflow is False
     assert decision.reason == reason
+
+
+def test_descriptive_boundary_does_not_override_auto_continue_policy() -> None:
+    decision = HostExecutionPolicy().after_success(
+        mode="multi",
+        availability=_availability(
+            decision_boundary="semantic_preview",
+            can_auto_execute=True,
+            continue_allowed_after_success=True,
+        ),
+        snapshot=_snapshot(
+            can_auto_continue=True,
+            next_decision_boundary="semantic_validation",
+        ),
+        execution_count=1,
+        tool_cap=5,
+    )
+
+    assert decision.continue_workflow is True
+    assert decision.reason == "continue"
 
 
 def test_workflow_can_continue_only_after_safe_refresh() -> None:

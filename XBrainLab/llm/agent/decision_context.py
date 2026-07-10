@@ -79,7 +79,7 @@ def build_workflow_decision_context(
             stop_reason="status_unavailable",
         )
 
-    recommended = _recommended_next_step(state, capabilities)
+    recommended = recommended_next_step(state, capabilities)
     if recommended is None:
         return WorkflowDecisionContext(
             mode=normalized_mode,
@@ -127,7 +127,11 @@ def normalize_workflow_mode(mode: str | None) -> str:
     return STEP_BY_STEP_MODE
 
 
-def _recommended_next_step(state: Any, capabilities: CapabilityPolicy) -> str | None:
+def recommended_next_step(
+    state: Any,
+    capabilities: CapabilityPolicy,
+) -> str | None:
+    """Return the shared next command for assistant policy and product status."""
     active_dataset = state.active_dataset
     training = state.training
     evaluation = state.evaluation

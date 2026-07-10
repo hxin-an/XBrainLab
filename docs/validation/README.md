@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-07-04`
+最後更新：`2026-07-10`
 
 這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
@@ -218,6 +218,35 @@ poetry run python scripts/dev/run_public_cross_source_training_smoke.py --format
 This supports a manual-test candidate after final dashboard/docs/branch hygiene pass.
 It still does not claim human Windows acceptance, full BIDS validator compliance,
 arbitrary public dataset certification, or scientific model-quality evidence.
+
+## 2026-07-10 Desktop MVP Stabilization Evidence
+
+本輪 audit 不是用單一 dashboard 取代產品驗收，而是分別修正 command/runtime、assistant/UI、
+真實 EEG evidence 和 validation truth：
+
+- 同一個 Study-scoped `ApplicationService` command/state/capability access 已序列化；UI 與 assistant
+  command completion 共用 observer suppression 與 serialized `changed_state` refresh。
+- assistant `One Step` / `Workflow` policy、existing-dialog decision boundary、worker/QTimer owner-thread
+  teardown、failed shutdown retry ownership 有 focused regression。
+- checked-in A01T/A02T/A03T 真實 GDF 路徑直接讀取 769-772 class events，排除 768/1023/32766，
+  建立 288 epochs，並執行 non-mocked evaluation evidence。
+- dataset matrix 不再把 MNE CNT epoch-only fixture 誤稱為 training pass；strict runner 現在明確回報
+  3 個 training source family + 1 個 epoch-only CNT source。
+
+已通過的 current checkpoint：
+
+```text
+Core assistant / refresh / lifecycle focused merge: 283 passed
+Validation-truth focused suite: 70 passed
+Data Splitting + walkthrough focused suite: 42 passed
+Required IO + BIDS + cross-source + real GDF integration: 44 passed
+Strict cross-source runner: 4 passed (3 training, 1 epoch-only)
+Dataset matrix: strict_validation.ok = true
+Data Interpretation format matrix: observed = true, match = true
+```
+
+這些結果仍不能取代 final clean-commit quality dashboard、獨立 reviewer gate、Windows 真人
+click-through、approved local model cache smoke 或長時間 assistant session。
 
 ### 2026-06-20 Clean-Code Boundary Follow-Up
 

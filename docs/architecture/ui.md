@@ -1,6 +1,6 @@
 # UI 目前架構
 
-最後更新：`2026-05-14`
+最後更新：`2026-07-10`
 
 ## 範圍
 
@@ -18,7 +18,7 @@ controllers 的中間狀態，還不是一個完整由 Application Service 包�
 | 問題 | 目前答案 |
 | --- | --- |
 | UI 是否統一走 command？ | 高價值 action 和 readiness 已優先走 `ApplicationService / Command API`；panel constructor 和 observer bridge 還保留 injected controller adapters。 |
-| UI refresh 是否統一？ | command-result、navigation、known observer event 都進 refresh coordinator；mock / compatibility fallback 仍可做 local refresh。 |
+| UI refresh 是否統一？ | UI 與 assistant command 都在執行期間抑制 observer duplicate refresh，完成後依 serialized `changed_state` 進同一個 refresh coordinator；mock / compatibility fallback 仍可做 local refresh。 |
 | 產品路徑還能偷走 legacy mutation 嗎？ | 已被 architecture guard 大幅限制；product UI method 不能直接呼叫 controller compatibility helper，也不能用 controller echo 判定 service success。 |
 | 是否 full zero-controller UI？ | 還不是。現況是 controller adapter quarantine，不是 controller 全退場。 |
 | 讀者應看哪裡？ | 先看本頁的例外地圖，再看 [validation](../validation/README.md) 的 checkpoint 摘要；不要從長串歷史紀錄倒推現況。 |
@@ -70,6 +70,7 @@ constructor 還需要 controller adapter、部分 display fallback 為了 mock /
 | `XBrainLab/ui/core/base_panel.py` | panel 共同基底，保存 controller、main_window、observer bridges。 |
 | `XBrainLab/ui/core/observer_bridge.py` | 將 backend `Observable` event 轉成 Qt signal。 |
 | `XBrainLab/ui/components/agent_manager.py` | UI 與 assistant / LLM controller 的接線層。 |
+| `XBrainLab/ui/components/assistant_command_dispatcher.py` | 把 assistant command 放進專用 Qt thread，管理 shutdown / retry ownership，不讓失敗 teardown 的 thread reference 被提前釋放。 |
 | `XBrainLab/ui/components/info_panel_service.py` | aggregate info panel 的集中更新服務；product runtime 由 command/navigation/observer shared refresh 呼叫 `MainWindow.update_info_panel()` -> `notify_all()`，mock / compatibility context 才可直接訂閱 `data_changed` / `preprocess_changed`。 |
 | `XBrainLab/ui/chat/` | in-app assistant 的 chat UI。 |
 
@@ -167,6 +168,17 @@ blocked reason copy、command execution、post-command refresh，以及 mock / c
 | Evaluation / visualization / saliency | `evaluate`、`visualize`、`saliency` | typed readonly command 先決定 display gate；blocked/unavailable 會清空 stale controller display。 |
 | Montage | `QueryStateCommand(state)`、`apply_montage` | dialog channel defaults 走 state query；confirmed positions 走 `ApplyMontageCommand`；picker/matching 仍是 UI request。 |
 | Chat diagnostics | `get_state()`、`get_capabilities()` | assistant status 使用 backend state/capability snapshot，不把 missing capability 顯示成 debug error。 |
+
+### Assistant refresh 與 UI request
+
+- `One Step` 每次最多執行一個可執行 command；`Workflow` 可繼續到真正需要 confirmation、
+  `decision_needed` 或既有 UI dialog 的邊界。
+- assistant command 開始時由 `AgentManager` 呼叫 shared observer suppression；完成後只依
+  `ToolCommandResult.changed_state` 的 serialized scope 刷新，不另外維護第二套 panel truth。
+- montage、Data Import、epoch、split、training setting、saliency setting 等人類決策沿用既有 UI
+  surface。UI request 打開後 workflow 停在明確 waiting state，不在 chat 裡重做第二套表單。
+- MainWindow 關閉時若 assistant worker 尚未安全停止，會拒絕第一次 close 並重試 teardown；
+  不會在仍存活的 QThread 上直接銷毀 worker/QTimer。
 
 ### Guarded boundary
 

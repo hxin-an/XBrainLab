@@ -1,7 +1,6 @@
 import os
 from unittest.mock import patch
 
-import numpy as np
 import pytest
 
 from XBrainLab.backend.application import (
@@ -9,6 +8,7 @@ from XBrainLab.backend.application import (
     CommandName,
     ConfigureTrainingCommand,
     CreateEpochCommand,
+    EvaluateCommand,
     GenerateDatasetCommand,
     LoadDataCommand,
     PreprocessCommand,
@@ -23,20 +23,18 @@ TEST_DATA_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "fixtures", "data"),
 )
 GDF_FILE = os.path.join(TEST_DATA_DIR, "A01T.gdf")
-EXPECTED_A01T_EVENT_NAMES = ["32766", "768", "769", "770", "771", "772"]
-EXPECTED_A01T_EVENT_IDS = {
-    "32766": 0,
-    "768": 1,
-    "769": 2,
-    "770": 3,
-    "771": 4,
-    "772": 5,
+EXPECTED_A01T_CLASS_EVENT_NAMES = ["769", "770", "771", "772"]
+EXPECTED_A01T_CLASS_EVENT_IDS = {
+    "769": 0,
+    "770": 1,
+    "771": 2,
+    "772": 3,
 }
 EXPECTED_A01T_SPLIT_SUMMARY = {
     "count": 1,
-    "train_count": 375,
-    "val_count": 93,
-    "test_count": 117,
+    "train_count": 185,
+    "val_count": 46,
+    "test_count": 57,
     "audit": {"ok": True, "dataset_count": 1, "issues": []},
 }
 
@@ -82,44 +80,25 @@ def test_real_data_pipeline():
     assert data_lists_result.diagnostics["preprocessed_count"] == 1
     processed_raw = data_lists_result.runtime["preprocessed_data_list"][0]
 
-    # Get available events
-    events, event_id = processed_raw.get_event_list()
+    _, event_id = processed_raw.get_event_list()
+    assert set(EXPECTED_A01T_CLASS_EVENT_NAMES) <= set(event_id)
+    assert {"768", "1023", "32766"} <= set(event_id)
 
-    # Deduplicate events based on time sample (column 0)
-    # Keep the first occurrence
-    _, unique_indices = np.unique(events[:, 0], return_index=True)
-    # Sort indices to preserve order
-    unique_indices = np.sort(unique_indices)
-    events = events[unique_indices]
-
-    # Verify no duplicates
-    assert len(np.unique(events[:, 0])) == len(events), "Duplicates still exist!"
-
-    # Filter event_names to only include those present in the deduplicated events
-    present_event_ids = np.unique(events[:, -1])
-    filtered_event_names = [
-        name for name, eid in event_id.items() if eid in present_event_ids
-    ]
-    assert filtered_event_names == EXPECTED_A01T_EVENT_NAMES
-
-    with patch.object(
-        processed_raw, "get_raw_event_list", return_value=(events, event_id)
-    ):
-        epoch_result = service.execute(
-            CreateEpochCommand(
-                t_min=0,
-                t_max=4,
-                baseline=None,
-                event_ids=filtered_event_names,
-            ),
-        )
+    epoch_result = service.execute(
+        CreateEpochCommand(
+            t_min=0,
+            t_max=4,
+            baseline=None,
+            event_ids=EXPECTED_A01T_CLASS_EVENT_NAMES,
+        ),
+    )
     assert epoch_result.ok is True
     assert epoch_result.state.epoch.exists is True
-    assert epoch_result.state.epoch.epoch_count == 585
+    assert epoch_result.state.epoch.epoch_count == 288
     assert epoch_result.state.epoch.n_channels == 25
     assert epoch_result.state.epoch.n_times == 1001
-    assert epoch_result.state.epoch.event_names == EXPECTED_A01T_EVENT_NAMES
-    assert epoch_result.state.epoch.event_ids == EXPECTED_A01T_EVENT_IDS
+    assert epoch_result.state.epoch.event_names == EXPECTED_A01T_CLASS_EVENT_NAMES
+    assert epoch_result.state.epoch.event_ids == EXPECTED_A01T_CLASS_EVENT_IDS
 
     dataset_result = service.execute(
         GenerateDatasetCommand(
@@ -173,7 +152,15 @@ def test_real_data_pipeline():
     )
     assert history_result.ok is True
     assert history_result.diagnostics["row_count"] == 1
-    record = history_result.diagnostics["rows"][0]["record"]
+    record = history_result.runtime["rows"][0]["record"]
 
     assert RecordKey.LOSS in record.train
     assert RecordKey.ACC in record.train
+
+    evaluate_result = service.execute(EvaluateCommand())
+    assert evaluate_result.ok is True
+    assert evaluate_result.diagnostics["payload_type"] == "evaluation_summary"
+    assert evaluate_result.diagnostics["available"] is True
+    assert evaluate_result.diagnostics["plan_count"] == 1
+    assert evaluate_result.diagnostics["finished_run_count"] == 1
+    assert evaluate_result.diagnostics["plans"][0]["metrics"]

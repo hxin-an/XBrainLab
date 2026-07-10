@@ -232,13 +232,13 @@ class ChatPanel(QWidget):
         self.execution_mode_group = QButtonGroup(self)
         self.execution_mode_group.setExclusive(True)
 
-        self.ask_mode_btn = QPushButton("Ask")
+        self.ask_mode_btn = QPushButton("One Step")
         self.ask_mode_btn.setObjectName("AssistantAskMode")
         self.ask_mode_btn.setCheckable(True)
         self.ask_mode_btn.setChecked(True)
-        self.ask_mode_btn.setToolTip("Answer or run one step, then stop.")
+        self.ask_mode_btn.setToolTip("Answer or run one action, then stop.")
         self.ask_mode_btn.clicked.connect(
-            lambda _checked=False: self._set_execution_mode("single", "Ask")
+            lambda _checked=False: self._set_execution_mode("single", "One Step")
         )
         self.execution_mode_group.addButton(self.ask_mode_btn)
         mode_layout.addWidget(self.ask_mode_btn)
@@ -645,7 +645,7 @@ class ChatPanel(QWidget):
         self.current_execution_mode = normalized_mode
         self.ask_mode_btn.setChecked(normalized_mode == "single")
         self.workflow_mode_btn.setChecked(normalized_mode == "multi")
-        self.mode_btn.setText("Workflow" if normalized_mode == "multi" else "Ask")
+        self.mode_btn.setText("Workflow" if normalized_mode == "multi" else "One Step")
         if normalized_mode == "single":
             self.workflow_run_status_label.setVisible(False)
 

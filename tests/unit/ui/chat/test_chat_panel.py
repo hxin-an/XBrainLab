@@ -54,7 +54,7 @@ class TestChatPanelInit:
     def test_ask_workflow_selector_is_visible_and_defaults_to_ask(self, chat_panel):
         assert chat_panel.ask_mode_btn.isVisibleTo(chat_panel)
         assert chat_panel.workflow_mode_btn.isVisibleTo(chat_panel)
-        assert chat_panel.ask_mode_btn.text() == "Ask"
+        assert chat_panel.ask_mode_btn.text() == "One Step"
         assert chat_panel.workflow_mode_btn.text() == "Workflow"
         assert chat_panel.ask_mode_btn.isChecked()
         assert chat_panel.current_execution_mode == "single"

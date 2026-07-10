@@ -32,6 +32,7 @@ from XBrainLab.backend.application import (
 from XBrainLab.backend.controller.chat_controller import ChatController
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.agent.controller import LLMController
+from XBrainLab.llm.agent.decision_context import recommended_next_step
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.ui.application_capabilities import (
     ControllerCompatibilityUnavailableError,
@@ -57,6 +58,11 @@ from XBrainLab.ui.product_language import (
     command_labels,
     tool_action_label,
     workflow_stage_label,
+)
+from XBrainLab.ui.refresh_coordinator import (
+    begin_command_refresh_suppression,
+    end_command_refresh_suppression,
+    refresh_after_serialized_command,
 )
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
@@ -588,6 +594,20 @@ class AgentManager(QObject):
         self.agent_controller.request_user_interaction.connect(
             self.handle_user_interaction,
         )
+        command_completed = getattr(
+            self.agent_controller,
+            "application_command_completed",
+            None,
+        )
+        if command_completed is not None:
+            command_completed.connect(self._on_application_command_completed)
+        command_started = getattr(
+            self.agent_controller,
+            "application_command_started",
+            None,
+        )
+        if command_started is not None:
+            command_started.connect(self._on_application_command_started)
 
         # 5. Generation Started -> Set Processing State AND Reset Bubble
         self.agent_controller.generation_started.connect(self._on_generation_started)
@@ -617,6 +637,18 @@ class AgentManager(QObject):
         self._agent_dispatcher.set_mode(self._execution_mode)
         self.agent_initialized = True
         self.refresh_backend_status()
+
+    def _on_application_command_started(self) -> None:
+        """Suppress observer refresh until the agent command result arrives."""
+        begin_command_refresh_suppression(self.main_window)
+
+    def _on_application_command_completed(self, result) -> None:
+        """Refresh product panels from the agent command result envelope."""
+        end_command_refresh_suppression(self.main_window)
+        refresh_after_serialized_command(
+            self.main_window,
+            getattr(result, "changed_state", None),
+        )
 
     def handle_user_input(self, text):
         """Handle text input from ChatPanel.
@@ -1021,40 +1053,16 @@ class AgentManager(QObject):
 
     @staticmethod
     def _product_next_steps(state, capabilities) -> list[str]:
-        """Return user-facing next-step command IDs, not every enabled command."""
-        active_dataset = state.active_dataset
-        training = state.training
-        evaluation = state.evaluation
+        """Return the same next-step truth used by Workflow execution policy."""
+        command_name = recommended_next_step(state, capabilities)
+        return [command_name] if command_name else []
 
-        candidates: list[str]
-        if evaluation.finished_runs:
-            candidates = ["evaluate", "visualize", "saliency"]
-        elif active_dataset.has_datasets:
-            if training.has_model and training.has_training_option:
-                candidates = ["train"]
-            else:
-                candidates = ["configure_training"]
-        elif active_dataset.has_epoch_data:
-            candidates = ["generate_dataset"]
-        elif active_dataset.has_preprocessed_data:
-            candidates = ["create_epoch"]
-        elif active_dataset.has_raw_data:
-            candidates = ["preprocess"]
-        else:
-            candidates = ["scan_source"]
-
-        return [
-            command_name
-            for command_name in candidates
-            if getattr(capabilities.get(command_name), "enabled", False)
-        ]
-
-    def close(self):
+    def close(self) -> bool:
         """Clean up the agent controller resources."""
         if self._agent_closed:
-            return
-        self._agent_dispatcher.close()
-        self._agent_closed = True
+            return True
+        self._agent_closed = bool(self._agent_dispatcher.close())
+        return self._agent_closed
 
     def handle_user_interaction(self, command, params):
         """Dispatch human-in-the-loop interaction requests.
@@ -1066,7 +1074,14 @@ class AgentManager(QObject):
 
         """
         if self.chat_panel and self._execution_mode == "multi":
-            self.chat_panel.set_workflow_status("Waiting for decision")
+            workflow_status = {
+                "confirm_montage": "Choose a montage in the open dialog",
+                "switch_panel": "Continue in the opened XBrainLab panel",
+                "decision_required": "Complete the open XBrainLab dialog",
+                "open_existing_ui_surface": "Complete the open XBrainLab dialog",
+                "confirm_action": "Review the requested action",
+            }.get(command, "Complete the open XBrainLab dialog")
+            self.chat_panel.set_workflow_status(workflow_status)
 
         if command == "confirm_montage":
             self.open_montage_picker_dialog(params)

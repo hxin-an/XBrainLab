@@ -221,7 +221,8 @@ def _assistant_workflow_narrow() -> QWidget:
         "assistant",
         "I checked the workflow and need one decision before continuing.",
     )
-    panel.set_workflow_status("Waiting for decision")
+    panel.set_workflow_status("Complete the open XBrainLab dialog")
+    panel.show_notice("A settings dialog is open. Complete it to continue.")
     panel.set_processing_state(True)
     if app is not None:
         app.processEvents()

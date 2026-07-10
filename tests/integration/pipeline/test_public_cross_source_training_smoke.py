@@ -187,7 +187,7 @@ def test_public_cross_source_training_smoke(
     )
     assert history.ok is True
     assert history.diagnostics["row_count"] == 1
-    record = history.diagnostics["rows"][0]["record"]
+    record = history.runtime["rows"][0]["record"]
     assert RecordKey.LOSS in record.train
     assert RecordKey.ACC in record.train
 

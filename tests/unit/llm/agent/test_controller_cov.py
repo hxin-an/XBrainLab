@@ -63,6 +63,10 @@ def ctrl():
             "sig_initialize",
             "sig_generate",
             "sig_reinit",
+            "sig_cancel_generation",
+            "sig_shutdown_worker",
+            "application_command_completed",
+            "application_command_started",
         ]
         c = LLMController.__new__(LLMController)
         for name in signal_names:

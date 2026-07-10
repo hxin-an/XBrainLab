@@ -386,6 +386,13 @@ class DataInterpretationPreviewDialog(
             "Match Labels",
             "Review and Import",
         ]
+        self._compact_step_titles = [
+            "EEG Data",
+            "Labels",
+            "Metadata",
+            "Match",
+            "Review",
+        ]
         self._metadata_items: list[tuple[QTreeWidgetItem, dict[str, Any]]] = []
         self._label_carrier_items: list[tuple[QTreeWidgetItem, dict[str, Any]]] = []
         self._label_target_widgets: dict[int, QComboBox] = {}
@@ -1625,6 +1632,7 @@ class DataInterpretationPreviewDialog(
     def _sync_step_labels(self, current: int) -> None:
         if not hasattr(self, "step_labels"):
             return
+        self._sync_step_label_text()
         for index, label in enumerate(self.step_labels):
             if index < current:
                 state = "done"
@@ -1638,8 +1646,33 @@ class DataInterpretationPreviewDialog(
                 style.unpolish(label)
                 style.polish(label)
 
+    def _sync_step_label_text(self) -> None:
+        if not hasattr(self, "step_labels"):
+            return
+        spacing = 8 * max(len(self._step_titles) - 1, 0)
+        available_width = max(self.width() - 40 - spacing, 0)
+        full_width = sum(
+            label.fontMetrics().horizontalAdvance(f"{index}. {title}") + 20
+            for index, (label, title) in enumerate(
+                zip(self.step_labels, self._step_titles, strict=True),
+                start=1,
+            )
+        )
+        titles = (
+            self._compact_step_titles
+            if full_width > available_width
+            else self._step_titles
+        )
+        for index, (label, title, full_title) in enumerate(
+            zip(self.step_labels, titles, self._step_titles, strict=True),
+            start=1,
+        ):
+            label.setText(f"{index}. {title}")
+            label.setToolTip(full_title if title != full_title else "")
+
     def resizeEvent(self, event):  # noqa: N802
         super().resizeEvent(event)
+        self._sync_step_label_text()
         if hasattr(self, "review_tree"):
             self._fit_metadata_tree_height()
             self._fit_label_carrier_tree_height()

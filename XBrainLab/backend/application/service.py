@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import replace
+from threading import RLock
 from typing import Any
 
 from XBrainLab.backend.study import Study
@@ -339,6 +340,7 @@ class ApplicationService:
     """Command-oriented application layer over the existing backend controllers."""
 
     def __init__(self, study: Study | None = None):
+        self._command_lock = RLock()
         self.study = study if study is not None else Study()
         self.study._application_service = self
         self.dataset = DatasetControllerAdapter(self.study)
@@ -408,16 +410,23 @@ class ApplicationService:
 
     def get_state(self) -> ApplicationStateSnapshot:
         """Return a fresh serializable snapshot of backend state."""
-        state = self.state_snapshot.build(last_error=self._last_error)
-        self._last_state = state
-        return state
+        with self._command_lock:
+            state = self.state_snapshot.build(last_error=self._last_error)
+            self._last_state = state
+            return state
 
     def get_capabilities(self) -> CapabilityPolicy:
         """Return command capabilities for the current state."""
-        return build_capability_policy(self.get_state())
+        with self._command_lock:
+            return build_capability_policy(self.get_state())
 
     def execute(self, command: Command | Any) -> CommandResult:
         """Execute a command and return a result envelope."""
+        with self._command_lock:
+            return self._execute_serialized(command)
+
+    def _execute_serialized(self, command: Command | Any) -> CommandResult:
+        """Execute one command while the shared service mutation lock is held."""
         try:
             name = command_name(command)
         except Exception as exc:

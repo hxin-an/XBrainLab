@@ -111,6 +111,23 @@ class TestAgentManagerMethods:
         agent_mgr.switch_panel.assert_called_once_with({"panel": "preprocess"})
         sidebar.open_epoching.assert_called_once_with()
 
+    def test_workflow_decision_names_the_open_product_surface(self, agent_mgr):
+        agent_mgr.chat_panel = MagicMock()
+        agent_mgr._execution_mode = "multi"
+        agent_mgr._workflow_surface_router.open = MagicMock(return_value=True)
+
+        agent_mgr.handle_user_interaction(
+            "decision_required",
+            {"tool_name": "create_epoch"},
+        )
+
+        agent_mgr.chat_panel.set_workflow_status.assert_called_once_with(
+            "Complete the open XBrainLab dialog"
+        )
+        agent_mgr.chat_panel.show_notice.assert_called_once_with(
+            "Continue in the opened settings, then return to the assistant."
+        )
+
     @pytest.mark.parametrize(
         ("tool_name", "panel_attr", "method_name", "panel_name"),
         [

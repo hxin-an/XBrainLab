@@ -26,12 +26,18 @@ class _ControllerShutdownBridge(QObject):
         try:
             close = getattr(self._controller, "close", None)
             if callable(close):
-                close()
+                result = close()
+                if result is False:
+                    ok = False
+                    message = "Assistant controller did not finish shutdown."
         except Exception as exc:
             ok = False
             message = str(exc)
             logger.exception("Assistant controller shutdown failed")
 
+        if not ok:
+            self.finished.emit(False, message)
+            return
         self._controller.moveToThread(self._gui_thread)
         self.finished.emit(ok, message)
         self.moveToThread(self._gui_thread)
@@ -148,31 +154,32 @@ class AssistantCommandDispatcher(QObject):
         if callable(method):
             method(*args)
 
-    def close(self) -> None:
+    def close(self) -> bool:
         """Stop controller resources and the command thread exactly once."""
         if self._closed:
-            return
+            return True
         controller = self._controller
         if controller is None:
             self._closed = True
-            return
+            return True
         if not self._queued:
             close = getattr(controller, "close", None)
-            if callable(close):
-                close()
+            if callable(close) and close() is False:
+                return False
             self._closed = True
-            return
+            return True
 
         command_thread = self._command_thread
         shutdown_bridge = self._shutdown_bridge
         if command_thread is None or shutdown_bridge is None:
             raise RuntimeError("Assistant command thread is missing during shutdown.")
 
-        completed = {"value": False}
+        completed = {"value": False, "ok": False}
         wait_loop = QEventLoop()
 
         def on_shutdown_finished(ok: bool, message: str) -> None:
             completed["value"] = True
+            completed["ok"] = ok
             if not ok:
                 logger.error("Assistant shutdown completed with errors: %s", message)
             wait_loop.quit()
@@ -184,14 +191,18 @@ class AssistantCommandDispatcher(QObject):
         with suppress(RuntimeError, TypeError):
             shutdown_bridge.finished.disconnect(on_shutdown_finished)
 
+        if not completed["value"] or not completed["ok"]:
+            logger.error("Assistant controller remains active after shutdown failure")
+            return False
+
         command_thread.quit()
         stopped = command_thread.wait(3000)
-        if not completed["value"]:
-            logger.error("Assistant controller shutdown timed out")
         if not stopped:
             logger.error("Assistant command thread did not stop within timeout")
+            return False
 
         self._queued = False
         self._command_thread = None
         self._shutdown_bridge = None
         self._closed = True
+        return True

@@ -12,9 +12,10 @@ import threading
 import time as _time
 from ast import literal_eval
 from collections import deque
-from typing import Any
+from contextlib import suppress
+from typing import Any, cast
 
-from PyQt6.QtCore import QObject, QThread, pyqtSignal
+from PyQt6.QtCore import QEventLoop, QObject, QThread, QTimer, pyqtSignal
 
 from XBrainLab.backend.application import CommandName, get_application_service
 from XBrainLab.llm.core.config import LLMConfig
@@ -115,11 +116,15 @@ class LLMController(QObject):
     request_user_interaction = pyqtSignal(str, dict)  # command, params
     remove_content = pyqtSignal(str)  # New signal to hide JSON
     execution_mode_changed = pyqtSignal(str)  # 'single' or 'multi'
+    application_command_completed = pyqtSignal(object)
+    application_command_started = pyqtSignal()
 
     # Internal signals to Worker
     sig_initialize = pyqtSignal()  # Simple signal, no args
     sig_generate = pyqtSignal(list)
     sig_reinit = pyqtSignal(str)  # M3.4: Re-init signal
+    sig_cancel_generation = pyqtSignal()
+    sig_shutdown_worker = pyqtSignal()
 
     MAX_HISTORY = 20
 
@@ -168,6 +173,8 @@ class LLMController(QObject):
         self.sig_initialize.connect(self.worker.initialize_agent)
         self.sig_generate.connect(self.worker.generate_from_messages)
         self.sig_reinit.connect(self.worker.reinitialize_agent)  # M3.4
+        self.sig_cancel_generation.connect(self.worker.cancel_generation)
+        self.sig_shutdown_worker.connect(self.worker.shutdown)
 
         # Start thread
         self.worker_thread.start()
@@ -787,13 +794,17 @@ class LLMController(QObject):
             )
 
             # Handle Side Effects
-            self._handle_tool_result_logic(result, _success)
+            requested_ui = self._handle_tool_result_logic(result, _success)
 
             # Feed result back to History
             self._append_history(
                 "user",
                 f"Tool Output: {self._format_tool_output(cmd, _success, result)}",
             )
+
+            if requested_ui:
+                self._finalize_turn_after_tool()
+                return
 
             if not _success and self._should_wait_for_user_after_tool_failure(result):
                 self._finalize_turn_after_tool()
@@ -1045,11 +1056,15 @@ class LLMController(QObject):
                 _success,
                 result,
             )
-            self._handle_tool_result_logic(result, _success)
+            requested_ui = self._handle_tool_result_logic(result, _success)
             self._append_history(
                 "user",
                 f"Tool Output: {self._format_tool_output(cmd, _success, result)}",
             )
+
+            if requested_ui:
+                self._finalize_turn_after_tool()
+                return
 
             if not _success:
                 self._tool_failure_count += 1
@@ -1151,6 +1166,9 @@ class LLMController(QObject):
                 return False, result
 
             t0 = _time.monotonic()
+            is_application_command = command_name in TOOL_TO_COMMAND
+            if is_application_command:
+                self.application_command_started.emit()
             try:
                 raw_result = execute_application_tool_command(
                     self.study,
@@ -1180,6 +1198,8 @@ class LLMController(QObject):
                         str(e),
                     )
                 self.status_update.emit(error_msg)
+                if is_application_command and isinstance(result, ToolCommandResult):
+                    self.application_command_completed.emit(result)
                 return False, result
             else:
                 elapsed = (_time.monotonic() - t0) * 1000
@@ -1193,6 +1213,8 @@ class LLMController(QObject):
                     )
                     result = tool_result
                     success = tool_result.ok
+                    if is_application_command:
+                        self.application_command_completed.emit(tool_result)
                 if self.metrics.current_turn:
                     self.metrics.current_turn.record_tool(
                         command_name,
@@ -1760,21 +1782,58 @@ class LLMController(QObject):
         self.is_processing = False
         self.processing_finished.emit()
 
-    def close(self):
+    def close(self) -> bool:
         """Shuts down the worker thread and cleans up resources."""
         if hasattr(self, "rag_retriever") and self.rag_retriever:
             try:
                 self.rag_retriever.close()
             except Exception:
                 logger.debug("RAG retriever cleanup failed", exc_info=True)
-        if hasattr(self, "worker") and self.worker:
-            try:
-                self.worker.shutdown(wait_ms=WORKER_THREAD_SHUTDOWN_WAIT_MS)
-            except Exception:
-                logger.debug("Agent worker cleanup failed", exc_info=True)
+        worker_stopped = self._shutdown_worker()
+        if not worker_stopped:
+            logger.error("Agent worker did not stop; retaining thread ownership")
+            return False
         if hasattr(self, "worker_thread") and self.worker_thread.isRunning():
             self.worker_thread.quit()
-            self.worker_thread.wait(WORKER_THREAD_SHUTDOWN_WAIT_MS)
+            if not self.worker_thread.wait(WORKER_THREAD_SHUTDOWN_WAIT_MS):
+                logger.error("Agent worker thread did not stop within timeout")
+                return False
+        return True
+
+    def _shutdown_worker(self) -> bool:
+        worker = cast(Any, getattr(self, "worker", None))
+        if worker is None:
+            return True
+        if (
+            not isinstance(worker, QObject)
+            or worker.thread() is QThread.currentThread()
+        ):
+            try:
+                result = cast(Any, worker).shutdown(
+                    wait_ms=WORKER_THREAD_SHUTDOWN_WAIT_MS
+                )
+            except Exception:
+                logger.debug("Agent worker cleanup failed", exc_info=True)
+                return False
+            else:
+                return result is not False
+
+        completed = {"done": False, "ok": False}
+        wait_loop = QEventLoop()
+        qt_worker = cast(Any, worker)
+
+        def _on_shutdown_finished(ok: bool) -> None:
+            completed["done"] = True
+            completed["ok"] = bool(ok)
+            wait_loop.quit()
+
+        qt_worker.shutdown_finished.connect(_on_shutdown_finished)
+        QTimer.singleShot(WORKER_THREAD_SHUTDOWN_WAIT_MS + 1000, wait_loop.quit)
+        self.sig_shutdown_worker.emit()
+        wait_loop.exec()
+        with suppress(RuntimeError, TypeError):
+            qt_worker.shutdown_finished.disconnect(_on_shutdown_finished)
+        return completed["done"] and completed["ok"]
 
     def stop_generation(self):
         """Stops the current generation process and resets processing state."""
@@ -1783,17 +1842,20 @@ class LLMController(QObject):
             self.status_update.emit("Stopping...")
             self.metrics.finish_turn()
             self.is_processing = False
-            cleanup_generation = getattr(
-                self.worker,
-                "_cleanup_generation_thread",
-                None,
-            )
-            if callable(cleanup_generation):
-                cleanup_generation(wait_ms=WORKER_THREAD_SHUTDOWN_WAIT_MS)
+            worker = getattr(self, "worker", None)
+            if (
+                isinstance(worker, QObject)
+                and worker.thread() is not QThread.currentThread()
+            ):
+                self.sig_cancel_generation.emit()
             else:
-                gen_thread = self.worker.generation_thread  # local ref for safety
-                if gen_thread is not None and gen_thread.isRunning():
-                    gen_thread.requestInterruption()
+                cleanup_generation = getattr(
+                    worker,
+                    "_cleanup_generation_thread",
+                    None,
+                )
+                if callable(cleanup_generation):
+                    cleanup_generation(wait_ms=WORKER_THREAD_SHUTDOWN_WAIT_MS)
             self.processing_finished.emit()
 
     def set_model(self, model_display_name: str):

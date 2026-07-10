@@ -137,6 +137,7 @@ class ToolCommandResult:
     state: dict[str, Any] | None = None
     capability: dict[str, Any] | None = None
     diagnostics: dict[str, Any] = field(default_factory=dict)
+    changed_state: dict[str, bool] = field(default_factory=dict)
 
     def __str__(self) -> str:
         return self.message
@@ -218,6 +219,7 @@ class ToolCommandResult:
             state=result.state.to_dict() if hasattr(result.state, "to_dict") else None,
             capability=capability,
             diagnostics=result.diagnostics,
+            changed_state=result.changed_state.to_dict(),
         )
 
     @classmethod

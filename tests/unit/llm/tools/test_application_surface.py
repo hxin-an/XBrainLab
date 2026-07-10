@@ -95,6 +95,7 @@ def test_start_training_surface_preserves_backend_confirmation_boundary():
     )
     assert unconfirmed.blocked_reason == "train requires confirmation."
     assert unconfirmed.raw_result["changed_state"]["error_changed"] is True
+    assert unconfirmed.changed_state["error_changed"] is True
     confirmed = _assert_tool_command_result(
         confirmed,
         tool_name="start_training",
@@ -413,6 +414,7 @@ def test_application_tool_command_returns_structured_result_for_model_config():
     )
     assert _state(result)["training"]["model_name"] == "EEGNet"
     assert result.raw_result["changed_state"]["training_changed"] is True
+    assert result.changed_state["training_changed"] is True
 
 
 def test_application_tool_command_preserves_training_output_dir(tmp_path):

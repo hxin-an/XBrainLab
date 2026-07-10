@@ -1,6 +1,6 @@
 # Agent 目前架構
 
-最後更新：`2026-05-31`
+最後更新：`2026-07-10`
 
 ## 範圍
 
@@ -21,6 +21,9 @@ ChatPanel
 AgentManager
   |
   v
+AssistantCommandDispatcher / AssistantCommandThread
+  |
+  v
 LLMController
   |
   +--> AgentWorker / LLMEngine
@@ -35,6 +38,8 @@ Real Tools
   v
 ApplicationService / Command API
   |
+  +--> Study-scoped reentrant command/state lock
+  |
   v
 Study / cached controllers
 ```
@@ -46,7 +51,8 @@ Study / cached controllers
 | 區域 | 目前責任 |
 | --- | --- |
 | `XBrainLab/ui/chat/` | chat panel、使用者輸入、模型 / 執行模式 UI。 |
-| `XBrainLab/ui/components/agent_manager.py` | UI 和 assistant 的接線層，負責啟動 controller、轉送訊息、處理 UI side effects。 |
+| `XBrainLab/ui/components/agent_manager.py` | UI 和 assistant 的接線層，負責啟動 controller、轉送訊息、處理既有 UI request、command refresh suppression。 |
+| `XBrainLab/ui/components/assistant_command_dispatcher.py` | assistant controller thread ownership、queued shutdown、timeout retry 與 lifecycle cleanup。 |
 | `XBrainLab/llm/agent/controller.py` | agent 主控制器，負責 context、RAG、parser、verification、tool loop、ApplicationService capability gate。 |
 | `XBrainLab/llm/agent/worker.py` | 背景 thread 中的 LLM 初始化、生成、timeout、model switch。 |
 | `XBrainLab/llm/core/` | local-only backend selection、local backend、runtime config、local model catalog。 |
@@ -80,7 +86,8 @@ Study / cached controllers
 - 處理需要 UI 介入的 request，例如 switch panel、confirm montage、confirm action。
 - 透過 `LLMConfig.normalize_backend_mode()` 把 UI label 對齊 runtime key。
 
-目前 UI side effect 是透過 tool 回傳 `Request:` 字串，再由 `AgentManager` 處理。這是現況，不是理想長期介面。
+UI side effect 仍由 structured tool result 的 UI request 交給 `AgentManager`，但會沿用既有 dialog；
+request 打開後 workflow 會停止並顯示 waiting state，不會繼續猜測使用者選擇。
 
 ### 3. LLMController
 
@@ -97,12 +104,23 @@ Study / cached controllers
 - 套用 ApplicationService capability gate，避免 assistant 在錯誤 backend state 呼叫不該開放的工具。
 - 對 mapped workflow tools 優先透過 `execute_application_tool_command(...)` 執行
   ApplicationService command，直接取得 `CommandResult` payload。
-- tool turn 完成後由 `AgentManager.refresh_backend_status()` 重新讀 ApplicationService state
-  snapshot / capability policy，更新 assistant UI diagnostics。
+- tool command 開始時通知 `AgentManager` 抑制 observer duplicate refresh；完成後使用
+  serialized `changed_state` 走 UI 共用 refresh coordinator，再重讀 ApplicationService state /
+  capability snapshot。
 - 處理 destructive / long-running tool 的 human confirmation。
 - 防止明顯 tool loop，並限制 multi-step execution 次數。
 
-這一層目前同時包含 agent orchestration 和一部分 workflow policy。
+這一層目前同時包含 agent orchestration 和一部分 workflow policy。所有 mapped workflow
+command 仍由同一個 Study-scoped ApplicationService lock 序列化，避免 UI 與 assistant 同時 mutation。
+
+### 執行模式
+
+- `One Step`：每次只執行一個已通過 schema、verification、capability 與 confirmation policy 的步驟。
+- `Workflow`：可連續執行安全步驟，直到 backend 回報 confirmation、`decision_needed`、
+  `can_auto_execute=False`，或需要開啟既有 UI dialog。
+- descriptive `decision_boundary` metadata 本身不是停止條件；真正的 backend policy 和當前 state
+  才決定能否繼續，避免每個 tool 都被靜態描述過早截斷。
+- `recommended_next_step` 只由 `WorkflowDecisionContext` 產生；AgentManager 不再維護另一份推測。
 
 ### Workflow Decision Context
 

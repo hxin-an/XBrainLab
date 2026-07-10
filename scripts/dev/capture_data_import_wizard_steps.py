@@ -9,6 +9,7 @@ from typing import Any
 
 from PIL import Image
 from PyQt6.QtCore import QSize
+from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QPushButton, QWidget
 
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
@@ -26,32 +27,35 @@ def main() -> int:
     app = instance if isinstance(instance, QApplication) else QApplication(sys.argv)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     captures = [
-        ("01-choose-eeg-data.png", _main_dialog(), "Choose EEG Data"),
-        ("02-load-labels-many.png", _many_labels_dialog(), "Load Labels"),
-        ("03-review-metadata.png", _main_dialog(), "Review Metadata"),
+        ("01-choose-eeg-data.png", _main_dialog, "Choose EEG Data"),
+        ("02-load-labels-many.png", _many_labels_dialog, "Load Labels"),
+        ("03-review-metadata.png", _main_dialog, "Review Metadata"),
         (
             "04-match-labels-internal-suggested-events-full.png",
-            _internal_events_dialog(),
+            _internal_events_dialog,
             "Match Labels",
         ),
         (
             "04-match-labels-final-loaded-label-files.png",
-            _loaded_label_files_dialog(),
+            _loaded_label_files_dialog,
             "Match Labels",
         ),
-        ("04-match-labels-bids-events.png", _bids_events_dialog(), "Match Labels"),
+        ("04-match-labels-bids-events.png", _bids_events_dialog, "Match Labels"),
         (
             "04-match-labels-conversion-fallback.png",
-            _conversion_fallback_dialog(),
+            _conversion_fallback_dialog,
             "Match Labels",
         ),
-        ("05-review-and-import.png", _review_import_dialog(), "Review and Import"),
+        ("05-review-and-import.png", _review_import_dialog, "Review and Import"),
     ]
-    for filename, dialog, step_title in captures:
+    for filename, dialog_factory, step_title in captures:
+        dialog = dialog_factory()
         path = OUTPUT_DIR / filename
         _show_step(dialog, step_title, app)
         _capture(dialog, path)
         dialog.close()
+        dialog.deleteLater()
+        app.processEvents()
 
     report_dialog = _review_import_dialog()
     _show_step(report_dialog, "Review and Import", app)
@@ -83,13 +87,15 @@ def _show_step(
     dialog.resize(WINDOW_SIZE)
     dialog.show()
     app.processEvents()
+    QTest.qWait(50)
     dialog._go_to_step(dialog._step_titles.index(step_title))
     app.processEvents()
     dialog.repaint()
-    app.processEvents()
+    QTest.qWait(50)
 
 
 def _capture(widget: QWidget, output_path: Path) -> None:
+    QTest.qWait(50)
     pixmap = widget.grab()
     if pixmap.isNull():
         raise RuntimeError(f"Could not grab {output_path}.")

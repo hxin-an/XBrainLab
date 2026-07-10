@@ -109,7 +109,11 @@ def ctrl():
             "sig_initialize",
             "sig_generate",
             "sig_reinit",
+            "sig_cancel_generation",
+            "sig_shutdown_worker",
             "execution_mode_changed",
+            "application_command_completed",
+            "application_command_started",
         ]
         c = LLMController.__new__(LLMController)
         for name in signal_names:
@@ -342,6 +346,27 @@ class TestProcessToolCalls:
         )
 
         ctrl._execute_tool_no_loop.assert_called_once_with("first", {})
+
+    def test_ui_request_stops_before_workflow_continuation(self, ctrl):
+        _allow_prompt_tools(ctrl)
+        ctrl.set_execution_mode("multi")
+        ctrl._execute_tool_no_loop = MagicMock(
+            return_value=(True, "Request: confirm_montage 'standard_1020'")
+        )
+        ctrl._handle_tool_result_logic = MagicMock(return_value=True)
+        ctrl._finalize_turn_after_tool = MagicMock()
+        ctrl._handle_tool_success = MagicMock()
+        ctrl._detect_loop = MagicMock(return_value=False)
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value.requires_confirmation = False
+
+        ctrl._process_tool_calls(
+            [("set_montage", {"montage_name": "standard_1020"})],
+            '{"tool_name": "set_montage"}',
+        )
+
+        ctrl._finalize_turn_after_tool.assert_called_once()
+        ctrl._handle_tool_success.assert_not_called()
 
     def test_workflow_executes_one_command_then_rereads_policy(self, ctrl):
         from XBrainLab.llm.agent.controller import LLMController
@@ -1194,6 +1219,8 @@ class TestPipelineGate:
         assert result.ok is True
         assert result.command_name == "configure_training"
         assert result.raw_result["status"] == "ok"
+        ctrl.application_command_started.emit.assert_called_once_with()
+        ctrl.application_command_completed.emit.assert_called_once_with(result)
         mock_tool.execute.assert_not_called()
 
 

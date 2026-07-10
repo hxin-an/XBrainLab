@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
+from threading import Lock
 from typing import Any, cast
 from unittest.mock import MagicMock
 
@@ -49,6 +52,35 @@ from XBrainLab.backend.application import (
 )
 from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.study import Study
+
+
+def test_application_service_serializes_commands_across_calling_threads(monkeypatch):
+    service = ApplicationService(Study())
+    original_execute_allowed = service._execute_allowed
+    counter_lock = Lock()
+    active_calls = 0
+    max_active_calls = 0
+
+    def tracked_execute_allowed(command, name):
+        nonlocal active_calls, max_active_calls
+        with counter_lock:
+            active_calls += 1
+            max_active_calls = max(max_active_calls, active_calls)
+        try:
+            time.sleep(0.03)
+            return original_execute_allowed(command, name)
+        finally:
+            with counter_lock:
+                active_calls -= 1
+
+    monkeypatch.setattr(service, "_execute_allowed", tracked_execute_allowed)
+    commands = [QueryStateCommand(query="state") for _ in range(2)]
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(service.execute, commands))
+
+    assert all(result.ok for result in results)
+    assert max_active_calls == 1
 
 
 def test_empty_state_snapshot_and_policy():

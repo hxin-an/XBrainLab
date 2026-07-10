@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
+from XBrainLab.backend.application.results import ChangedState
 from XBrainLab.backend.utils.logger import logger
 
 _REFRESHING_MAIN_WINDOWS: set[int] = set()
@@ -92,6 +93,27 @@ def refresh_after_command(context: Any, result: Any | None) -> bool:
         _REFRESHING_MAIN_WINDOWS.discard(main_window_id)
 
 
+def refresh_after_serialized_command(
+    context: Any,
+    changed_state: dict[str, Any] | None,
+) -> bool:
+    """Refresh UI from an agent-safe serialized ``ChangedState`` payload."""
+    if not isinstance(changed_state, dict):
+        return False
+    field_names = ChangedState.__dataclass_fields__
+    normalized = ChangedState(
+        **{name: bool(changed_state.get(name, False)) for name in field_names}
+    )
+    if not normalized.any_changed():
+        return False
+
+    class _SerializedResult:
+        def __init__(self, value: ChangedState) -> None:
+            self.changed_state = value
+
+    return refresh_after_command(context, _SerializedResult(normalized))
+
+
 def refresh_after_navigation(main_window: Any, index: int) -> bool:
     """Refresh the visible workflow panel selected by top-level navigation."""
     if index < 0 or index >= len(_PANEL_NAMES_BY_INDEX):
@@ -169,23 +191,39 @@ def refresh_shared_status(context: Any) -> bool:
 @contextmanager
 def suppress_observer_refresh_during_command(context: Any) -> Iterator[None]:
     """Skip observer-driven refreshes until command result refresh can run."""
-    main_window = find_main_window(context)
-    if main_window is None:
+    if not begin_command_refresh_suppression(context):
         yield
         return
+    try:
+        yield
+    finally:
+        end_command_refresh_suppression(context)
 
+
+def begin_command_refresh_suppression(context: Any) -> bool:
+    """Begin a nestable UI observer-suppression window for one command."""
+    main_window = find_main_window(context)
+    if main_window is None:
+        return False
     main_window_id = id(main_window)
     _COMMAND_EXECUTING_MAIN_WINDOWS[main_window_id] = (
         _COMMAND_EXECUTING_MAIN_WINDOWS.get(main_window_id, 0) + 1
     )
-    try:
-        yield
-    finally:
-        active_count = _COMMAND_EXECUTING_MAIN_WINDOWS.get(main_window_id, 0)
-        if active_count <= 1:
-            _COMMAND_EXECUTING_MAIN_WINDOWS.pop(main_window_id, None)
-        else:
-            _COMMAND_EXECUTING_MAIN_WINDOWS[main_window_id] = active_count - 1
+    return True
+
+
+def end_command_refresh_suppression(context: Any) -> bool:
+    """End one UI observer-suppression window opened for a command."""
+    main_window = find_main_window(context)
+    if main_window is None:
+        return False
+    main_window_id = id(main_window)
+    active_count = _COMMAND_EXECUTING_MAIN_WINDOWS.get(main_window_id, 0)
+    if active_count <= 1:
+        _COMMAND_EXECUTING_MAIN_WINDOWS.pop(main_window_id, None)
+    else:
+        _COMMAND_EXECUTING_MAIN_WINDOWS[main_window_id] = active_count - 1
+    return active_count > 0
 
 
 def refresh_panel(panel: Any, *, mark_dirty: bool = False) -> bool:

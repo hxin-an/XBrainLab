@@ -18,7 +18,9 @@ from XBrainLab.backend.application import (
     LoadDataCommand,
     PreprocessCommand,
     PreprocessOperation,
+    PreviewInterpretationCommand,
     QueryStateCommand,
+    ScanSourceCommand,
     TrainCommand,
 )
 from XBrainLab.backend.training.record import RecordKey
@@ -62,6 +64,39 @@ def _checked_in_fixture_pair(stem: str) -> tuple[str, str]:
         str(TEST_DATA_DIR / f"{stem}.gdf"),
         str(TEST_DATA_DIR / "label" / f"{stem}.mat"),
     )
+
+
+def test_real_gdf_internal_event_evidence_identifies_class_candidates():
+    selected_files = [
+        str(TEST_DATA_DIR / f"{stem}.gdf") for stem in CHECKED_IN_GDF_STEMS
+    ]
+    if not all(Path(path).exists() for path in selected_files):
+        pytest.skip("Checked-in GDF fixtures are unavailable")
+
+    service = ApplicationService()
+    scan = service.execute(
+        ScanSourceCommand(source_path=str(TEST_DATA_DIR), source_hint="folder")
+    )
+    assert scan.ok is True
+    preview = service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": selected_files,
+                "label_carrier": "embedded_events",
+            }
+        )
+    )
+    assert preview.ok is True
+
+    evidence = preview.diagnostics["preview"]["internal_event_preview"]
+    candidate_codes = [row["event_code"] for row in evidence["candidate_label_events"]]
+    excluded_codes = {row["event_code"] for row in evidence["not_used_events"]}
+
+    assert candidate_codes == ["769", "770", "771", "772"]
+    assert all(
+        row["coverage"] == "3/3 files" for row in evidence["candidate_label_events"]
+    )
+    assert {"768", "1023", "32766"} <= excluded_codes
 
 
 def _build_label_attached_service(stem: str) -> ApplicationService:

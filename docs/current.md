@@ -1,15 +1,17 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-07-04`
+最後更新：`2026-07-10`
 
 這頁只回答一件事：**現在能相信什麼，還不能宣稱什麼，下一步該做什麼。**
 完整階段安排看 [Roadmap](planning/roadmap.md)，下一輪施工看 [Now](planning/now.md)。
 
 ## 一句話
 
-XBrainLab 正在重新盤點成 Windows 本地 EEG / BCI 桌面工具。Roadmap、MCP 下線、
-branch/worktree inventory、known blocker board 和 handoff gate 已重新對齊；下一步先做
-Desktop MVP audit，再按 blocker queue 修復。
+XBrainLab 已完成本輪 Desktop MVP audit 的主要 blocker repair，正在把
+`stabilize/desktop-mvp` 收斂成 handoff candidate。Application command serialization、
+assistant 執行政策與 Qt worker lifecycle、Data Import review truth、真實 GDF event/evaluation
+路徑、窄螢幕 UI artifact 和多資料集 validation 已有 current evidence；最後仍要通過完整
+dashboard、獨立 reviewer gates、clean commit/push，才可交給使用者做 Windows acceptance。
 
 MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測試與 artifacts 只代表
 歷史探索或相容性證據，不再是 MVP、release candidate 或 thesis evidence 的必要路線。
@@ -20,16 +22,16 @@ MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測�
 
 | 區域 | 目前狀態 | 邊界 |
 | --- | --- | --- |
-| Backend | `ApplicationService / Command API` 已是主要 command spine；UI、assistant 和 scripts 不應把 `BackendFacade` 當入口，service lazy wrappers 已改成明確 command handler。 | Desktop MVP 和 Product Polish 階段都要持續防止新的 legacy / duplicate refresh truth。 |
-| UI | PyQt 主流程、Data Interpretation wizard、training / evaluation / visualization surface 都有 baseline；`stabilize/bids-epoch-saliency-baseline` 已把 2026-06-17 定稿的 saliency background baseline flow 落到 command/UI path。 | automated walkthrough 不等於 human Windows desktop acceptance；仍需真人 Windows click-through 才能宣稱產品驗收完成。 |
+| Backend | `ApplicationService / Command API` 是主要 command spine；同一個 Study scope 的 UI、assistant、headless command 由 service lock 序列化，避免同時 mutation。`CommandResult.diagnostics` 保持 JSON-safe，runtime object 只放在 `runtime`。 | 仍要持續防止 controller compatibility 與 duplicate state truth 回流。 |
+| UI | PyQt 主流程、Data Interpretation wizard、training / evaluation / visualization surface 都有 baseline；command 執行期間會抑制 observer duplicate refresh，完成後依 `changed_state` 走 shared refresh coordinator。 | automated walkthrough 不等於 human Windows desktop acceptance；仍需真人 Windows click-through 才能宣稱產品驗收完成。 |
 | Data Interpretation | `scan -> preview -> validate -> apply -> recipe` baseline 已存在；Data Import wizard 已補強 Tier 1/Tier 2 label-source、strict BIDS folder events、internal event evidence、external label placement、structured review coverage，並把 reviewed label placement 寫成 epoch 建議。 | BIDS 支援目前是 EEG task import MVP，不是 full BIDS validator；一般 folder 掃到 `events.tsv` 仍走普通 label-file flow。P300/SSVEP/clinical/XDF/LSL/MOABB/proprietary converters 不能誇大。 |
-| Assistant / Agent | in-app assistant 仍是產品與論文方向，但要等桌面主流程、command surface、verification layer 和 benchmark protocol 重新整理乾淨後再推。 | 目前不能宣稱 thesis-grade tool-call accuracy，也不能用 agent score 代表 UI 已可用。 |
+| Assistant / Agent | in-app assistant 提供 `One Step` 與 `Workflow`：前者只做一個可執行步驟，後者可持續到真正的 confirmation / decision / UI dialog 邊界。兩者共用 backend state、capability policy、ApplicationService command 與 `changed_state` refresh。 | approved local model cache 目前仍缺；不能宣稱長時間本地模型 session、thesis-grade tool-call accuracy 或 Windows assistant acceptance。 |
 | MCP | 從 active plan 移除。 | 不再追求 MCP hardening、MCP client certification、MCP external-agent product path 或 MCP thesis evidence。 |
 | Packaging | Windows launcher / startup smoke 有 evidence。 | 還不是 signed installer，也不是 release approval。 |
 
 ## 下一個真正 blocker
 
-**Desktop MVP audit + blocker repair：先全面盤點，再在唯一工程基底上修主流程 blocker。**
+**完成 handoff candidate closure：full dashboard、獨立 reviewer gates、clean commit/push。**
 
 Rebaseline 後的工程入口：
 
@@ -38,8 +40,8 @@ Rebaseline 後的工程入口：
 - 下一輪工程基底是 `stabilize/desktop-mvp`，已從 rebaseline checkpoint 建立並 push。
 - `docs/multi-gate-loop`、`docs/development-process-rules`、`wip/data-import-controller-dirty-checkpoint`
   不整支 merge；只在需要時 cherry-pick 可用片段。
-- 使用者回報的 bug 是 audit trigger，不是唯一 symptom；下一輪要主動找產品 bug、code quality
-  issue、test gap、architecture drift、performance/resource risk 和 UI regression。
+- 使用者回報的 bug 已作為 audit trigger，並完成 architecture、UI、test/EEG 三路盤點與主要
+  blocker repair；最後 reviewer gate 必須重新讀 current code / artifact，不接受 worker 自我宣稱。
 - 後續每個 handoff candidate 都必須更新 canonical docs 或明確說明不需要更新的理由。
 
 Desktop MVP 前仍要先把 backend / UI 穩定化繼續收乾淨：
@@ -59,6 +61,8 @@ Desktop MVP 前仍要先把 backend / UI 穩定化繼續收乾淨：
 - `ApplicationService / Command API` 是目前要收斂的 product spine。
 - Data Interpretation 屬於 Desktop MVP；assistant / tool-call baseline 要等桌面主流程穩定後再推進。
 - 現有 artifacts 能作為工程 evidence，但每個 evidence 都有明確邊界。
+- required multi-dataset gate 目前覆蓋 3 個可訓練 public source family，以及 1 個 epoch-only CNT source；
+  同時保留 checked-in GDF/MAT、public BIDS 與 Data Interpretation format matrix。
 
 ## 不能宣稱
 
@@ -69,7 +73,7 @@ Desktop MVP 前仍要先把 backend / UI 穩定化繼續收乾淨：
 - tool-call eval 等於 UI / product completion。
 - MCP baseline 屬於 active roadmap。
 - launcher smoke 等於 release approval 或 signed installer。
-- `stabilize/desktop-mvp` 已經 handoff-ready；它只是下一輪修復基底。
+- `stabilize/desktop-mvp` 已完成 Windows 真人手測或已合併 `main`。
 
 ## 最近驗證
 
@@ -77,9 +81,10 @@ Desktop MVP 前仍要先把 backend / UI 穩定化繼續收乾淨：
 | --- | --- | --- |
 | `mkdocs build --strict` | PASS | 文件站可建。 |
 | fast quality dashboard | Clean evidence lives in generated `artifacts/quality/latest.md` for the current branch/commit. | lint、type、architecture、startup、UI baseline、UI product walkthrough、UI unit、real-data IO。 |
-| UI unit suite in dashboard | `1265 passed` | 支撐目前 UI regression baseline，不取代人工 UX approval。 |
+| UI unit suite in最近 dashboard | `1330 passed` | 支撐目前 UI regression baseline，不取代人工 UX approval；final clean-commit dashboard 仍需重跑。 |
 | Data Interpretation format matrix | expected capabilities observed / match | 支撐代表性 scan / preview / validation format boundary。 |
-| Required multi-dataset gate | strict dataset matrix OK; IO + public BIDS + cross-source integration `36 passed`; public cross-source strict smoke `4 passed, 0 missing, 0 failed` | 支撐 checked-in GDF/MAT、compact multiformat、public event-rich fixtures、public BIDS EEG fixture。 |
+| Required multi-dataset gate | strict dataset / format matrix OK；expanded IO + public BIDS + cross-source + checked-in real GDF pipeline `44 passed`；strict cross-source smoke `4 passed`（3 training + 1 CNT epoch-only） | 支撐 checked-in GDF/MAT、compact multiformat、public event-rich fixtures、public BIDS EEG fixture，並避免把 epoch-only CNT 誤稱可訓練。 |
+| Assistant focused regression | command policy、controller/worker lifecycle、refresh、UI wiring focused suites 已通過；核心合併批次最高 `283 passed`，後續 thread/UI targeted tests 亦通過 | 支撐 One Step / Workflow policy、owner-thread teardown、changed-state refresh；不代表本地模型長時間 session。 |
 | Saliency / visualization focused tests | ApplicationService / training / UI saliency regression passed on `stabilize/bids-epoch-saliency-baseline`. | 支撐 background baseline、advanced settings recompute boundary、BIDS epoch handoff 和 resource preflight；不取代人工 UX review。 |
 | Windows launcher walkthrough | PASS | 自動化 launcher command / bounded startup evidence，不是 signed installer 或真人 click-through。 |
 

@@ -935,8 +935,17 @@ class MainWindow(QMainWindow):
             else:
                 logger.info("Discarding unusable main-window geometry on close")
                 settings.remove("main_window/geometry")
-        if self.agent_manager is not None:
-            self.agent_manager.close()
+        if self.agent_manager is not None and not self.agent_manager.close():
+            event.ignore()
+            status_bar = self.statusBar()
+            if status_bar is not None:
+                status_bar.showMessage(
+                    "Assistant is still stopping. "
+                    "XBrainLab will close when it is safe.",
+                    3000,
+                )
+            QTimer.singleShot(250, self.close)
+            return
         super().closeEvent(event)
 
     def _stop_training_for_close(self) -> None:

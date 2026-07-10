@@ -1,6 +1,6 @@
 # Backend 目前架構
 
-最後更新：`2026-07-03`
+最後更新：`2026-07-10`
 
 ## 快速讀法
 
@@ -14,6 +14,7 @@
 | `ApplicationService` 是不是 god object？ | 已從早期 god-object 形狀拆成 focused services；目前主要負責 dispatch、capability / confirmation gate、state/result envelope。 |
 | UI 是否完全不碰 controllers？ | 還不是。controllers 仍存在於 panel bootstrap、observer bridge、mock / compatibility compatibility、部分 readonly display fallback。 |
 | product success 應該怎麼證明？ | 用 command result、`QueryStateCommand` / state snapshot、typed diagnostics、UI-visible state、exact event/epoch/split/history evidence；不要用 facade、controller compatibility、direct mutable `Study` state、generic non-empty / no-crash assertion。 |
+| UI 和 assistant 同時下 command 怎麼辦？ | 同一個 Study-scoped `ApplicationService` 以 reentrant lock 序列化 `execute()`、state snapshot 與 capability snapshot，避免並行 mutation 或讀到半完成狀態。 |
 
 ## Current Target Gap
 
@@ -22,6 +23,7 @@
 | Command spine | load / preprocess / epoch / split / train / evaluate / visualize / saliency / reset / Data Interpretation 都有 command or query truth。 | 要持續防止新 wrapper、direct manager mutation、direct service bypass 回流。MCP job progress 是歷史 adapter evidence，不是 active roadmap。 |
 | Focused services | Data Interpretation、analysis、training、dataset generation、lifecycle、compatibility、data table、preprocess、state/query 都已從 `ApplicationService` 拆出；saliency method policy 由 `backend.application.saliency_policy` 共用，training resource guard 只吃明確 dataset / option context。 | focused service 間仍要靠 tests/guard 維持邊界，避免把 orchestration、UI policy 或 controller/context 探測塞回單一檔。 |
 | State truth | `StateSnapshotService` / `QueryStateCommandService` 是 UI / assistant 判斷狀態的主要讀法。 | 少數 lower-level domain / fixture tests 仍直接 setup/read `Study`，不能當 product smoke。 |
+| Result boundary | `CommandResult.diagnostics` 只放可序列化 evidence；trainer、history row、figure 等 in-process object 放在 `CommandResult.runtime`。 | 新 consumer 不可再從 diagnostics 偷拿 runtime object；headless/assistant payload 不應意外序列化 Qt/domain object。 |
 | UI boundary | product action method 不可直接呼叫 controller compatibility helper；MainWindow controller lookup 收進 named quarantine。 | panels 還吃 injected controllers 作為 observer / adapter，不是完整 zero-controller UI。 |
 | Evidence | exact-evidence stack 已替換多個 generic non-empty product smokes。 | human Windows desktop acceptance 和長時間 local-model session 仍缺人工 evidence。 |
 

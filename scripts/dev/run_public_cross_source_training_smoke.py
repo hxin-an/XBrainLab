@@ -218,7 +218,7 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
             QueryStateCommand(query="training_history", include_objects=True),
         )
         _raise_if_failed(history)
-        rows = cast(list[dict[str, Any]], history.diagnostics.get("rows", []))
+        rows = cast(list[dict[str, Any]], history.runtime.get("rows", []))
         if not rows:
             return SmokeResult(
                 name=str(fixture["name"]),

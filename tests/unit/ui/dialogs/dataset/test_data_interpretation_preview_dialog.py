@@ -3010,6 +3010,18 @@ def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot
     dialog.show()
     qtbot.wait(0)
 
+    assert [label.text() for label in dialog.step_labels] == [
+        "1. EEG Data",
+        "2. Labels",
+        "3. Metadata",
+        "4. Match",
+        "5. Review",
+    ]
+    assert all(
+        label.fontMetrics().horizontalAdvance(label.text()) <= label.width()
+        for label in dialog.step_labels
+    )
+
     for step_title, tree in (
         ("Review Metadata", dialog.file_tree),
         ("Match Labels", dialog.label_carrier_tree),
@@ -3545,6 +3557,9 @@ def test_review_and_import_primary_actions_exclude_report_only_warnings(qtbot):
         button.text() == "Go to Label Placement"
         for button in dialog.review_actions_panel.findChildren(QPushButton)
     )
+    review_rows = {row["item"]: row for row in dialog._review_import_status_rows()}
+    assert review_rows["Label placement"]["status"] == "Needs review"
+    assert review_rows["Label placement"]["action"] == "Go to Label Placement"
 
 
 def test_data_interpretation_preview_dialog_returns_review_edits(qtbot):

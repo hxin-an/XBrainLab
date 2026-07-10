@@ -121,8 +121,6 @@ class HostExecutionPolicy:
             return ExecutionDecision(False, "long_running")
         if _flag(availability, "destructive"):
             return ExecutionDecision(False, "destructive")
-        if _value(availability, "decision_boundary"):
-            return ExecutionDecision(False, "decision_boundary")
         if _flag(availability, "stop_after_success"):
             return ExecutionDecision(False, "stop_after_success")
         if not _flag(
@@ -137,8 +135,6 @@ class HostExecutionPolicy:
             return ExecutionDecision(False, "next_long_running")
         if snapshot.next_destructive:
             return ExecutionDecision(False, "next_destructive")
-        if snapshot.next_decision_boundary:
-            return ExecutionDecision(False, "next_decision_boundary")
         if snapshot.next_stop_after_success:
             return ExecutionDecision(False, "next_stop_after_success")
         if not snapshot.next_continue_allowed_after_success:

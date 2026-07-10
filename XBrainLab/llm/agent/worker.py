@@ -82,6 +82,8 @@ class AgentWorker(QObject):
     chunk_received = pyqtSignal(str)
     error = pyqtSignal(str)
     log = pyqtSignal(str)
+    generation_stop_finished = pyqtSignal(bool)
+    shutdown_finished = pyqtSignal(bool)
 
     def __init__(self):
         """Initializes the AgentWorker with no engine loaded."""
@@ -205,7 +207,7 @@ class AgentWorker(QObject):
         with contextlib.suppress(TypeError, RuntimeError):
             thread.error_occurred.disconnect()
 
-    def _cleanup_generation_thread(self, wait_ms: int = 0):
+    def _cleanup_generation_thread(self, wait_ms: int = 0) -> bool:
         """Disconnect and request interruption of any running generation thread.
 
         Prevents double callbacks and interleaved chunks when a new
@@ -213,10 +215,11 @@ class AgentWorker(QObject):
         """
         thread = self.generation_thread
         if thread is None:
-            return
+            return True
 
         self._disconnect_generation_thread(thread)
         running = False
+        wait_completed = False
         with contextlib.suppress(RuntimeError):
             running = thread.isRunning()
         if running:
@@ -226,11 +229,23 @@ class AgentWorker(QObject):
                     cancel(wait_timeout=wait_ms / 1000 if wait_ms > 0 else 0.25)
             thread.requestInterruption()
             if wait_ms > 0:
-                thread.wait(max(0, int(wait_ms)))
-        with contextlib.suppress(RuntimeError):
-            if not thread.isRunning():
-                ACTIVE_GENERATION_THREADS.discard(thread)
-        self.generation_thread = None
+                wait_completed = bool(thread.wait(max(0, int(wait_ms))))
+        stopped = wait_completed if running and wait_ms > 0 else True
+        if not wait_completed:
+            with contextlib.suppress(RuntimeError):
+                stopped = not thread.isRunning()
+        if stopped:
+            ACTIVE_GENERATION_THREADS.discard(thread)
+        if stopped or wait_ms <= 0:
+            self.generation_thread = None
+        return stopped
+
+    def cancel_generation(self) -> None:
+        """Cancel generation on the worker's owning Qt thread."""
+        stopped = self._cleanup_generation_thread(
+            wait_ms=GENERATION_THREAD_SHUTDOWN_WAIT_MS,
+        )
+        self.generation_stop_finished.emit(stopped)
 
     def generate_from_messages(self, messages):
         """Runs LLM generation using a full message history.
@@ -448,13 +463,18 @@ class AgentWorker(QObject):
             logger.error("Failed to switch model: %s", e, exc_info=True)
             self.error.emit(f"Switch Failed: {e}")
 
-    def shutdown(self, wait_ms: int = GENERATION_THREAD_SHUTDOWN_WAIT_MS) -> None:
+    def shutdown(self, wait_ms: int = GENERATION_THREAD_SHUTDOWN_WAIT_MS) -> bool:
         """Stop generation work and release the loaded local model backend."""
         if self.timeout_timer is not None:
             self.timeout_timer.stop()
-        self._cleanup_generation_thread(wait_ms=wait_ms)
+        stopped = self._cleanup_generation_thread(wait_ms=wait_ms)
+        if not stopped:
+            self.shutdown_finished.emit(False)
+            return False
         if self.engine is not None:
             close = getattr(self.engine, "close", None)
             if callable(close):
                 close()
             self.engine = None
+        self.shutdown_finished.emit(True)
+        return True

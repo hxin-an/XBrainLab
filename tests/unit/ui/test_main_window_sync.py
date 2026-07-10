@@ -3,6 +3,7 @@ from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
+from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtWidgets import QWidget
 
 from XBrainLab.backend.application import StopTrainingCommand
@@ -152,6 +153,22 @@ def test_close_shutdown_requests_bounded_training_stop(main_window):
     command = execute.call_args.args[1]
     assert isinstance(command, StopTrainingCommand)
     assert command.wait_timeout == 2.0
+
+
+def test_close_waits_when_assistant_thread_ownership_is_not_released(main_window):
+    main_window.agent_manager = MagicMock()
+    main_window.agent_manager.close.return_value = False
+    event = QCloseEvent()
+
+    with (
+        patch.object(main_window, "_stop_training_for_close"),
+        patch("XBrainLab.ui.main_window.QTimer.singleShot") as retry,
+    ):
+        main_window.closeEvent(event)
+
+    assert event.isAccepted() is False
+    retry.assert_called_once()
+    assert "Assistant is still stopping" in main_window.statusBar().currentMessage()
 
 
 def test_update_info_panel_uses_info_service(main_window):

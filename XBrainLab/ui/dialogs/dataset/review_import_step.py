@@ -184,7 +184,10 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         label_placement_summary = self._review_label_placement_text()
         if self._should_show_label_table_fallback():
             label_placement_status = "Incomplete"
-        elif "need review" in label_placement_summary.lower():
+        elif (
+            "need review" in label_placement_summary.lower()
+            or self._has_review_action_for_step("Match Labels")
+        ):
             label_placement_status = "Needs review"
 
         recipe_status = "Ready" if self._apply_allowed() else "Incomplete"
@@ -225,6 +228,9 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
                 "action": "Save recipe",
             },
         ]
+
+    def _has_review_action_for_step(self, target_step: str) -> bool:
+        return any(row[0] == target_step for row in self._primary_review_rows())
 
     def _refresh_review_import_summary(self) -> None:
         if hasattr(self, "_review_import_rows_layout"):
