@@ -114,7 +114,10 @@ class MetricsTableWidget(QTableWidget):
         row_heights = [
             self.rowHeight(index) for index in range(min(self.rowCount(), visible_rows))
         ]
-        default_row_height = self.verticalHeader().defaultSectionSize()
+        vertical_header = self.verticalHeader()
+        default_row_height = (
+            vertical_header.defaultSectionSize() if vertical_header is not None else 30
+        )
         content_height = sum(
             height if height > 0 else default_row_height for height in row_heights
         )
