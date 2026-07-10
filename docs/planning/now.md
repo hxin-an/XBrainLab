@@ -6,11 +6,11 @@
 
 ## 目前焦點
 
-**Close the current Desktop MVP stabilization line as a verified handoff candidate.**
+**Run Windows acceptance on the verified Desktop MVP handoff candidate.**
 
-Desktop MVP audit 已完成 architecture、UI、test/EEG 三路盤點，主要 blocker repair 已合回
-`stabilize/desktop-mvp`。目前不再擴張產品範圍；先同步 canonical docs，重跑完整 gate，讓三個
-獨立 reviewer 重新判定 current code / artifact，再 commit、push 並交付 Windows 手測候選。
+Desktop MVP audit、主要 blocker repair、完整 dashboard、多資料集 gate、human-like walkthrough
+與 architecture/UI/test-EEG 三個 reviewer gates 已通過。現在不再擴張產品範圍；final docs
+checkpoint push 到 `stabilize/desktop-mvp` 後，下一步只做 Windows 真人 acceptance。
 
 ## 本輪 To-do
 
@@ -25,7 +25,7 @@ Desktop MVP audit 已完成 architecture、UI、test/EEG 三路盤點，主要 b
 | Done | Delivery flow unified | Branch 規則與 handoff 規則已統一為 Desktop MVP Delivery Flow：short task branch -> stabilization line -> handoff candidate -> user acceptance -> main。 |
 | Done | Desktop MVP audit | Architecture、UI、test/EEG reviewer 已盤點 command concurrency、Qt lifecycle、assistant policy、validation truth、窄螢幕 layout 與 artifact determinism。 |
 | Done | Desktop MVP blocker repair | ApplicationService serialization、assistant refresh/lifecycle、Data Import review truth、real GDF event/evaluation evidence、validation matrix truth、narrow UI artifacts 已修復。 |
-| In progress | Handoff candidate closure | 同步 current docs；跑 lint/type/test/dashboard/multi-dataset/artifact gates；三個獨立 reviewer 全數通過。 |
+| Done | Handoff candidate closure | current docs、lint/type/test/dashboard/multi-dataset/artifact gates 與三個獨立 reviewer 全數通過。 |
 | Next | Windows user acceptance | 從已 commit/push 的 `stabilize/desktop-mvp` 進行真人 click-through；通過後才決定合併 `main`。 |
 
 ## 2026-07-04 Rebaseline 結論

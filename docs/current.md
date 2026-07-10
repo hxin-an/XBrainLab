@@ -7,11 +7,12 @@
 
 ## 一句話
 
-XBrainLab 已完成本輪 Desktop MVP audit 的主要 blocker repair，正在把
-`stabilize/desktop-mvp` 收斂成 handoff candidate。Application command serialization、
-assistant 執行政策與 Qt worker lifecycle、Data Import review truth、真實 GDF event/evaluation
-路徑、窄螢幕 UI artifact 和多資料集 validation 已有 current evidence；最後仍要通過完整
-dashboard、獨立 reviewer gates、clean commit/push，才可交給使用者做 Windows acceptance。
+XBrainLab 已完成本輪 Desktop MVP audit、blocker repair 與 handoff-candidate gate。
+Application command serialization、assistant 執行政策與 Qt worker lifecycle、Data Import
+pairing/review truth、真實 GDF event/evaluation 路徑、UI repaint artifact 和多資料集 validation
+都有 current evidence；完整 dashboard 與 architecture/UI/test-EEG reviewer gates 已通過。
+目前下一步是從本輪驗證並 push 的 `stabilize/desktop-mvp` 進行 Windows 真人 acceptance，
+通過後才決定是否合併 `main`。
 
 MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測試與 artifacts 只代表
 歷史探索或相容性證據，不再是 MVP、release candidate 或 thesis evidence 的必要路線。
@@ -31,7 +32,8 @@ MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測�
 
 ## 下一個真正 blocker
 
-**完成 handoff candidate closure：full dashboard、獨立 reviewer gates、clean commit/push。**
+**Windows 真人 acceptance：啟動、Data Import、preprocess/epoch、split/train、evaluation、
+visualization/saliency 與 assistant click-through。**
 
 Rebaseline 後的工程入口：
 
@@ -80,8 +82,8 @@ Desktop MVP 前仍要先把 backend / UI 穩定化繼續收乾淨：
 | Gate | 最近結果 | 用途 |
 | --- | --- | --- |
 | `mkdocs build --strict` | PASS | 文件站可建。 |
-| fast quality dashboard | Clean evidence lives in generated `artifacts/quality/latest.md` for the current branch/commit. | lint、type、architecture、startup、UI baseline、UI product walkthrough、UI unit、real-data IO。 |
-| UI unit suite in最近 dashboard | 以 generated `artifacts/quality/latest.md` 的 current commit 結果為準。 | 支撐目前 UI regression baseline，不取代人工 UX approval；final clean-commit dashboard 仍需重跑。 |
+| fast quality dashboard | Product baseline `2168f0a0` 為 clean `PASS`：Ruff、Basedpyright `0 errors`、architecture、startup、7 UI baselines、dialog、product walkthrough、real IO；final handoff commit 以 generated `artifacts/quality/latest.md` 為準。 | lint、type、architecture、startup、UI baseline、UI product walkthrough、UI unit、real-data IO。 |
+| UI unit suite in latest dashboard | `1341 passed`。 | 支撐目前 UI regression baseline，不取代人工 Windows UX approval。 |
 | Data Interpretation format matrix | expected capabilities observed / match | 支撐代表性 scan / preview / validation format boundary。 |
 | Required multi-dataset gate | strict dataset / format matrix OK；expanded IO + public BIDS + cross-source + checked-in real GDF pipeline `46 passed`；strict cross-source smoke `4 passed`（3 training + 1 CNT epoch-only） | 支撐 checked-in GDF/MAT、compact multiformat、public event-rich fixtures、public BIDS EEG fixture，並避免把 epoch-only CNT 誤稱可訓練。 |
 | Human-like desktop walkthrough | `27/27` phases PASS；Data Import 實際擷取 Step 1/3/4/5，且 glyph、main navigation、visible right-panel paint guards clean。 | 支撐 Xvfb 自動化產品證據；不等於 Windows DPI、多螢幕或長時間真人 acceptance。 |

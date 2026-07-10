@@ -37,6 +37,9 @@
 - strict cross-source runner：`4 passed`，其中 3 個 source family 完成 one-epoch training，CNT
   明確只算 epoch-only。
 - human-like desktop walkthrough：`27/27` phases，`21` screenshots，resource smoke PASS。
+- clean product baseline dashboard（`2168f0a0`）：overall `PASS`；UI unit `1341 passed`、real-data
+  IO `31 passed`、startup / 7 baselines / dialog / product walkthrough 全數 PASS。Final handoff
+  commit 的 exact result 以 generated `artifacts/quality/latest.md` 為準。
 
 以上仍不代表 Windows DPI、多螢幕、長時間 local LLM session 或 full BIDS validator acceptance。
 
@@ -268,14 +271,14 @@ arbitrary public dataset certification, or scientific model-quality evidence.
 Core assistant / refresh / lifecycle focused merge: 283 passed
 Validation-truth focused suite: 70 passed
 Data Splitting + walkthrough focused suite: 42 passed
-Required IO + BIDS + cross-source + real GDF integration: 44 passed
+Required IO + BIDS + cross-source + real GDF integration: 46 passed
 Strict cross-source runner: 4 passed (3 training, 1 epoch-only)
 Dataset matrix: strict_validation.ok = true
 Data Interpretation format matrix: observed = true, match = true
 ```
 
-這些結果仍不能取代 final clean-commit quality dashboard、獨立 reviewer gate、Windows 真人
-click-through、approved local model cache smoke 或長時間 assistant session。
+這些結果和本頁最新 clean dashboard、獨立 reviewer evidence 共同支撐 handoff candidate；仍不能
+取代 Windows 真人 click-through、approved local model cache smoke 或長時間 assistant session。
 
 ### 2026-06-20 Clean-Code Boundary Follow-Up
 
