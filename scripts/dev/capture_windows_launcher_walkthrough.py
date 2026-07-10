@@ -16,14 +16,26 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "launcher"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "launcher"
 DESKTOP_CMD = r"C:\Users\Administrator\Desktop\XBrainLab.cmd"
-POWERSHELL_LAUNCHER = (
-    r"D:\workspace_v2\projects\lab\XBrainLab-integrated-manual\scripts\launchers"
-    r"\xbrainlab_wsl_launcher.ps1"
+ACTIVE_WSL_REPO = str(REPO_ROOT)
+
+
+def _windows_path(path: Path) -> str:
+    """Convert a WSL-mounted path to its Windows spelling for launcher probes."""
+    resolved = str(path.resolve())
+    parts = resolved.split("/")
+    if len(parts) < 4 or parts[1] != "mnt" or len(parts[2]) != 1:
+        raise RuntimeError(f"Expected a /mnt/<drive>/ path, got: {resolved}")
+    drive = parts[2].upper()
+    return drive + ":\\" + "\\".join(parts[3:])
+
+
+POWERSHELL_LAUNCHER = _windows_path(
+    REPO_ROOT / "scripts" / "launchers" / "xbrainlab_wsl_launcher.ps1"
 )
-ACTIVE_WSL_REPO = "/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual"
+ACTIVE_WINDOWS_REPO = _windows_path(REPO_ROOT)
 JSON_ARTIFACT = "windows-launcher-walkthrough.json"
 MD_ARTIFACT = "windows-launcher-walkthrough.md"
 
@@ -95,7 +107,9 @@ def capture_walkthrough(startup_timeout: int) -> dict[str, Any]:
     )
 
     checks = {
-        "desktop_points_to_active_repo": ACTIVE_WSL_REPO in desktop.stdout,
+        "desktop_points_to_active_repo": (
+            ACTIVE_WINDOWS_REPO.lower() in desktop.stdout.lower()
+        ),
         "desktop_smoke_skipped_wsl": "WSL launch skipped" in desktop.stdout,
         "wsl_stdout_mirrored": "WSL_launcher_smoke_stdout" in wsl.stdout,
         "wsl_stderr_mirrored": "WSL_launcher_smoke_stderr" in wsl.stdout,
@@ -125,6 +139,7 @@ def capture_walkthrough(startup_timeout: int) -> dict[str, Any]:
         ),
         "desktop_cmd": DESKTOP_CMD,
         "powershell_launcher": POWERSHELL_LAUNCHER,
+        "active_windows_repo": ACTIVE_WINDOWS_REPO,
         "active_wsl_repo": ACTIVE_WSL_REPO,
         "checks": checks,
         "log_paths": log_paths,

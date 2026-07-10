@@ -1,11 +1,34 @@
 from __future__ import annotations
 
 from scripts.dev.capture_windows_launcher_walkthrough import (
+    ACTIVE_WINDOWS_REPO,
+    ACTIVE_WSL_REPO,
+    POWERSHELL_LAUNCHER,
+    REPO_ROOT,
     extract_log_path,
     render_markdown,
     startup_geometry_checks,
     windows_log_path_to_wsl,
 )
+
+
+def test_launcher_walkthrough_targets_the_active_repository() -> None:
+    assert str(REPO_ROOT) == ACTIVE_WSL_REPO
+    assert ACTIVE_WINDOWS_REPO.lower().endswith(r"\lab\xbrainlab")
+    assert POWERSHELL_LAUNCHER.endswith(
+        r"\xbrainlab\scripts\launchers\xbrainlab_wsl_launcher.ps1"
+    )
+    assert "integrated-manual" not in POWERSHELL_LAUNCHER.lower()
+
+
+def test_active_launcher_sources_do_not_reference_retired_worktrees() -> None:
+    launcher_dir = REPO_ROOT / "scripts" / "launchers"
+    launcher_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(launcher_dir.glob("xbrainlab_wsl_launcher.*"))
+    )
+
+    assert "XBrainLab-integrated-manual" not in launcher_text
 
 
 def test_extracts_and_converts_windows_launcher_log_path() -> None:

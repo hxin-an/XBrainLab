@@ -5,7 +5,7 @@
 ## 工作路徑
 
 ```bash
-cd /mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual
+cd /mnt/d/workspace_v2/projects/lab/xbrainlab
 ```
 
 不要把新工作寫回舊路徑 `/mnt/d/repos/XBrainLab`；它目前只作 archive / reference。
@@ -46,7 +46,8 @@ scripts/launchers/xbrainlab_wsl_launcher.ps1
 
 launcher 會：
 
-- 進入 `/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`。
+- Desktop command 指向目前 canonical repo；PowerShell launcher 再從自身位置解析 WSL 路徑，
+  不依賴歷史 worktree 名稱。搬移 repo 時可設定 `XBRAINLAB_REPO_WIN` 覆寫 desktop command。
 - 優先使用 WSL 內的 `poetry run python run.py`。
 - 找不到 `poetry` 時嘗試 `/home/administrator/.local/bin/poetry`，再退到 `python run.py`。
 - 將 log 寫到 Windows：
@@ -75,7 +76,8 @@ poetry run python scripts/dev/capture_windows_launcher_walkthrough.py --output-d
 
 目前 release-candidate worktree 已在 `2026-05-30` 重新 capture launcher walkthrough；
 `artifacts/launcher/windows-launcher-walkthrough.md` 顯示 status `passed`，active WSL repo
-是 `/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`。
+是 `/mnt/d/workspace_v2/projects/lab/xbrainlab`。PowerShell launcher 會從自身位置解析 WSL
+路徑；desktop command 允許用 `XBRAINLAB_REPO_WIN` 指向搬移後的 repo。
 
 ## Local LLM Runtime
 

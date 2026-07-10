@@ -1,7 +1,25 @@
 $ErrorActionPreference = "Stop"
 
-$Workspace = "workspace" + "_v2"
-$Repo = ("/mnt/d", $Workspace, "projects", "lab", "XBrainLab-integrated-manual") -join "/"
+$RepoWindows = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
+
+function ConvertTo-WslPath {
+    param([Parameter(Mandatory = $true)][string]$WindowsPath)
+
+    if ($WindowsPath -notmatch '^([A-Za-z]):\\(.*)$') {
+        throw "XBrainLab must be launched from a Windows drive mounted in WSL. Path: $WindowsPath"
+    }
+
+    $drive = $Matches[1].ToLowerInvariant()
+    $tail = $Matches[2] -replace '\\', '/'
+    return "/mnt/$drive/$tail"
+}
+
+$Repo = if ($env:XBRAINLAB_WSL_REPO) {
+    $env:XBRAINLAB_WSL_REPO
+}
+else {
+    ConvertTo-WslPath $RepoWindows
+}
 $LogDir = Join-Path $env:LOCALAPPDATA "XBrainLab\logs"
 New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
 
@@ -69,6 +87,7 @@ function Invoke-WslWithLiveLog {
 
 Write-LauncherLine "XBrainLab launcher"
 Write-LauncherLine "Starting XBrainLab..."
+Write-LauncherLine "Windows repo: $RepoWindows"
 Write-LauncherLine "WSL repo: $Repo"
 Write-LauncherLine "Log: $script:LogFile"
 Write-LauncherLine "Open log: notepad `"$script:LogFile`""

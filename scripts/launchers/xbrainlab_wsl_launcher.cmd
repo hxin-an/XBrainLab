@@ -1,25 +1,10 @@
 @echo off
 setlocal EnableExtensions
 
-set "D=/mnt/d"
-set "W=work"
-set "W=%W%space"
-set "W=%W%_v2"
-set "P=proj"
-set "P=%P%ects"
-set "P=%P%/lab"
-set "P=%P%/XBrainLab-integrated-manual"
-set "XBRAINLAB_WSL_REPO=%D%/%W%/%P%"
-set "XW=D:\work"
-set "XW=%XW%space"
-set "XW=%XW%_v2"
-set "XP=proj"
-set "XP=%XP%ects"
-set "XBRAINLAB_REPO_WIN=%XW%\%XP%\lab\XBrainLab-integrated-manual"
+if not defined XBRAINLAB_REPO_WIN set "XBRAINLAB_REPO_WIN=D:\workspace_v2\projects\lab\xbrainlab"
 set "XBRAINLAB_PS1=%XBRAINLAB_REPO_WIN%\scripts\launchers\xbrainlab_wsl_launcher.ps1"
 
 echo XBrainLab launcher bootstrap
-echo Active WSL repo: %XBRAINLAB_WSL_REPO%
 echo Active Windows repo: %XBRAINLAB_REPO_WIN%
 echo PowerShell launcher: %XBRAINLAB_PS1%
 echo Starting PowerShell launcher...

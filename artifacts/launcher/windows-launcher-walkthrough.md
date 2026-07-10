@@ -3,8 +3,8 @@
 - status: `passed`
 - claim boundary: Automated Windows launcher command walkthrough; not a human desktop click-through or packaging release approval.
 - desktop command: `C:\Users\Administrator\Desktop\XBrainLab.cmd`
-- PowerShell launcher: `D:\workspace_v2\projects\lab\XBrainLab-integrated-manual\scripts\launchers\xbrainlab_wsl_launcher.ps1`
-- active WSL repo: `/mnt/d/workspace_v2/projects/lab/XBrainLab-integrated-manual`
+- PowerShell launcher: `D:\workspace_v2\projects\lab\xbrainlab\scripts\launchers\xbrainlab_wsl_launcher.ps1`
+- active WSL repo: `/mnt/d/workspace_v2/projects/lab/xbrainlab`
 
 ## Checks
 
@@ -23,8 +23,8 @@
 
 ## Logs
 
-- `wsl`: `/mnt/c/Users/Administrator/AppData/Local/XBrainLab/logs/launcher-20260530-135551.log`
-- `startup`: `/mnt/c/Users/Administrator/AppData/Local/XBrainLab/logs/launcher-20260530-135552.log`
+- `wsl`: `/mnt/c/Users/Administrator/AppData/Local/XBrainLab/logs/launcher-20260711-002110.log`
+- `startup`: `/mnt/c/Users/Administrator/AppData/Local/XBrainLab/logs/launcher-20260711-002112.log`
 
 ## Command Summary
 
