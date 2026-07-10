@@ -1,8 +1,10 @@
 """Label import service for applying external labels to loaded EEG data files."""
 
 import re
+from collections import Counter
 from typing import Any
 
+import mne
 import numpy as np
 
 from XBrainLab.backend.load_data import EventLoader
@@ -188,20 +190,33 @@ class LabelImportService:
         else:
             # Sequence Mode: Handle filtering if names provided
             selected_ids = None
-            if selected_event_names is not None and data.is_raw():
-                _, event_id_map = data.get_event_list()
+            if data.is_raw():
+                events, event_id_map = data.get_event_list()
                 if event_id_map:
-                    selected_ids = _selected_event_ids(
-                        event_id_map,
-                        selected_event_names,
-                    )
-                    logger.info(
-                        f"Filtered IDs for {data.get_filename()}: {selected_ids} "
-                        f"(from names: {selected_event_names})",
-                    )
+                    if selected_event_names is not None:
+                        selected_ids = _selected_event_ids(
+                            event_id_map,
+                            selected_event_names,
+                        )
+                        evidence = f"selected names: {selected_event_names}"
+                    else:
+                        selected_ids = infer_event_ids_for_label_count(
+                            events,
+                            event_id_map,
+                            len(labels),
+                        )
+                        evidence = f"label row count: {len(labels)}"
+                    if selected_ids is not None:
+                        logger.info(
+                            "Filtered IDs for %s: %s (from %s)",
+                            data.get_filename(),
+                            selected_ids,
+                            evidence,
+                        )
 
             loader.create_event(mapping, selected_event_ids=selected_ids)
 
+        _mark_standard_rejected_trials(data)
         loader.apply()
         data.set_labels_imported(True)
         logger.info("Successfully applied labels to %s", data.get_filename())
@@ -319,3 +334,59 @@ def _event_selection_aliases(name: str, event_id: int) -> set[str]:
         if match:
             aliases.add(str(int(match.group(0))).casefold())
     return aliases
+
+
+def infer_event_ids_for_label_count(
+    events: Any,
+    event_id_map: dict[str, int],
+    label_count: int,
+) -> list[int] | None:
+    """Infer an unambiguous event group from label-row count evidence."""
+    if label_count <= 0:
+        return None
+    counts = Counter(int(value) for value in np.asarray(events)[:, -1])
+    ids_by_frequency: dict[int, list[int]] = {}
+    for event_id in set(event_id_map.values()):
+        count = counts.get(int(event_id), 0)
+        if count > 0:
+            ids_by_frequency.setdefault(count, []).append(int(event_id))
+
+    balanced_groups = [
+        sorted(ids_)
+        for frequency, ids_ in ids_by_frequency.items()
+        if 2 <= len(ids_) <= 12 and frequency * len(ids_) == label_count
+    ]
+    if len(balanced_groups) == 1:
+        return balanced_groups[0]
+    if balanced_groups:
+        return None
+
+    exact_single_ids = sorted(
+        event_id for event_id, count in counts.items() if count == label_count
+    )
+    return exact_single_ids if len(exact_single_ids) == 1 else None
+
+
+def _mark_standard_rejected_trials(data: Any) -> None:
+    """Preserve GDF rejected-trial markers as MNE BAD annotations."""
+    mne_data = data.get_mne()
+    annotations = getattr(mne_data, "annotations", None)
+    if annotations is None or len(annotations) == 0:
+        return
+    descriptions = list(annotations.description)
+    changed = False
+    for index, description in enumerate(descriptions):
+        normalized = " ".join(str(description).strip().split()).casefold()
+        if normalized in {"1023", "stimulus/s 1023", "event/e 1023"}:
+            descriptions[index] = "BAD_rejected_trial"
+            changed = True
+    if not changed:
+        return
+    mne_data.set_annotations(
+        mne.Annotations(
+            onset=annotations.onset,
+            duration=annotations.duration,
+            description=descriptions,
+            orig_time=annotations.orig_time,
+        ),
+    )

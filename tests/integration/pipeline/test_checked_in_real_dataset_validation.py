@@ -28,30 +28,30 @@ CHECKED_IN_GDF_STEMS = ("A01T", "A02T", "A03T")
 EXPECTED_LABEL_EVENT_ID = {"1": 1, "2": 2, "3": 3, "4": 4}
 EXPECTED_EPOCH_EVENT_IDS = {"1": 0, "2": 1, "3": 2, "4": 3}
 EXPECTED_EPOCH_COUNTS = {
-    "A01T": 276,
-    "A02T": 280,
-    "A03T": 277,
+    "A01T": 273,
+    "A02T": 270,
+    "A03T": 270,
 }
 EXPECTED_SPLIT_SUMMARIES = {
     "A01T": {
         "count": 1,
-        "train_count": 177,
-        "val_count": 44,
-        "test_count": 55,
+        "train_count": 176,
+        "val_count": 43,
+        "test_count": 54,
         "audit": {"ok": True, "dataset_count": 1, "issues": []},
     },
     "A02T": {
         "count": 1,
-        "train_count": 180,
-        "val_count": 44,
-        "test_count": 56,
+        "train_count": 173,
+        "val_count": 43,
+        "test_count": 54,
         "audit": {"ok": True, "dataset_count": 1, "issues": []},
     },
     "A03T": {
         "count": 1,
-        "train_count": 178,
-        "val_count": 44,
-        "test_count": 55,
+        "train_count": 173,
+        "val_count": 43,
+        "test_count": 54,
         "audit": {"ok": True, "dataset_count": 1, "issues": []},
     },
 }
@@ -171,7 +171,7 @@ def _configure_and_train(service: ApplicationService, output_dir: Path):
     )
     assert history.ok is True
     assert history.diagnostics["row_count"] == 1
-    return history.diagnostics["rows"][0]["record"]
+    return history.runtime["rows"][0]["record"]
 
 
 @pytest.mark.parametrize("stem", CHECKED_IN_GDF_STEMS)

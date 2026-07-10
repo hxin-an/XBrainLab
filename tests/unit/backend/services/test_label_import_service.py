@@ -9,11 +9,54 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from XBrainLab.backend.services.label_import_service import LabelImportService
+from XBrainLab.backend.services.label_import_service import (
+    LabelImportService,
+    infer_event_ids_for_label_count,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def test_infer_event_ids_prefers_balanced_class_group_over_trial_marker() -> None:
+    event_ids = {"trial": 1, "left": 2, "right": 3, "feet": 4, "tongue": 5}
+    events = np.asarray(
+        [[index, 0, 1] for index in range(288)]
+        + [
+            [1000 + index, 0, event_id]
+            for event_id in (2, 3, 4, 5)
+            for index in range(72)
+        ],
+    )
+
+    assert infer_event_ids_for_label_count(events, event_ids, 288) == [2, 3, 4, 5]
+
+
+def test_infer_event_ids_uses_unique_single_event_when_no_group_matches() -> None:
+    events = np.asarray(
+        [[index, 0, 10] for index in range(20)]
+        + [[100 + index, 0, 20] for index in range(4)],
+    )
+
+    assert infer_event_ids_for_label_count(
+        events, {"target": 10, "artifact": 20}, 20
+    ) == [10]
+
+
+def test_infer_event_ids_returns_none_for_ambiguous_balanced_groups() -> None:
+    events = np.asarray(
+        [[index, 0, event_id] for event_id in (1, 2, 3, 4) for index in range(5)],
+    )
+
+    assert (
+        infer_event_ids_for_label_count(
+            events,
+            {"a": 1, "b": 2, "c": 3, "d": 4},
+            10,
+        )
+        is None
+    )
 
 
 def _make_data_mock(filepath="/data/sub01.set", is_raw=True, epoch_length=0):
