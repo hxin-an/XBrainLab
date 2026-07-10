@@ -296,13 +296,7 @@ class TestStudyPipelineStage:
     def test_property_delegates_to_compute(self):
         from XBrainLab.backend.study import Study
 
-        study = Study.__new__(Study)
-        study.data_manager = MagicMock()
-        study.training_manager = MagicMock()
-        study.data_manager.loaded_data_list = []
-        study.data_manager.epoch_data = None
-        study.data_manager.datasets = []
-        study.training_manager.trainer = None
+        study = Study()
 
         assert study.pipeline_stage == PipelineStage.EMPTY
 

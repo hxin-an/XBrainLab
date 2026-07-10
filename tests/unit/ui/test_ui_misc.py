@@ -2668,6 +2668,8 @@ class TestAgentManagerDeep:
             study.get_controller.return_value = MagicMock()
             m = AgentManager(mw, study)
             m.chat_controller = mock_cc.return_value
+            m.agent_controller = MagicMock()
+            m._agent_dispatcher.bind(m.agent_controller)
             yield m
 
     def test_update_ai_btn_state(self, mgr):
@@ -2692,19 +2694,16 @@ class TestAgentManagerDeep:
         assert dock.isFloating()
 
     def test_handle_user_input(self, mgr):
-        mgr.agent_controller = MagicMock()
         mgr.handle_user_input("hello")
         mgr.chat_controller.add_user_message.assert_called_with("hello")
         mgr.agent_controller.handle_user_input.assert_called_with("hello")
 
     def test_stop_generation(self, mgr):
-        mgr.agent_controller = MagicMock()
         mgr.stop_generation()
         mgr.agent_controller.stop_generation.assert_called_once()
         mgr.chat_controller.set_processing.assert_called_with(False)
 
     def test_set_model(self, mgr):
-        mgr.agent_controller = MagicMock()
         mgr.vram_checker = MagicMock()
         mgr.set_model("Gemini")
         mgr.agent_controller.set_model.assert_called_with("local")
@@ -2716,7 +2715,6 @@ class TestAgentManagerDeep:
         mgr.chat_panel.set_processing_state.assert_called_with(True)
 
     def test_start_new_conversation(self, mgr):
-        mgr.agent_controller = MagicMock()
         mgr.agent_controller.reset_conversation = MagicMock()
         mgr.start_new_conversation()
         mgr.chat_controller.clear_conversation.assert_called_once()
@@ -2742,7 +2740,6 @@ class TestAgentManagerDeep:
         mgr.chat_controller.add_agent_message.assert_called_once()
 
     def test_close(self, mgr):
-        mgr.agent_controller = MagicMock()
         mgr.close()
         mgr.agent_controller.close.assert_called_once()
 

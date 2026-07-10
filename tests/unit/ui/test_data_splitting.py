@@ -500,7 +500,7 @@ class TestDataSplittingPreviewDialogSplitters:
             dlg.tree.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
         assert dlg.tree.verticalScrollBar().maximum() == 0
-        assert dlg.tree.width() > 400
+        assert dlg.tree.width() >= int(dlg.contentsRect().width() * 0.45)
 
     def test_step2_cards_do_not_use_vertical_separator_frames(self, dlg):
         separators = [

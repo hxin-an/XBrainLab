@@ -32,6 +32,7 @@ def agent_mgr(qtbot) -> Any:
         study.get_controller.return_value = MagicMock()
         mgr = cast(Any, AgentManager(main_window, study))
         mgr.agent_controller = MockCtrl.return_value
+        mgr._agent_dispatcher.bind(mgr.agent_controller)
         yield mgr
 
 
@@ -74,6 +75,77 @@ class TestAgentManagerMethods:
         agent_mgr.agent_controller.reset_conversation = MagicMock()
         agent_mgr.start_new_conversation()
         agent_mgr.agent_controller.reset_conversation.assert_called()
+
+    @pytest.mark.parametrize(
+        ("raw_status", "product_status"),
+        [
+            ("Thinking...", "Checking data"),
+            ("Executing: create_epoch...", "Running step"),
+            ("Waiting for confirmation: train", "Waiting for decision"),
+            ("Stopping...", "Stopping"),
+        ],
+    )
+    def test_workflow_status_uses_product_copy(
+        self,
+        agent_mgr,
+        raw_status,
+        product_status,
+    ):
+        agent_mgr.chat_panel = MagicMock()
+        agent_mgr._execution_mode = "multi"
+
+        agent_mgr.on_agent_status_update(raw_status)
+
+        agent_mgr.chat_panel.set_workflow_status.assert_called_with(product_status)
+        visible = agent_mgr.chat_panel.set_workflow_status.call_args.args[0]
+        assert "create_epoch" not in visible
+
+    def test_decision_routes_to_existing_epoch_dialog(self, agent_mgr):
+        sidebar = MagicMock()
+        agent_mgr.main_window.preprocess_panel = SimpleNamespace(sidebar=sidebar)
+        agent_mgr.switch_panel = MagicMock()
+
+        routed = agent_mgr._route_existing_workflow_surface("create_epoch")
+
+        assert routed is True
+        agent_mgr.switch_panel.assert_called_once_with({"panel": "preprocess"})
+        sidebar.open_epoching.assert_called_once_with()
+
+    @pytest.mark.parametrize(
+        ("tool_name", "panel_attr", "method_name", "panel_name"),
+        [
+            ("scan_source", "dataset_panel", "import_data", "dataset"),
+            ("generate_dataset", "training_panel", "split_data", "training"),
+            (
+                "configure_training",
+                "training_panel",
+                "training_setting",
+                "training",
+            ),
+            ("saliency", "visualization_panel", "set_saliency", "visualization"),
+        ],
+    )
+    def test_decision_routes_to_existing_product_surface(
+        self,
+        agent_mgr,
+        tool_name,
+        panel_attr,
+        method_name,
+        panel_name,
+    ):
+        owner = MagicMock()
+        if panel_attr == "dataset_panel":
+            panel = SimpleNamespace(action_handler=owner)
+        else:
+            panel = SimpleNamespace(sidebar=owner)
+        setattr(agent_mgr.main_window, panel_attr, panel)
+        agent_mgr.switch_panel = MagicMock()
+
+        routed = agent_mgr._route_existing_workflow_surface(tool_name)
+
+        assert routed is True
+        agent_mgr.switch_panel.assert_called_once_with({"panel": panel_name})
+        getattr(owner, method_name).assert_called_once_with()
 
     def test_open_settings_dialog(self, agent_mgr):
         with patch(
@@ -323,23 +395,26 @@ class TestAgentManagerMethods:
         with (
             patch("XBrainLab.llm.agent.controller.AgentWorker") as MockWorker,
             patch("XBrainLab.llm.agent.controller.QThread") as MockThread,
-            patch("XBrainLab.llm.agent.controller.threading.Thread") as MockThreading,
+            patch("XBrainLab.llm.agent.controller.LLMController.initialize"),
         ):
             MockWorker.return_value.generation_thread = None
             MockThread.return_value.isRunning.return_value = False
-            MockThreading.return_value.start = MagicMock()
 
             manager = cast(Any, AgentManager(main_window, study))
             manager.init_ui()
             assert manager.chat_panel is not None
-            manager.start_system()
-            manager.agent_controller.execute_debug_tool("start_training", {})
+            try:
+                manager.start_system()
+                manager.agent_controller.execute_debug_tool("start_training", {})
+            finally:
+                manager.close()
 
         messages = [message["content"] for message in manager.chat_controller.messages]
         visible = "\n".join(messages)
 
         assert "Training is not available yet" in visible
-        assert "Tool is not exposed in the current assistant workflow stage" in visible
+        assert "Load raw data before training" in visible
+        assert "Generate datasets before training" in visible
         assert "Tool Output:" not in visible
         assert "command_name" not in visible
         assert manager.chat_panel.status_label.text() == "No data loaded"
@@ -450,6 +525,12 @@ class _FakeAgentController(QObject):
         return None
 
     def set_execution_mode(self, _mode: str):
+        return None
+
+    def set_model(self, _model: str):
+        return None
+
+    def on_user_confirmed(self, _approved: bool):
         return None
 
     def stop_generation(self):

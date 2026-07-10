@@ -18,11 +18,6 @@ from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
 from XBrainLab.backend.application import CommandName, get_application_service
 from XBrainLab.llm.core.config import LLMConfig
-from XBrainLab.llm.pipeline_state import (
-    STAGE_CONFIG,
-    PipelineStage,
-    compute_pipeline_stage,
-)
 from XBrainLab.llm.rag import RAGRetriever
 from XBrainLab.llm.tools import AVAILABLE_TOOLS
 from XBrainLab.llm.tools.application_surface import (
@@ -40,6 +35,8 @@ from XBrainLab.llm.tools.tool_registry import ToolRegistry
 from .assembler import ContextAssembler
 from .confidence import estimate_confidence
 from .conversation import ConversationHistory
+from .decision_context import build_workflow_decision_context
+from .execution_policy import ExecutionSnapshot, HostExecutionPolicy
 from .intent import command_for_intent, infer_user_intent, path_label_for_intent
 from .metrics import AgentMetricsTracker
 from .parser import CommandParser
@@ -196,15 +193,18 @@ class LLMController(QObject):
         self._loop_break_count = 0
         self._max_loop_breaks = 3
 
+        # The model proposes commands; this host policy owns continuation.
+        self._execution_policy = HostExecutionPolicy()
+        self._tool_execution_count = 0
+        self._turn_cancelled = False
+
         # Execution mode: 'single' stops after success, 'multi' auto-continues
         self._execution_mode: str = self.MODE_SINGLE
         self._successful_tool_count = 0
-        self._max_successful_tools = 5  # Safety cap for multi mode
+        self._max_tool_executions = 5
 
         # HITL: Pending confirmation state
-        self._pending_confirmation: tuple[str, dict, list[tuple[str, dict]]] | None = (
-            None
-        )
+        self._pending_confirmation: tuple[str, dict] | None = None
 
     @property
     def execution_mode(self) -> str:
@@ -216,7 +216,8 @@ class LLMController(QObject):
 
         Args:
             mode: Either ``'single'`` (stop after success) or
-                ``'multi'`` (auto-continue up to ``_max_successful_tools``).
+                ``'multi'`` (continue one verified command at a time up to the
+                per-turn host tool cap).
 
         """
         if mode not in (self.MODE_SINGLE, self.MODE_MULTI):
@@ -303,6 +304,8 @@ class LLMController(QObject):
             self._tool_failure_count = 0
             self._loop_break_count = 0
             self._successful_tool_count = 0
+            self._tool_execution_count = 0
+            self._turn_cancelled = False
 
             # 2. Retrieve RAG Context (Examples)
             features = self.rag_retriever.get_similar_examples(text)
@@ -621,39 +624,47 @@ class LLMController(QObject):
         return False
 
     def _process_tool_calls(self, command_result: Any, response_text: str):
-        """Iterates through parsed commands and executes them.
-
-        Verifies each command via the verification layer, executes valid
-        calls, feeds tool output back into history, and decides whether
-        to retry on failure or finalize the turn on success.
-
-        Args:
-            command_result: Parsed command(s) from ``CommandParser.parse``.
-            response_text: The raw LLM response text (used for UI hiding).
-
-        """
-        commands = (
+        """Verify and execute at most one model-proposed command."""
+        parsed_commands = (
             command_result if isinstance(command_result, list) else [command_result]
         )
         latest_user_text = self._latest_user_request_text()
-        commands = [
+        normalized_commands = [
             normalize_tool_call(cmd, params, latest_user_text=latest_user_text)
-            for cmd, params in commands
+            for cmd, params in parsed_commands
         ]
+        command = self._execution_policy.first_command(normalized_commands)
+        if command is None:
+            self._finalize_turn_after_tool()
+            return
+        start_decision = self._execution_policy.before_command(
+            mode=self._execution_mode,
+            execution_count=self._tool_execution_count,
+            workflow_tool_cap=self._max_tool_executions,
+            cancelled=self._turn_cancelled,
+        )
+        if not start_decision.continue_workflow:
+            logger.info("Host policy rejected tool proposal: %s", start_decision.reason)
+            self._finalize_turn_after_tool()
+            return
+        commands = [command]
+        if len(normalized_commands) > 1:
+            logger.warning(
+                "Discarded %d additional tool proposal(s); host policy allows "
+                "one command per model response.",
+                len(normalized_commands) - 1,
+            )
 
         # Hide the raw JSON from the UI now that we've parsed it
         self.remove_content.emit(response_text)
 
         self._append_history("assistant", response_text)
 
-        # Track if any tool failed during this batch
-        has_failure = False
-
-        # Heuristic confidence for the whole batch
+        # Heuristic confidence applies only to the eligible proposal.
         confidence = estimate_confidence(response_text, commands)
         logger.debug("Heuristic confidence: %.2f", confidence)
 
-        for cmd_idx, (cmd, params) in enumerate(commands):
+        for cmd, params in commands:
             # --- Loop Detection ---
 
             # Use sort_keys=True for stable string representation of params
@@ -736,17 +747,18 @@ class LLMController(QObject):
 
             # --- HITL: Dangerous Action Confirmation ---
             tool = self.registry.get_tool(cmd)
-            dynamic_confirmation = self._dynamic_confirmation_boundary(cmd)
-            if dynamic_confirmation or (tool and tool.requires_confirmation):
-                # Store remaining commands for resumption after confirmation.
-                # Use enumerate index to correctly slice remaining commands,
-                # avoiding the first-match bug of list.index() on duplicates.
-                remaining = commands[cmd_idx + 1 :]
-                self._pending_confirmation = (cmd, params, remaining)
+            autonomy = self._tool_autonomy(cmd)
+            if self._execution_policy.needs_confirmation(
+                autonomy,
+                tool_requires_confirmation=bool(tool and tool.requires_confirmation),
+            ):
+                # Confirmation authorizes this command only. Never preserve the
+                # original model batch tail for later execution.
+                self._pending_confirmation = (cmd, params)
                 self.status_update.emit(f"Waiting for confirmation: {cmd}")
                 decision_boundary = (
-                    dynamic_confirmation.decision_boundary
-                    if dynamic_confirmation is not None
+                    autonomy.decision_boundary
+                    if autonomy is not None and autonomy.decision_boundary
                     else "tool_confirmation"
                 )
                 self.request_user_interaction.emit(
@@ -765,10 +777,9 @@ class LLMController(QObject):
                 return  # Pause — wait for user response
 
             # Execute Tool
+            self._tool_execution_count += 1
             _success, result = self._execute_tool_no_loop(cmd, params)
 
-            if not _success:
-                has_failure = True
             self._last_tool_summary = self._summarize_tool_result(
                 cmd,
                 _success,
@@ -787,50 +798,162 @@ class LLMController(QObject):
             if not _success and self._should_wait_for_user_after_tool_failure(result):
                 self._finalize_turn_after_tool()
                 return
+            if not _success:
+                self._handle_tool_failure(autonomy)
+                return
 
-        # Intelligent Continuation Strategy:
-        # 1. If FAILURE occurred: Auto-trigger loop to allow Agent to self-correct.
-        # 2. If SUCCESS: Stop and wait for user (prevent runaway).
+            self._handle_tool_success(autonomy)
+            return
 
-        if has_failure:
-            self._tool_failure_count += 1
-            if self._tool_failure_count >= self._max_tool_failures:
-                msg = "System: Max tool execution retries exceeded. Stopping."
-                self._append_history("user", msg)
-                self.status_update.emit("Max retries exceeded, stopping.")
-                self._finalize_turn_after_tool()
-            else:
-                logger.info(
-                    "Tool failure detected (Attempt %d/%d), retrying...",
-                    self._tool_failure_count,
-                    self._max_tool_failures,
-                )
-                self._generate_response()
+    def _handle_tool_failure(self, autonomy: ToolAvailability | None) -> None:
+        """Apply host retry limits after one failed command."""
+        self._tool_failure_count += 1
+        decision = self._execution_policy.after_failure(
+            mode=self._execution_mode,
+            availability=autonomy,
+            failure_count=self._tool_failure_count,
+            global_retry_limit=self._max_tool_failures,
+            execution_count=self._tool_execution_count,
+            tool_cap=self._max_tool_executions,
+            cancelled=self._turn_cancelled,
+        )
+        if decision.continue_workflow:
+            logger.info(
+                "Workflow failure %d/%d; requesting one corrected proposal.",
+                self._tool_failure_count,
+                self._max_tool_failures,
+            )
+            self._generate_response()
+            return
+
+        if decision.reason in {"retry_cap", "tool_cap"}:
+            self._append_history(
+                "user",
+                "System: Tool execution retry limit reached. Stopping.",
+            )
+            self.status_update.emit("Retry limit reached, stopping.")
+        self._finalize_turn_after_tool()
+
+    def _handle_tool_success(
+        self,
+        autonomy: ToolAvailability | None,
+        *,
+        after_confirmation: bool = False,
+    ) -> None:
+        """Refresh workflow truth, then apply host continuation policy."""
+        self._tool_failure_count = 0
+        self._successful_tool_count += 1
+        if self._execution_mode == self.MODE_MULTI or after_confirmation:
+            snapshot = self._refresh_execution_snapshot()
         else:
-            self._tool_failure_count = 0  # Reset on success
-            self._successful_tool_count += 1
+            snapshot = ExecutionSnapshot.safe_to_continue()
 
-            # Multi mode: auto-continue if under the safety cap
-            if (
-                self._execution_mode == self.MODE_MULTI
-                and self._successful_tool_count < self._max_successful_tools
-            ):
-                logger.info(
-                    "Multi mode: auto-continuing (%d/%d)",
-                    self._successful_tool_count,
-                    self._max_successful_tools,
-                )
-                self._generate_response()
-            else:
-                if (
-                    self._execution_mode == self.MODE_MULTI
-                    and self._successful_tool_count >= self._max_successful_tools
-                ):
-                    logger.info(
-                        "Multi mode: reached max successful tools (%d), stopping.",
-                        self._max_successful_tools,
+        decision = self._execution_policy.after_success(
+            mode=self._execution_mode,
+            availability=autonomy,
+            snapshot=snapshot,
+            execution_count=self._tool_execution_count,
+            tool_cap=self._max_tool_executions,
+            after_confirmation=after_confirmation,
+            cancelled=self._turn_cancelled,
+        )
+        if decision.continue_workflow:
+            logger.info(
+                "Workflow policy allowed one next proposal (%d/%d).",
+                self._tool_execution_count,
+                self._max_tool_executions,
+            )
+            self._generate_response()
+            return
+
+        if decision.reason == "decision_needed":
+            self.status_update.emit("Waiting for workflow decision.")
+            self.request_user_interaction.emit(
+                "decision_required",
+                {
+                    "command": snapshot.recommended_next_step,
+                    "decision_needed": list(snapshot.decision_needed),
+                    "existing_ui_surface": snapshot.existing_ui_surface,
+                },
+            )
+        logger.info("Workflow policy stopped: %s", decision.reason)
+        self._finalize_turn_after_tool()
+
+    def _refresh_execution_snapshot(self) -> ExecutionSnapshot:
+        """Re-read state, capabilities, and decision context after a command."""
+        try:
+            service = get_application_service(self.study)
+            state = service.get_state()
+            capabilities = service.get_capabilities()
+            context = build_workflow_decision_context(
+                self.study,
+                latest_user_text=self._latest_user_request_text(),
+                mode=self._execution_mode,
+            )
+            next_capability = None
+            if context.recommended_next_step:
+                next_capability = capabilities.get(context.recommended_next_step)
+            return ExecutionSnapshot(
+                state_reliable=self._state_snapshot_reliable(state),
+                decision_needed=tuple(context.decision_needed),
+                can_auto_continue=bool(context.can_auto_continue),
+                next_requires_confirmation=bool(
+                    next_capability
+                    and (
+                        next_capability.requires_confirmation
+                        or next_capability.confirmation_required
                     )
-                self._finalize_turn_after_tool()
+                ),
+                next_decision_boundary=(
+                    next_capability.decision_boundary if next_capability else None
+                ),
+                next_long_running=bool(
+                    next_capability and next_capability.long_running
+                ),
+                next_destructive=bool(next_capability and next_capability.destructive),
+                next_continue_allowed_after_success=bool(
+                    next_capability is None
+                    or next_capability.continue_allowed_after_success
+                ),
+                next_stop_after_success=bool(
+                    next_capability and next_capability.stop_after_success
+                ),
+                recommended_next_step=context.recommended_next_step,
+                existing_ui_surface=getattr(context, "existing_ui_surface", None),
+            )
+        except Exception as exc:
+            logger.warning("Workflow policy refresh failed: %s", exc)
+            return ExecutionSnapshot.unreliable(str(exc))
+
+    @staticmethod
+    def _state_snapshot_reliable(state: Any) -> bool:
+        """Resolve reliability from the state contract and read diagnostics."""
+        missing = object()
+        explicit = getattr(state, "state_reliable", missing)
+        if explicit is not missing:
+            return bool(explicit)
+
+        payload: dict[str, Any] = {}
+        to_dict = getattr(state, "to_dict", None)
+        if callable(to_dict):
+            candidate = to_dict()
+            if isinstance(candidate, dict):
+                payload = candidate
+        if "state_reliable" in payload:
+            return bool(payload["state_reliable"])
+
+        read_errors = getattr(state, "read_errors", missing)
+        if read_errors is missing:
+            read_errors = payload.get("read_errors", [])
+        return not bool(read_errors)
+
+    def _tool_autonomy(self, command_name: str) -> ToolAvailability | None:
+        """Read enabled command autonomy metadata for host decisions."""
+        try:
+            availability = get_tool_availability(self.study, command_name)
+        except Exception:
+            return None
+        return availability if availability.enabled else None
 
     def _finalize_turn_after_tool(self):
         """Finalizes the turn after tool execution.
@@ -906,7 +1029,7 @@ class LLMController(QObject):
             logger.warning("on_user_confirmed called with no pending action")
             return
 
-        cmd, params, _remaining = self._pending_confirmation
+        cmd, params = self._pending_confirmation
         self._pending_confirmation = None
 
         if approved:
@@ -914,6 +1037,8 @@ class LLMController(QObject):
             self.status_update.emit(f"Executing confirmed: {cmd}...")
 
             confirmed_params = self._confirmed_tool_params(cmd, params)
+            autonomy = self._tool_autonomy(cmd)
+            self._tool_execution_count += 1
             _success, result = self._execute_tool_no_loop(cmd, confirmed_params)
             self._last_tool_summary = self._summarize_tool_result(
                 cmd,
@@ -928,20 +1053,12 @@ class LLMController(QObject):
 
             if not _success:
                 self._tool_failure_count += 1
-                if self._tool_failure_count >= self._max_tool_failures:
-                    msg = "System: Max tool execution retries exceeded. Stopping."
-                    self._append_history("user", msg)
-                    self.status_update.emit("Max retries exceeded, stopping.")
-                    self._finalize_turn_after_tool()
-                else:
-                    self._generate_response()
+                self._refresh_execution_snapshot()
+                self._finalize_turn_after_tool()
             else:
-                self._tool_failure_count = 0
-                # Resume remaining commands if any
-                if _remaining:
-                    self._process_tool_calls(_remaining, "")
-                else:
-                    self._finalize_turn_after_tool()
+                # Confirmation approves exactly one command. Re-read workflow
+                # truth, then stop instead of executing the original batch tail.
+                self._handle_tool_success(autonomy, after_confirmation=True)
         else:
             logger.info("User rejected dangerous action: %s", cmd)
             self._append_history(
@@ -1104,14 +1221,24 @@ class LLMController(QObject):
         command_name: str,
     ) -> ToolAvailability | str | None:
         """Return a backend policy block record, or ``None`` if available."""
-        stage_block = self._check_prompt_tool_exposure(command_name)
-        if stage_block is not None:
-            return stage_block
-
         try:
             availability = get_tool_availability(self.study, command_name)
-        except CapabilityPolicyUnavailable:
-            return None
+        except CapabilityPolicyUnavailable as exc:
+            return ToolAvailability(
+                tool_name=command_name,
+                enabled=False,
+                reasons=(
+                    "Backend capability policy is unavailable; execution is "
+                    f"blocked until workflow state can be verified. ({exc})",
+                ),
+                command_name=(
+                    TOOL_TO_COMMAND[command_name].value
+                    if command_name in TOOL_TO_COMMAND
+                    else None
+                ),
+                read_only=command_name in READ_ONLY_TOOLS,
+                can_auto_execute=False,
+            )
         except Exception as exc:
             logger.debug("Tool availability check failed", exc_info=True)
             return f"Could not read backend capability policy: {exc}"
@@ -1119,36 +1246,6 @@ class LLMController(QObject):
         if availability.enabled:
             return None
         return availability
-
-    def _check_prompt_tool_exposure(self, command_name: str) -> ToolAvailability | None:
-        """Reject tool execution when the current prompt would not expose it."""
-        try:
-            stage = compute_pipeline_stage(self.study)
-            config = STAGE_CONFIG.get(stage)
-            if config is None:
-                config = STAGE_CONFIG.get(PipelineStage.EMPTY, {"tools": []})
-        except Exception:
-            logger.debug("Stage tool exposure check failed", exc_info=True)
-            return None
-
-        allowed_tools = set(config.get("tools", []))
-        if command_name in allowed_tools:
-            return None
-
-        stage_label = str(
-            getattr(stage, "label", getattr(stage, "value", "current workflow stage"))
-        )
-        return ToolAvailability(
-            tool_name=command_name,
-            enabled=False,
-            reasons=(
-                f"Tool is not exposed in the current assistant workflow stage "
-                f"({stage_label}). Use the listed workflow tools for this stage.",
-            ),
-            command_name=None,
-            read_only=command_name in READ_ONLY_TOOLS,
-            can_auto_execute=False,
-        )
 
     def _check_requested_intent_boundary(
         self,
@@ -1234,21 +1331,6 @@ class LLMController(QObject):
                 continue
             return content
         return ""
-
-    def _dynamic_confirmation_boundary(
-        self,
-        command_name: str,
-    ) -> ToolAvailability | None:
-        """Return enabled backend policy that requires user confirmation."""
-        try:
-            availability = get_tool_availability(self.study, command_name)
-        except Exception:
-            return None
-        if not availability.enabled:
-            return None
-        if availability.requires_confirmation or availability.confirmation_required:
-            return availability
-        return None
 
     def _confirmed_tool_params(
         self,
@@ -1697,6 +1779,7 @@ class LLMController(QObject):
     def stop_generation(self):
         """Stops the current generation process and resets processing state."""
         if self.is_processing:
+            self._turn_cancelled = True
             self.status_update.emit("Stopping...")
             self.metrics.finish_turn()
             self.is_processing = False
@@ -1739,6 +1822,8 @@ class LLMController(QObject):
         self._loop_break_count = 0
         self._recent_tool_calls.clear()
         self._pending_confirmation = None
+        self._tool_execution_count = 0
+        self._turn_cancelled = False
 
         # Reset metrics for new conversation
         self.metrics.reset()

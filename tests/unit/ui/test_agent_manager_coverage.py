@@ -10,22 +10,35 @@ from XBrainLab.backend.study import Study
 
 
 def _make_manager() -> Any:
-    """Create a stub AgentManager without calling __init__."""
+    """Create a lightweight manager through its real QObject initialization."""
     from XBrainLab.ui.components.agent_manager import AgentManager
 
-    m = cast(Any, AgentManager.__new__(AgentManager))
-    m.study = MagicMock()
-    m.main_window = MagicMock()
+    main_window = cast(Any, QMainWindow())
+    main_window.ai_btn = MagicMock()
+    main_window.statusBar = MagicMock(return_value=MagicMock())
+    study = MagicMock()
+    application_service = MagicMock()
+    with (
+        patch(
+            "XBrainLab.ui.components.agent_manager.get_application_service",
+            return_value=application_service,
+        ),
+        patch(
+            "XBrainLab.ui.components.agent_manager."
+            "get_controller_for_compatibility_context",
+            return_value=MagicMock(),
+        ),
+    ):
+        m = cast(Any, AgentManager(main_window, study))
     m.chat_panel = MagicMock()
     m.chat_controller = MagicMock()
-    m.application_service = MagicMock()
+    m.application_service = application_service
     m.application_service.get_state.return_value = _empty_workflow_state()
     m.application_service.get_capabilities.return_value = {}
-    m.preprocess_controller = MagicMock()
     m.agent_controller = MagicMock()
+    m._agent_dispatcher.bind(m.agent_controller)
     m.agent_initialized = True
     m.vram_checker = MagicMock()
-    m.status_message_received = MagicMock()
     epoch_data = MagicMock()
     epoch_data.get_channel_names.return_value = ["Cz", "Fz"]
     epoch_data.get_mne.return_value.info = {"ch_names": ["Cz", "Fz"]}
@@ -223,15 +236,15 @@ class TestAgentManagerExecutionMode:
         m.agent_controller.set_execution_mode.assert_called_with("multi")
 
     def test_sync_execution_mode_ui(self):
-        """Execution mode sync must not surface unfinished step controls."""
+        """Execution mode sync updates the visible Ask/Workflow selector."""
         m = _make_manager()
         m._sync_execution_mode_ui("single")
-        m.chat_panel.mode_btn.setText.assert_called_with("")
+        m.chat_panel.set_execution_mode.assert_called_with("single")
 
     def test_sync_multi(self):
         m = _make_manager()
         m._sync_execution_mode_ui("multi")
-        m.chat_panel.mode_btn.setText.assert_called_with("")
+        m.chat_panel.set_execution_mode.assert_called_with("multi")
 
 
 class TestAgentManagerHandleUICommand:

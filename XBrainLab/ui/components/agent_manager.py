@@ -4,7 +4,13 @@ Orchestrates the ChatController, LLMController, and ChatPanel dock widget,
 handling initialization, user interaction, model switching, and VRAM checks.
 """
 
-from PyQt6.QtCore import QObject, QRect, QSize, Qt, pyqtSignal
+from PyQt6.QtCore import (
+    QObject,
+    QRect,
+    QSize,
+    Qt,
+    pyqtSignal,
+)
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QApplication,
@@ -36,7 +42,11 @@ from XBrainLab.ui.application_capabilities import (
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.chat.panel import ChatPanel
+from XBrainLab.ui.components.assistant_command_dispatcher import (
+    AssistantCommandDispatcher,
+)
 from XBrainLab.ui.components.vram_checker import VRAMConflictChecker
+from XBrainLab.ui.components.workflow_surface_router import WorkflowSurfaceRouter
 from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
     LocalRuntimeFirstRunDialog,
 )
@@ -125,6 +135,7 @@ class AgentManager(QObject):
         self.main_window = main_window
         self.study = study
         self.application_service = get_application_service(study)
+        self.main_window.destroyed.connect(self._on_main_window_destroyed)
 
         self.chat_panel = None
         self.chat_dock = None
@@ -144,6 +155,13 @@ class AgentManager(QObject):
         self.agent_initialized = False
         self._last_user_input: str | None = None
         self._runtime_unavailable_notice: str | None = None
+        self._execution_mode = "single"
+        self._agent_dispatcher = AssistantCommandDispatcher(self)
+        self._workflow_surface_router = WorkflowSurfaceRouter(
+            self.main_window,
+            lambda params: self.switch_panel(params),
+        )
+        self._agent_closed = False
 
         # M3.4 VRAM Monitoring — delegated to VRAMConflictChecker
         self.vram_checker = VRAMConflictChecker(
@@ -152,6 +170,10 @@ class AgentManager(QObject):
         )
         self._visualization_monitor_connected = False
         self.connect_visualization_monitor()
+
+    def _on_main_window_destroyed(self, _object=None) -> None:
+        """Stop assistant threads before Qt destroys QObject children."""
+        self.close()
 
     def connect_visualization_monitor(self) -> None:
         """Connect visualization-tab VRAM checks when the panel has been loaded."""
@@ -580,9 +602,7 @@ class AgentManager(QObject):
         )
 
         # 8. M3.1 Debug Mode: direct UI -> agent tool flow for offline testing.
-        self.chat_panel.debug_tool_requested.connect(
-            self.agent_controller.execute_debug_tool,
-        )
+        self.chat_panel.debug_tool_requested.connect(self._agent_dispatcher.debug)
 
         # 8. Finished Signal (Robust)
         self.agent_controller.processing_finished.connect(self.on_processing_finished)
@@ -592,7 +612,9 @@ class AgentManager(QObject):
             self._sync_execution_mode_ui,
         )
 
-        self.agent_controller.initialize()
+        self._agent_dispatcher.bind(self.agent_controller)
+        self._agent_dispatcher.initialize()
+        self._agent_dispatcher.set_mode(self._execution_mode)
         self.agent_initialized = True
         self.refresh_backend_status()
 
@@ -632,7 +654,10 @@ class AgentManager(QObject):
 
         # 2. Forward to Agent
         if self.agent_controller:
-            self.agent_controller.handle_user_input(text)
+            self.chat_controller.set_processing(True)
+            if self.chat_panel and self._execution_mode == "multi":
+                self.chat_panel.set_workflow_status("Checking data")
+            self._agent_dispatcher.submit(text)
         else:
             config = self._load_runtime_config()
             _ready, message = self._assistant_runtime_start_status(config)
@@ -694,7 +719,7 @@ class AgentManager(QObject):
     def stop_generation(self):
         """Stop the currently running LLM generation."""
         if self.agent_controller:
-            self.agent_controller.stop_generation()
+            self._agent_dispatcher.stop()
         self.chat_controller.set_processing(False)
 
     def set_model(self, model_name):
@@ -706,7 +731,7 @@ class AgentManager(QObject):
         """
         normalized_mode = LLMConfig.normalize_backend_mode(model_name, fallback="")
         if self.agent_controller:
-            self.agent_controller.set_model(
+            self._agent_dispatcher.set_model(
                 normalized_mode if normalized_mode else model_name
             )
 
@@ -784,8 +809,8 @@ class AgentManager(QObject):
             mode: ``'single'`` or ``'multi'``.
 
         """
-        if self.agent_controller:
-            self.agent_controller.set_execution_mode(mode)
+        self._execution_mode = "multi" if mode == "multi" else "single"
+        self._agent_dispatcher.set_mode(self._execution_mode)
 
     def _sync_execution_mode_ui(self, mode: str):
         """Sync execution mode button text from controller to ChatPanel.
@@ -794,9 +819,15 @@ class AgentManager(QObject):
             mode: ``'single'`` or ``'multi'``.
 
         """
-        _ = mode
+        self._execution_mode = "multi" if mode == "multi" else "single"
         if self.chat_panel:
-            self.chat_panel.mode_btn.setText("")
+            sync_mode = getattr(self.chat_panel, "set_execution_mode", None)
+            if callable(sync_mode):
+                sync_mode(self._execution_mode)
+            else:
+                self.chat_panel.mode_btn.setText(
+                    "Workflow" if self._execution_mode == "multi" else "Ask"
+                )
 
     def start_new_conversation(self):
         """Clear the chat UI and reset the agent conversation state."""
@@ -811,7 +842,7 @@ class AgentManager(QObject):
 
         # 2. Reset Agent State
         if self.agent_controller:
-            self.agent_controller.reset_conversation()
+            self._agent_dispatcher.reset()
             logger.info("Agent conversation state reset successfully")
 
         # 3. Do not add greeting, keep it empty as requested
@@ -854,12 +885,36 @@ class AgentManager(QObject):
 
         """
         logger.debug("Assistant status update: %s", msg)
+        if self.chat_panel and self._execution_mode == "multi":
+            product_status = self._workflow_product_status(msg)
+            if product_status:
+                self.chat_panel.set_workflow_status(product_status)
         if "Error" in msg or "Stopping" in msg:
             self.chat_controller.set_processing(False)
             if self.chat_panel and hasattr(self.chat_panel, "show_notice"):
                 self.chat_panel.show_notice(
                     "Assistant needs attention · Check the conversation",
                 )
+
+    @staticmethod
+    def _workflow_product_status(raw_status: str) -> str:
+        """Translate controller diagnostics into compact workflow copy."""
+        normalized = " ".join(str(raw_status or "").split()).lower()
+        if not normalized or normalized == "ready":
+            return ""
+        if (
+            "waiting" in normalized
+            or "decision" in normalized
+            or "confirm" in normalized
+        ):
+            return "Waiting for decision"
+        if "stopping" in normalized or "cancel" in normalized:
+            return "Stopping"
+        if "execut" in normalized or "running" in normalized:
+            return "Running step"
+        if "error" in normalized or "blocked" in normalized or "failed" in normalized:
+            return "Needs attention"
+        return "Checking data"
 
     def handle_agent_error(self, error_msg):
         """Handle an agent error by resetting state and showing the error.
@@ -996,8 +1051,10 @@ class AgentManager(QObject):
 
     def close(self):
         """Clean up the agent controller resources."""
-        if self.agent_controller:
-            self.agent_controller.close()
+        if self._agent_closed:
+            return
+        self._agent_dispatcher.close()
+        self._agent_closed = True
 
     def handle_user_interaction(self, command, params):
         """Dispatch human-in-the-loop interaction requests.
@@ -1008,12 +1065,47 @@ class AgentManager(QObject):
             params: Dictionary of parameters for the command.
 
         """
+        if self.chat_panel and self._execution_mode == "multi":
+            self.chat_panel.set_workflow_status("Waiting for decision")
+
         if command == "confirm_montage":
             self.open_montage_picker_dialog(params)
         elif command == "switch_panel":
             self.switch_panel(params)
+            tool_name = str(params.get("tool_name") or params.get("command") or "")
+            if tool_name:
+                self._route_existing_workflow_surface(tool_name)
+        elif command in {"decision_required", "open_existing_ui_surface"}:
+            tool_name = str(params.get("tool_name") or params.get("command") or "")
+            if self._route_existing_workflow_surface(tool_name):
+                self._show_low_priority_notice(
+                    "Continue in the opened settings, then return to the assistant."
+                )
         elif command == "confirm_action":
+            if self._decision_requires_existing_ui(params):
+                tool_name = str(params.get("tool_name") or "")
+                if self._route_existing_workflow_surface(tool_name):
+                    self._show_low_priority_notice(
+                        "Continue in the opened settings, then return to the assistant."
+                    )
+                    self._agent_dispatcher.confirm(False)
+                    return
             self._show_action_confirmation(params)
+
+    @staticmethod
+    def _decision_requires_existing_ui(params: dict) -> bool:
+        """Return whether a paused action needs an existing settings surface."""
+        boundary = str(params.get("decision_boundary") or "").lower()
+        return boundary in {
+            "user_decision_required",
+            "needs_data_source",
+            "configuration_required",
+            "settings_required",
+        }
+
+    def _route_existing_workflow_surface(self, tool_name: str) -> bool:
+        """Open the existing product UI for a workflow decision."""
+        return self._workflow_surface_router.open(tool_name)
 
     def switch_panel(self, params):
         """Switch the main window to a specified panel and optional sub-view.
@@ -1111,8 +1203,7 @@ class AgentManager(QObject):
                 f"Cancelled: {action_label}.",
             )
 
-        if self.agent_controller:
-            self.agent_controller.on_user_confirmed(approved)
+        self._agent_dispatcher.confirm(approved)
 
     def _switch_sub_view(self, panel_index, view_mode):
         """Switch to a specific tab or view within a panel.

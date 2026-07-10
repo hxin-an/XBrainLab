@@ -8,7 +8,7 @@ import pytest
 
 
 def _allow_prompt_tools(ctrl):
-    ctrl._check_prompt_tool_exposure = MagicMock(return_value=None)
+    ctrl._check_tool_availability = MagicMock(return_value=None)
 
 
 @pytest.fixture
@@ -193,15 +193,8 @@ class TestExecuteToolNoLoop:
         mock_tool = MagicMock()
         mock_tool.execute.return_value = "ok"
         ctrl.registry.get_tool.return_value = mock_tool
-        with patch(
-            "XBrainLab.llm.agent.controller.compute_pipeline_stage",
-        ) as mock_stage:
-            mock_stage.return_value = MagicMock(value="empty")
-            with patch(
-                "XBrainLab.llm.agent.controller.STAGE_CONFIG",
-                {mock_stage.return_value: {"tools": ["test"]}},
-            ):
-                success, result = ctrl._execute_tool_no_loop("test", {"a": 1})
+        ctrl._check_tool_availability = MagicMock(return_value=None)
+        success, result = ctrl._execute_tool_no_loop("test", {"a": 1})
         assert success
         assert result == "ok"
 
@@ -209,15 +202,8 @@ class TestExecuteToolNoLoop:
         mock_tool = MagicMock()
         mock_tool.execute.side_effect = RuntimeError("fail")
         ctrl.registry.get_tool.return_value = mock_tool
-        with patch(
-            "XBrainLab.llm.agent.controller.compute_pipeline_stage",
-        ) as mock_stage:
-            mock_stage.return_value = MagicMock(value="empty")
-            with patch(
-                "XBrainLab.llm.agent.controller.STAGE_CONFIG",
-                {mock_stage.return_value: {"tools": ["test"]}},
-            ):
-                success, result = ctrl._execute_tool_no_loop("test", {})
+        ctrl._check_tool_availability = MagicMock(return_value=None)
+        success, result = ctrl._execute_tool_no_loop("test", {})
         assert not success
         assert "fail" in result
 
@@ -258,7 +244,10 @@ class TestProcessToolCalls:
         ctrl._finalize_turn_after_tool.assert_called_once()
 
     def test_failure_retries(self, ctrl):
+        from XBrainLab.llm.agent.controller import LLMController
+
         _allow_prompt_tools(ctrl)
+        ctrl._execution_mode = LLMController.MODE_MULTI
         ctrl._execute_tool_no_loop = MagicMock(return_value=(False, "err"))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl._generate_response = MagicMock()

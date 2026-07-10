@@ -191,31 +191,31 @@ class TestVisualizer:
     def test_get_saliency_gradient(self):
         v = self._make_visualizer()
         eval_record = cast(Any, v.eval_record)
-        eval_record.get_gradient.return_value = "g"
+        eval_record.gradient = {0: "g"}
         assert v.get_saliency("Gradient", 0) == "g"
 
     def test_get_saliency_gradient_input(self):
         v = self._make_visualizer()
         eval_record = cast(Any, v.eval_record)
-        eval_record.get_gradient_input.return_value = "gi"
+        eval_record.gradient_input = {0: "gi"}
         assert v.get_saliency("Gradient * Input", 0) == "gi"
 
     def test_get_saliency_smoothgrad(self):
         v = self._make_visualizer()
         eval_record = cast(Any, v.eval_record)
-        eval_record.get_smoothgrad.return_value = "sg"
+        eval_record.smoothgrad = {0: "sg"}
         assert v.get_saliency("SmoothGrad", 0) == "sg"
 
     def test_get_saliency_smoothgrad_sq(self):
         v = self._make_visualizer()
         eval_record = cast(Any, v.eval_record)
-        eval_record.get_smoothgrad_sq.return_value = "sgs"
+        eval_record.smoothgrad_sq = {0: "sgs"}
         assert v.get_saliency("SmoothGrad_Squared", 0) == "sgs"
 
     def test_get_saliency_vargrad(self):
         v = self._make_visualizer()
         eval_record = cast(Any, v.eval_record)
-        eval_record.get_vargrad.return_value = "vg"
+        eval_record.vargrad = {0: "vg"}
         assert v.get_saliency("VarGrad", 0) == "vg"
 
     def test_get_saliency_unknown(self):
@@ -228,16 +228,11 @@ class TestVisualizer:
         with pytest.raises(ValueError):
             v.get_saliency(cast(str, None), 0)
 
-    def test_get_plt_creates_figure(self):
-        from matplotlib.figure import Figure
-
+    def test_get_plt_releases_figure_when_rendering_fails(self):
         v = self._make_visualizer()
         with pytest.raises(NotImplementedError):
             v.get_plt()
-        assert isinstance(v.fig, Figure)
-        import matplotlib.pyplot as plt
-
-        plt.close("all")
+        assert v.fig is None
 
 
 # --- seed.py ---

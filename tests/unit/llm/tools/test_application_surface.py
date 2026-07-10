@@ -104,9 +104,13 @@ def test_start_training_surface_preserves_backend_confirmation_boundary():
         raw_status="ok",
     )
     assert confirmed.message == "Training started."
-    assert confirmed.raw_result["diagnostics"] == {
-        "append": True,
-        "interactive": True,
+    diagnostics = confirmed.raw_result["diagnostics"]
+    assert diagnostics["append"] is True
+    assert diagnostics["interactive"] is True
+    assert diagnostics["resource_preflight"]["risk_level"] in {
+        "safe",
+        "warning",
+        "unknown",
     }
     training.start_training.assert_called_once()
 

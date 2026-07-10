@@ -37,11 +37,10 @@ def _assert_confirmation_prompt(
     *,
     tool_name: str,
     params: dict[str, Any],
-    remaining: list[tuple[str, dict[str, Any]]],
     description: str,
     decision_boundary: str = "tool_confirmation",
 ) -> None:
-    assert ctrl._pending_confirmation == (tool_name, params, remaining)
+    assert ctrl._pending_confirmation == (tool_name, params)
     ctrl.status_update.emit.assert_any_call(f"Waiting for confirmation: {tool_name}")
     ctrl.request_user_interaction.emit.assert_called_once_with(
         "confirm_action",
@@ -55,7 +54,7 @@ def _assert_confirmation_prompt(
 
 
 def _allow_prompt_tools(ctrl: Any) -> None:
-    ctrl._check_prompt_tool_exposure = MagicMock(return_value=None)
+    ctrl._check_tool_availability = MagicMock(return_value=None)
 
 
 @pytest.fixture
@@ -279,15 +278,8 @@ class TestExecuteToolNoLoop:
         mock_tool = MagicMock()
         mock_tool.execute.return_value = "ok"
         ctrl.registry.get_tool.return_value = mock_tool
-        with patch(
-            "XBrainLab.llm.agent.controller.compute_pipeline_stage",
-        ) as mock_stage:
-            mock_stage.return_value = MagicMock(value="empty")
-            with patch(
-                "XBrainLab.llm.agent.controller.STAGE_CONFIG",
-                {mock_stage.return_value: {"tools": ["test"]}},
-            ):
-                success, result = ctrl._execute_tool_no_loop("test", {"a": 1})
+        ctrl._check_tool_availability = MagicMock(return_value=None)
+        success, result = ctrl._execute_tool_no_loop("test", {"a": 1})
         assert success
         assert result == "ok"
 
@@ -295,15 +287,8 @@ class TestExecuteToolNoLoop:
         mock_tool = MagicMock()
         mock_tool.execute.side_effect = RuntimeError("fail")
         ctrl.registry.get_tool.return_value = mock_tool
-        with patch(
-            "XBrainLab.llm.agent.controller.compute_pipeline_stage",
-        ) as mock_stage:
-            mock_stage.return_value = MagicMock(value="empty")
-            with patch(
-                "XBrainLab.llm.agent.controller.STAGE_CONFIG",
-                {mock_stage.return_value: {"tools": ["test"]}},
-            ):
-                success, result = ctrl._execute_tool_no_loop("test", {})
+        ctrl._check_tool_availability = MagicMock(return_value=None)
+        success, result = ctrl._execute_tool_no_loop("test", {})
         assert not success
         assert "fail" in result
 
@@ -342,6 +327,189 @@ class TestHandleToolResultLogic:
 
 # --- _process_tool_calls ---
 class TestProcessToolCalls:
+    def test_ask_executes_only_first_command_from_model_batch(self, ctrl):
+        _allow_prompt_tools(ctrl)
+        ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "ok"))
+        ctrl._handle_tool_result_logic = MagicMock(return_value=False)
+        ctrl._finalize_turn_after_tool = MagicMock()
+        ctrl._detect_loop = MagicMock(return_value=False)
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value.requires_confirmation = False
+
+        ctrl._process_tool_calls(
+            [("first", {}), ("second", {})],
+            '{"tool_calls": ["first", "second"]}',
+        )
+
+        ctrl._execute_tool_no_loop.assert_called_once_with("first", {})
+
+    def test_workflow_executes_one_command_then_rereads_policy(self, ctrl):
+        from XBrainLab.llm.agent.controller import LLMController
+        from XBrainLab.llm.agent.execution_policy import ExecutionSnapshot
+
+        _allow_prompt_tools(ctrl)
+        ctrl.set_execution_mode(LLMController.MODE_MULTI)
+        ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "ok"))
+        ctrl._handle_tool_result_logic = MagicMock(return_value=False)
+        ctrl._finalize_turn_after_tool = MagicMock()
+        ctrl._generate_response = MagicMock()
+        ctrl._detect_loop = MagicMock(return_value=False)
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value.requires_confirmation = False
+        ctrl._refresh_execution_snapshot = MagicMock(
+            return_value=ExecutionSnapshot.safe_to_continue()
+        )
+
+        ctrl._process_tool_calls(
+            [("first", {}), ("discarded", {})],
+            '{"tool_calls": ["first", "discarded"]}',
+        )
+
+        ctrl._execute_tool_no_loop.assert_called_once_with("first", {})
+        ctrl._refresh_execution_snapshot.assert_called_once()
+        ctrl._generate_response.assert_called_once()
+
+    def test_refresh_reads_state_capabilities_and_decision_context(self, ctrl):
+        from types import SimpleNamespace
+
+        service = MagicMock()
+        service.get_state.return_value = SimpleNamespace(state_reliable=True)
+        next_capability = SimpleNamespace(
+            requires_confirmation=False,
+            confirmation_required=False,
+            decision_boundary=None,
+            long_running=False,
+            destructive=False,
+            continue_allowed_after_success=True,
+            stop_after_success=False,
+        )
+        service.get_capabilities.return_value.get.return_value = next_capability
+        context = SimpleNamespace(
+            recommended_next_step="preview_interpretation",
+            decision_needed=[],
+            can_auto_continue=True,
+        )
+
+        with (
+            patch(
+                "XBrainLab.llm.agent.controller.get_application_service",
+                return_value=service,
+            ),
+            patch(
+                "XBrainLab.llm.agent.controller.build_workflow_decision_context",
+                return_value=context,
+            ) as build_context,
+        ):
+            snapshot = ctrl._refresh_execution_snapshot()
+
+        service.get_state.assert_called_once_with()
+        service.get_capabilities.assert_called_once_with()
+        build_context.assert_called_once()
+        assert snapshot.state_reliable is True
+        assert snapshot.can_auto_continue is True
+
+    def test_refresh_failure_is_unreliable_and_fail_closed(self, ctrl):
+        with patch(
+            "XBrainLab.llm.agent.controller.get_application_service",
+            side_effect=RuntimeError("state read failed"),
+        ):
+            snapshot = ctrl._refresh_execution_snapshot()
+
+        assert snapshot.state_reliable is False
+        assert snapshot.can_auto_continue is False
+        assert snapshot.read_error == "state read failed"
+
+    def test_refresh_uses_read_diagnostics_when_reliability_field_is_absent(
+        self,
+        ctrl,
+    ):
+        from types import SimpleNamespace
+
+        service = MagicMock()
+        service.get_state.return_value = SimpleNamespace(read_errors=[])
+        service.get_capabilities.return_value = MagicMock()
+        context = SimpleNamespace(
+            recommended_next_step=None,
+            decision_needed=[],
+            can_auto_continue=True,
+            existing_ui_surface=None,
+        )
+        with (
+            patch(
+                "XBrainLab.llm.agent.controller.get_application_service",
+                return_value=service,
+            ),
+            patch(
+                "XBrainLab.llm.agent.controller.build_workflow_decision_context",
+                return_value=context,
+            ),
+        ):
+            snapshot = ctrl._refresh_execution_snapshot()
+
+        assert snapshot.state_reliable is True
+
+    def test_refresh_read_errors_make_state_unreliable_without_explicit_flag(
+        self,
+        ctrl,
+    ):
+        from types import SimpleNamespace
+
+        service = MagicMock()
+        service.get_state.return_value = SimpleNamespace(
+            read_errors=["training state read failed"]
+        )
+        service.get_capabilities.return_value = MagicMock()
+        context = SimpleNamespace(
+            recommended_next_step=None,
+            decision_needed=[],
+            can_auto_continue=True,
+            existing_ui_surface=None,
+        )
+        with (
+            patch(
+                "XBrainLab.llm.agent.controller.get_application_service",
+                return_value=service,
+            ),
+            patch(
+                "XBrainLab.llm.agent.controller.build_workflow_decision_context",
+                return_value=context,
+            ),
+        ):
+            snapshot = ctrl._refresh_execution_snapshot()
+
+        assert snapshot.state_reliable is False
+
+    def test_workflow_decision_needed_opens_existing_ui_boundary(self, ctrl):
+        from XBrainLab.llm.agent.controller import LLMController
+        from XBrainLab.llm.agent.execution_policy import ExecutionSnapshot
+
+        ctrl._execution_mode = LLMController.MODE_MULTI
+        ctrl._tool_execution_count = 1
+        ctrl._refresh_execution_snapshot = MagicMock(
+            return_value=ExecutionSnapshot(
+                state_reliable=True,
+                decision_needed=("epoch_window", "target_event"),
+                can_auto_continue=False,
+                recommended_next_step="create_epoch",
+                existing_ui_surface="Epoch dialog",
+            )
+        )
+        ctrl._generate_response = MagicMock()
+        ctrl._finalize_turn_after_tool = MagicMock()
+
+        ctrl._handle_tool_success(None)
+
+        ctrl.request_user_interaction.emit.assert_called_once_with(
+            "decision_required",
+            {
+                "command": "create_epoch",
+                "decision_needed": ["epoch_window", "target_event"],
+                "existing_ui_surface": "Epoch dialog",
+            },
+        )
+        ctrl._generate_response.assert_not_called()
+        ctrl._finalize_turn_after_tool.assert_called_once()
+
     def test_success_finalizes(self, ctrl):
         _allow_prompt_tools(ctrl)
         ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "ok"))
@@ -355,7 +523,10 @@ class TestProcessToolCalls:
         ctrl._finalize_turn_after_tool.assert_called_once()
 
     def test_failure_retries(self, ctrl):
+        from XBrainLab.llm.agent.controller import LLMController
+
         _allow_prompt_tools(ctrl)
+        ctrl.set_execution_mode(LLMController.MODE_MULTI)
         ctrl._execute_tool_no_loop = MagicMock(return_value=(False, "err"))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl._generate_response = MagicMock()
@@ -611,7 +782,7 @@ class TestExecuteDebugTool:
 class TestOnUserConfirmed:
     def test_approved_executes_and_finalises(self, ctrl):
         """When user approves, the pending tool should execute."""
-        ctrl._pending_confirmation = ("clear_dataset", {}, [])
+        ctrl._pending_confirmation = ("clear_dataset", {})
         ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "Dataset cleared."))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl.metrics.finish_turn = MagicMock()
@@ -629,7 +800,6 @@ class TestOnUserConfirmed:
         ctrl._pending_confirmation = (
             "apply_interpretation",
             {"candidate_id": "candidate-1"},
-            [],
         )
         ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "Applied."))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
@@ -642,9 +812,34 @@ class TestOnUserConfirmed:
             {"candidate_id": "candidate-1", "confirmed": True},
         )
 
+    def test_approved_command_discards_original_batch_remainder(self, ctrl):
+        from XBrainLab.llm.agent.execution_policy import ExecutionSnapshot
+
+        ctrl._pending_confirmation = (
+            "apply_interpretation",
+            {"candidate_id": "candidate-1"},
+        )
+        ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "Applied."))
+        ctrl._handle_tool_result_logic = MagicMock(return_value=False)
+        ctrl._process_tool_calls = MagicMock()
+        ctrl._refresh_execution_snapshot = MagicMock(
+            return_value=ExecutionSnapshot.safe_to_continue()
+        )
+        ctrl._finalize_turn_after_tool = MagicMock()
+
+        ctrl.on_user_confirmed(True)
+
+        ctrl._execute_tool_no_loop.assert_called_once_with(
+            "apply_interpretation",
+            {"candidate_id": "candidate-1", "confirmed": True},
+        )
+        ctrl._process_tool_calls.assert_not_called()
+        ctrl._refresh_execution_snapshot.assert_called_once()
+        ctrl._finalize_turn_after_tool.assert_called_once()
+
     def test_rejected_appends_rejection(self, ctrl):
         """When user rejects, no execution should happen."""
-        ctrl._pending_confirmation = ("clear_dataset", {}, [])
+        ctrl._pending_confirmation = ("clear_dataset", {})
         ctrl._execute_tool_no_loop = MagicMock()
         ctrl.metrics.finish_turn = MagicMock()
 
@@ -665,12 +860,14 @@ class TestOnUserConfirmed:
         assert ctrl.history == history_before
         ctrl._execute_tool_no_loop.assert_not_called()
 
-    def test_approved_failure_triggers_retry(self, ctrl):
-        """If confirmed tool fails, it should trigger retry."""
-        ctrl._pending_confirmation = ("start_training", {}, [])
+    def test_approved_failure_stops_in_ask_mode(self, ctrl):
+        """A confirmed Ask action cannot execute a second tool attempt."""
+        ctrl._pending_confirmation = ("start_training", {})
         ctrl._execute_tool_no_loop = MagicMock(return_value=(False, "error"))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl._generate_response = MagicMock()
+        ctrl._finalize_turn_after_tool = MagicMock()
+        ctrl._refresh_execution_snapshot = MagicMock()
         ctrl._tool_failure_count = 0
 
         ctrl.on_user_confirmed(True)
@@ -680,17 +877,50 @@ class TestOnUserConfirmed:
             {"confirmed": True},
         )
         assert ctrl._tool_failure_count == 1
-        ctrl._generate_response.assert_called_once()
+        ctrl._generate_response.assert_not_called()
+        ctrl._refresh_execution_snapshot.assert_called_once()
+        ctrl._finalize_turn_after_tool.assert_called_once()
 
     def test_reset_conversation_clears_pending(self, ctrl):
         """reset_conversation should also clear any pending confirmation."""
-        ctrl._pending_confirmation = ("clear_dataset", {}, [])
+        ctrl._pending_confirmation = ("clear_dataset", {})
         ctrl.reset_conversation()
         assert ctrl._pending_confirmation is None
 
 
 # --- HITL: _process_tool_calls confirmation gate ---
 class TestProcessToolCallsConfirmation:
+    def test_non_auto_executable_policy_requires_confirmation(self, ctrl):
+        from XBrainLab.llm.tools.application_surface import ToolAvailability
+
+        _allow_prompt_tools(ctrl)
+        tool = MagicMock(requires_confirmation=False, description="Review choice")
+        ctrl.registry.get_tool.return_value = tool
+        ctrl._tool_autonomy = MagicMock(
+            return_value=ToolAvailability(
+                tool_name="review_choice",
+                enabled=True,
+                can_auto_execute=False,
+                decision_boundary="user_choice",
+            )
+        )
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl._execute_tool_no_loop = MagicMock()
+
+        ctrl._process_tool_calls([("review_choice", {})], "json")
+
+        assert ctrl._pending_confirmation == ("review_choice", {})
+        ctrl._execute_tool_no_loop.assert_not_called()
+        ctrl.request_user_interaction.emit.assert_called_once_with(
+            "confirm_action",
+            {
+                "tool_name": "review_choice",
+                "params": {},
+                "description": "Review choice",
+                "decision_boundary": "user_choice",
+            },
+        )
+
     def test_confirmation_required_pauses_execution(self, ctrl):
         """Tool with requires_confirmation should emit signal and pause."""
         _allow_prompt_tools(ctrl)
@@ -713,7 +943,6 @@ class TestProcessToolCallsConfirmation:
             ctrl,
             tool_name="clear_dataset",
             params={},
-            remaining=[],
             description="Clear data",
         )
 
@@ -755,7 +984,6 @@ class TestProcessToolCallsConfirmation:
             ctrl,
             tool_name="apply_interpretation",
             params={},
-            remaining=[],
             description="Apply data interpretation",
             decision_boundary="semantic_apply",
         )
@@ -787,6 +1015,32 @@ class TestProcessToolCallsConfirmation:
 
 # --- ApplicationService capability gate in _execute_tool_no_loop ---
 class TestPipelineGate:
+    def test_unavailable_capability_policy_fails_closed(self, ctrl):
+        from XBrainLab.llm.tools.application_surface import (
+            CapabilityPolicyUnavailable,
+            ToolAvailability,
+        )
+
+        with patch(
+            "XBrainLab.llm.agent.controller.get_tool_availability",
+            side_effect=CapabilityPolicyUnavailable("policy missing"),
+        ):
+            result = ctrl._check_tool_availability("load_data")
+
+        assert isinstance(result, ToolAvailability)
+        assert result.enabled is False
+        assert result.can_auto_execute is False
+        assert "unavailable" in result.reason_text.lower()
+
+    def test_runtime_availability_has_no_stage_config_gate(self):
+        import inspect
+
+        from XBrainLab.llm.agent.controller import LLMController
+
+        source = inspect.getsource(LLMController._check_tool_availability)
+        assert "STAGE_CONFIG" not in source
+        assert "_check_prompt_tool_exposure" not in source
+
     def test_blocked_tool_returns_error(self, ctrl):
         """Tool blocked by ApplicationService policy is rejected at execution time."""
         from XBrainLab.backend.study import Study
@@ -795,18 +1049,10 @@ class TestPipelineGate:
         mock_tool = MagicMock()
         ctrl.registry.get_tool.return_value = mock_tool
 
-        with (
-            patch("XBrainLab.llm.agent.controller.compute_pipeline_stage") as stage,
-            patch("XBrainLab.llm.agent.controller.STAGE_CONFIG") as stage_config,
-        ):
-            stage.return_value = "test-stage"
-            stage_config.get.side_effect = lambda key, default=None: (
-                {"tools": ["apply_bandpass_filter"]} if key == "test-stage" else default
-            )
-            success, result = ctrl._execute_tool_no_loop(
-                "apply_bandpass_filter",
-                {},
-            )
+        success, result = ctrl._execute_tool_no_loop(
+            "apply_bandpass_filter",
+            {},
+        )
 
         assert not success
         assert result.ok is False
@@ -817,8 +1063,11 @@ class TestPipelineGate:
         assert payload["ok"] is False
         assert payload["capability"]["command_name"] == "preprocess"
 
-    def test_unlisted_stage_tool_is_rejected_before_legacy_execution(self, ctrl):
-        """Registry tools that are absent from the stage prompt are hard-blocked."""
+    def test_application_service_validates_tool_without_stage_execution_gate(
+        self,
+        ctrl,
+    ):
+        """Prompt exposure cannot replace ApplicationService command validation."""
         from XBrainLab.backend.study import Study
 
         ctrl.study = Study()
@@ -833,8 +1082,8 @@ class TestPipelineGate:
 
         assert not success
         assert result.ok is False
-        assert result.command_name is None
-        assert "not exposed in the current assistant workflow stage" in result.message
+        assert result.command_name == "load_data"
+        assert "Required inputs are missing" in result.message
         mock_tool.execute.assert_not_called()
 
     def test_allowed_mapped_tool_missing_params_does_not_use_legacy_tool(self, ctrl):
@@ -920,15 +1169,7 @@ class TestPipelineGate:
         mock_tool = MagicMock()
         ctrl.registry.get_tool.return_value = mock_tool
 
-        with (
-            patch("XBrainLab.llm.agent.controller.compute_pipeline_stage") as stage,
-            patch("XBrainLab.llm.agent.controller.STAGE_CONFIG") as stage_config,
-        ):
-            stage.return_value = "test-stage"
-            stage_config.get.side_effect = lambda key, default=None: (
-                {"tools": ["start_training"]} if key == "test-stage" else default
-            )
-            success, result = ctrl._execute_tool_no_loop("start_training", {})
+        success, result = ctrl._execute_tool_no_loop("start_training", {})
 
         assert not success
         assert result.ok is False
@@ -944,18 +1185,10 @@ class TestPipelineGate:
         mock_tool.execute.side_effect = AssertionError("legacy path should not run")
         ctrl.registry.get_tool.return_value = mock_tool
 
-        with (
-            patch("XBrainLab.llm.agent.controller.compute_pipeline_stage") as stage,
-            patch("XBrainLab.llm.agent.controller.STAGE_CONFIG") as stage_config,
-        ):
-            stage.return_value = "test-stage"
-            stage_config.get.side_effect = lambda key, default=None: (
-                {"tools": ["set_model"]} if key == "test-stage" else default
-            )
-            success, result = ctrl._execute_tool_no_loop(
-                "set_model",
-                {"model_name": "EEGNet"},
-            )
+        success, result = ctrl._execute_tool_no_loop(
+            "set_model",
+            {"model_name": "EEGNet"},
+        )
 
         assert success is True
         assert result.ok is True
@@ -1011,6 +1244,7 @@ class TestExecutionMode:
     def test_multi_mode_auto_continues(self, ctrl):
         """In multi mode, a successful tool call triggers another generation."""
         from XBrainLab.llm.agent.controller import LLMController
+        from XBrainLab.llm.agent.execution_policy import ExecutionSnapshot
 
         _allow_prompt_tools(ctrl)
         ctrl.set_execution_mode(LLMController.MODE_MULTI)
@@ -1019,6 +1253,9 @@ class TestExecutionMode:
         ctrl._finalize_turn_after_tool = MagicMock()
         ctrl._generate_response = MagicMock()
         ctrl._detect_loop = MagicMock(return_value=False)
+        ctrl._refresh_execution_snapshot = MagicMock(
+            return_value=ExecutionSnapshot.safe_to_continue()
+        )
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
         ctrl.registry.get_tool.return_value.requires_confirmation = False
 
@@ -1032,7 +1269,7 @@ class TestExecutionMode:
 
         _allow_prompt_tools(ctrl)
         ctrl.set_execution_mode(LLMController.MODE_MULTI)
-        ctrl._successful_tool_count = ctrl._max_successful_tools - 1
+        ctrl._tool_execution_count = ctrl._max_tool_executions - 1
         ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "ok"))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl._finalize_turn_after_tool = MagicMock()

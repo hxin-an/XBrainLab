@@ -252,6 +252,7 @@ def _make_ctrl() -> Any:
     from PyQt6.QtCore import QObject
 
     from XBrainLab.llm.agent.controller import LLMController
+    from XBrainLab.llm.agent.execution_policy import HostExecutionPolicy
 
     ctrl = LLMController.__new__(LLMController)
     QObject.__init__(ctrl)
@@ -279,7 +280,10 @@ def _make_ctrl() -> Any:
     ctrl._tool_failure_count = 0
     ctrl._max_tool_failures = 3
     ctrl._successful_tool_count = 0
-    ctrl._max_successful_tools = 5
+    ctrl._execution_policy = HostExecutionPolicy()
+    ctrl._tool_execution_count = 0
+    ctrl._max_tool_executions = 5
+    ctrl._turn_cancelled = False
     ctrl._execution_mode = ctrl.MODE_SINGLE
     ctrl._recent_tool_calls = deque(maxlen=10)
     ctrl._pending_confirmation = None
@@ -389,7 +393,8 @@ class TestWorkerEdgeCases:
         """L129-130: cleanup when signal already disconnected."""
         from XBrainLab.llm.agent.worker import AgentWorker
 
-        w = AgentWorker.__new__(AgentWorker)
+        w = AgentWorker()
+        w.engine = MagicMock()
         w.generation_thread = MagicMock()
         w.generation_thread.chunk_received = MagicMock()
         w.generation_thread.finished = MagicMock()
@@ -399,17 +404,14 @@ class TestWorkerEdgeCases:
         w.generation_thread.finished.disconnect.side_effect = TypeError
         w.generation_thread.error.disconnect.side_effect = TypeError
         w.generation_thread.isRunning.return_value = False
-        w.chunk_received = MagicMock()
-        w.finished = MagicMock()
-        w.error = MagicMock()
-        w.log = MagicMock()
         w._cleanup_generation_thread()
 
     def test_timeout_disconnect_fail(self):
         """L233-234: timeout handler when disconnect already done."""
         from XBrainLab.llm.agent.worker import AgentWorker
 
-        w = AgentWorker.__new__(AgentWorker)
+        w = AgentWorker()
+        w.engine = MagicMock()
         w.generation_thread = MagicMock()
         w.generation_thread.chunk_received = MagicMock()
         w.generation_thread.finished = MagicMock()
@@ -418,12 +420,10 @@ class TestWorkerEdgeCases:
         w.generation_thread.finished.disconnect.side_effect = RuntimeError
         w.generation_thread.error.disconnect.side_effect = RuntimeError
         w.generation_thread.isRunning.return_value = True
-        w.chunk_received = MagicMock()
-        w.finished = MagicMock()
-        w.error = MagicMock()
-        w.log = MagicMock()
+        errors = []
+        w.error.connect(errors.append)
         w._on_timeout()
-        w.error.emit.assert_called()
+        assert errors == ["Error: Generation timed out (Local LLM is too slow)."]
 
 
 # ── config.py ───────────────────────────────────────────────

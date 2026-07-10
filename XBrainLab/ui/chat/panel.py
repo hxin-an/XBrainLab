@@ -9,6 +9,7 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QApplication,  # Added for M3.1
+    QButtonGroup,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -65,6 +66,65 @@ PRODUCT_STATUS_HIDDEN_COMMANDS = frozenset(
     }
 )
 
+EXECUTION_MODE_SELECTOR_STYLE = f"""
+    QWidget#AssistantModeSelector {{
+        background: transparent;
+        border: none;
+    }}
+    QPushButton {{
+        min-width: 72px;
+        min-height: 28px;
+        padding: 3px 10px;
+        color: {Theme.TEXT_SECONDARY};
+        background: {Theme.BACKGROUND_DARK};
+        border: 1px solid {Theme.BORDER};
+        font-size: 12px;
+        font-weight: 600;
+    }}
+    QPushButton#AssistantAskMode {{
+        border-top-left-radius: 5px;
+        border-bottom-left-radius: 5px;
+        border-top-right-radius: 0px;
+        border-bottom-right-radius: 0px;
+    }}
+    QPushButton#AssistantWorkflowMode {{
+        border-left: none;
+        border-top-left-radius: 0px;
+        border-bottom-left-radius: 0px;
+        border-top-right-radius: 5px;
+        border-bottom-right-radius: 5px;
+    }}
+    QPushButton:checked {{
+        color: {Theme.TEXT_PRIMARY};
+        background: {Theme.BLUE_PRESSED};
+        border-color: {Theme.BLUE_FOCUS_BORDER};
+    }}
+    QPushButton:hover:!checked {{
+        color: {Theme.TEXT_PRIMARY};
+        background: {Theme.BACKGROUND_MID};
+    }}
+    QPushButton:disabled {{
+        color: {Theme.BTN_DISABLED_TEXT};
+        background: {Theme.BTN_DISABLED_BG};
+        border-color: {Theme.BTN_DISABLED_BORDER};
+    }}
+    QPushButton:checked:disabled {{
+        color: #c9d8e6;
+        background: #29445a;
+        border-color: #456b88;
+    }}
+"""
+
+WORKFLOW_RUN_STATUS_STYLE = f"""
+    QLabel#AssistantWorkflowRunStatus {{
+        color: {Theme.TEXT_SECONDARY};
+        background: transparent;
+        border: none;
+        padding: 0px;
+        font-size: 12px;
+    }}
+"""
+
 
 class ChatPanel(QWidget):
     """Copilot-style chat interface using MessageBubble widgets.
@@ -105,6 +165,8 @@ class ChatPanel(QWidget):
 
         self.is_processing = False
         self._retry_available = False
+        self.current_execution_mode = "single"
+        self._workflow_status_text = ""
         self._footer_status_text = "No EEG data open · Scan a data source to begin"
         self._pending_scroll_to_bottom = False
         self.setObjectName("AssistantPanel")
@@ -159,6 +221,51 @@ class ChatPanel(QWidget):
         control_layout = QVBoxLayout(control_panel)
         control_layout.setContentsMargins(10, 8, 10, 8)
         control_layout.setSpacing(7)
+
+        mode_row = QWidget()
+        mode_row.setObjectName("AssistantModeSelector")
+        mode_row.setStyleSheet(EXECUTION_MODE_SELECTOR_STYLE)
+        mode_layout = QHBoxLayout(mode_row)
+        mode_layout.setContentsMargins(4, 0, 4, 0)
+        mode_layout.setSpacing(8)
+
+        self.execution_mode_group = QButtonGroup(self)
+        self.execution_mode_group.setExclusive(True)
+
+        self.ask_mode_btn = QPushButton("Ask")
+        self.ask_mode_btn.setObjectName("AssistantAskMode")
+        self.ask_mode_btn.setCheckable(True)
+        self.ask_mode_btn.setChecked(True)
+        self.ask_mode_btn.setToolTip("Answer or run one step, then stop.")
+        self.ask_mode_btn.clicked.connect(
+            lambda _checked=False: self._set_execution_mode("single", "Ask")
+        )
+        self.execution_mode_group.addButton(self.ask_mode_btn)
+        mode_layout.addWidget(self.ask_mode_btn)
+
+        self.workflow_mode_btn = QPushButton("Workflow")
+        self.workflow_mode_btn.setObjectName("AssistantWorkflowMode")
+        self.workflow_mode_btn.setCheckable(True)
+        self.workflow_mode_btn.setToolTip(
+            "Continue safe steps and pause when a decision is needed."
+        )
+        self.workflow_mode_btn.clicked.connect(
+            lambda _checked=False: self._set_execution_mode("multi", "Workflow")
+        )
+        self.execution_mode_group.addButton(self.workflow_mode_btn)
+        mode_layout.addWidget(self.workflow_mode_btn)
+        mode_layout.addStretch(1)
+        control_layout.addWidget(mode_row)
+
+        self.workflow_run_status_label = QLabel("")
+        self.workflow_run_status_label.setObjectName("AssistantWorkflowRunStatus")
+        self.workflow_run_status_label.setStyleSheet(WORKFLOW_RUN_STATUS_STYLE)
+        self.workflow_run_status_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.workflow_run_status_label.setContentsMargins(4, 0, 4, 0)
+        self.workflow_run_status_label.setVisible(False)
+        control_layout.addWidget(self.workflow_run_status_label)
 
         # Composer: Input Field and Send / Stop Button
         input_widget = QWidget()
@@ -521,10 +628,37 @@ class ChatPanel(QWidget):
             label: Human-friendly label for the button text.
 
         """
+        normalized_mode = "multi" if mode_key in {"multi", "workflow"} else "single"
+        self.current_execution_mode = normalized_mode
         self.mode_btn.setText(label)
+        self.ask_mode_btn.setChecked(normalized_mode == "single")
+        self.workflow_mode_btn.setChecked(normalized_mode == "multi")
+        if normalized_mode == "single":
+            self.workflow_run_status_label.setVisible(False)
         if hasattr(self, "step_mode_status_label"):
             self.step_mode_status_label.setText(label)
-        self.execution_mode_changed.emit(mode_key)
+        self.execution_mode_changed.emit(normalized_mode)
+
+    def set_execution_mode(self, mode: str) -> None:
+        """Synchronize the product selector without emitting another change."""
+        normalized_mode = "multi" if mode in {"multi", "workflow"} else "single"
+        self.current_execution_mode = normalized_mode
+        self.ask_mode_btn.setChecked(normalized_mode == "single")
+        self.workflow_mode_btn.setChecked(normalized_mode == "multi")
+        self.mode_btn.setText("Workflow" if normalized_mode == "multi" else "Ask")
+        if normalized_mode == "single":
+            self.workflow_run_status_label.setVisible(False)
+
+    def set_workflow_status(self, text: str) -> None:
+        """Show one compact product status while Workflow is active."""
+        self._workflow_status_text = " ".join(str(text or "").split())
+        self.workflow_run_status_label.setText(self._workflow_status_text)
+        self.workflow_run_status_label.setToolTip(self._workflow_status_text)
+        self.workflow_run_status_label.setVisible(
+            self.current_execution_mode == "multi"
+            and self.is_processing
+            and bool(self._workflow_status_text)
+        )
 
     def _on_new_conversation(self):
         """Emit the new conversation requested signal."""
@@ -609,6 +743,18 @@ class ChatPanel(QWidget):
             self.model_btn.setEnabled(not is_processing)
         if hasattr(self, "mode_btn"):
             self.mode_btn.setEnabled(not is_processing)
+        if hasattr(self, "ask_mode_btn"):
+            self.ask_mode_btn.setEnabled(not is_processing)
+        if hasattr(self, "workflow_mode_btn"):
+            self.workflow_mode_btn.setEnabled(not is_processing)
+        if hasattr(self, "workflow_run_status_label"):
+            if is_processing and self.current_execution_mode == "multi":
+                if not self._workflow_status_text:
+                    self.set_workflow_status("Checking data")
+                else:
+                    self.workflow_run_status_label.setVisible(True)
+            else:
+                self.workflow_run_status_label.setVisible(False)
         if hasattr(self, "retry_btn"):
             self.retry_btn.setEnabled((not is_processing) and self._retry_available)
         if hasattr(self, "clear_btn"):

@@ -51,6 +51,63 @@ class TestChatPanelInit:
     def test_not_processing_initially(self, chat_panel):
         assert chat_panel.is_processing is False
 
+    def test_ask_workflow_selector_is_visible_and_defaults_to_ask(self, chat_panel):
+        assert chat_panel.ask_mode_btn.isVisibleTo(chat_panel)
+        assert chat_panel.workflow_mode_btn.isVisibleTo(chat_panel)
+        assert chat_panel.ask_mode_btn.text() == "Ask"
+        assert chat_panel.workflow_mode_btn.text() == "Workflow"
+        assert chat_panel.ask_mode_btn.isChecked()
+        assert chat_panel.current_execution_mode == "single"
+
+    def test_workflow_selector_emits_internal_multi_mode(self, chat_panel, qtbot):
+        with qtbot.waitSignal(
+            chat_panel.execution_mode_changed,
+            timeout=1000,
+        ) as emitted:
+            chat_panel.workflow_mode_btn.click()
+
+        assert emitted.args == ["multi"]
+        assert chat_panel.workflow_mode_btn.isChecked()
+        assert chat_panel.current_execution_mode == "multi"
+
+    def test_workflow_status_is_compact_and_only_visible_in_workflow(
+        self,
+        chat_panel,
+    ):
+        chat_panel.set_workflow_status("Checking data")
+        assert chat_panel.workflow_run_status_label.isHidden()
+
+        chat_panel.set_execution_mode("multi")
+        chat_panel.set_processing_state(True)
+        chat_panel.set_workflow_status("Running step")
+
+        assert chat_panel.workflow_run_status_label.text() == "Running step"
+        assert chat_panel.workflow_run_status_label.isHidden() is False
+        assert "tool" not in chat_panel.workflow_run_status_label.text().lower()
+
+        chat_panel.set_processing_state(False)
+        assert chat_panel.workflow_run_status_label.isHidden()
+
+    def test_workflow_status_fits_below_selector_in_narrow_dock(
+        self,
+        chat_panel,
+        qtbot,
+    ):
+        chat_panel.resize(320, 620)
+        chat_panel.show()
+        chat_panel.set_execution_mode("multi")
+        chat_panel.set_processing_state(True)
+        chat_panel.set_workflow_status("Waiting for decision")
+        qtbot.wait(0)
+
+        status = chat_panel.workflow_run_status_label
+        assert status.fontMetrics().horizontalAdvance(status.text()) <= status.width()
+        button_bottom = chat_panel.ask_mode_btn.mapTo(
+            chat_panel.control_panel,
+            QPoint(0, chat_panel.ask_mode_btn.height()),
+        ).y()
+        assert status.geometry().top() >= button_bottom
+
 
 class TestChatPanelSendMessage:
     def test_send_empty_ignored(self, chat_panel):
@@ -469,6 +526,9 @@ class TestChatPanelCallbacks:
         assert chat_panel.options_btn.isHidden()
         assert chat_panel.feature_btn.isHidden()
         assert chat_panel.mode_btn.isHidden()
+        assert chat_panel.ask_mode_btn.isHidden() is False
+        assert chat_panel.workflow_mode_btn.isHidden() is False
+        assert chat_panel.ask_mode_btn.isChecked()
         assert chat_panel.step_mode_status_label.isHidden()
         assert chat_panel.retry_btn.isEnabled() is False
         assert chat_panel.retry_btn.isHidden()

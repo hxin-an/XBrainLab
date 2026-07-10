@@ -9,6 +9,7 @@ def _make_ctrl():
     from PyQt6.QtCore import QObject
 
     from XBrainLab.llm.agent.controller import LLMController
+    from XBrainLab.llm.agent.execution_policy import HostExecutionPolicy
 
     ctrl = LLMController.__new__(LLMController)
     # Call QObject.__init__ so that Qt internals are initialised (hasattr etc.)
@@ -38,7 +39,11 @@ def _make_ctrl():
     ctrl._tool_failure_count = 0
     ctrl._max_tool_failures = 3
     ctrl._successful_tool_count = 0
-    ctrl._max_successful_calls = 5
+    ctrl._execution_policy = HostExecutionPolicy()
+    ctrl._execution_mode = ctrl.MODE_SINGLE
+    ctrl._tool_execution_count = 0
+    ctrl._max_tool_executions = 5
+    ctrl._turn_cancelled = False
     ctrl._recent_tool_calls = deque(maxlen=10)
     ctrl._pending_confirmation = None
     ctrl._loop_break_count = 0
@@ -78,14 +83,9 @@ class TestControllerBrokenJsonRetry:
 class TestControllerToolExecution:
     """Cover _execute_tool_no_loop and _process_tool_calls."""
 
-    @patch("XBrainLab.llm.agent.controller.compute_pipeline_stage")
-    @patch("XBrainLab.llm.agent.controller.STAGE_CONFIG")
-    def test_execute_success(self, mock_config, mock_stage):
-        from XBrainLab.llm.agent.controller import PipelineStage
-
+    def test_execute_success(self):
         ctrl = _make_ctrl()
-        mock_stage.return_value = PipelineStage.EMPTY
-        mock_config.get.return_value = {"tools": ["load_data"]}
+        ctrl._check_tool_availability = MagicMock(return_value=None)
         mock_tool = MagicMock()
         mock_tool.execute.return_value = "Done"
         ctrl.registry.get_tool.return_value = mock_tool
@@ -150,17 +150,11 @@ class TestControllerToolResultLogic:
 class TestControllerConfirmation:
     """Cover on_user_confirmed paths."""
 
-    @patch("XBrainLab.llm.agent.controller.compute_pipeline_stage")
-    @patch("XBrainLab.llm.agent.controller.STAGE_CONFIG")
-    def test_approved_success(self, mock_config, mock_stage):
-        from XBrainLab.llm.agent.controller import PipelineStage
-
+    def test_approved_success(self):
         ctrl = _make_ctrl()
-        ctrl._pending_confirmation = ("load_data", {"paths": ["/a"]}, [])
+        ctrl._pending_confirmation = ("load_data", {"paths": ["/a"]})
         ctrl._finalize_turn_after_tool = MagicMock()
-
-        mock_stage.return_value = PipelineStage.EMPTY
-        mock_config.get.return_value = {"tools": ["load_data"]}
+        ctrl._check_tool_availability = MagicMock(return_value=None)
         mock_tool = MagicMock()
         mock_tool.execute.return_value = "OK"
         ctrl.registry.get_tool.return_value = mock_tool
@@ -168,18 +162,13 @@ class TestControllerConfirmation:
         ctrl.on_user_confirmed(True)
         ctrl._finalize_turn_after_tool.assert_called_once()
 
-    @patch("XBrainLab.llm.agent.controller.compute_pipeline_stage")
-    @patch("XBrainLab.llm.agent.controller.STAGE_CONFIG")
-    def test_approved_failure_max_retries(self, mock_config, mock_stage):
-        from XBrainLab.llm.agent.controller import PipelineStage
-
+    def test_approved_failure_max_retries(self):
         ctrl = _make_ctrl()
-        ctrl._pending_confirmation = ("load_data", {"paths": ["/a"]}, [])
+        ctrl._pending_confirmation = ("load_data", {"paths": ["/a"]})
         ctrl._finalize_turn_after_tool = MagicMock()
         ctrl._tool_failure_count = 2
 
-        mock_stage.return_value = PipelineStage.EMPTY
-        mock_config.get.return_value = {"tools": []}  # gated
+        ctrl._check_tool_availability = MagicMock(return_value="gated")
         mock_tool = MagicMock()
         ctrl.registry.get_tool.return_value = mock_tool
 
@@ -209,12 +198,8 @@ class TestControllerClose:
 class TestControllerProcessToolCalls:
     """Cover _process_tool_calls — loop detection and params serialization."""
 
-    @patch("XBrainLab.llm.agent.controller.compute_pipeline_stage")
-    @patch("XBrainLab.llm.agent.controller.STAGE_CONFIG")
     @patch("XBrainLab.llm.agent.controller.estimate_confidence", return_value=0.9)
-    def test_loop_detection(self, mock_conf, mock_config, mock_stage):
-        from XBrainLab.llm.agent.controller import PipelineStage
-
+    def test_loop_detection(self, mock_conf):
         ctrl = _make_ctrl()
         sig = ("load_data", '{"paths": ["/a"]}')
         ctrl._recent_tool_calls.extend([sig, sig])
@@ -225,8 +210,6 @@ class TestControllerProcessToolCalls:
         mock_validation.requires_confirmation = False
         ctrl.verifier.verify_tool_call.return_value = mock_validation
 
-        mock_stage.return_value = PipelineStage.EMPTY
-        mock_config.get.return_value = {"tools": ["load_data"]}
         mock_tool = MagicMock()
         mock_tool.execute.return_value = "ok"
         ctrl.registry.get_tool.return_value = mock_tool
