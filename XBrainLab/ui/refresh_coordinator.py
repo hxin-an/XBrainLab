@@ -191,39 +191,55 @@ def refresh_shared_status(context: Any) -> bool:
 @contextmanager
 def suppress_observer_refresh_during_command(context: Any) -> Iterator[None]:
     """Skip observer-driven refreshes until command result refresh can run."""
-    if not begin_command_refresh_suppression(context):
+    main_window_id = _command_refresh_suppression_key(context)
+    if main_window_id is None:
         yield
         return
+    _begin_command_refresh_suppression_for(main_window_id)
     try:
         yield
     finally:
-        end_command_refresh_suppression(context)
+        _end_command_refresh_suppression_for(main_window_id)
 
 
 def begin_command_refresh_suppression(context: Any) -> bool:
     """Begin a nestable UI observer-suppression window for one command."""
-    main_window = find_main_window(context)
-    if main_window is None:
+    main_window_id = _command_refresh_suppression_key(context)
+    if main_window_id is None:
         return False
-    main_window_id = id(main_window)
+    _begin_command_refresh_suppression_for(main_window_id)
+    return True
+
+
+def _begin_command_refresh_suppression_for(main_window_id: int) -> None:
+    """Increment suppression by immutable owner id."""
     _COMMAND_EXECUTING_MAIN_WINDOWS[main_window_id] = (
         _COMMAND_EXECUTING_MAIN_WINDOWS.get(main_window_id, 0) + 1
     )
-    return True
 
 
 def end_command_refresh_suppression(context: Any) -> bool:
     """End one UI observer-suppression window opened for a command."""
-    main_window = find_main_window(context)
-    if main_window is None:
+    main_window_id = _command_refresh_suppression_key(context)
+    if main_window_id is None:
         return False
-    main_window_id = id(main_window)
+    return _end_command_refresh_suppression_for(main_window_id)
+
+
+def _end_command_refresh_suppression_for(main_window_id: int) -> bool:
+    """Decrement suppression without dereferencing a possibly deleted Qt object."""
     active_count = _COMMAND_EXECUTING_MAIN_WINDOWS.get(main_window_id, 0)
     if active_count <= 1:
         _COMMAND_EXECUTING_MAIN_WINDOWS.pop(main_window_id, None)
     else:
         _COMMAND_EXECUTING_MAIN_WINDOWS[main_window_id] = active_count - 1
     return active_count > 0
+
+
+def _command_refresh_suppression_key(context: Any) -> int | None:
+    """Resolve one stable owner key while the Qt context is known to be alive."""
+    main_window = find_main_window(context)
+    return id(main_window) if main_window is not None else None
 
 
 def refresh_panel(panel: Any, *, mark_dirty: bool = False) -> bool:

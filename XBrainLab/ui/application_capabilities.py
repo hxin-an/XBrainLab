@@ -118,22 +118,22 @@ def execute_application_command(
     return result
 
 
-def execute_application_shutdown_command(
-    context: Any,
-    command: Command,
-) -> CommandResult | None:
-    """Execute a teardown command while the owning widget is closing.
-
-    This is intentionally narrower than ``execute_application_command(...,
-    refresh=False)``: it is for close-time cleanup where refreshing disappearing
-    widgets would be misleading, while Study detection and observer suppression
-    still remain centralized in the UI command helper layer.
-    """
+def request_application_shutdown_fence(context: Any) -> bool:
+    """Close command admission immediately without waiting for the command lock."""
     study = find_study(context)
     if study is None or not isinstance(study, Study) or isinstance(study, Mock):
-        return None
-    with suppress_observer_refresh_during_command(context):
-        return _application_service_for(study).execute(command)
+        return False
+    _application_service_for(study).request_shutdown_fence()
+    return True
+
+
+def release_application_shutdown_fence(context: Any) -> bool:
+    """Reopen command admission immediately after a cancelled close attempt."""
+    study = find_study(context)
+    if study is None or not isinstance(study, Study) or isinstance(study, Mock):
+        return False
+    _application_service_for(study).release_shutdown_fence()
+    return True
 
 
 def execute_application_command_async(
@@ -144,6 +144,7 @@ def execute_application_command_async(
     on_error: Callable[[tuple], None] | None = None,
     refresh: bool = True,
     busy_target: Any | None = None,
+    allow_during_shutdown: bool = False,
 ) -> bool:
     """Execute an ApplicationService command through QThreadPool for UI flows.
 
@@ -187,7 +188,9 @@ def execute_application_command_async(
 
     def _handle_result(result: CommandResult) -> None:
         _finish_worker()
-        if _qt_object_deleted(context):
+        if _qt_object_deleted(context) or (
+            not allow_during_shutdown and _context_is_closing(context)
+        ):
             return
         if refresh:
             refresh_after_command(context, result)
@@ -207,7 +210,11 @@ def execute_application_command_async(
                 "Async application command traceback:\n%s",
                 formatted_traceback,
             )
-        if on_error is not None and not _qt_object_deleted(context):
+        if (
+            on_error is not None
+            and not _qt_object_deleted(context)
+            and (allow_during_shutdown or not _context_is_closing(context))
+        ):
             on_error(error)
 
     def _handle_finished() -> None:
@@ -252,6 +259,27 @@ def _qt_object_deleted(obj: Any) -> bool:
         return bool(sip.isdeleted(obj))
     except (AttributeError, TypeError, RuntimeError):
         return False
+
+
+def _context_is_closing(context: Any) -> bool:
+    """Return whether the owning window has entered its close lifecycle."""
+    current = context
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        if _qt_object_deleted(current):
+            return True
+        try:
+            if getattr(current, "_closing_in_progress", None) is True:
+                return True
+            main_window = getattr(current, "main_window", None)
+            if getattr(main_window, "_closing_in_progress", None) is True:
+                return True
+            parent = getattr(current, "parent", None)
+            current = parent() if callable(parent) else None
+        except RuntimeError:
+            return True
+    return False
 
 
 def _application_service_for(study: Study):

@@ -196,6 +196,9 @@ class StateSnapshotService:
             has_trainer=training.has_trainer,
             is_running=training.is_running,
         )
+        training_liveness_reliable = not any(
+            error.startswith("training.is_running:") for error in read_errors
+        )
         pipeline_stage = self._pipeline_stage_from_snapshots(
             active_dataset,
             active_training,
@@ -214,6 +217,7 @@ class StateSnapshotService:
             active_training=active_training,
             last_error=last_error,
             state_reliable=not read_errors,
+            training_liveness_reliable=training_liveness_reliable,
             read_errors=sorted(read_errors),
         )
 

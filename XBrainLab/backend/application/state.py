@@ -192,6 +192,7 @@ class ApplicationStateSnapshot:
     active_training: ActiveTrainingSnapshot
     last_error: ErrorSnapshot | None = None
     state_reliable: bool = True
+    training_liveness_reliable: bool = True
     read_errors: list[str] = field(default_factory=list)
 
     @classmethod
@@ -217,6 +218,7 @@ class ApplicationStateSnapshot:
             active_training=ActiveTrainingSnapshot(is_running=bool(errors)),
             last_error=last_error,
             state_reliable=not errors,
+            training_liveness_reliable=not errors,
             read_errors=errors,
         )
 

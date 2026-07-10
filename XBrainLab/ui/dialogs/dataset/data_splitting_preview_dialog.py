@@ -5,9 +5,11 @@ validation and testing split units, amounts, and manual selection support.
 """
 
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
+from PyQt6 import sip
 from PyQt6.QtCore import QModelIndex, QSize, Qt, QTimer
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -34,6 +36,7 @@ from XBrainLab.backend.dataset import (
     SplitUnit,
     ValSplitByType,
 )
+from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import checkbox_stylesheet
 from XBrainLab.ui.styles.theme import Theme
@@ -41,9 +44,15 @@ from XBrainLab.ui.styles.theme import Theme
 from .manual_split_dialog import ManualSplitDialog
 
 DEFAULT_SPLIT_ENTRY_VALUE = "0.2"
-PREVIEW_WORKER_RESTART_JOIN_TIMEOUT_SEC = 0.2
-PREVIEW_WORKER_CLOSE_JOIN_TIMEOUT_SEC = 1.0
 PREVIEW_DEBOUNCE_MS = 250
+PREVIEW_WORKER_CLOSE_RETRY_MS = 100
+PREVIEW_WORKER_CLOSE_SLOW_RETRY_MS = 500
+PREVIEW_WORKER_SHUTDOWN_TIMEOUT_SEC = 5.0
+PREVIEW_STATUS_IDLE = "idle"
+PREVIEW_STATUS_RUNNING = "running"
+PREVIEW_STATUS_SUCCEEDED = "succeeded"
+PREVIEW_STATUS_FAILED = "failed"
+PREVIEW_STATUS_CANCELLED = "cancelled"
 _CHEVRON_DOWN_ICON = (
     Path(__file__).resolve().parents[3] / "resources" / "icons" / "chevron-down.svg"
 ).as_posix()
@@ -237,9 +246,17 @@ class DataSplittingPreviewDialog(BaseDialog):
         self.config = config
         self.datasets = []
         self._datasets_lock = threading.Lock()
+        self._preview_state_lock = threading.Lock()
+        self._preview_generation_id = 0
+        self._preview_status = PREVIEW_STATUS_IDLE
+        self._preview_error = ""
         self.dataset_generator: DatasetGenerator | None = None
         self.preview_worker = None
         self.preview_debounce_timer: QTimer | None = None
+        self._preview_close_retry_pending = False
+        self._preview_close_started_at: float | None = None
+        self._preview_pending_close_action: str | None = None
+        self._preview_close_warning_shown = False
 
         # UI
         self.tree = None
@@ -623,7 +640,10 @@ class DataSplittingPreviewDialog(BaseDialog):
         """Start background dataset generation and update the tree view."""
         if self.preview_debounce_timer:
             self.preview_debounce_timer.stop()
-        self._interrupt_preview_worker(PREVIEW_WORKER_RESTART_JOIN_TIMEOUT_SEC)
+        if not self._request_preview_worker_stop():
+            if self.preview_debounce_timer:
+                self.preview_debounce_timer.start(PREVIEW_DEBOUNCE_MS)
+            return
         self.datasets = []
         if self.tree:
             self.tree.clear()
@@ -646,19 +666,91 @@ class DataSplittingPreviewDialog(BaseDialog):
             config=self.config,
             datasets=self.datasets,
         )
-        self.preview_worker = threading.Thread(target=self.dataset_generator.generate)
+        self._preview_generation_id += 1
+        generation_id = self._preview_generation_id
+        self._set_preview_state(
+            generation_id,
+            PREVIEW_STATUS_RUNNING,
+        )
+        if self.btn_confirm is not None:
+            self.btn_confirm.setEnabled(False)
+        self.preview_worker = threading.Thread(
+            target=self._run_preview_generation,
+            args=(generation_id, self.dataset_generator),
+            name=f"xbrainlab-split-preview-{generation_id}",
+        )
         self.preview_worker.start()
+
+    def _run_preview_generation(
+        self,
+        generation_id: int,
+        generator: DatasetGenerator,
+    ) -> None:
+        """Capture completion so the GUI never infers success from thread exit."""
+        try:
+            generator.generate()
+        except KeyboardInterrupt:
+            self._set_preview_state(
+                generation_id,
+                PREVIEW_STATUS_CANCELLED,
+            )
+        except Exception as exc:
+            generator.preview_failed = True
+            logger.exception("Data-splitting preview generation failed")
+            self._set_preview_state(
+                generation_id,
+                PREVIEW_STATUS_FAILED,
+                str(exc) or exc.__class__.__name__,
+            )
+        else:
+            status = (
+                PREVIEW_STATUS_CANCELLED
+                if generator.interrupted
+                else PREVIEW_STATUS_SUCCEEDED
+            )
+            self._set_preview_state(generation_id, status)
+
+    def _set_preview_state(
+        self,
+        generation_id: int,
+        status: str,
+        error: str = "",
+    ) -> None:
+        """Publish one generation result without letting stale workers overwrite it."""
+        with self._preview_state_lock:
+            if generation_id != self._preview_generation_id:
+                return
+            self._preview_status = status
+            self._preview_error = error
+
+    def _preview_state(self) -> tuple[str, str]:
+        """Return the current preview status and user-safe error text."""
+        with self._preview_state_lock:
+            return self._preview_status, self._preview_error
 
     def update_table(self):
         """Poll the dataset generator and update the tree view with results."""
         if not self.tree:
             return
 
-        if self.dataset_generator and self.dataset_generator.preview_failed:
+        status, error = self._preview_state()
+        if status == PREVIEW_STATUS_FAILED:
             self.tree.clear()
             item = QTreeWidgetItem(self.tree)
             item.setSizeHint(0, QSize(0, 28))
             item.setText(0, "Preview failed")
+            if error:
+                item.setToolTip(0, error)
+            if self.btn_confirm is not None:
+                self.btn_confirm.setEnabled(False)
+            self._resize_tree_to_rows()
+        elif status == PREVIEW_STATUS_CANCELLED:
+            self.tree.clear()
+            item = QTreeWidgetItem(self.tree)
+            item.setSizeHint(0, QSize(0, 28))
+            item.setText(0, "Preview cancelled")
+            if self.btn_confirm is not None:
+                self.btn_confirm.setEnabled(False)
             self._resize_tree_to_rows()
         else:
             with self._datasets_lock:
@@ -684,6 +776,12 @@ class DataSplittingPreviewDialog(BaseDialog):
                             item.setText(col, str(val))
                 self._clear_tree_current_item()
                 self._resize_tree_to_rows()
+                if (
+                    status == PREVIEW_STATUS_SUCCEEDED
+                    and self.btn_confirm is not None
+                    and self._preview_pending_close_action is None
+                ):
+                    self.btn_confirm.setEnabled(True)
 
     def _clear_tree_current_item(self) -> None:
         if self.tree is None:
@@ -717,17 +815,37 @@ class DataSplittingPreviewDialog(BaseDialog):
 
     def confirm(self):
         """Finalize dataset generation and accept the dialog."""
-        if self.preview_worker and self.preview_worker.is_alive():
+        status, error = self._preview_state()
+        if status == PREVIEW_STATUS_RUNNING or (
+            self.preview_worker and self.preview_worker.is_alive()
+        ):
             self._show_message_box(
                 QMessageBox.Icon.Warning,
                 "Data splitting",
                 "Generating dataset, please wait.",
             )
             return
+        if status in {PREVIEW_STATUS_FAILED, PREVIEW_STATUS_CANCELLED}:
+            message = error or (
+                "The split preview failed. Adjust the split settings and try again."
+                if status == PREVIEW_STATUS_FAILED
+                else (
+                    "The split preview was cancelled. Adjust the split settings "
+                    "and try again."
+                )
+            )
+            self._show_message_box(
+                QMessageBox.Icon.Critical,
+                "Data splitting failed",
+                message,
+            )
+            return
 
         try:
             if self.dataset_generator:
                 self.dataset_generator.prepare_result()
+                self._stop_preview_ui_timers()
+                self._clear_preview_close_state()
                 super().accept()
         except Exception as e:
             self._show_message_box(
@@ -755,12 +873,23 @@ class DataSplittingPreviewDialog(BaseDialog):
 
     def closeEvent(self, event):  # noqa: N802
         """Stop the polling timer and interrupt background workers on close."""
-        if self.preview_debounce_timer:
-            self.preview_debounce_timer.stop()
-        if self.timer:
-            self.timer.stop()
-        self._interrupt_preview_worker(PREVIEW_WORKER_CLOSE_JOIN_TIMEOUT_SEC)
+        self._prepare_preview_shutdown("close")
+        if not self._request_preview_worker_stop():
+            event.ignore()
+            self._schedule_preview_close_retry()
+            return
+        self._clear_preview_close_state()
         super().closeEvent(event)
+
+    def reject(self) -> None:
+        """Apply the same worker-ownership teardown when Escape rejects dialog."""
+        self._prepare_preview_shutdown("reject")
+        if not self._request_preview_worker_stop():
+            self._schedule_preview_close_retry()
+            return
+        self._clear_preview_close_state()
+        super().reject()
+        self.hide()
 
     def schedule_preview(self) -> None:
         """Debounce expensive dataset preview regeneration while editing fields."""
@@ -769,13 +898,84 @@ class DataSplittingPreviewDialog(BaseDialog):
         else:
             self.preview()
 
-    def _interrupt_preview_worker(self, join_timeout: float) -> None:
-        """Interrupt and briefly wait for the active preview worker."""
+    def _request_preview_worker_stop(self) -> bool:
+        """Interrupt active preview work without blocking the Qt event loop."""
         if self.dataset_generator:
             self.dataset_generator.set_interrupt()
         worker = self.preview_worker
-        if worker and worker.is_alive() and worker is not threading.current_thread():
-            worker.join(timeout=join_timeout)
+        return worker is None or not worker.is_alive()
+
+    def _close_when_preview_worker_stops(self) -> None:
+        """Retry dialog close after the Python preview thread releases ownership."""
+        if sip.isdeleted(self):
+            return
+        self._preview_close_retry_pending = False
+        worker = self.preview_worker
+        if worker is not None and worker.is_alive():
+            started_at = self._preview_close_started_at
+            if (
+                started_at is not None
+                and time.monotonic() - started_at >= PREVIEW_WORKER_SHUTDOWN_TIMEOUT_SEC
+            ):
+                if not self._preview_close_warning_shown:
+                    self._preview_close_warning_shown = True
+                    QMessageBox.warning(
+                        self,
+                        "Preview is still stopping",
+                        "The data-splitting preview is taking longer than expected "
+                        "to stop. This dialog will close automatically when the "
+                        "worker releases its data.",
+                    )
+                self._schedule_preview_close_retry(
+                    delay_ms=PREVIEW_WORKER_CLOSE_SLOW_RETRY_MS,
+                )
+                return
+            self._schedule_preview_close_retry()
+            return
+        action = self._preview_pending_close_action
+        self._clear_preview_close_state()
+        if action == "reject":
+            super().reject()
+            self.hide()
+            return
+        self.close()
+
+    def _schedule_preview_close_retry(
+        self,
+        *,
+        delay_ms: int = PREVIEW_WORKER_CLOSE_RETRY_MS,
+    ) -> None:
+        """Keep one pending close poll while the preview thread stops."""
+        if sip.isdeleted(self) or self._preview_close_retry_pending:
+            return
+        self._preview_close_retry_pending = True
+        QTimer.singleShot(
+            delay_ms,
+            self._close_when_preview_worker_stops,
+        )
+
+    def _prepare_preview_shutdown(self, action: str) -> None:
+        """Stop UI polling and remember how deferred teardown should finish."""
+        self._stop_preview_ui_timers()
+        if self._preview_close_started_at is None:
+            self._preview_close_started_at = time.monotonic()
+        self._preview_pending_close_action = action
+        if self.btn_confirm is not None:
+            self.btn_confirm.setEnabled(False)
+
+    def _stop_preview_ui_timers(self) -> None:
+        """Stop timers whenever the dialog leaves its active preview state."""
+        if self.preview_debounce_timer:
+            self.preview_debounce_timer.stop()
+        if self.timer:
+            self.timer.stop()
+
+    def _clear_preview_close_state(self) -> None:
+        """Clear deferred-close bookkeeping after success or a bounded timeout."""
+        self._preview_close_retry_pending = False
+        self._preview_close_started_at = None
+        self._preview_pending_close_action = None
+        self._preview_close_warning_shown = False
 
     def get_result(self):
         """Return the finalized split configuration payload.

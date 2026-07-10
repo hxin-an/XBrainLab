@@ -3,8 +3,9 @@ from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QCloseEvent
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QDockWidget, QMessageBox, QWidget
 
 from XBrainLab.backend.application import StopTrainingCommand
 from XBrainLab.ui.main_window import MainWindow
@@ -141,18 +142,458 @@ def test_switch_page_status_uses_backend_state_when_agent_absent(main_window):
     )
 
 
-def test_close_shutdown_requests_bounded_training_stop(main_window):
+def test_close_shutdown_requests_nonblocking_training_stop(main_window):
     result = SimpleNamespace(failed=False, diagnostics={"stopped": True})
+    callbacks = {}
+
+    def fake_async(_context, command, *, on_result, on_error, **_kwargs):
+        callbacks["result"] = on_result
+        callbacks["error"] = on_error
+        callbacks["command"] = command
+        return True
+
+    with (
+        patch(
+            "XBrainLab.ui.main_window.has_real_application_context",
+            return_value=True,
+        ),
+        patch(
+            "XBrainLab.ui.main_window.execute_application_command_async",
+            side_effect=fake_async,
+        ),
+        patch("XBrainLab.ui.main_window.QTimer.singleShot") as retry,
+    ):
+        main_window._closing_in_progress = True
+        stopped = main_window._stop_training_for_close()
+        assert stopped is False
+        assert main_window._training_close_check_in_flight is True
+
+        callbacks["result"](result)
+
+    command = callbacks["command"]
+    assert isinstance(command, StopTrainingCommand)
+    assert command.wait_timeout == 0.0
+    assert main_window._training_close_ready is True
+    assert main_window._training_close_check_in_flight is False
+    retry.assert_called_once()
+
+
+def test_close_waits_when_training_thread_does_not_stop(main_window):
+    main_window.agent_manager = MagicMock()
+    event = QCloseEvent()
+
+    with (
+        patch.object(main_window, "_stop_training_for_close", return_value=False),
+        patch("XBrainLab.ui.main_window.QTimer.singleShot") as retry,
+    ):
+        main_window.closeEvent(event)
+
+    assert event.isAccepted() is False
+    main_window.agent_manager.close.assert_not_called()
+    retry.assert_not_called()
+    assert "Training is still stopping" in main_window.statusBar().currentMessage()
+
+
+def test_close_disables_all_ui_before_training_check(main_window):
+    call_order = []
+    main_window.agent_manager = MagicMock()
+    main_window.agent_manager.close.side_effect = (
+        lambda: call_order.append("assistant") or True
+    )
+    dock = QDockWidget("Assistant", main_window)
+    dock.setWidget(QWidget())
+    main_window.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+
+    with patch.object(
+        main_window,
+        "_stop_training_for_close",
+        side_effect=lambda: call_order.append("training") or False,
+    ):
+        event = QCloseEvent()
+        main_window.closeEvent(event)
+
+    assert event.isAccepted() is False
+    assert call_order == ["training"]
+    assert main_window.centralWidget().isEnabled() is False
+    assert dock.isEnabled() is False
+
+
+def test_close_coalesces_repeated_training_shutdown_retries(main_window):
+    with patch("XBrainLab.ui.main_window.QTimer.singleShot") as retry:
+        main_window._schedule_close_retry()
+        main_window._schedule_close_retry()
+
+    retry.assert_called_once()
+
+
+def test_close_allows_failed_stop_when_training_liveness_is_reliable(main_window):
+    result = SimpleNamespace(
+        failed=True,
+        message="No active trainer.",
+        state=SimpleNamespace(
+            training_liveness_reliable=True,
+            active_training=SimpleNamespace(is_running=False),
+        ),
+    )
+
+    assert main_window._training_stop_result_allows_close(result) is True
+
+
+def test_close_blocks_when_training_liveness_is_unreliable(main_window):
+    result = SimpleNamespace(
+        failed=True,
+        message="Training state unavailable.",
+        state=SimpleNamespace(
+            training_liveness_reliable=False,
+            active_training=SimpleNamespace(is_running=False),
+        ),
+    )
+
+    assert main_window._training_stop_result_allows_close(result) is False
+
+
+def test_close_ignores_unrelated_snapshot_errors_for_training_liveness(main_window):
+    result = SimpleNamespace(
+        failed=True,
+        message="No active trainer.",
+        state=SimpleNamespace(
+            state_reliable=False,
+            training_liveness_reliable=True,
+            active_training=SimpleNamespace(is_running=False),
+        ),
+    )
+
+    assert main_window._training_stop_result_allows_close(result) is True
+
+
+def test_training_close_ready_is_not_reused_outside_active_close_attempt(main_window):
+    main_window._training_close_ready = True
+    main_window._closing_in_progress = False
+
+    with (
+        patch(
+            "XBrainLab.ui.main_window.has_real_application_context",
+            return_value=True,
+        ),
+        patch(
+            "XBrainLab.ui.main_window.execute_application_command_async",
+            return_value=True,
+        ) as execute,
+    ):
+        assert main_window._stop_training_for_close() is False
+
+    execute.assert_called_once()
+    assert main_window._training_close_ready is False
+
+
+def test_failed_close_check_restores_window_interaction(main_window):
+    main_window.agent_manager = MagicMock()
+    main_window.agent_manager.close.return_value = True
+    callbacks = {}
+    main_window._shutdown_fence_active = True
+    dock = QDockWidget("Assistant", main_window)
+    dock.setWidget(QWidget())
+    main_window.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+
+    def fake_async(_context, _command, *, on_result, on_error, **_kwargs):
+        callbacks["error"] = on_error
+        return True
+
+    with (
+        patch(
+            "XBrainLab.ui.main_window.has_real_application_context",
+            return_value=True,
+        ),
+        patch(
+            "XBrainLab.ui.main_window.execute_application_command_async",
+            side_effect=fake_async,
+        ),
+        patch(
+            "XBrainLab.ui.main_window.release_application_shutdown_fence",
+            return_value=True,
+        ),
+    ):
+        event = QCloseEvent()
+        main_window.closeEvent(event)
+        assert event.isAccepted() is False
+        assert main_window.centralWidget().isEnabled() is False
+        assert dock.isEnabled() is False
+
+        callbacks["error"]((RuntimeError, RuntimeError("state failed"), ""))
+
+    assert main_window._closing_in_progress is False
+    assert main_window._shutdown_fence_active is False
+    assert main_window.centralWidget().isEnabled() is True
+    assert dock.isEnabled() is True
+    main_window.agent_manager.close.assert_not_called()
+
+
+def test_shutdown_fence_release_retries_before_restoring_interaction(main_window):
+    main_window._closing_in_progress = True
+    main_window._shutdown_fence_active = True
+    main_window._set_close_interaction_enabled(False)
+    callbacks = []
+
+    with (
+        patch(
+            "XBrainLab.ui.main_window.has_real_application_context",
+            return_value=True,
+        ),
+        patch(
+            "XBrainLab.ui.main_window.release_application_shutdown_fence",
+            side_effect=[False, True],
+        ) as release,
+        patch(
+            "XBrainLab.ui.main_window.QTimer.singleShot",
+            side_effect=lambda _delay, callback: callbacks.append(callback),
+        ),
+    ):
+        main_window._cancel_close_attempt()
+        assert main_window._closing_in_progress is True
+        assert main_window.centralWidget().isEnabled() is False
+        assert len(callbacks) == 1
+
+        callbacks[0]()
+
+    assert release.call_count == 2
+    assert main_window._closing_in_progress is False
+    assert main_window._shutdown_fence_active is False
+    assert main_window.centralWidget().isEnabled() is True
+
+
+def test_shutdown_fence_release_failure_enters_visible_shutdown_only_state(
+    main_window,
+):
+    main_window._closing_in_progress = True
+    main_window._shutdown_fence_active = True
+    main_window._set_close_interaction_enabled(False)
+    callbacks = []
+
+    with (
+        patch(
+            "XBrainLab.ui.main_window.has_real_application_context",
+            return_value=True,
+        ),
+        patch(
+            "XBrainLab.ui.main_window.release_application_shutdown_fence",
+            return_value=False,
+        ),
+        patch(
+            "XBrainLab.ui.main_window.SHUTDOWN_FENCE_RELEASE_MAX_ATTEMPTS",
+            1,
+        ),
+        patch(
+            "XBrainLab.ui.main_window.QTimer.singleShot",
+            side_effect=lambda _delay, callback: callbacks.append(callback),
+        ),
+        patch(
+            "XBrainLab.ui.main_window.QMessageBox.question",
+            return_value=QMessageBox.StandardButton.Close,
+        ),
+        patch.object(main_window, "close") as close,
+    ):
+        main_window._cancel_close_attempt()
+        assert len(callbacks) == 1
+        callbacks[0]()
+        assert len(callbacks) == 2
+        callbacks[1]()
+
+    assert main_window._closing_in_progress is True
+    assert main_window._shutdown_fence_active is True
+    assert main_window._shutdown_only_mode is True
+    assert main_window._force_shutdown_requested is True
+    assert main_window.centralWidget().isEnabled() is False
+    close.assert_called_once_with()
+    assert (
+        "could not resume normal operation" in main_window.statusBar().currentMessage()
+    )
+
+
+def test_force_shutdown_bypasses_failed_state_verification(main_window):
+    main_window._force_shutdown_requested = True
+    main_window.agent_manager = MagicMock()
+    event = QCloseEvent()
+
+    with patch.object(main_window, "_stop_training_for_close") as stop:
+        main_window.closeEvent(event)
+
+    assert event.isAccepted() is True
+    stop.assert_not_called()
+    main_window.agent_manager.close.assert_called_once_with()
+
+
+def test_failed_stop_result_from_broken_snapshot_releases_close_fence(qtbot):
+    from XBrainLab.backend.application import get_application_service
+    from XBrainLab.backend.study import Study
+
+    study = Study()
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow.init_panels"),
+        patch("XBrainLab.ui.main_window.MainWindow.init_agent"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+    ):
+        window = MainWindow(study)
+    qtbot.addWidget(window)
+    dock = QDockWidget("Assistant", window)
+    dock.setWidget(QWidget())
+    window.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+    callbacks = {}
+
+    def fake_async(_context, _command, *, on_result, on_error, **_kwargs):
+        callbacks["result"] = on_result
+        callbacks["error"] = on_error
+        return True
+
+    service = get_application_service(study)
+    with patch(
+        "XBrainLab.ui.main_window.execute_application_command_async",
+        side_effect=fake_async,
+    ):
+        event = QCloseEvent()
+        window.closeEvent(event)
+
+    assert event.isAccepted() is False
+    assert service._shutdown_fenced is True
+    service.state_snapshot.build = MagicMock(
+        side_effect=RuntimeError("state backend unavailable"),
+    )
+    result = service.execute(StopTrainingCommand(wait_timeout=0.0))
+    assert result.failed is True
+
+    callbacks["result"](result)
+
+    assert service._shutdown_fenced is False
+    assert window._closing_in_progress is False
+    assert window._shutdown_fence_active is False
+    central_widget = window.centralWidget()
+    assert central_widget is not None
+    assert central_widget.isEnabled() is True
+    assert dock.isEnabled() is True
+
+
+def test_close_does_not_wait_for_application_command_lock(qtbot):
+    import threading
+    import time
+
+    from PyQt6.QtCore import QTimer
+
+    from XBrainLab.backend.application import get_application_service
+    from XBrainLab.backend.study import Study
+
+    study = Study()
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow.init_panels"),
+        patch("XBrainLab.ui.main_window.MainWindow.init_agent"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+    ):
+        window = MainWindow(study)
+    qtbot.addWidget(window)
+    service = get_application_service(study)
+    lock_acquired = threading.Event()
+    release_lock = threading.Event()
+
+    def hold_command_lock() -> None:
+        with service._command_lock:
+            lock_acquired.set()
+            release_lock.wait(timeout=2.0)
+
+    lock_holder = threading.Thread(target=hold_command_lock)
+    lock_holder.start()
+    assert lock_acquired.wait(timeout=1.0)
+
+    with patch.object(window, "_schedule_close_retry") as retry:
+        event = QCloseEvent()
+        started_at = time.monotonic()
+        window.closeEvent(event)
+        elapsed = time.monotonic() - started_at
+
+        assert elapsed < 0.1
+        assert event.isAccepted() is False
+        assert window._shutdown_fence_active is True
+        assert window._training_close_check_in_flight is True
+
+        heartbeat: list[bool] = []
+        QTimer.singleShot(0, lambda: heartbeat.append(True))
+        qtbot.waitUntil(lambda: bool(heartbeat), timeout=1000)
+
+        release_lock.set()
+        qtbot.waitUntil(lambda: window._training_close_ready, timeout=1000)
+        retry.assert_called_once()
+
+    lock_holder.join(timeout=1.0)
+    assert not lock_holder.is_alive()
+    window._closing_in_progress = True
+    window._shutdown_fence_active = True
+    window._training_close_ready = True
+
+
+def test_close_fences_headless_training_before_async_stop_dispatch(qtbot):
+    from XBrainLab.backend.application import TrainCommand, get_application_service
+    from XBrainLab.backend.study import Study
+
+    study = Study()
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow.init_panels"),
+        patch("XBrainLab.ui.main_window.MainWindow.init_agent"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+    ):
+        window = MainWindow(study)
+    qtbot.addWidget(window)
+    service = get_application_service(study)
 
     with patch(
-        "XBrainLab.ui.main_window.execute_application_shutdown_command",
-        return_value=result,
-    ) as execute:
-        main_window._stop_training_for_close()
+        "XBrainLab.ui.main_window.execute_application_command_async",
+        return_value=True,
+    ):
+        event = QCloseEvent()
+        window.closeEvent(event)
 
-    command = execute.call_args.args[1]
-    assert isinstance(command, StopTrainingCommand)
-    assert command.wait_timeout == 2.0
+    blocked = service.execute(TrainCommand(confirmed=True))
+
+    assert event.isAccepted() is False
+    assert window._shutdown_fence_active is True
+    assert service._shutdown_fenced is True
+    assert blocked.failed is True
+    assert "closing" in blocked.message
+
+    service.release_shutdown_fence()
+    window._training_close_check_in_flight = False
+    window._closing_in_progress = True
+    window._shutdown_fence_active = True
+    window._training_close_ready = True
+
+
+def test_real_close_retry_completes_without_manual_teardown_flags(qtbot):
+    from XBrainLab.backend.application import get_application_service
+    from XBrainLab.backend.study import Study
+
+    study = Study()
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow.init_panels"),
+        patch("XBrainLab.ui.main_window.MainWindow.init_agent"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+    ):
+        window = MainWindow(study)
+    qtbot.addWidget(window)
+    window.show()
+
+    assert window.close() is False
+
+    qtbot.waitUntil(lambda: not window.isVisible(), timeout=3000)
+
+    assert window._closing_in_progress is True
+    assert window._training_close_ready is True
+    assert window._training_close_check_in_flight is False
+    assert get_application_service(study)._shutdown_fenced is True
+    assert getattr(window, "_xbrainlab_active_application_workers", []) == []
 
 
 def test_close_waits_when_assistant_thread_ownership_is_not_released(main_window):
@@ -161,7 +602,7 @@ def test_close_waits_when_assistant_thread_ownership_is_not_released(main_window
     event = QCloseEvent()
 
     with (
-        patch.object(main_window, "_stop_training_for_close"),
+        patch.object(main_window, "_stop_training_for_close", return_value=True),
         patch("XBrainLab.ui.main_window.QTimer.singleShot") as retry,
     ):
         main_window.closeEvent(event)

@@ -244,6 +244,7 @@ def test_state_snapshot_service_builds_workflow_snapshot() -> None:
     assert state.epoch.event_ids == {"left": 1}
     assert state.dataset.count == 1
     assert state.training.progress_message == "Epoch 2/10"
+    assert state.training_liveness_reliable is True
     assert state.visualization.saliency_configured is True
     assert state.interpretation.has_scan_result is True
     assert state.active_dataset.has_epoch_data is True
@@ -259,6 +260,7 @@ def test_state_snapshot_records_critical_read_failures_and_fails_closed() -> Non
     assert state.training.is_running is True
     assert state.evaluation.total_plans == 0
     assert state.state_reliable is False
+    assert state.training_liveness_reliable is False
     assert state.read_errors == [
         "evaluation.plans: evaluation state unavailable",
         "training.is_running: training state unavailable",
@@ -281,6 +283,7 @@ def test_state_snapshot_lock_failure_blocks_raw_edits() -> None:
 
     assert state.active_dataset.is_locked is True
     assert state.state_reliable is False
+    assert state.training_liveness_reliable is True
     assert state.read_errors == ["dataset.is_locked: lock unavailable"]
     assert policy.get(CommandName.UPDATE_METADATA).enabled is False
     assert (

@@ -48,16 +48,11 @@ from XBrainLab.ui.application_capabilities import (
 )
 from XBrainLab.ui.status import show_status_message
 
-from .interpretation_command_runner import execute_interpretation_command_responsive
-
 DataInterpretationPreviewDialog: Any | None = None
 EventFilterDialog: Any | None = None
 ImportLabelDialog: Any | None = None
 LabelMappingDialog: Any | None = None
 SmartParserDialog: Any | None = None
-
-_INTERPRETATION_UNAVAILABLE = object()
-_INTERPRETATION_HANDLED = object()
 
 
 @dataclass(frozen=True)
@@ -346,6 +341,13 @@ class DatasetActionHandler:
                             "Data Interpretation command service is unavailable.",
                         )
                         return
+                    if has_real_application_context(self.panel):
+                        QMessageBox.warning(
+                            self.panel,
+                            "Interpretation Blocked",
+                            CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+                        )
+                        return
                     if not self._confirm_import_resource_preflight(list(filepaths)):
                         return
                     result = execute_application_command(
@@ -435,17 +437,20 @@ class DatasetActionHandler:
         if not recipe_path:
             return
 
-        reload_result = execute_application_command(
-            self.panel,
+        started = self._execute_interpretation_command_async(
             ReloadInterpretationRecipeCommand(recipe_path=recipe_path),
+            on_result=self._continue_reloaded_interpretation_recipe,
+            error_title="Recipe reload failed",
         )
-        if reload_result is None:
+        if not started:
             QMessageBox.critical(
                 self.panel,
                 "Recipe reload unavailable",
                 "Data Interpretation command service is unavailable.",
             )
-            return
+
+    def _continue_reloaded_interpretation_recipe(self, reload_result) -> None:
+        """Open the recipe review after its backend state is ready."""
         if reload_result.failed:
             QMessageBox.critical(
                 self.panel,
@@ -500,88 +505,103 @@ class DatasetActionHandler:
                 base_choices,
                 dialog_choices,
             )
-            preview_result = execute_application_command(
-                self.panel,
+            started = self._execute_interpretation_command_async(
                 PreviewInterpretationCommand(
                     scan_id=self._optional_payload_id(scan, "scan_id"),
                     choices=dialog_choices,
                 ),
+                on_result=lambda result: self._continue_reloaded_recipe_preview(
+                    result,
+                    scan=scan,
+                    dialog_result=dialog_result,
+                ),
+                error_title="Interpretation preview failed",
             )
-            if preview_result is None:
+            if not started:
                 QMessageBox.critical(
                     self.panel,
                     "Interpretation preview unavailable",
                     "Data Interpretation command service is unavailable.",
                 )
-                return
-            if preview_result.failed:
-                QMessageBox.critical(
-                    self.panel,
-                    "Interpretation preview failed",
-                    preview_result.message,
-                )
-                return
-            candidate = self._diagnostic_payload(preview_result, "candidate")
-            candidate_id = self._optional_payload_id(candidate, "candidate_id")
-            validation_result = execute_application_command(
-                self.panel,
-                ValidateInterpretationCommand(candidate_id=candidate_id),
-            )
-            if validation_result is None:
-                QMessageBox.critical(
-                    self.panel,
-                    "Interpretation validation unavailable",
-                    "Data Interpretation command service is unavailable.",
-                )
-                return
-            if validation_result.failed:
-                QMessageBox.critical(
-                    self.panel,
-                    "Interpretation validation failed",
-                    validation_result.message,
-                )
-                return
-            decision = self._diagnostic_payload(
-                validation_result,
-                "validation_decision",
-            )
-            if str(decision.get("decision")) == "blocked":
-                QMessageBox.critical(
-                    self.panel,
-                    "Interpretation blocked",
-                    self._decision_reason(decision),
-                )
-                return
+            return
 
-        confirmed = bool(dialog_result.get("confirmed"))
-        apply_result = execute_application_command(
-            self.panel,
-            ApplyInterpretationCommand(
-                candidate_id=self._optional_payload_id(decision, "candidate_id")
-                or candidate_id,
-                confirmed=confirmed,
-            ),
+        review_state = _InterpretationReviewState(
+            scan=scan,
+            preview=preview,
+            candidate=candidate,
+            candidate_id=candidate_id,
+            decision=decision,
         )
-        if apply_result is None:
+        self._apply_interpretation_async(review_state, dialog_result)
+
+    def _continue_reloaded_recipe_preview(
+        self,
+        preview_result,
+        *,
+        scan: dict[str, Any],
+        dialog_result: dict[str, Any],
+    ) -> None:
+        """Validate a re-previewed recipe candidate without blocking the GUI."""
+        if self._result_failed(preview_result, "Interpretation preview failed"):
+            return
+        preview = self._diagnostic_payload(preview_result, "preview")
+        candidate = self._diagnostic_payload(preview_result, "candidate")
+        candidate_id = self._optional_payload_id(candidate, "candidate_id")
+        started = self._execute_interpretation_command_async(
+            ValidateInterpretationCommand(candidate_id=candidate_id),
+            on_result=lambda result: self._continue_reloaded_recipe_validation(
+                result,
+                scan=scan,
+                preview=preview,
+                candidate=candidate,
+                candidate_id=candidate_id,
+                dialog_result=dialog_result,
+            ),
+            error_title="Interpretation validation failed",
+        )
+        if not started:
             QMessageBox.critical(
                 self.panel,
-                "Interpretation apply unavailable",
+                "Interpretation validation unavailable",
                 "Data Interpretation command service is unavailable.",
             )
+
+    def _continue_reloaded_recipe_validation(
+        self,
+        validation_result,
+        *,
+        scan: dict[str, Any],
+        preview: dict[str, Any],
+        candidate: dict[str, Any],
+        candidate_id: str | None,
+        dialog_result: dict[str, Any],
+    ) -> None:
+        """Apply a validated reloaded recipe through the shared async path."""
+        if self._result_failed(
+            validation_result,
+            "Interpretation validation failed",
+        ):
             return
-        if apply_result.failed:
+        decision = self._diagnostic_payload(
+            validation_result,
+            "validation_decision",
+        )
+        if str(decision.get("decision")) == "blocked":
             QMessageBox.critical(
                 self.panel,
-                "Interpretation apply failed",
-                apply_result.message,
+                "Interpretation blocked",
+                self._decision_reason(decision),
             )
             return
-
-        recipe_message = ""
-        if bool(dialog_result.get("save_recipe", False)):
-            recipe_message = self._save_interpretation_recipe()
-        self._show_status(
-            " ".join(part for part in [apply_result.message, recipe_message] if part),
+        self._apply_interpretation_async(
+            _InterpretationReviewState(
+                scan=scan,
+                preview=preview,
+                candidate=candidate,
+                candidate_id=candidate_id,
+                decision=decision,
+            ),
+            dialog_result,
         )
 
     def _can_start_interpretation(
@@ -631,41 +651,11 @@ class DatasetActionHandler:
     ) -> bool:
         """Run the Data Interpretation command sequence for selected files."""
         source_path, choices = self._interpretation_source_and_choices(filepaths)
-        label_sources: list[str] = []
-        if self._start_interpretation_review_async(
+        return self._start_interpretation_review_async(
             source_path,
             source_hint,
             choices,
-            label_sources,
-        ):
-            return True
-
-        if has_real_application_context(self.panel):
-            QMessageBox.warning(
-                self.panel,
-                "Interpretation Blocked",
-                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-            )
-            return True
-
-        review_state = self._run_interpretation_review_sequence(
-            source_path,
-            source_hint,
-            choices,
-            label_sources,
-        )
-        if review_state is _INTERPRETATION_UNAVAILABLE:
-            return False
-        if review_state is _INTERPRETATION_HANDLED:
-            return True
-        if not isinstance(review_state, _InterpretationReviewState):
-            return False
-        return self._continue_data_interpretation_import(
-            source_path=source_path,
-            source_hint=source_hint,
-            choices=choices,
-            label_sources=label_sources,
-            review_state=review_state,
+            [],
         )
 
     def _continue_data_interpretation_import(
@@ -676,161 +666,103 @@ class DatasetActionHandler:
         choices: dict[str, Any],
         label_sources: list[str],
         review_state: _InterpretationReviewState,
+        initial_step: str = "",
     ) -> bool:
-        scan = review_state.scan
-        preview = review_state.preview
-        candidate = review_state.candidate
-        decision = review_state.decision
-        candidate_id = review_state.candidate_id
-        resume_dialog_step = ""
-
-        while True:
-            dialog_kwargs: dict[str, Any] = {
-                "scan_result": scan,
-                "preview": preview,
-                "validation_decision": decision,
-            }
-            if resume_dialog_step:
-                dialog_kwargs["initial_step"] = resume_dialog_step
-            dialog_class = _data_interpretation_preview_dialog_class()
-            dialog = dialog_class(self.panel, **dialog_kwargs)
-            resume_dialog_step = ""
-            if not dialog.exec():
-                return True
-
-            raw_dialog_result = dialog.get_result()
-            dialog_result = (
-                dict(raw_dialog_result) if isinstance(raw_dialog_result, dict) else {}
-            )
-            raw_dialog_choices = dialog_result.get("choices")
-            dialog_choices: dict[str, Any] = (
-                {str(key): value for key, value in raw_dialog_choices.items()}
-                if isinstance(raw_dialog_choices, dict)
-                else {}
-            )
-            next_label_sources = self._dialog_label_sources(
-                dialog_result,
-                label_sources,
-            )
-            if next_label_sources != label_sources:
-                label_sources = next_label_sources
-                resume_dialog_step = str(dialog_result.get("resume_step") or "")
-                review_result = self._execute_interpretation_command_responsive(
-                    ReviewInterpretationCommand(
-                        source_path=source_path,
-                        source_hint=source_hint,
-                        label_sources=label_sources,
-                        choices=choices,
-                    ),
-                    error_title="Interpretation review failed",
-                )
-                if review_result is None:
-                    return False
-                if review_result.failed:
-                    QMessageBox.critical(
-                        self.panel,
-                        "Interpretation review failed",
-                        review_result.message,
-                    )
-                    return True
-                review_state = self._review_state_from_review_result(review_result)
-                scan = review_state.scan
-                preview = review_state.preview
-                candidate = review_state.candidate
-                candidate_id = review_state.candidate_id
-                decision = review_state.decision
-                continue
-
-            if str(decision.get("decision")) == "blocked":
-                QMessageBox.critical(
-                    self.panel,
-                    "Interpretation blocked",
-                    self._decision_reason(decision),
-                )
-                return True
-
-            if not dialog_choices:
-                break
-            choices = self._merge_interpretation_choices(choices, dialog_choices)
-            review_result = self._execute_interpretation_command_responsive(
-                ReviewInterpretationCommand(
-                    source_path=source_path,
-                    source_hint=source_hint,
-                    label_sources=label_sources,
-                    choices=choices,
-                ),
-                error_title="Interpretation review failed",
-            )
-            if review_result is None:
-                return False
-            if review_result.failed:
-                QMessageBox.critical(
-                    self.panel,
-                    "Interpretation review failed",
-                    review_result.message,
-                )
-                return True
-            review_state = self._review_state_from_review_result(review_result)
-            scan = review_state.scan
-            preview = review_state.preview
-            candidate = review_state.candidate
-            candidate_id = review_state.candidate_id
-            decision = review_state.decision
-            if str(decision.get("decision")) == "blocked":
-                QMessageBox.critical(
-                    self.panel,
-                    "Interpretation blocked",
-                    self._decision_reason(decision),
-                )
-                return True
-            break
-
-        confirmed = bool(dialog_result.get("confirmed"))
-        apply_command = ApplyInterpretationCommand(
-            candidate_id=self._optional_payload_id(decision, "candidate_id")
-            or candidate_id,
-            confirmed=confirmed,
-        )
-        apply_paths = self._interpretation_apply_paths(candidate, preview, scan)
-        if not self._confirm_import_resource_preflight(apply_paths):
+        dialog_kwargs: dict[str, Any] = {
+            "scan_result": review_state.scan,
+            "preview": review_state.preview,
+            "validation_decision": review_state.decision,
+        }
+        if initial_step:
+            dialog_kwargs["initial_step"] = initial_step
+        dialog_class = _data_interpretation_preview_dialog_class()
+        dialog = dialog_class(self.panel, **dialog_kwargs)
+        if not dialog.exec():
             return True
 
-        def _handle_apply_result(apply_result) -> None:
-            if apply_result.failed:
-                QMessageBox.critical(
-                    self.panel,
-                    "Interpretation apply failed",
-                    apply_result.message,
-                )
-                return
-
-            recipe_message = ""
-            if bool(dialog_result.get("save_recipe", False)):
-                recipe_message = self._save_interpretation_recipe()
-            self._show_status(
-                " ".join(
-                    part for part in [apply_result.message, recipe_message] if part
-                ),
+        raw_dialog_result = dialog.get_result()
+        dialog_result = (
+            dict(raw_dialog_result) if isinstance(raw_dialog_result, dict) else {}
+        )
+        raw_dialog_choices = dialog_result.get("choices")
+        dialog_choices: dict[str, Any] = (
+            {str(key): value for key, value in raw_dialog_choices.items()}
+            if isinstance(raw_dialog_choices, dict)
+            else {}
+        )
+        next_label_sources = self._dialog_label_sources(
+            dialog_result,
+            label_sources,
+        )
+        if next_label_sources != label_sources:
+            return self._start_interpretation_review_async(
+                source_path,
+                source_hint,
+                choices,
+                next_label_sources,
+                initial_step=str(dialog_result.get("resume_step") or ""),
             )
 
-        apply_result = execute_application_command(self.panel, apply_command)
-        if apply_result is None:
-            return False
-        _handle_apply_result(apply_result)
-        return True
+        if (
+            str(review_state.decision.get("decision")) == "blocked"
+            and not dialog_choices
+        ):
+            QMessageBox.critical(
+                self.panel,
+                "Interpretation blocked",
+                self._decision_reason(review_state.decision),
+            )
+            return True
 
-    def _execute_interpretation_command_responsive(
+        if dialog_choices:
+            updated_choices = self._merge_interpretation_choices(
+                choices,
+                dialog_choices,
+            )
+            return self._review_interpretation_for_apply_async(
+                source_path=source_path,
+                source_hint=source_hint,
+                choices=updated_choices,
+                label_sources=label_sources,
+                dialog_result=dialog_result,
+            )
+        return self._apply_interpretation_async(review_state, dialog_result)
+
+    def _execute_interpretation_command_async(
         self,
         command,
         *,
+        on_result: Callable[[Any], None],
         error_title: str,
-    ):
-        """Execute an interpretation command through the shared UI runner."""
-        return execute_interpretation_command_responsive(
+        refresh: bool = False,
+    ) -> bool:
+        """Dispatch one wizard command and continue from its Qt result callback."""
+
+        def _handle_error(error: tuple) -> None:
+            message = error[1] if len(error) > 1 else error
+            QMessageBox.critical(self.panel, error_title, str(message))
+
+        if execute_application_command_async(
             self.panel,
             command,
-            error_title=error_title,
-        )
+            on_result=on_result,
+            on_error=_handle_error,
+            refresh=refresh,
+            busy_target=self.panel,
+        ):
+            return True
+        if has_real_application_context(self.panel):
+            QMessageBox.warning(
+                self.panel,
+                "Interpretation Blocked",
+                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
+            )
+            return True
+        result = execute_application_command(self.panel, command)
+        if result is None:
+            return False
+        on_result(result)
+        return True
 
     def _start_interpretation_review_async(
         self,
@@ -838,16 +770,10 @@ class DatasetActionHandler:
         source_hint: str,
         choices: dict[str, Any],
         label_sources: list[str],
+        *,
+        initial_step: str = "",
     ) -> bool:
         """Run scan/preview/validate off the Qt thread for real Study-backed UI."""
-
-        def _handle_error(error: tuple) -> None:
-            message = error[1] if len(error) > 1 else error
-            QMessageBox.critical(
-                self.panel,
-                "Interpretation failed",
-                str(message),
-            )
 
         def _handle_review_result(review_result) -> None:
             if self._result_failed(
@@ -862,6 +788,7 @@ class DatasetActionHandler:
                 choices=dict(choices),
                 label_sources=list(label_sources),
                 review_state=review_state,
+                initial_step=initial_step,
             )
 
         review_command = ReviewInterpretationCommand(
@@ -870,53 +797,91 @@ class DatasetActionHandler:
             label_sources=label_sources,
             choices=choices,
         )
-        return execute_application_command_async(
-            self.panel,
+        return self._execute_interpretation_command_async(
             review_command,
             on_result=_handle_review_result,
-            on_error=_handle_error,
+            error_title="Interpretation failed",
             refresh=False,
-            busy_target=self.panel,
         )
 
-    def _run_interpretation_review_sequence(
+    def _review_interpretation_for_apply_async(
         self,
+        *,
         source_path: str,
         source_hint: str,
         choices: dict[str, Any],
         label_sources: list[str],
-    ) -> _InterpretationReviewState | object:
-        review_result = execute_application_command(
-            self.panel,
+        dialog_result: dict[str, Any],
+    ) -> bool:
+        """Refresh edited choices, then apply the resulting candidate."""
+
+        def _handle_review_result(review_result) -> None:
+            if self._result_failed(review_result, "Interpretation review failed"):
+                return
+            review_state = self._review_state_from_review_result(review_result)
+            if str(review_state.decision.get("decision")) == "blocked":
+                QMessageBox.critical(
+                    self.panel,
+                    "Interpretation blocked",
+                    self._decision_reason(review_state.decision),
+                )
+                return
+            self._apply_interpretation_async(review_state, dialog_result)
+
+        return self._execute_interpretation_command_async(
             ReviewInterpretationCommand(
                 source_path=source_path,
                 source_hint=source_hint,
                 label_sources=label_sources,
                 choices=choices,
             ),
+            on_result=_handle_review_result,
+            error_title="Interpretation review failed",
         )
-        if review_result is None:
-            return _INTERPRETATION_UNAVAILABLE
-        if self._result_failed(review_result, "Interpretation review failed"):
-            return _INTERPRETATION_HANDLED
-        return self._review_state_from_review_result(review_result)
 
-    def _review_state_from_results(
+    def _apply_interpretation_async(
         self,
-        scan_result,
-        preview_result,
-        validation_result,
-    ) -> _InterpretationReviewState:
-        candidate = self._diagnostic_payload(preview_result, "candidate")
-        return _InterpretationReviewState(
-            scan=self._diagnostic_payload(scan_result, "scan_result"),
-            preview=self._diagnostic_payload(preview_result, "preview"),
-            candidate=candidate,
-            candidate_id=self._optional_payload_id(candidate, "candidate_id"),
-            decision=self._diagnostic_payload(
-                validation_result,
-                "validation_decision",
+        review_state: _InterpretationReviewState,
+        dialog_result: dict[str, Any],
+    ) -> bool:
+        """Apply one reviewed candidate and continue to optional recipe saving."""
+        apply_paths = self._interpretation_apply_paths(
+            review_state.candidate,
+            review_state.preview,
+            review_state.scan,
+        )
+        if not self._confirm_import_resource_preflight(apply_paths):
+            return True
+        apply_command = ApplyInterpretationCommand(
+            candidate_id=(
+                self._optional_payload_id(review_state.decision, "candidate_id")
+                or review_state.candidate_id
             ),
+            confirmed=bool(dialog_result.get("confirmed")),
+        )
+
+        def _handle_apply_result(apply_result) -> None:
+            if self._result_failed(apply_result, "Interpretation apply failed"):
+                return
+
+            def _finish(recipe_message: str = "") -> None:
+                self._show_status(
+                    " ".join(
+                        part for part in [apply_result.message, recipe_message] if part
+                    ),
+                )
+
+            if bool(dialog_result.get("save_recipe", False)):
+                if not self._save_interpretation_recipe(on_complete=_finish):
+                    _finish()
+                return
+            _finish()
+
+        return self._execute_interpretation_command_async(
+            apply_command,
+            on_result=_handle_apply_result,
+            error_title="Interpretation apply failed",
+            refresh=True,
         )
 
     def _review_state_from_review_result(
@@ -955,8 +920,13 @@ class DatasetActionHandler:
                 result.append(text)
         return result
 
-    def _save_interpretation_recipe(self) -> str:
-        """Persist the latest applied interpretation recipe if requested."""
+    def _save_interpretation_recipe(
+        self,
+        *,
+        on_complete: Callable[[str], None] | None = None,
+    ) -> bool:
+        """Persist the current recipe and report completion asynchronously."""
+        complete = on_complete or (lambda _message: None)
         recipe_block_reason = self._recipe_save_block_reason()
         if recipe_block_reason is not None:
             QMessageBox.warning(
@@ -964,7 +934,8 @@ class DatasetActionHandler:
                 "Recipe Save Blocked",
                 recipe_block_reason,
             )
-            return ""
+            complete("")
+            return True
 
         recipe_path, _ = QFileDialog.getSaveFileName(
             self.panel,
@@ -972,22 +943,23 @@ class DatasetActionHandler:
             "import_recipe.json",
             "JSON (*.json)",
         )
-        result = execute_application_command(
-            self.panel,
+
+        def _handle_result(result) -> None:
+            if result.failed:
+                QMessageBox.warning(
+                    self.panel,
+                    "Recipe not saved",
+                    result.message,
+                )
+                complete("")
+                return
+            complete("Recipe saved." if recipe_path else "Recipe kept in this session.")
+
+        return self._execute_interpretation_command_async(
             SaveInterpretationRecipeCommand(recipe_path=recipe_path or None),
+            on_result=_handle_result,
+            error_title="Recipe save failed",
         )
-        if result is None:
-            return ""
-        if result.failed:
-            QMessageBox.warning(
-                self.panel,
-                "Recipe not saved",
-                result.message,
-            )
-            return ""
-        if recipe_path:
-            return "Recipe saved."
-        return "Recipe kept in this session."
 
     def _recipe_save_block_reason(self) -> str | None:
         save_capability = get_command_capability(
@@ -1281,16 +1253,25 @@ class DatasetActionHandler:
 
             if count > 0:
                 self._update_panel_after_command_result(result)
-                recipe_message = (
-                    self._offer_label_recipe_save(result) if result is not None else ""
+
+                def _finish_label_import(recipe_message: str = "") -> None:
+                    self._show_status(
+                        " ".join(
+                            part
+                            for part in [
+                                f"Applied to {count} files.",
+                                recipe_message,
+                            ]
+                            if part
+                        ),
+                    )
+
+                recipe_message = self._offer_label_recipe_save(
+                    result,
+                    on_complete=_finish_label_import,
                 )
-                self._show_status(
-                    " ".join(
-                        part
-                        for part in [f"Applied to {count} files.", recipe_message]
-                        if part
-                    ),
-                )
+                if recipe_message is not None:
+                    _finish_label_import(recipe_message)
             else:
                 QMessageBox.warning(
                     self.panel,
@@ -1303,7 +1284,12 @@ class DatasetActionHandler:
             logger.error("Import label error: %s", e, exc_info=True)
             QMessageBox.critical(self.panel, "Error", f"Failed: {e}")
 
-    def _offer_label_recipe_save(self, result) -> str:
+    def _offer_label_recipe_save(
+        self,
+        result,
+        *,
+        on_complete: Callable[[str], None] | None = None,
+    ) -> str | None:
         diagnostics = getattr(result, "diagnostics", {}) or {}
         if not bool(diagnostics.get("recipe_updated")):
             return ""
@@ -1317,7 +1303,8 @@ class DatasetActionHandler:
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
-            return self._save_interpretation_recipe()
+            started = self._save_interpretation_recipe(on_complete=on_complete)
+            return None if started else "Interpretation recipe trace updated."
         return "Interpretation recipe trace updated."
 
     def _analyze_label_map(self, label_map):

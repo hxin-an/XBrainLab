@@ -200,6 +200,7 @@ def test_data_splitting_window_confirm(qtbot):
         window.dataset_generator = MagicMock()
         window.preview_worker = MagicMock()
         window.preview_worker.is_alive.return_value = False
+        window._preview_status = "succeeded"
 
         with patch.object(QDialog, "accept") as mock_accept:
             window.confirm()

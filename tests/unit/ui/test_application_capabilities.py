@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
@@ -15,16 +16,16 @@ from XBrainLab.backend.application import (
     CommandName,
     CommandResult,
     QueryStateCommand,
-    StopTrainingCommand,
     get_application_service,
 )
 from XBrainLab.backend.study import Study
-from XBrainLab.ui import application_capabilities
+from XBrainLab.ui import application_capabilities, refresh_coordinator
 from XBrainLab.ui.application_capabilities import (
     execute_application_command,
     execute_application_command_async,
-    execute_application_shutdown_command,
     get_command_capability,
+    release_application_shutdown_fence,
+    request_application_shutdown_fence,
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.refresh_coordinator import refresh_after_observer
@@ -221,49 +222,6 @@ def test_execute_application_command_can_skip_refresh(qtbot, monkeypatch):
     assert refresh_calls == []
 
 
-def test_execute_application_shutdown_command_suppresses_observers_without_refresh(
-    qtbot,
-    monkeypatch,
-):
-    study = Study()
-    widget = QWidget()
-    cast(Any, widget).main_window = SimpleNamespace(study=study)
-    qtbot.addWidget(widget)
-    result = CommandResult.success_result(
-        command_name="stop_training",
-        message="stopped",
-        state=None,
-        changed_state=ChangedState(training_changed=True),
-    )
-    refresh_calls = []
-
-    class _Service:
-        def execute(self, command):
-            assert isinstance(command, StopTrainingCommand)
-            assert (
-                refresh_after_observer(widget, event_name="training_changed") is False
-            )
-            return result
-
-    monkeypatch.setattr(
-        application_capabilities,
-        "get_application_service",
-        lambda provided_study: _Service(),
-    )
-    monkeypatch.setattr(
-        application_capabilities,
-        "refresh_after_command",
-        lambda context, command_result: refresh_calls.append(
-            (context, command_result),
-        ),
-    )
-
-    command_result = execute_application_shutdown_command(widget, StopTrainingCommand())
-
-    assert command_result is result
-    assert refresh_calls == []
-
-
 def test_execute_application_command_async_runs_service_off_gui_call_stack(
     qtbot,
     monkeypatch,
@@ -397,6 +355,108 @@ def test_execute_application_command_async_ignores_result_after_widget_deleted(
     assert cast(Any, widget)._xbrainlab_active_application_workers == []
 
 
+def test_real_threadpool_cleanup_does_not_dereference_deleted_widget(
+    qtbot,
+    monkeypatch,
+):
+    study = Study()
+    widget = QWidget()
+    main_window = SimpleNamespace(study=study)
+    cast(Any, widget).main_window = main_window
+    worker_started = threading.Event()
+    worker_release = threading.Event()
+    callbacks = []
+    result = CommandResult.success_result(
+        command_name="query_state",
+        message="ok",
+        state=None,
+        changed_state=ChangedState(raw_changed=True),
+    )
+
+    class _Service:
+        def execute(self, _command):
+            worker_started.set()
+            assert worker_release.wait(timeout=2.0)
+            return result
+
+    monkeypatch.setattr(
+        application_capabilities,
+        "get_application_service",
+        lambda _study: _Service(),
+    )
+
+    assert execute_application_command_async(
+        widget,
+        QueryStateCommand(),
+        on_result=callbacks.append,
+    )
+    assert worker_started.wait(timeout=1.0)
+    active_workers = cast(Any, widget)._xbrainlab_active_application_workers
+    owner_id = id(main_window)
+    assert refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS[owner_id] == 1
+
+    widget.deleteLater()
+    qtbot.waitUntil(lambda: sip.isdeleted(widget), timeout=1_000)
+    worker_release.set()
+    qtbot.waitUntil(lambda: active_workers == [], timeout=1_000)
+
+    assert callbacks == []
+    assert owner_id not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
+
+
+def test_async_result_is_suppressed_after_main_window_starts_closing(
+    qtbot,
+    monkeypatch,
+):
+    study = Study()
+    widget = QWidget()
+    main_window = SimpleNamespace(study=study, _closing_in_progress=False)
+    cast(Any, widget).main_window = main_window
+    qtbot.addWidget(widget)
+    worker_started = threading.Event()
+    worker_release = threading.Event()
+    callbacks = []
+    refreshes = []
+    result = CommandResult.success_result(
+        command_name="query_state",
+        message="ok",
+        state=None,
+        changed_state=ChangedState(raw_changed=True),
+    )
+
+    class _Service:
+        def execute(self, _command):
+            worker_started.set()
+            assert worker_release.wait(timeout=2.0)
+            return result
+
+    monkeypatch.setattr(
+        application_capabilities,
+        "get_application_service",
+        lambda _study: _Service(),
+    )
+    monkeypatch.setattr(
+        application_capabilities,
+        "refresh_after_command",
+        lambda *_args: refreshes.append(True),
+    )
+
+    assert execute_application_command_async(
+        widget,
+        QueryStateCommand(),
+        on_result=callbacks.append,
+    )
+    assert worker_started.wait(timeout=1.0)
+    active_workers = cast(Any, widget)._xbrainlab_active_application_workers
+
+    main_window._closing_in_progress = True
+    worker_release.set()
+    qtbot.waitUntil(lambda: active_workers == [], timeout=1_000)
+
+    assert callbacks == []
+    assert refreshes == []
+
+
 def test_execute_application_command_async_returns_false_for_mock_study(
     qtbot,
     monkeypatch,
@@ -424,6 +484,29 @@ def test_execute_application_command_async_returns_false_for_mock_study(
 
     assert started is False
     assert started_workers == []
+
+
+def test_shutdown_fence_request_uses_immediate_service_admission(qtbot, monkeypatch):
+    study = Study()
+    widget = QWidget()
+    cast(Any, widget).study = study
+    qtbot.addWidget(widget)
+    service = MagicMock()
+    monkeypatch.setattr(
+        application_capabilities,
+        "get_application_service",
+        lambda _study: service,
+    )
+
+    installed = request_application_shutdown_fence(widget)
+
+    assert installed is True
+    service.request_shutdown_fence.assert_called_once_with()
+
+    released = release_application_shutdown_fence(widget)
+
+    assert released is True
+    service.release_shutdown_fence.assert_called_once_with()
 
 
 def test_execute_application_command_async_returns_false_without_thread_pool(

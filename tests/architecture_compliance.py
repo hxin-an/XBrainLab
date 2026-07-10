@@ -1929,10 +1929,7 @@ def check_ui_command_execution_suppresses_observer_refresh(root_dir: Path) -> li
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
-        if node.name not in {
-            "execute_application_command",
-            "execute_application_shutdown_command",
-        }:
+        if node.name != "execute_application_command":
             continue
         visitor = _CommandExecutionObserverSuppressionVisitor()
         visitor.visit(node)

@@ -194,7 +194,6 @@ class TestDatasetActionHandler:
         mock_fd,
         handler,
     ):
-        from XBrainLab.backend.application import LoadDataCommand
         from XBrainLab.backend.study import Study
 
         handler.panel.study = Study()
@@ -217,7 +216,7 @@ class TestDatasetActionHandler:
         ):
             handler.import_data()
 
-        assert isinstance(mock_execute.call_args.args[1], LoadDataCommand)
+        mock_execute.assert_not_called()
         handler.panel.controller.import_files.assert_not_called()
         mock_mb.warning.assert_called_once()
         assert mock_mb.warning.call_args.args[1] == "Interpretation Blocked"
@@ -309,9 +308,11 @@ class TestDatasetActionHandler:
                 )
             raise AssertionError(f"unexpected command: {command!r}")
 
-        with patch(
-            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-            side_effect=fake_execute,
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                side_effect=fake_execute,
+            ),
         ):
             handler.import_data()
 
@@ -633,9 +634,12 @@ class TestDatasetActionHandler:
                 return _command_result(applied_interpretation={})
             raise AssertionError(f"unexpected command: {command!r}")
 
-        with patch(
-            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-            side_effect=fake_execute,
+        with patch.object(
+            handler,
+            "_execute_interpretation_command_async",
+            side_effect=lambda command, on_result, **_kwargs: (
+                on_result(fake_execute(handler.panel, command)) or True
+            ),
         ):
             handler.reload_interpretation_recipe()
 
@@ -724,9 +728,12 @@ class TestDatasetActionHandler:
                 return _command_result(applied_interpretation={})
             raise AssertionError(f"unexpected command: {command!r}")
 
-        with patch(
-            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-            side_effect=fake_execute,
+        with patch.object(
+            handler,
+            "_execute_interpretation_command_async",
+            side_effect=lambda command, on_result, **_kwargs: (
+                on_result(fake_execute(handler.panel, command)) or True
+            ),
         ):
             handler.reload_interpretation_recipe()
 
@@ -818,9 +825,12 @@ class TestDatasetActionHandler:
                 return _command_result(applied_interpretation={})
             raise AssertionError(f"unexpected command: {command!r}")
 
-        with patch(
-            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-            side_effect=fake_execute,
+        with patch.object(
+            handler,
+            "_execute_interpretation_command_async",
+            side_effect=lambda command, on_result, **_kwargs: (
+                on_result(fake_execute(handler.panel, command)) or True
+            ),
         ):
             handler.reload_interpretation_recipe()
 
@@ -911,9 +921,11 @@ class TestDatasetActionHandler:
                 return _command_result(applied_interpretation={})
             raise AssertionError(f"unexpected command: {command!r}")
 
-        with patch(
-            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-            side_effect=fake_execute,
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                side_effect=fake_execute,
+            ),
         ):
             handler.import_data()
 
@@ -923,7 +935,7 @@ class TestDatasetActionHandler:
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
-    def test_import_data_reviews_async_but_applies_on_ui_thread(
+    def test_import_data_reviews_and_applies_off_ui_thread(
         self,
         mock_mb,
         mock_fd,
@@ -963,6 +975,9 @@ class TestDatasetActionHandler:
                     )
                 )
                 return True
+            if isinstance(command, ApplyInterpretationCommand):
+                on_result(_command_result(applied_interpretation={}))
+                return True
             raise AssertionError(f"unexpected command: {command!r}")
 
         def fake_execute(_panel, command):
@@ -985,15 +1000,125 @@ class TestDatasetActionHandler:
 
         assert [type(command) for command in async_commands] == [
             ReviewInterpretationCommand,
-        ]
-        assert [type(command) for command in sync_commands] == [
             ApplyInterpretationCommand,
         ]
-        apply_command = sync_commands[-1]
+        assert sync_commands == []
+        apply_command = async_commands[-1]
         assert apply_command.candidate_id == "candidate-1"
         assert apply_command.confirmed is False
 
-    def test_interpretation_rescan_helper_uses_command_runner(
+    def test_apply_interpretation_real_study_keeps_qt_event_loop_responsive(
+        self,
+        qtbot,
+        monkeypatch,
+    ):
+        import threading
+
+        from PyQt6.QtCore import QTimer
+
+        from XBrainLab.backend.application import (
+            ApplyInterpretationCommand,
+            ChangedState,
+            CommandResult,
+        )
+        from XBrainLab.backend.application.state import ApplicationStateSnapshot
+        from XBrainLab.backend.study import Study
+        from XBrainLab.ui import application_capabilities
+        from XBrainLab.ui.panels.dataset import actions
+        from XBrainLab.ui.panels.dataset.actions import (
+            DatasetActionHandler,
+            _InterpretationReviewState,
+        )
+
+        panel = QWidget()
+        qtbot.addWidget(panel)
+        panel.study = Study()
+        panel.set_busy = MagicMock()
+        handler = DatasetActionHandler(panel)
+        dialog = MagicMock()
+        dialog.exec.return_value = True
+        dialog.get_result.return_value = {
+            "confirmed": False,
+            "save_recipe": False,
+        }
+        worker_started = threading.Event()
+        worker_release = threading.Event()
+        worker_threads: list[int] = []
+        result = CommandResult.success_result(
+            command_name="apply_interpretation",
+            message="Applied.",
+            state=ApplicationStateSnapshot.empty(),
+            changed_state=ChangedState(interpretation_changed=True),
+            diagnostics={"applied_interpretation": {}},
+        )
+
+        class _Service:
+            def execute(self, command):
+                assert isinstance(command, ApplyInterpretationCommand)
+                worker_threads.append(threading.get_ident())
+                worker_started.set()
+                assert worker_release.wait(timeout=2.0)
+                return result
+
+        monkeypatch.setattr(
+            actions, "DataInterpretationPreviewDialog", lambda *_a, **_k: dialog
+        )
+        monkeypatch.setattr(
+            application_capabilities,
+            "get_application_service",
+            lambda _study: _Service(),
+        )
+        monkeypatch.setattr(
+            application_capabilities,
+            "refresh_after_command",
+            lambda *_args: None,
+        )
+        review_state = _InterpretationReviewState(
+            scan={},
+            preview={},
+            candidate={"candidate_id": "candidate-1"},
+            candidate_id="candidate-1",
+            decision={
+                "candidate_id": "candidate-1",
+                "decision": "safe",
+                "required_confirmations": [],
+                "blocked_reasons": [],
+            },
+        )
+
+        with (
+            patch.object(
+                handler,
+                "_confirm_import_resource_preflight",
+                return_value=True,
+            ),
+            patch.object(handler, "_show_status") as show_status,
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                side_effect=AssertionError("apply must not run on the GUI thread"),
+            ),
+        ):
+            handled = handler._continue_data_interpretation_import(
+                source_path="/tmp/sub-01_task-mi.fif",
+                source_hint="auto",
+                choices={},
+                label_sources=[],
+                review_state=review_state,
+            )
+            assert handled is True
+            qtbot.waitUntil(worker_started.is_set, timeout=1000)
+
+            heartbeat: list[bool] = []
+            QTimer.singleShot(0, lambda: heartbeat.append(True))
+            qtbot.waitUntil(lambda: bool(heartbeat), timeout=1000)
+            assert worker_threads != [threading.get_ident()]
+
+            worker_release.set()
+            qtbot.waitUntil(lambda: show_status.call_count == 1, timeout=1000)
+
+        assert panel.set_busy.call_args_list == [((True,),), ((False,),)]
+
+    def test_interpretation_command_helper_continues_from_compatibility_result(
         self,
         handler,
     ):
@@ -1006,19 +1131,22 @@ class TestDatasetActionHandler:
             commands.append(command)
             return expected_result
 
+        results = []
         with patch(
-            "XBrainLab.ui.panels.dataset.interpretation_command_runner.execute_application_command",
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
             side_effect=fake_sync,
         ):
-            result = handler._execute_interpretation_command_responsive(
+            started = handler._execute_interpretation_command_async(
                 ScanSourceCommand(source_path="/tmp/eeg"),
+                on_result=results.append,
                 error_title="Source scan failed",
             )
 
-        assert result is expected_result
+        assert started is True
+        assert results == [expected_result]
         assert isinstance(commands[0], ScanSourceCommand)
 
-    def test_interpretation_rescan_helper_returns_none_when_runner_unavailable(
+    def test_interpretation_command_helper_returns_false_when_unavailable(
         self,
         qtbot,
     ):
@@ -1031,21 +1159,22 @@ class TestDatasetActionHandler:
         handler = DatasetActionHandler(panel)
 
         with patch(
-            "XBrainLab.ui.panels.dataset.interpretation_command_runner.execute_application_command",
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
             return_value=None,
         ) as mock_sync:
-            result = handler._execute_interpretation_command_responsive(
+            started = handler._execute_interpretation_command_async(
                 ScanSourceCommand(source_path="/tmp/eeg"),
+                on_result=MagicMock(),
                 error_title="Source scan failed",
             )
 
-        assert result is None
+        assert started is False
         mock_sync.assert_called_once()
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
-    def test_import_data_repreviews_dialog_review_choices(
+    def test_import_data_repreviews_choices_that_resolve_initial_blocker(
         self,
         mock_mb,
         mock_fd,
@@ -1076,6 +1205,7 @@ class TestDatasetActionHandler:
             if isinstance(command, ReviewInterpretationCommand):
                 reviews.append(command)
                 candidate_id = f"candidate-{len(reviews)}"
+                first_review = len(reviews) == 1
                 return _command_result(
                     scan_result={
                         "scan_id": "scan-1",
@@ -1085,9 +1215,15 @@ class TestDatasetActionHandler:
                     candidate={"candidate_id": candidate_id},
                     validation_decision={
                         "candidate_id": candidate_id,
-                        "decision": "needs_confirmation",
-                        "required_confirmations": ["Confirm event roles."],
-                        "blocked_reasons": [],
+                        "decision": (
+                            "blocked" if first_review else "needs_confirmation"
+                        ),
+                        "required_confirmations": (
+                            [] if first_review else ["Confirm event roles."]
+                        ),
+                        "blocked_reasons": (
+                            ["Event mapping is incomplete."] if first_review else []
+                        ),
                     },
                 )
             if isinstance(command, ApplyInterpretationCommand):
@@ -1098,10 +1234,6 @@ class TestDatasetActionHandler:
         with (
             patch(
                 "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-                side_effect=fake_execute,
-            ),
-            patch(
-                "XBrainLab.ui.panels.dataset.interpretation_command_runner.execute_application_command",
                 side_effect=fake_execute,
             ),
         ):
@@ -1212,10 +1344,6 @@ class TestDatasetActionHandler:
                 "XBrainLab.ui.panels.dataset.actions.execute_application_command",
                 side_effect=fake_execute,
             ),
-            patch(
-                "XBrainLab.ui.panels.dataset.interpretation_command_runner.execute_application_command",
-                side_effect=fake_execute,
-            ),
         ):
             handler.import_data()
 
@@ -1291,9 +1419,11 @@ class TestDatasetActionHandler:
                 return _command_result(import_recipe={"recipe_id": "recipe-1"})
             raise AssertionError(f"unexpected command: {command!r}")
 
-        with patch(
-            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-            side_effect=fake_execute,
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                side_effect=fake_execute,
+            ),
         ):
             handler.import_data()
 
@@ -1310,14 +1440,18 @@ class TestDatasetActionHandler:
         from XBrainLab.backend.study import Study
 
         handler.panel.study = Study()
+        completions = []
 
         with (
             patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
             patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
         ):
-            message = handler._save_interpretation_recipe()
+            handled = handler._save_interpretation_recipe(
+                on_complete=completions.append,
+            )
 
-        assert message == ""
+        assert handled is True
+        assert completions == [""]
         mock_fd.getSaveFileName.assert_not_called()
         mock_mb.warning.assert_called_once()
         assert (
@@ -2317,9 +2451,11 @@ class TestDatasetActionHandler:
                 return _command_result(import_recipe={"recipe_id": "recipe-1"})
             raise AssertionError(f"unexpected command: {command!r}")
 
-        with patch(
-            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-            side_effect=fake_execute,
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                side_effect=fake_execute,
+            ),
         ):
             handler.import_label()
 

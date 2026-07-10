@@ -1036,6 +1036,52 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
 | Obsolete / duplicated clusters | Obsolete path cluster | The obsolete cluster is the deleted `tests/data/` fixture location, replaced by `tests/fixtures/data/`. No test cluster was deleted without replacement. | Consumers and docs were moved to `tests/fixtures/data/`; real-data gates must use that path. |
 | Missing coverage outside this scope | Explicitly out of current backend/test cleanup scope | Full internal event-name extraction for every EEG format, Windows human desktop acceptance, and final Epoch UI consumption of `duration_field`. | Documented as future validation/product work, not claimed by this branch. |
 
+## 2026-07-10 UI Worker And Shutdown Lifecycle Gate
+
+This checkpoint closes lifecycle races found after the first Desktop MVP handoff audit:
+
+- Data Interpretation review, reload, apply, and recipe save use QThreadPool continuations. The
+  original click handler returns immediately; there is no custom nested `QEventLoop` wait.
+- Async command cleanup captures an immutable refresh-suppression owner id before work starts.
+  A queued result can therefore clean up after its QWidget is deleted without dereferencing the
+  deleted wrapper. Normal callbacks are also suppressed after MainWindow begins closing.
+- MainWindow disables all command surfaces, installs an ApplicationService admission fence, and
+  then checks training/assistant ownership. Commands queued before the fence are checked again
+  after acquiring the command lock. Failed fence release has bounded retry and an explicit
+  Retry/Close recovery path.
+- Data Splitting preview records running/succeeded/failed/cancelled state. Unexpected worker
+  exceptions cannot leave `Calculating` forever or make Confirm rerun generation on the GUI thread;
+  Esc/X wait for the real worker and slow cancellation remains visibly in progress.
+
+Validation:
+
+```bash
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/backend/application \
+  tests/unit/ui/test_application_capabilities.py \
+  tests/unit/ui/test_refresh_coordinator.py \
+  tests/unit/ui/test_data_splitting.py \
+  tests/unit/ui/dataset/test_data_splitting.py \
+  tests/unit/ui/dataset/test_interpretation_async_flow.py \
+  tests/unit/ui/test_main_window_sync.py \
+  tests/unit/ui/test_ui_misc.py \
+  tests/unit/ui/test_local_bootstrap_validation.py \
+  tests/unit/test_architecture_compliance.py -q
+# 746 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui -q
+# 1375 passed
+
+poetry run basedpyright XBrainLab
+# 0 errors
+
+poetry run python tests/architecture_compliance.py
+# Architecture compliant
+```
+
+This does not replace Windows human acceptance for closing during real training, Alt+F4 while a
+real Data Splitting preview is stopping, or long-running native-library teardown.
+
 ## 常用 docs gate
 
 ```bash

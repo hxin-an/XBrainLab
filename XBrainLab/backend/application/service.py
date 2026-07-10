@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import replace
-from threading import RLock
+from threading import Lock, RLock
 from typing import Any
 
 from XBrainLab.backend.study import Study
@@ -55,6 +55,7 @@ from .controller_adapters import (
 from .data_table_service import DataTableCommandService
 from .errors import (
     ApplicationError,
+    PreconditionError,
     map_exception,
 )
 from .lifecycle_service import LifecycleCommandService
@@ -403,6 +404,8 @@ class ApplicationService:
         self.evaluation_state = EvaluationStateReadModel(self.study)
         self._last_error: ErrorSnapshot | None = None
         self._last_state: ApplicationStateSnapshot | None = None
+        self._command_admission_lock = Lock()
+        self._shutdown_fenced = False
         self.pipeline_transaction = PipelineStateTransaction(self.study)
         self.interpretation = _LazyDataInterpretationCommandService(
             self.dataset,
@@ -477,8 +480,50 @@ class ApplicationService:
 
     def execute(self, command: Command | Any) -> CommandResult:
         """Execute a command and return a result envelope."""
+        with self._command_admission_lock:
+            rejected_by_shutdown = self._shutdown_fenced and not isinstance(
+                command,
+                (
+                    QueryStateCommand,
+                    StopTrainingCommand,
+                ),
+            )
         with self._command_lock:
+            if rejected_by_shutdown:
+                return self._shutdown_fence_rejection(command)
             return self._execute_serialized(command)
+
+    def request_shutdown_fence(self) -> None:
+        """Atomically reject new mutations without waiting for command execution."""
+        with self._command_admission_lock:
+            self._shutdown_fenced = True
+
+    def release_shutdown_fence(self) -> None:
+        """Atomically reopen command admission after a cancelled close attempt."""
+        with self._command_admission_lock:
+            self._shutdown_fenced = False
+
+    def _shutdown_fence_rejection(self, command: Command | Any) -> CommandResult:
+        """Return a structured rejection for commands denied at admission time."""
+        try:
+            name = command_name(command).value
+        except Exception:
+            name = command.__class__.__name__
+        try:
+            state = self.get_state()
+        except Exception as exc:
+            state = self._state_fallback(exc)
+        message = "XBrainLab is closing. Wait for shutdown to finish or cancel closing."
+        return CommandResult.failure_result(
+            command_name=name,
+            message=message,
+            state=state,
+            changed_state=ChangedState(),
+            error_type=ErrorType.PRECONDITION,
+            recoverable=True,
+            error_message=message,
+            diagnostics={"shutdown_fenced": True},
+        )
 
     def _execute_serialized(self, command: Command | Any) -> CommandResult:
         """Execute one command while the shared service mutation lock is held."""
@@ -566,7 +611,13 @@ class ApplicationService:
             errors = [*self._last_state.read_errors, message]
             return replace(
                 self._last_state,
+                training=replace(self._last_state.training, is_running=True),
+                active_training=replace(
+                    self._last_state.active_training,
+                    is_running=True,
+                ),
                 state_reliable=False,
+                training_liveness_reliable=False,
                 read_errors=errors,
             )
         return ApplicationStateSnapshot.empty(read_errors=[message])
@@ -868,6 +919,15 @@ class ApplicationService:
         command: Command,
         state: ApplicationStateSnapshot,
     ) -> None:
+        with self._command_admission_lock:
+            shutdown_fenced = self._shutdown_fenced
+        if shutdown_fenced and not isinstance(
+            command,
+            (QueryStateCommand, StopTrainingCommand),
+        ):
+            raise PreconditionError(
+                "XBrainLab is closing. Wait for shutdown to finish or cancel closing."
+            )
         ensure_command_allowed(command, state)
 
     @staticmethod

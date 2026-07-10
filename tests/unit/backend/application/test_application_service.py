@@ -6,7 +6,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
-from threading import Lock
+from threading import Event, Lock, Thread, current_thread
 from typing import Any, cast
 from unittest.mock import MagicMock
 
@@ -106,6 +106,78 @@ def test_application_service_is_singleton_for_one_study(tmp_path: Path) -> None:
     assert second is first
     assert first.execute(ScanSourceCommand(source_path=str(source))).ok is True
     assert second.get_state().interpretation.has_scan_result is True
+
+
+def test_shutdown_fence_blocks_mutations_until_cancelled() -> None:
+    service = ApplicationService(Study())
+
+    service.request_shutdown_fence()
+    blocked = service.execute(NewSessionCommand(confirmed=True))
+    blocked_train = service.execute(TrainCommand(confirmed=True))
+    query = service.execute(QueryStateCommand(query="state"))
+    stop = service.execute(StopTrainingCommand(wait_timeout=0.0))
+    service.release_shutdown_fence()
+    resumed = service.execute(NewSessionCommand(confirmed=True))
+
+    assert blocked.failed is True
+    assert blocked.error_type == ErrorType.PRECONDITION
+    assert "closing" in blocked.message
+    assert blocked_train.failed is True
+    assert "closing" in blocked_train.message
+    assert query.ok is True
+    assert "closing" not in stop.message
+    assert resumed.ok is True
+
+
+def test_shutdown_fence_rechecks_command_queued_before_fence() -> None:
+    study = Study()
+    service = ApplicationService(study)
+    original_admission_lock = service._command_admission_lock
+    admission_passed = Event()
+    result_holder = []
+    mutation_thread: Thread | None = None
+
+    class _ObservedAdmissionLock:
+        def __enter__(self):
+            original_admission_lock.acquire()
+            return self
+
+        def __exit__(self, *_args):
+            original_admission_lock.release()
+            if current_thread() is mutation_thread:
+                admission_passed.set()
+
+    service._command_admission_lock = _ObservedAdmissionLock()
+
+    def execute_queued_mutation() -> None:
+        result_holder.append(service.execute(NewSessionCommand(confirmed=True)))
+
+    with service._command_lock:
+        mutation_thread = Thread(target=execute_queued_mutation)
+        mutation_thread.start()
+        assert admission_passed.wait(timeout=1.0)
+        service.request_shutdown_fence()
+
+    mutation_thread.join(timeout=1.0)
+
+    assert not mutation_thread.is_alive()
+    assert len(result_holder) == 1
+    assert result_holder[0].failed is True
+    assert result_holder[0].error_type == ErrorType.PRECONDITION
+    assert "closing" in result_holder[0].message
+
+
+def test_shutdown_fence_release_does_not_depend_on_state_snapshot() -> None:
+    service = ApplicationService(Study())
+    service.get_state()
+    service.request_shutdown_fence()
+    service.state_snapshot.build = MagicMock(
+        side_effect=RuntimeError("state backend unavailable"),
+    )
+
+    service.release_shutdown_fence()
+
+    assert service._shutdown_fenced is False
 
 
 def test_product_interpretation_rollback_uses_complete_data_manager_state() -> None:
@@ -426,6 +498,22 @@ def test_execute_returns_failure_envelope_when_initial_state_read_fails() -> Non
     assert result.state.state_reliable is False
     assert result.state.pipeline_stage == "unavailable"
     assert "state backend unavailable" in result.message
+
+
+def test_state_fallback_never_reuses_stale_idle_training_liveness() -> None:
+    service = ApplicationService(Study())
+    idle_state = service.get_state()
+    assert idle_state.active_training.is_running is False
+    service.state_snapshot.build = MagicMock(
+        side_effect=RuntimeError("state backend unavailable"),
+    )
+
+    result = service.execute(StopTrainingCommand(wait_timeout=0.0))
+
+    assert result.failed is True
+    assert result.state.training_liveness_reliable is False
+    assert result.state.active_training.is_running is True
+    assert result.state.training.is_running is True
 
 
 def test_refresh_failure_does_not_mask_original_command_error() -> None:

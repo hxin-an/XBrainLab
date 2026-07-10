@@ -6629,3 +6629,30 @@ call sites into explicit legacy/fallback helpers.
 - Windows DPI/multi-monitor human acceptance is still required before merging to `main`.
 - This does not claim full BIDS validation, BIDS events inheritance, proprietary converters,
   long-duration training stability, or scientific model accuracy.
+
+## 2026-07-10 UI Worker Lifecycle And Safe Shutdown
+
+### 實作
+
+- Added an ApplicationService shutdown admission fence with a second check after the shared command
+  lock, so a mutation queued before desktop close cannot start after close begins.
+- MainWindow close now disables central/dock command surfaces, stops training asynchronously,
+  releases the fence on recoverable failure, and offers bounded Retry/Close recovery if normal
+  admission cannot be restored.
+- Replaced Data Interpretation's nested event-loop runner with callback continuations for review,
+  recipe reload, revalidation, apply, and recipe save. Closing suppresses normal late callbacks.
+- Added explicit Data Splitting preview lifecycle state and real-thread Esc/X/exception/slow-stop
+  coverage. Confirm never regenerates a failed preview on the GUI thread.
+- Refresh suppression now exits by immutable owner id, so worker cleanup does not dereference a
+  deleted QWidget.
+
+### 驗證
+
+- Focused backend/UI/architecture batch: `746 passed`.
+- Complete UI unit suite: `1375 passed`.
+- Ruff: PASS; Basedpyright: `0 errors`; architecture compliance: PASS.
+
+### 邊界
+
+- Windows human acceptance is still required for real training close, Alt+F4, WSLg/native teardown,
+  and actual long-running Data Splitting cancellation.

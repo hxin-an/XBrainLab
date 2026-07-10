@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
@@ -16,6 +17,8 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QWidget,
 )
+
+_REAL_THREAD_CLASS = threading.Thread
 
 
 def _split_config_payload() -> dict[str, object]:
@@ -565,9 +568,14 @@ class TestDataSplittingPreviewDialogSplitters:
         dlg.preview_worker = MagicMock()
         dlg.preview_worker.is_alive.return_value = False
         dlg.dataset_generator = MagicMock()
+        dlg.timer = MagicMock()
+        dlg.preview_debounce_timer = MagicMock()
+        dlg._preview_status = "succeeded"
         with patch.object(type(dlg), "accept"):
             dlg.confirm()
             dlg.dataset_generator.prepare_result.assert_called_once()
+            dlg.timer.stop.assert_called_once()
+            dlg.preview_debounce_timer.stop.assert_called_once()
 
     def test_confirm_error(self, dlg):
         dlg.preview_worker = MagicMock()
@@ -579,19 +587,61 @@ class TestDataSplittingPreviewDialogSplitters:
         ):
             dlg.confirm()
 
-    def test_close_stops_timer_and_generator(self, dlg):
+    def test_unexpected_preview_exception_is_visible_and_confirm_does_not_retry(
+        self,
+        dlg,
+    ):
+        generator = MagicMock()
+        generator.generate.side_effect = RuntimeError("split backend failed")
+        generator.interrupted = False
+        generator.preview_failed = False
+        dlg.dataset_generator = None
+        dlg.preview_worker = None
+
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator",
+                return_value=generator,
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.threading.Thread",
+                _REAL_THREAD_CLASS,
+            ),
+        ):
+            dlg.preview()
+            worker = dlg.preview_worker
+            worker.join(timeout=1.0)
+
+        assert worker.is_alive() is False
+        generator.generate.assert_called_once_with()
+        dlg.update_table()
+
+        assert dlg._preview_status == "failed"
+        assert dlg._preview_error == "split backend failed"
+        assert dlg.tree.topLevelItem(0).text(0) == "Preview failed"
+        assert dlg.btn_confirm.isEnabled() is False
+
+        with patch.object(dlg, "_show_message_box") as message:
+            dlg.confirm()
+
+        generator.prepare_result.assert_not_called()
+        assert "split backend failed" in message.call_args.args[2]
+
+    def test_close_stops_timer_and_generator_after_worker_exits(self, dlg):
         from PyQt6.QtGui import QCloseEvent
 
         dlg.timer = MagicMock()
         dlg.dataset_generator = MagicMock()
         dlg.preview_worker = MagicMock()
-        dlg.preview_worker.is_alive.return_value = True
-        dlg.closeEvent(QCloseEvent())
+        dlg.preview_worker.is_alive.return_value = False
+        event = QCloseEvent()
+        dlg.closeEvent(event)
         dlg.timer.stop.assert_called_once()
         dlg.dataset_generator.set_interrupt.assert_called_once()
-        dlg.preview_worker.join.assert_called_once()
+        dlg.preview_worker.join.assert_not_called()
+        assert event.isAccepted() is True
 
-    def test_preview_interrupts_and_joins_previous_worker(self, dlg):
+    def test_preview_does_not_replace_worker_that_is_still_alive(self, dlg):
         old_generator = MagicMock()
         old_worker = MagicMock()
         old_worker.is_alive.return_value = True
@@ -612,5 +662,192 @@ class TestDataSplittingPreviewDialogSplitters:
             dlg.preview()
 
         old_generator.set_interrupt.assert_called_once()
-        old_worker.join.assert_called_once()
+        old_worker.join.assert_not_called()
+        new_worker.start.assert_not_called()
+        assert dlg.dataset_generator is old_generator
+        assert dlg.preview_worker is old_worker
+        assert dlg.preview_debounce_timer.isActive()
+        dlg.preview_debounce_timer.stop()
+        old_worker.is_alive.return_value = False
+
+    def test_preview_restarts_after_previous_worker_exits(self, dlg):
+        old_generator = MagicMock()
+        old_worker = MagicMock()
+        old_worker.is_alive.return_value = True
+        new_worker = MagicMock()
+        new_worker.is_alive.return_value = False
+        dlg.dataset_generator = old_generator
+        dlg.preview_worker = old_worker
+
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator"
+            ) as mock_generator,
+            patch(
+                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.threading.Thread",
+                return_value=new_worker,
+            ),
+        ):
+            mock_generator.return_value.preview_failed = None
+            dlg.preview()
+
+            assert new_worker.start.call_count == 0
+            assert dlg.preview_debounce_timer.isActive()
+            dlg.preview_debounce_timer.stop()
+            old_worker.is_alive.return_value = False
+            dlg.preview()
+
+        assert old_generator.set_interrupt.call_count == 2
+        old_worker.join.assert_not_called()
         new_worker.start.assert_called_once()
+        assert dlg.dataset_generator is mock_generator.return_value
+        assert dlg.preview_worker is new_worker
+
+    def test_close_waits_for_preview_worker_ownership_release(self, dlg):
+        from PyQt6.QtGui import QCloseEvent
+
+        dlg.timer = MagicMock()
+        dlg.dataset_generator = MagicMock()
+        dlg.preview_worker = MagicMock()
+        dlg.preview_worker.is_alive.return_value = True
+        event = QCloseEvent()
+
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.QTimer.singleShot"
+        ) as retry:
+            dlg.closeEvent(event)
+            dlg.closeEvent(QCloseEvent())
+
+        assert event.isAccepted() is False
+        assert dlg.dataset_generator is not None
+        assert dlg.preview_worker is not None
+        retry.assert_called_once()
+        dlg.preview_worker.is_alive.return_value = False
+
+    def test_close_retry_only_closes_after_preview_worker_exits(self, dlg):
+        dlg.preview_worker = MagicMock()
+        dlg.preview_worker.is_alive.return_value = True
+
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.QTimer.singleShot"
+            ) as retry,
+            patch.object(dlg, "close") as close,
+        ):
+            dlg._close_when_preview_worker_stops()
+            close.assert_not_called()
+            retry.assert_called_once()
+
+            dlg.preview_worker.is_alive.return_value = False
+            dlg._close_when_preview_worker_stops()
+            close.assert_called_once()
+
+    def test_escape_waits_for_real_preview_worker_before_rejecting(self, dlg, qtbot):
+        release_worker = threading.Event()
+        worker = _REAL_THREAD_CLASS(target=release_worker.wait)
+        worker.start()
+        dlg.dataset_generator = MagicMock()
+        dlg.preview_worker = worker
+        dlg.show()
+
+        callbacks = []
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.QTimer.singleShot",
+            side_effect=lambda _delay, callback: callbacks.append(callback),
+        ):
+            qtbot.keyClick(dlg, Qt.Key.Key_Escape)
+
+        assert dlg.isVisible() is True
+        dlg.dataset_generator.set_interrupt.assert_called_once()
+        assert len(callbacks) == 1
+        assert dlg._preview_pending_close_action == "reject"
+
+        release_worker.set()
+        worker.join(timeout=1.0)
+        assert worker.is_alive() is False
+        callbacks[0]()
+        assert dlg.result() == QDialog.DialogCode.Rejected
+        assert dlg._preview_pending_close_action is None
+        qtbot.waitUntil(lambda: not dlg.isVisible(), timeout=1000)
+
+    def test_window_close_waits_for_real_preview_worker_and_clears_timers(
+        self,
+        dlg,
+        qtbot,
+    ):
+        release_worker = threading.Event()
+        worker = _REAL_THREAD_CLASS(target=release_worker.wait)
+        worker.start()
+        dlg.dataset_generator = MagicMock()
+        dlg.preview_worker = worker
+        dlg.show()
+        callbacks = []
+
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.QTimer.singleShot",
+            side_effect=lambda _delay, callback: callbacks.append(callback),
+        ):
+            assert dlg.close() is False
+
+        assert dlg.isVisible() is True
+        assert len(callbacks) == 1
+        assert dlg._preview_pending_close_action == "close"
+
+        release_worker.set()
+        worker.join(timeout=1.0)
+        assert worker.is_alive() is False
+        callbacks[0]()
+
+        qtbot.waitUntil(lambda: not dlg.isVisible(), timeout=1000)
+        assert dlg._preview_pending_close_action is None
+        assert dlg._preview_close_retry_pending is False
+        assert dlg.preview_debounce_timer.isActive() is False
+        assert dlg.timer.isActive() is False
+
+    def test_preview_close_retry_continues_safely_after_timeout(self, dlg):
+        dlg.dataset_generator = MagicMock()
+        dlg.preview_worker = MagicMock()
+        dlg.preview_worker.is_alive.return_value = True
+        dlg.show()
+
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.time.monotonic",
+                side_effect=[10.0, 16.0],
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.QTimer.singleShot"
+            ) as retry,
+            patch(
+                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.QMessageBox.warning"
+            ) as warning,
+        ):
+            dlg.reject()
+            callback = retry.call_args.args[1]
+            callback()
+            final_callback = retry.call_args.args[1]
+
+            warning.assert_called_once()
+            assert retry.call_count == 2
+            assert dlg.isVisible() is True
+            assert dlg._preview_close_retry_pending is True
+            assert dlg._preview_pending_close_action == "reject"
+
+            dlg.preview_worker.is_alive.return_value = False
+            final_callback()
+
+        assert dlg.result() == QDialog.DialogCode.Rejected
+        assert dlg._preview_close_retry_pending is False
+        assert dlg._preview_pending_close_action is None
+
+    def test_preview_close_callback_ignores_deleted_qt_wrapper(self, dlg):
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.sip.isdeleted",
+                return_value=True,
+            ),
+            patch.object(dlg, "close") as close,
+        ):
+            dlg._close_when_preview_worker_stops()
+
+        close.assert_not_called()

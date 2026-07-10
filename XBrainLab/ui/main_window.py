@@ -15,6 +15,7 @@ from PyQt6 import sip
 from PyQt6.QtCore import QRect, QSettings, QSize, Qt, QThreadPool, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication,
+    QDockWidget,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -26,15 +27,15 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from XBrainLab.backend.application import (
-    QueryStateCommand,
-    StopTrainingCommand,
-)
+from XBrainLab.backend.application import QueryStateCommand, StopTrainingCommand
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
     execute_application_command,
-    execute_application_shutdown_command,
+    execute_application_command_async,
+    has_real_application_context,
     local_result_payload,
+    release_application_shutdown_fence,
+    request_application_shutdown_fence,
 )
 from XBrainLab.ui.controller_compatibility_bootstrap import (
     get_compatibility_workflow_controllers_for_panel_bootstrap,
@@ -65,6 +66,9 @@ PreprocessPanel = None
 TrainingPanel = None
 EvaluationPanel = None
 VisualizationPanel = None
+
+SHUTDOWN_FENCE_RELEASE_RETRY_MS = 250
+SHUTDOWN_FENCE_RELEASE_MAX_ATTEMPTS = 8
 
 
 @dataclass(frozen=True)
@@ -327,6 +331,15 @@ class MainWindow(QMainWindow):
         self._workflow_controllers = None
         self._loaded_panel_indices: set[int] = set()
         self._startup_prewarm_worker = None
+        self._close_retry_pending = False
+        self._closing_in_progress = False
+        self._shutdown_fence_active = False
+        self._training_close_check_in_flight = False
+        self._training_close_ready = False
+        self._shutdown_release_retry_pending = False
+        self._shutdown_release_attempts = 0
+        self._shutdown_only_mode = False
+        self._force_shutdown_requested = False
 
         # Apply VS Code Dark Theme (Adjusted for Top Bar)
         self.apply_vscode_theme()
@@ -939,7 +952,44 @@ class MainWindow(QMainWindow):
 
         """
         logger.info("Closing application...")
-        self._stop_training_for_close()
+        if self._force_shutdown_requested:
+            logger.critical("Forcing GUI shutdown after safe recovery failed.")
+            if self.agent_manager is not None:
+                with contextlib.suppress(Exception):
+                    self.agent_manager.close()
+            super().closeEvent(event)
+            return
+        if not self._closing_in_progress:
+            self._begin_close_attempt()
+        if not self._ensure_shutdown_fence_for_close():
+            event.ignore()
+            status_bar = self.statusBar()
+            if status_bar is not None:
+                status_bar.showMessage(
+                    "Preparing a safe shutdown. XBrainLab will close when it is safe.",
+                    3000,
+                )
+            return
+        if not self._stop_training_for_close():
+            event.ignore()
+            status_bar = self.statusBar()
+            if status_bar is not None:
+                status_bar.showMessage(
+                    "Training is still stopping. XBrainLab will close when it is safe.",
+                    3000,
+                )
+            return
+        if self.agent_manager is not None and not self.agent_manager.close():
+            event.ignore()
+            status_bar = self.statusBar()
+            if status_bar is not None:
+                status_bar.showMessage(
+                    "Assistant is still stopping. "
+                    "XBrainLab will close when it is safe.",
+                    3000,
+                )
+            self._schedule_close_retry()
+            return
         if not self.isMaximized() and not self.isFullScreen():
             settings = self._window_settings()
             if self._is_current_window_geometry_usable():
@@ -950,35 +1000,210 @@ class MainWindow(QMainWindow):
             else:
                 logger.info("Discarding unusable main-window geometry on close")
                 settings.remove("main_window/geometry")
-        if self.agent_manager is not None and not self.agent_manager.close():
-            event.ignore()
+        super().closeEvent(event)
+
+    def _begin_close_attempt(self) -> None:
+        """Freeze user actions while worker ownership is being released."""
+        self._closing_in_progress = True
+        self._training_close_ready = False
+        self._shutdown_release_retry_pending = False
+        self._shutdown_release_attempts = 0
+        self._set_close_interaction_enabled(False)
+
+    def _cancel_close_attempt(self) -> None:
+        """Release the backend fence before restoring user interaction."""
+        if not self._shutdown_fence_active or not has_real_application_context(self):
+            self._shutdown_fence_active = False
+            self._restore_close_interaction()
+            return
+        try:
+            released = release_application_shutdown_fence(self)
+        except Exception as exc:
+            logger.error("Could not release shutdown fence: %s", exc)
+            self._schedule_shutdown_release_retry()
+            return
+        if not released:
+            logger.error("Could not release shutdown fence.")
+            self._schedule_shutdown_release_retry()
+            return
+        self._shutdown_release_retry_pending = False
+        self._shutdown_release_attempts = 0
+        self._shutdown_fence_active = False
+        self._restore_close_interaction()
+
+    def _schedule_shutdown_release_retry(self) -> None:
+        """Retry a failed fence release without reopening unsafe command surfaces."""
+        if self._shutdown_release_retry_pending or sip.isdeleted(self):
+            return
+        if self._shutdown_release_attempts >= SHUTDOWN_FENCE_RELEASE_MAX_ATTEMPTS:
+            logger.critical(
+                "Shutdown fence could not be released after %s attempts.",
+                self._shutdown_release_attempts,
+            )
             status_bar = self.statusBar()
             if status_bar is not None:
                 status_bar.showMessage(
-                    "Assistant is still stopping. "
-                    "XBrainLab will close when it is safe.",
-                    3000,
+                    "XBrainLab could not resume normal operation safely. "
+                    "Choose Retry or Close in the recovery dialog.",
                 )
-            QTimer.singleShot(250, self.close)
+            self._enter_shutdown_only_mode()
             return
-        super().closeEvent(event)
-
-    def _stop_training_for_close(self) -> None:
-        """Request bounded training shutdown before the window disappears."""
-        result = execute_application_shutdown_command(
-            self,
-            StopTrainingCommand(wait_timeout=2.0),
-        )
-        if result is None:
-            return
-        if result.failed:
-            logger.debug("Close-time training stop skipped: %s", result.message)
-            return
-        stopped = result.diagnostics.get("stopped")
-        if stopped is False:
-            logger.warning(
-                "Training is still stopping after main-window close timeout.",
+        self._shutdown_release_attempts += 1
+        self._shutdown_release_retry_pending = True
+        status_bar = self.statusBar()
+        if status_bar is not None:
+            status_bar.showMessage(
+                "Restoring XBrainLab after the cancelled close attempt...",
             )
+        QTimer.singleShot(
+            SHUTDOWN_FENCE_RELEASE_RETRY_MS,
+            self._retry_shutdown_fence_release,
+        )
+
+    def _retry_shutdown_fence_release(self) -> None:
+        """Run one bounded release retry while the close fence stays active."""
+        self._shutdown_release_retry_pending = False
+        if not sip.isdeleted(self) and self._closing_in_progress:
+            self._cancel_close_attempt()
+
+    def _enter_shutdown_only_mode(self) -> None:
+        """Offer an explicit exit when normal command admission cannot be restored."""
+        if self._shutdown_only_mode or sip.isdeleted(self):
+            return
+        self._shutdown_only_mode = True
+        reply = QMessageBox.question(
+            self,
+            "XBrainLab cannot resume safely",
+            "The application could not restore its command state after the close "
+            "attempt. Retry recovery, or close XBrainLab now. Unsaved work may be "
+            "lost if you close.",
+            QMessageBox.StandardButton.Retry | QMessageBox.StandardButton.Close,
+            QMessageBox.StandardButton.Retry,
+        )
+        if reply == QMessageBox.StandardButton.Close:
+            self._force_shutdown_requested = True
+            QTimer.singleShot(0, self.close)
+            return
+        self._shutdown_only_mode = False
+        self._shutdown_release_attempts = 0
+        self._schedule_shutdown_release_retry()
+
+    def _restore_close_interaction(self) -> None:
+        """Restore the desktop shell after a cancelled close attempt."""
+        self._closing_in_progress = False
+        self._training_close_ready = False
+        self._training_close_check_in_flight = False
+        self._shutdown_release_retry_pending = False
+        self._shutdown_release_attempts = 0
+        self._shutdown_only_mode = False
+        self._set_close_interaction_enabled(True)
+
+    def _set_close_interaction_enabled(self, enabled: bool) -> None:
+        """Enable or disable every user command surface, including docks."""
+        central_widget = self.centralWidget()
+        if central_widget is not None:
+            central_widget.setEnabled(enabled)
+        for dock_widget in self.findChildren(QDockWidget):
+            dock_widget.setEnabled(enabled)
+
+    def _ensure_shutdown_fence_for_close(self) -> bool:
+        """Install the backend command fence before stopping owned workers."""
+        if self._shutdown_fence_active:
+            return True
+        if not has_real_application_context(self):
+            self._shutdown_fence_active = True
+            return True
+        try:
+            installed = request_application_shutdown_fence(self)
+        except Exception as exc:
+            logger.warning("Could not enable shutdown fence: %s", exc)
+            self._restore_close_interaction()
+            return False
+        self._shutdown_fence_active = bool(installed)
+        if not installed:
+            self._restore_close_interaction()
+        return bool(installed)
+
+    def _schedule_close_retry(self) -> None:
+        """Coalesce close retries while training or assistant workers stop."""
+        if self._close_retry_pending:
+            return
+        self._close_retry_pending = True
+        QTimer.singleShot(250, self._retry_close)
+
+    def _retry_close(self) -> None:
+        """Retry a deferred close only while this Qt window still exists."""
+        self._close_retry_pending = False
+        if not sip.isdeleted(self):
+            self.close()
+
+    def _stop_training_for_close(self) -> bool:
+        """Start a non-blocking training stop check before window teardown."""
+        if self._training_close_ready:
+            if self._closing_in_progress:
+                return True
+            self._training_close_ready = False
+        if self._training_close_check_in_flight:
+            return False
+        if not has_real_application_context(self):
+            return True
+
+        self._training_close_check_in_flight = True
+
+        def _handle_result(result) -> None:
+            self._training_close_check_in_flight = False
+            if self._training_stop_result_allows_close(result):
+                self._training_close_ready = True
+                self._schedule_close_retry()
+                return
+            if not result.failed and result.diagnostics.get("stopped") is False:
+                self._schedule_close_retry()
+                return
+            logger.warning("Close-time training stop failed: %s", result.message)
+            self._cancel_close_attempt()
+            status_bar = self.statusBar()
+            if status_bar is not None:
+                status_bar.showMessage(
+                    "Training status could not be verified. Close again to retry.",
+                    5000,
+                )
+
+        def _handle_error(error: tuple) -> None:
+            self._training_close_check_in_flight = False
+            message = error[1] if len(error) > 1 else error
+            logger.warning("Close-time training stop failed: %s", message)
+            self._cancel_close_attempt()
+            status_bar = self.statusBar()
+            if status_bar is not None:
+                status_bar.showMessage(
+                    "Training status could not be verified. Close again to retry.",
+                    5000,
+                )
+
+        started = execute_application_command_async(
+            self,
+            StopTrainingCommand(wait_timeout=0.0),
+            on_result=_handle_result,
+            on_error=_handle_error,
+            refresh=False,
+            allow_during_shutdown=True,
+        )
+        if started:
+            return False
+        self._cancel_close_attempt()
+        logger.warning("Could not start close-time training status check.")
+        return False
+
+    @staticmethod
+    def _training_stop_result_allows_close(result: Any) -> bool:
+        """Trust only the command result's field-level training liveness state."""
+        if not result.failed and result.diagnostics.get("stopped") is True:
+            return True
+        state = getattr(result, "state", None)
+        active_training = getattr(state, "active_training", None)
+        return bool(getattr(state, "training_liveness_reliable", False)) and not bool(
+            getattr(active_training, "is_running", True)
+        )
 
 
 def global_exception_handler(exctype, value, tb):
