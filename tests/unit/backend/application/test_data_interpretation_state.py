@@ -181,6 +181,23 @@ def test_session_state_owns_lifecycle_snapshot_and_clear() -> None:
     assert cleared.has_recipe is False
 
 
+def test_discard_failed_replacement_restores_previous_applied_interpretation() -> None:
+    state = _state()
+    old_scan = _scan(state.next_id("scan"))
+    old_candidate = _candidate(old_scan, state.next_id("candidate"))
+    old_applied = _applied(state, old_candidate)
+    new_scan = _scan(state.next_id("scan"))
+    new_candidate = _candidate(new_scan, state.next_id("candidate"))
+    new_applied = _applied(state, new_candidate)
+    state.record_applied(old_applied)
+    state.record_applied(new_applied)
+
+    state.discard_applied(new_applied.interpretation_id)
+
+    assert state.resolve_applied_interpretation() is old_applied
+    assert state.snapshot().latest_interpretation_id == old_applied.interpretation_id
+
+
 def test_snapshot_uses_latest_review_state_before_previous_applied_truth() -> None:
     state = _state()
     old_scan = _scan(state.next_id("scan"))

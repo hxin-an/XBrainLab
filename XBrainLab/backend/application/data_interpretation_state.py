@@ -79,7 +79,10 @@ class DataInterpretationSessionState:
         """Remove an applied interpretation that failed during post-load apply."""
         self._applied_interpretations.pop(interpretation_id, None)
         if self._latest_interpretation_id == interpretation_id:
-            self._latest_interpretation_id = None
+            self._latest_interpretation_id = next(
+                reversed(self._applied_interpretations),
+                None,
+            )
 
     def record_recipe(
         self,
