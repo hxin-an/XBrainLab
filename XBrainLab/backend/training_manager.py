@@ -222,5 +222,6 @@ class TrainingManager:
                 "Please clean_trainer first.",
             )
         if self.trainer:
-            self.trainer.clean(force_update=force_update)
+            force_running_cleanup = force_update and self.trainer.is_running()
+            self.trainer.clean(force_update=force_running_cleanup)
         self.trainer = None

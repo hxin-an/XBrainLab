@@ -51,6 +51,11 @@ from XBrainLab.backend.application import (
     data_interpretation_internal_events,
 )
 from XBrainLab.backend.application.capabilities import build_capability_policy
+from XBrainLab.backend.application.state import (
+    ActiveDatasetSnapshot,
+    ActiveTrainingSnapshot,
+    ApplicationStateSnapshot,
+)
 from XBrainLab.backend.study import Study
 
 
@@ -89,6 +94,298 @@ def test_application_service_serializes_commands_across_calling_threads(monkeypa
 
     assert all(result.ok for result in results)
     assert max_active_calls == 1
+
+
+def test_application_service_is_singleton_for_one_study(tmp_path: Path) -> None:
+    study = Study()
+    first = ApplicationService(study)
+    second = ApplicationService(study)
+    source = tmp_path / "sample.fif"
+    source.write_bytes(b"scan-only fixture")
+
+    assert second is first
+    assert first.execute(ScanSourceCommand(source_path=str(source))).ok is True
+    assert second.get_state().interpretation.has_scan_result is True
+
+
+def test_product_interpretation_rollback_uses_complete_data_manager_state() -> None:
+    study = Study()
+    service = ApplicationService(study)
+    interpretation = service.interpretation._service()
+    manager = study.data_manager
+    old_raw = object()
+    old_backup = object()
+    old_preprocessed = object()
+    old_epoch = object()
+    old_dataset = object()
+    old_generator = object()
+    manager.loaded_data_list = [old_raw]  # type: ignore[list-item]
+    manager.backup_loaded_data_list = [old_backup]  # type: ignore[list-item]
+    manager.preprocessed_data_list = [old_preprocessed]  # type: ignore[list-item]
+    manager.epoch_data = old_epoch  # type: ignore[assignment]
+    manager.datasets = [old_dataset]  # type: ignore[list-item]
+    manager.dataset_generator = old_generator  # type: ignore[assignment]
+    manager.dataset_locked = True
+
+    snapshot = interpretation._snapshot_raw_state()
+    manager.loaded_data_list = []
+    manager.backup_loaded_data_list = None
+    manager.preprocessed_data_list = []
+    manager.epoch_data = None
+    manager.datasets = []
+    manager.dataset_generator = None
+    manager.dataset_locked = False
+    interpretation._restore_raw_state(snapshot)
+
+    assert manager.loaded_data_list == [old_raw]
+    assert manager.backup_loaded_data_list == [old_backup]
+    assert manager.preprocessed_data_list == [old_preprocessed]
+    assert manager.epoch_data is old_epoch
+    assert manager.datasets == [old_dataset]
+    assert manager.dataset_generator is old_generator
+    assert manager.dataset_locked is True
+
+
+def test_apply_interpretation_rolls_back_when_metadata_apply_raises(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "metadata_failure"
+    source_dir.mkdir()
+    eeg_path = source_dir / "subject01_run1.fif"
+    eeg_path.write_bytes(b"scan-only fixture")
+    study = Study()
+    service = ApplicationService(study)
+    manager = study.data_manager
+    old_raw = _raw_mock()
+    old_raw.get_filepath.return_value = "/previous/active.fif"
+    old_backup = _raw_mock()
+    old_preprocessed = _raw_mock()
+    old_preprocessed.get_preprocess_history.return_value = []
+    manager.loaded_data_list = [old_raw]
+    manager.backup_loaded_data_list = [old_backup]
+    manager.preprocessed_data_list = [old_preprocessed]
+    imported_raw = _raw_mock()
+    imported_raw.get_filename.return_value = eeg_path.name
+    imported_raw.get_filepath.return_value = str(eeg_path)
+
+    def import_files(_paths: list[str]) -> tuple[int, list[str]]:
+        manager.loaded_data_list = [imported_raw]
+        manager.preprocessed_data_list = [imported_raw]
+        return 1, []
+
+    service.dataset.import_files = MagicMock(side_effect=import_files)
+    interpretation = service.interpretation._service()
+    interpretation.apply_service.apply_candidate_metadata_to_loaded_data = MagicMock(
+        side_effect=RuntimeError("metadata write failed"),
+    )
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "metadata_overrides": {
+                    eeg_path.name: {
+                        "subject": "subject01",
+                        "session": "session-01",
+                        "task": "rest",
+                        "run": "1",
+                    },
+                },
+            },
+        ),
+    )
+    service.execute(ValidateInterpretationCommand())
+    service.dataset.notify = MagicMock(side_effect=RuntimeError("notify failed"))
+
+    result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert result.failed is True
+    assert result.error_type == ErrorType.INTERNAL
+    assert "metadata write failed" in result.message
+    assert manager.loaded_data_list == [old_raw]
+    assert manager.backup_loaded_data_list == [old_backup]
+    assert manager.preprocessed_data_list == [old_preprocessed]
+    assert result.state.interpretation.has_applied_interpretation is False
+
+
+def test_failed_replacement_restores_raw_interpretation_and_recipe(
+    tmp_path: Path,
+) -> None:
+    old_source = tmp_path / "old_source"
+    new_source = tmp_path / "new_source"
+    old_source.mkdir()
+    new_source.mkdir()
+    old_eeg = old_source / "subject01_run1.fif"
+    new_eeg = new_source / "subject02_run1.fif"
+    old_eeg.write_bytes(b"old scan fixture")
+    new_eeg.write_bytes(b"new scan fixture")
+    recipe_path = tmp_path / "old-recipe.json"
+    service = ApplicationService(Study())
+    manager = service.study.data_manager
+
+    def import_files(paths: list[str]) -> tuple[int, list[str]]:
+        imported = []
+        for path in paths:
+            raw = _raw_mock()
+            raw.get_filename.return_value = Path(path).name
+            raw.get_filepath.return_value = path
+            imported.append(raw)
+        manager.loaded_data_list = imported
+        manager.preprocessed_data_list = list(imported)
+        return len(imported), []
+
+    service.dataset.import_files = MagicMock(side_effect=import_files)
+    service.execute(ScanSourceCommand(source_path=str(old_source)))
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "metadata_overrides": {
+                    old_eeg.name: {
+                        "subject": "subject01",
+                        "session": "session-01",
+                        "task": "rest",
+                        "run": "1",
+                    },
+                },
+            },
+        ),
+    )
+    service.execute(ValidateInterpretationCommand())
+    first_apply = service.execute(ApplyInterpretationCommand(confirmed=True))
+    saved = service.execute(
+        SaveInterpretationRecipeCommand(recipe_path=str(recipe_path)),
+    )
+    assert first_apply.ok is True
+    assert saved.ok is True
+    old_raw = manager.loaded_data_list[0]
+    old_interpretation_id = first_apply.state.interpretation.latest_interpretation_id
+    old_recipe_id = saved.state.interpretation.latest_recipe_id
+
+    service.execute(ScanSourceCommand(source_path=str(new_source)))
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "metadata_overrides": {
+                    new_eeg.name: {
+                        "subject": "subject02",
+                        "session": "session-01",
+                        "task": "rest",
+                        "run": "1",
+                    },
+                },
+            },
+        ),
+    )
+    service.execute(ValidateInterpretationCommand())
+    interpretation = service.interpretation._service()
+    interpretation.apply_service.apply_candidate_metadata_to_loaded_data = MagicMock(
+        side_effect=RuntimeError("replacement metadata failed"),
+    )
+
+    failed = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert failed.failed is True
+    assert manager.loaded_data_list == [old_raw]
+    assert failed.state.interpretation.latest_interpretation_id == (
+        old_interpretation_id
+    )
+    assert failed.state.interpretation.latest_recipe_id == old_recipe_id
+    assert failed.state.interpretation.recipe_path == str(recipe_path)
+    assert interpretation.state.resolve_recipe(None).recipe_id == old_recipe_id
+    assert interpretation.state.resolve_recipe(None).label_imports == []
+
+
+def test_reset_preprocess_is_blocked_while_training_is_running() -> None:
+    state = replace(
+        ApplicationStateSnapshot.empty(),
+        pipeline_stage="training",
+        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
+        active_training=ActiveTrainingSnapshot(
+            has_trainer=True,
+            is_running=True,
+        ),
+    )
+
+    capability = build_capability_policy(state).get(CommandName.RESET_PREPROCESS)
+
+    assert capability.available is False
+    assert any("training" in reason.lower() for reason in capability.reasons)
+
+
+def test_reset_preprocess_command_does_not_mutate_live_training_state() -> None:
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    raw.get_preprocess_history.return_value = ["filter"]
+    service.study.data_manager.loaded_data_list = [raw]
+    service.study.data_manager.preprocessed_data_list = [raw]
+    trainer = MagicMock()
+    trainer.is_running.return_value = True
+    service.study.training_manager.trainer = trainer
+    service.study.reset_preprocess = MagicMock()
+    service.training.clean_datasets = MagicMock()
+
+    result = service.execute(ResetPreprocessCommand(confirmed=True))
+
+    assert result.failed is True
+    assert result.error_type == ErrorType.PRECONDITION
+    service.study.reset_preprocess.assert_not_called()
+    service.training.clean_datasets.assert_not_called()
+    assert service.study.data_manager.loaded_data_list == [raw]
+    assert service.study.data_manager.preprocessed_data_list == [raw]
+    assert service.study.training_manager.trainer is trainer
+
+
+def test_reset_preprocess_command_rolls_back_second_stage_failure() -> None:
+    service = ApplicationService(Study())
+    manager = service.study.data_manager
+    raw = _raw_mock()
+    raw.get_preprocess_history.return_value = ["filter"]
+    backup = _raw_mock()
+    preprocessed = _raw_mock()
+    preprocessed.get_preprocess_history.return_value = ["filter"]
+    epoch = MagicMock()
+    dataset = MagicMock()
+    generator = MagicMock()
+    trainer = MagicMock()
+    trainer.is_running.return_value = False
+    manager.loaded_data_list = [raw]
+    manager.backup_loaded_data_list = [backup]
+    manager.preprocessed_data_list = [preprocessed]
+    manager.epoch_data = epoch
+    manager.datasets = [dataset]
+    manager.dataset_generator = generator
+    manager.dataset_locked = True
+    service.study.training_manager.trainer = trainer
+
+    def reset_preprocess(*, force_update: bool) -> None:
+        assert force_update is True
+        manager.loaded_data_list = [backup]
+        manager.backup_loaded_data_list = None
+        manager.preprocessed_data_list = []
+        manager.epoch_data = None
+        manager.dataset_locked = False
+
+    def fail_cleanup(*, force_update: bool) -> None:
+        assert force_update is True
+        manager.datasets = []
+        manager.dataset_generator = None
+        service.study.training_manager.trainer = None
+        raise RuntimeError("downstream cleanup failed")
+
+    service.study.reset_preprocess = MagicMock(side_effect=reset_preprocess)
+    service.training.clean_datasets = MagicMock(side_effect=fail_cleanup)
+
+    result = service.execute(ResetPreprocessCommand(confirmed=True))
+
+    assert result.failed is True
+    assert result.error_type == ErrorType.INTERNAL
+    assert manager.loaded_data_list == [raw]
+    assert manager.backup_loaded_data_list == [backup]
+    assert manager.preprocessed_data_list == [preprocessed]
+    assert manager.epoch_data is epoch
+    assert manager.datasets == [dataset]
+    assert manager.dataset_generator is generator
+    assert manager.dataset_locked is True
+    assert service.study.training_manager.trainer is trainer
 
 
 def test_empty_state_snapshot_and_policy():
@@ -2318,6 +2615,7 @@ def test_reset_preprocess_command_clears_downstream_training_plan():
     service.study.data_manager.epoch_data = MagicMock()
     service.study.data_manager.datasets = [MagicMock()]
     service.study.training_manager.trainer = MagicMock()
+    service.study.training_manager.trainer.is_running.return_value = False
     service.study.reset_preprocess = MagicMock(
         side_effect=lambda force_update: setattr(
             service.study.data_manager,

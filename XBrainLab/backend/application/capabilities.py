@@ -394,6 +394,10 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
     reset_preprocess_reasons = []
     if not active_dataset.has_raw_data:
         reset_preprocess_reasons.append("Load raw data before resetting preprocessing.")
+    if active_training.is_running:
+        reset_preprocess_reasons.append(
+            "Stop training before resetting preprocessing.",
+        )
     reset_preprocess_confirmation = not reset_preprocess_reasons and (
         bool(state.preprocessed.operations)
         or active_dataset.has_epoch_data

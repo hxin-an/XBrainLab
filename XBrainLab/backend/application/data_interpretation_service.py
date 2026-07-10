@@ -10,6 +10,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from XBrainLab.backend.utils.logger import logger
+
 from .commands import (
     ApplyInterpretationCommand,
     Command,
@@ -37,6 +39,7 @@ from .data_interpretation import (
 from .data_interpretation_apply import DataInterpretationApplyService
 from .data_interpretation_state import DataInterpretationSessionState
 from .errors import ApplicationError, ConfirmationRequiredError, PreconditionError
+from .pipeline_transaction import PipelineStateSnapshot, PipelineStateTransaction
 from .resource_guard import check_import_resource_preflight
 from .results import ErrorType
 from .state import InterpretationStateSnapshot
@@ -53,10 +56,12 @@ class DataInterpretationCommandService:
         *,
         data_filename: Callable[[Any], str],
         data_filepath: Callable[[Any], str],
+        pipeline_transaction: PipelineStateTransaction | None = None,
     ) -> None:
         self.dataset = dataset_controller
         self._data_filename = data_filename
         self._data_filepath = data_filepath
+        self._pipeline_transaction = pipeline_transaction
         self.state = DataInterpretationSessionState(
             data_filepath=self._data_filepath,
         )
@@ -179,39 +184,34 @@ class DataInterpretationCommandService:
             raise PreconditionError("Validate an interpretation before applying it.")
         self._ensure_candidate_can_apply(command, decision)
         snapshot = self._snapshot_raw_state()
-        count, errors = self._replace_active_raw_data(
-            candidate.selected_eeg_files,
-            snapshot=snapshot,
-        )
-        loaded_files = self._loaded_filepaths() or list(candidate.selected_eeg_files)
-        interpretation_id = self.state.next_id("interpretation")
-        applied = self._build_applied_interpretation(
-            interpretation_id=interpretation_id,
-            candidate=candidate,
-            decision=decision,
-            loaded_files=loaded_files,
-        )
-        self.state.record_applied(applied)
-        metadata_apply = self.apply_service.apply_candidate_metadata_to_loaded_data(
-            candidate,
-        )
-        label_apply = self.apply_service.apply_label_carriers(candidate)
-        internal_epoch_hints = self.apply_service.record_internal_epoch_hints(
-            candidate,
-        )
-        if self._label_apply_blocks_interpretation(candidate, label_apply):
-            self._restore_raw_state(snapshot)
-            self.state.discard_applied(interpretation_id)
-            raise ApplicationError(
-                message=(
-                    "Failed to apply interpretation without changing the active "
-                    "dataset: "
-                    + str(label_apply.get("reason") or "label application failed")
-                ),
-                error_type=ErrorType.VALIDATION,
-                recoverable=True,
-                diagnostics={"label_apply": dict(label_apply)},
+        state_checkpoint = self.state.checkpoint_apply_state()
+        try:
+            count, errors = self._replace_active_raw_data(
+                candidate.selected_eeg_files,
             )
+            loaded_files = self._loaded_filepaths() or list(
+                candidate.selected_eeg_files
+            )
+            interpretation_id = self.state.next_id("interpretation")
+            applied = self._build_applied_interpretation(
+                interpretation_id=interpretation_id,
+                candidate=candidate,
+                decision=decision,
+                loaded_files=loaded_files,
+            )
+            self.state.record_applied(applied)
+            metadata_apply = self.apply_service.apply_candidate_metadata_to_loaded_data(
+                candidate,
+            )
+            label_apply = self.apply_service.apply_label_carriers(candidate)
+            internal_epoch_hints = self.apply_service.record_internal_epoch_hints(
+                candidate,
+            )
+            self._ensure_label_apply_succeeded(candidate, label_apply)
+        except Exception:
+            self.state.restore_apply_state(state_checkpoint)
+            self._restore_raw_state(snapshot)
+            raise
         applied_payload = self.state.resolve_applied_interpretation().to_dict()
         label_message = ""
         if label_apply.get("status") == "applied":
@@ -269,8 +269,6 @@ class DataInterpretationCommandService:
     def _replace_active_raw_data(
         self,
         paths: list[str],
-        *,
-        snapshot: dict[str, Any],
     ) -> tuple[int, list[str]]:
         """Replace active raw data before importing reviewed interpretation files."""
         expected_count = len(paths)
@@ -281,12 +279,14 @@ class DataInterpretationCommandService:
                 diagnostics={"resource_preflight": preflight.diagnostics},
             )
         loaded_files = list(self.dataset.get_loaded_data_list() or [])
-        clean_dataset = getattr(self.dataset, "clean_dataset", None)
-        if loaded_files and callable(clean_dataset):
-            clean_dataset()
+        if self._pipeline_transaction is not None:
+            self._pipeline_transaction.prepare_raw_replacement()
+        else:
+            clean_dataset = getattr(self.dataset, "clean_dataset", None)
+            if loaded_files and callable(clean_dataset):
+                clean_dataset()
         count, errors = self.dataset.import_files(paths)
         if errors or count != expected_count:
-            self._restore_raw_state(snapshot)
             diagnostics = {
                 "errors": errors,
                 "success_count": count,
@@ -315,6 +315,25 @@ class DataInterpretationCommandService:
             return False
         return str(label_apply.get("status") or "") != "applied"
 
+    @classmethod
+    def _ensure_label_apply_succeeded(
+        cls,
+        candidate: InterpretationCandidate,
+        label_apply: dict[str, Any],
+    ) -> None:
+        if not cls._label_apply_blocks_interpretation(candidate, label_apply):
+            return
+        raise ApplicationError(
+            message=(
+                "Failed to apply interpretation without changing the active "
+                "dataset: "
+                + str(label_apply.get("reason") or "label application failed")
+            ),
+            error_type=ErrorType.VALIDATION,
+            recoverable=True,
+            diagnostics={"label_apply": dict(label_apply)},
+        )
+
     def _has_active_raw_data(self) -> bool:
         return bool(list(self.dataset.get_loaded_data_list() or []))
 
@@ -324,42 +343,25 @@ class DataInterpretationCommandService:
             for data in list(self.dataset.get_loaded_data_list() or [])
         ]
 
-    def _snapshot_raw_state(self) -> dict[str, Any]:
+    def _snapshot_raw_state(self) -> PipelineStateSnapshot | dict[str, Any]:
         """Capture active raw state so failed interpretation apply can roll back."""
-        study = getattr(self.dataset, "study", None)
-        manager = getattr(study, "data_manager", None)
-        if manager is not None:
-            return {
-                "kind": "data_manager",
-                "loaded_data_list": list(getattr(manager, "loaded_data_list", [])),
-                "preprocessed_data_list": list(
-                    getattr(manager, "preprocessed_data_list", []),
-                ),
-                "epoch_data": getattr(manager, "epoch_data", None),
-                "datasets": list(getattr(manager, "datasets", [])),
-                "dataset_generator": getattr(manager, "dataset_generator", None),
-                "dataset_locked": bool(getattr(manager, "dataset_locked", False)),
-            }
+        if self._pipeline_transaction is not None:
+            return self._pipeline_transaction.capture()
         return {
             "kind": "generic",
             "loaded": list(getattr(self.dataset, "loaded", [])),
             "imported_paths": list(getattr(self.dataset, "imported_paths", [])),
         }
 
-    def _restore_raw_state(self, snapshot: dict[str, Any]) -> None:
+    def _restore_raw_state(
+        self,
+        snapshot: PipelineStateSnapshot | dict[str, Any],
+    ) -> None:
         """Restore raw state captured before a failed interpretation apply."""
-        if snapshot.get("kind") == "data_manager":
-            study = getattr(self.dataset, "study", None)
-            manager = getattr(study, "data_manager", None)
-            if manager is not None:
-                manager.loaded_data_list = list(snapshot["loaded_data_list"])
-                manager.preprocessed_data_list = list(
-                    snapshot["preprocessed_data_list"],
-                )
-                manager.epoch_data = snapshot["epoch_data"]
-                manager.datasets = list(snapshot["datasets"])
-                manager.dataset_generator = snapshot["dataset_generator"]
-                manager.dataset_locked = bool(snapshot["dataset_locked"])
+        if isinstance(snapshot, PipelineStateSnapshot):
+            if self._pipeline_transaction is None:
+                raise RuntimeError("Pipeline transaction is unavailable for restore.")
+            self._pipeline_transaction.restore(snapshot)
         elif snapshot.get("kind") == "generic":
             if hasattr(self.dataset, "loaded"):
                 self.dataset.loaded = list(snapshot["loaded"])
@@ -367,7 +369,13 @@ class DataInterpretationCommandService:
                 self.dataset.imported_paths = list(snapshot["imported_paths"])
         notify = getattr(self.dataset, "notify", None)
         if callable(notify):
-            notify("data_changed")
+            try:
+                notify("data_changed")
+            except Exception:
+                logger.warning(
+                    "Failed to notify observers after restoring EEG data.",
+                    exc_info=True,
+                )
 
     @staticmethod
     def _build_applied_interpretation(

@@ -219,6 +219,17 @@ class TestCleanTrainer:
         tm.clean_trainer(force_update=True)
         assert tm.trainer is None
 
+    def test_force_update_does_not_interrupt_inactive_trainer(self):
+        tm = TrainingManager()
+        trainer = MagicMock()
+        trainer.is_running.return_value = False
+        tm.trainer = trainer
+
+        tm.clean_trainer(force_update=True)
+
+        trainer.clean.assert_called_once_with(force_update=False)
+        assert tm.trainer is None
+
     def test_force_update_keeps_trainer_when_cleanup_fails(self):
         tm = TrainingManager()
         trainer = MagicMock()
