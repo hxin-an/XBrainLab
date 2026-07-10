@@ -13,6 +13,7 @@ from .commands import (
     ResetPreprocessCommand,
     ResetSessionCommand,
 )
+from .pipeline_transaction import PipelineStateTransaction
 from .state import ApplicationStateSnapshot
 
 HandlerResult = str | tuple[str, dict[str, Any]]
@@ -28,45 +29,32 @@ class LifecycleCommandService:
         dataset: Any,
         preprocess: Any,
         training: Any,
-        dataset_generation: Any,
         training_commands: Any,
         interpretation: Any,
         get_state: Callable[[], ApplicationStateSnapshot],
+        pipeline_transaction: PipelineStateTransaction | None = None,
     ) -> None:
         self.study = study
         self.dataset = dataset
         self.preprocess = preprocess
         self.training = training
-        self.dataset_generation = dataset_generation
         self.training_commands = training_commands
         self.interpretation = interpretation
         self._get_state = get_state
+        self._pipeline_transaction = pipeline_transaction or PipelineStateTransaction(
+            study
+        )
 
     def handle_reset_preprocess(self, command: Command) -> HandlerResult:
         if not isinstance(command, ResetPreprocessCommand):
             raise TypeError("Invalid command for reset_preprocess")
         before = self._get_state()
-        previous_preprocessed = list(getattr(self.study, "preprocessed_data_list", []))
-        previous_epoch = getattr(self.study, "epoch_data", None)
-        previous_datasets = list(getattr(self.study, "datasets", []) or [])
-        previous_generator = getattr(self.study, "dataset_generator", None)
-        previous_trainer = getattr(self.study, "trainer", None)
+        snapshot = self._pipeline_transaction.capture()
         try:
             self.study.reset_preprocess(force_update=True)
             self.training.clean_datasets(force_update=True)
         except Exception:
-            data_manager = getattr(self.study, "data_manager", None)
-            if data_manager is not None:
-                data_manager.preprocessed_data_list = previous_preprocessed
-                data_manager.epoch_data = previous_epoch
-            else:
-                self.study.preprocessed_data_list = previous_preprocessed
-                self.study.epoch_data = previous_epoch
-            self.dataset_generation.restore_generation_state(
-                datasets=previous_datasets,
-                generator=previous_generator,
-                trainer=previous_trainer,
-            )
+            self._pipeline_transaction.restore(snapshot)
             raise
         try:
             self.preprocess.notify("preprocess_changed")

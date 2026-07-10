@@ -32,10 +32,13 @@ from XBrainLab.backend.application.state import (
 
 class _DataManager:
     def __init__(self) -> None:
+        self.loaded_data_list: list[Any] = []
+        self.backup_loaded_data_list: list[Any] | None = None
         self.preprocessed_data_list: list[Any] = []
         self.epoch_data: Any | None = None
         self.datasets: list[Any] = []
         self.dataset_generator: Any | None = None
+        self.dataset_locked = False
 
 
 class _TrainingManager:
@@ -73,6 +76,12 @@ class _Study:
     def reset_preprocess(self, *, force_update: bool) -> None:
         assert force_update is True
         self.reset_called = True
+        if self.data_manager.backup_loaded_data_list:
+            self.data_manager.loaded_data_list = (
+                self.data_manager.backup_loaded_data_list
+            )
+            self.data_manager.backup_loaded_data_list = None
+            self.data_manager.dataset_locked = False
         self.data_manager.preprocessed_data_list = []
         self.data_manager.epoch_data = None
         if self.fail_reset:
@@ -109,30 +118,6 @@ class _TrainingController:
         self.cleaned = True
         self.study.data_manager.datasets = []
         self.study.training_manager.trainer = None
-
-
-class _DatasetGenerationCommands:
-    def __init__(self, study: _Study) -> None:
-        self.study = study
-        self.restore_calls: list[dict[str, Any]] = []
-
-    def restore_generation_state(
-        self,
-        *,
-        datasets: list[Any],
-        generator: Any,
-        trainer: Any,
-    ) -> None:
-        self.restore_calls.append(
-            {
-                "datasets": datasets,
-                "generator": generator,
-                "trainer": trainer,
-            },
-        )
-        self.study.data_manager.datasets = datasets
-        self.study.data_manager.dataset_generator = generator
-        self.study.training_manager.trainer = trainer
 
 
 class _TrainingCommands:
@@ -182,7 +167,6 @@ def _service() -> tuple[
     _DatasetController,
     _PreprocessController,
     _TrainingController,
-    _DatasetGenerationCommands,
     _TrainingCommands,
     _InterpretationCommands,
 ]:
@@ -190,7 +174,6 @@ def _service() -> tuple[
     dataset = _DatasetController()
     preprocess = _PreprocessController()
     training = _TrainingController(study)
-    dataset_generation = _DatasetGenerationCommands(study)
     training_commands = _TrainingCommands()
     interpretation = _InterpretationCommands()
     return (
@@ -199,7 +182,6 @@ def _service() -> tuple[
             dataset=dataset,
             preprocess=preprocess,
             training=training,
-            dataset_generation=dataset_generation,
             training_commands=training_commands,
             interpretation=interpretation,
             get_state=_state,
@@ -208,16 +190,13 @@ def _service() -> tuple[
         dataset,
         preprocess,
         training,
-        dataset_generation,
         training_commands,
         interpretation,
     )
 
 
 def test_lifecycle_service_resets_preprocess_and_clears_downstream_state() -> None:
-    service, _study, dataset, preprocess, training, _dataset_generation, _, _ = (
-        _service()
-    )
+    service, _study, dataset, preprocess, training, _, _ = _service()
 
     message, payload = _expect_payload(
         service.handle_reset_preprocess(ResetPreprocessCommand(confirmed=True)),
@@ -239,15 +218,18 @@ def test_lifecycle_service_resets_preprocess_and_clears_downstream_state() -> No
 
 
 def test_lifecycle_service_rolls_back_reset_preprocess_failure() -> None:
-    service, study, _dataset, _preprocess, _training, dataset_generation, _, _ = (
-        _service()
-    )
+    service, study, _dataset, _preprocess, _training, _, _ = _service()
     previous_preprocessed = [object()]
+    previous_loaded = [object()]
+    previous_backup = [object()]
     previous_epoch = object()
     previous_dataset = object()
     previous_generator = object()
     previous_trainer = object()
     study.data_manager.preprocessed_data_list = previous_preprocessed
+    study.data_manager.loaded_data_list = previous_loaded
+    study.data_manager.backup_loaded_data_list = previous_backup
+    study.data_manager.dataset_locked = True
     study.data_manager.epoch_data = previous_epoch
     study.data_manager.datasets = [previous_dataset]
     study.data_manager.dataset_generator = previous_generator
@@ -258,17 +240,13 @@ def test_lifecycle_service_rolls_back_reset_preprocess_failure() -> None:
         service.handle_reset_preprocess(ResetPreprocessCommand(confirmed=True))
 
     assert study.data_manager.preprocessed_data_list == previous_preprocessed
+    assert study.data_manager.loaded_data_list == previous_loaded
+    assert study.data_manager.backup_loaded_data_list == previous_backup
+    assert study.data_manager.dataset_locked is True
     assert study.data_manager.epoch_data is previous_epoch
     assert study.data_manager.datasets == [previous_dataset]
     assert study.data_manager.dataset_generator is previous_generator
     assert study.training_manager.trainer is previous_trainer
-    assert dataset_generation.restore_calls == [
-        {
-            "datasets": [previous_dataset],
-            "generator": previous_generator,
-            "trainer": previous_trainer,
-        },
-    ]
 
 
 def test_lifecycle_service_reset_session_and_new_session_clear_dependent_state() -> (
@@ -280,7 +258,6 @@ def test_lifecycle_service_reset_session_and_new_session_clear_dependent_state()
         dataset,
         _preprocess,
         _training,
-        _,
         training_commands,
         interpretation,
     ) = _service()
