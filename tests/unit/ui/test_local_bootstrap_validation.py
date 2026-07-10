@@ -6,8 +6,6 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from PyQt6.QtCore import QObject
-
 from XBrainLab.llm.core.config import LLMConfig
 
 
@@ -48,8 +46,7 @@ def _create_hf_cache(cache_dir: Path, repo_id: str) -> None:
 def _make_worker():
     from XBrainLab.llm.agent.worker import AgentWorker
 
-    with patch.object(QObject, "__init__", lambda self: None):
-        worker = AgentWorker()
+    worker = AgentWorker()
 
     worker.finished = MagicMock()
     worker.chunk_received = MagicMock()
