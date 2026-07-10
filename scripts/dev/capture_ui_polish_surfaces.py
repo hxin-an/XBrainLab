@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import argparse
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -17,6 +19,8 @@ from XBrainLab.backend.dataset import (
     TrainingType,
     ValSplitByType,
 )
+from XBrainLab.ui.chat.message_bubble import MessageBubble
+from XBrainLab.ui.chat.panel import ChatPanel
 from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import DataSplittingDialog
 from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
     DataSplitterHolder,
@@ -37,29 +41,30 @@ ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = ROOT / "artifacts" / "ui" / "app-polish"
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    captures = _capture_factories()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--only",
+        action="append",
+        choices=[filename for filename, _factory in captures],
+        help="Capture only this filename; repeat for multiple surfaces.",
+    )
+    args = parser.parse_args(argv)
+    selected = set(args.only or [filename for filename, _factory in captures])
+
     instance = QApplication.instance()
     app = instance if isinstance(instance, QApplication) else QApplication(sys.argv)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    captures = [
-        ("model-selection-dialog.png", _model_selection_dialog()),
-        ("training-setting-dialog.png", _training_setting_dialog()),
-        ("preprocess-rereference-dialog.png", _rereference_dialog()),
-        ("preprocess-epoching-dialog.png", _epoching_dialog()),
-        ("data-splitting-dialog.png", _data_splitting_dialog()),
-        ("data-splitting-preview-dialog.png", _data_splitting_preview_dialog()),
-        ("saliency-setting-dialog.png", _saliency_setting_dialog()),
-        ("saliency-setting-single-method.png", _saliency_setting_single_method()),
-        ("saliency-setting-empty-state.png", _saliency_setting_empty_state()),
-        ("set-montage-dialog.png", _set_montage_dialog()),
-        ("evaluation-controls-panel.png", _evaluation_controls_panel()),
-        ("evaluation-metrics-table.png", _metrics_table()),
-    ]
-    for filename, widget in captures:
+    for filename, factory in captures:
+        if filename not in selected:
+            continue
+        widget = factory()
         widget.show()
         app.processEvents()
         widget.repaint()
         app.processEvents()
+        _assert_capture_geometry(filename, widget)
         _capture(widget, OUTPUT_DIR / filename)
         widget.close()
     _write_readme()
@@ -142,6 +147,12 @@ def _data_splitting_dialog() -> QWidget:
     return dialog
 
 
+def _data_splitting_dialog_narrow() -> QWidget:
+    dialog = _data_splitting_dialog()
+    dialog.resize(QSize(752, 700))
+    return dialog
+
+
 def _data_splitting_preview_dialog() -> QWidget:
     epoch = MagicMock()
     epoch.subject_map = {"S01": [0, 1, 2], "S02": [3, 4, 5]}
@@ -177,9 +188,6 @@ def _data_splitting_preview_dialog() -> QWidget:
     for name, train, val, test in (
         ("Fold_0", 76, 20, 24),
         ("Fold_1", 76, 20, 24),
-        ("Fold_2", 77, 19, 24),
-        ("Fold_3", 77, 19, 24),
-        ("Fold_4", 78, 18, 24),
     ):
         item = QTreeWidgetItem(dialog.tree)
         item.setText(0, name)
@@ -191,6 +199,33 @@ def _data_splitting_preview_dialog() -> QWidget:
     dialog.adjustSize()
     dialog.resize(QSize(980, dialog.sizeHint().height()))
     return dialog
+
+
+def _assistant_ask_narrow() -> QWidget:
+    panel = ChatPanel()
+    panel.set_execution_mode("single")
+    panel.resize(QSize(340, 650))
+    return panel
+
+
+def _assistant_workflow_narrow() -> QWidget:
+    panel = ChatPanel()
+    panel.set_execution_mode("multi")
+    panel.resize(QSize(340, 650))
+    panel.show()
+    app = QApplication.instance()
+    if app is not None:
+        app.processEvents()
+    panel.append_message("user", "Prepare the data for training.")
+    panel.append_message(
+        "assistant",
+        "I checked the workflow and need one decision before continuing.",
+    )
+    panel.set_workflow_status("Waiting for decision")
+    panel.set_processing_state(True)
+    if app is not None:
+        app.processEvents()
+    return panel
 
 
 def _saliency_setting_dialog() -> QWidget:
@@ -306,6 +341,26 @@ def _metrics_table() -> QWidget:
     return table
 
 
+def _capture_factories() -> tuple[tuple[str, Callable[[], QWidget]], ...]:
+    return (
+        ("model-selection-dialog.png", _model_selection_dialog),
+        ("training-setting-dialog.png", _training_setting_dialog),
+        ("preprocess-rereference-dialog.png", _rereference_dialog),
+        ("preprocess-epoching-dialog.png", _epoching_dialog),
+        ("data-splitting-dialog.png", _data_splitting_dialog),
+        ("data-splitting-dialog-narrow.png", _data_splitting_dialog_narrow),
+        ("data-splitting-preview-dialog.png", _data_splitting_preview_dialog),
+        ("assistant-ask-narrow.png", _assistant_ask_narrow),
+        ("assistant-workflow-narrow.png", _assistant_workflow_narrow),
+        ("saliency-setting-dialog.png", _saliency_setting_dialog),
+        ("saliency-setting-single-method.png", _saliency_setting_single_method),
+        ("saliency-setting-empty-state.png", _saliency_setting_empty_state),
+        ("set-montage-dialog.png", _set_montage_dialog),
+        ("evaluation-controls-panel.png", _evaluation_controls_panel),
+        ("evaluation-metrics-table.png", _metrics_table),
+    )
+
+
 def _capture(widget: QWidget, output_path: Path) -> None:
     pixmap = widget.grab()
     if pixmap.isNull():
@@ -316,26 +371,72 @@ def _capture(widget: QWidget, output_path: Path) -> None:
         raise RuntimeError(f"Screenshot is nearly black: {output_path}.")
 
 
+def _assert_capture_geometry(filename: str, widget: QWidget) -> None:
+    if isinstance(widget, DataSplittingDialog):
+        if widget.minimumSizeHint().width() > widget.width():
+            raise RuntimeError(f"{filename} minimum width exceeds its captured width.")
+        button = widget.btn_confirm
+        if button is None or not button.isVisible():
+            raise RuntimeError(f"{filename} does not show its Confirm button.")
+        bottom_right = button.mapTo(widget, button.rect().bottomRight())
+        if bottom_right.x() >= widget.width() or bottom_right.y() >= widget.height():
+            raise RuntimeError(f"{filename} clips its Confirm button.")
+
+    if isinstance(widget, DataSplittingPreviewDialog) and widget.tree is not None:
+        last_row = widget.tree.topLevelItem(widget.tree.topLevelItemCount() - 1)
+        if last_row is not None:
+            row_rect = widget.tree.visualItemRect(last_row)
+            unused_height = widget.tree.viewport().height() - row_rect.bottom()
+            if unused_height > 12:
+                raise RuntimeError(f"{filename} leaves an empty results viewport.")
+
+    if isinstance(widget, ChatPanel):
+        viewport = widget.scroll_area.viewport()
+        for bubble in widget.findChildren(MessageBubble):
+            if not bubble.isVisible():
+                continue
+            left = bubble.mapTo(viewport, bubble.rect().topLeft()).x()
+            right = bubble.mapTo(viewport, bubble.rect().bottomRight()).x()
+            if left < 0 or right >= viewport.width():
+                raise RuntimeError(f"{filename} clips a conversation bubble.")
+
+
 def _write_readme() -> None:
     (OUTPUT_DIR / "README.md").write_text(
         "# App Polish Screenshots\n\n"
-        "status: current release-candidate review evidence\n"
+        "status: generated focused UI review evidence\n"
         "generator: `scripts/dev/capture_ui_polish_surfaces.py`\n"
         "environment: PyQt offscreen capture\n"
-        "supports: current visual state for model selection, data splitting, "
-        "and evaluation metrics table polish\n"
+        "supports: current visual state for assistant single-step/Workflow narrow "
+        "surfaces, model selection, data splitting, and evaluation metrics "
+        "table polish\n"
         "does_not_support: end-to-end training quality, human desktop "
         "acceptance, or long-running runtime behavior\n"
         "next_human_or_runtime_gate: open the same dialogs in the Windows "
         "desktop app during manual acceptance\n\n"
         "Focused current screenshots for manual review of surfaces that are not "
-        "fully represented by the Data Import wizard artifacts.\n\n"
+        "fully represented by the Data Import wizard artifacts. Regenerate the "
+        "complete set with:\n\n"
+        "```bash\n"
+        "QT_QPA_PLATFORM=offscreen poetry run python "
+        "scripts/dev/capture_ui_polish_surfaces.py\n"
+        "```\n\n"
+        "Regenerate only the narrow assistant evidence with:\n\n"
+        "```bash\n"
+        "QT_QPA_PLATFORM=offscreen poetry run python "
+        "scripts/dev/capture_ui_polish_surfaces.py "
+        "--only assistant-ask-narrow.png "
+        "--only assistant-workflow-narrow.png\n"
+        "```\n\n"
         "- `model-selection-dialog.png`\n"
         "- `training-setting-dialog.png`\n"
         "- `preprocess-rereference-dialog.png`\n"
         "- `preprocess-epoching-dialog.png`\n"
-        "- `data-splitting-dialog.png`\n"
+        "- `data-splitting-dialog.png` (752 x 470 scroll fallback)\n"
+        "- `data-splitting-dialog-narrow.png` (752 x 700 full reflow)\n"
         "- `data-splitting-preview-dialog.png`\n"
+        "- `assistant-ask-narrow.png` (340 x 650, current single-step mode)\n"
+        "- `assistant-workflow-narrow.png` (340 x 650)\n"
         "- `saliency-setting-dialog.png`\n"
         "- `saliency-setting-single-method.png`\n"
         "- `saliency-setting-empty-state.png`\n"

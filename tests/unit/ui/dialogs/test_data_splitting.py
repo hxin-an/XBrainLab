@@ -7,7 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from PyQt6.QtWidgets import QFrame, QWidget
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QFrame, QTreeWidgetItem, QWidget
 
 from XBrainLab.backend.study import Study
 
@@ -123,6 +124,42 @@ class TestPreviewCanvas:
         canvas.set_regions(regions)
         assert len(canvas.regions) == 1
 
+    def test_adjacent_color_blocks_do_not_leave_background_gaps(self, qtbot):
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+            DrawColor,
+            DrawRegion,
+            PreviewCanvas,
+        )
+
+        canvas = PreviewCanvas(None)
+        qtbot.addWidget(canvas)
+        canvas.subject_num = 1
+        canvas.session_num = 1
+        canvas.resize(463, 280)
+
+        regions = []
+        for start, end, color in (
+            (0.0, 0.333, DrawColor.TRAIN),
+            (0.333, 0.667, DrawColor.VAL),
+            (0.667, 1.0, DrawColor.TEST),
+        ):
+            region = DrawRegion(1, 1)
+            region.set_from(0, 0)
+            region.set_to(1, 1, start, end)
+            regions.append((region, color))
+
+        canvas.set_regions(regions)
+        canvas.show()
+        qtbot.wait(10)
+        image = canvas.grab().toImage()
+        expected_colors = {color.value.name() for color in DrawColor}
+        row_colors = {
+            image.pixelColor(x, 30).name() for x in range(51, canvas.width() - 51)
+        }
+
+        assert not image.isNull()
+        assert row_colors <= expected_colors
+
 
 class TestDataSplittingDialog:
     def test_creates(self, qtbot, controller):
@@ -133,6 +170,44 @@ class TestDataSplittingDialog:
         dlg = DataSplittingDialog(None, controller)
         qtbot.addWidget(dlg)
         assert dlg.windowTitle() == "Data Splitting Setting"
+
+    @pytest.mark.parametrize("available_width", [752, 760])
+    def test_narrow_geometry_reflows_and_keeps_confirm_visible(
+        self,
+        qtbot,
+        controller,
+        available_width,
+    ):
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+            DataSplittingDialog,
+        )
+
+        dlg = DataSplittingDialog(None, controller)
+        qtbot.addWidget(dlg)
+        dlg.resize(available_width, 700)
+        dlg.show()
+        qtbot.wait(10)
+
+        preview = dlg.findChild(QFrame, "DataSplitPreviewGroup")
+        settings = dlg.findChild(QFrame, "DataSplitOptionsGroup")
+        assert preview is not None
+        assert settings is not None
+        assert dlg.btn_confirm is not None
+        assert dlg.minimumSizeHint().width() <= available_width
+        assert settings.geometry().top() >= preview.geometry().bottom()
+        assert dlg.btn_confirm.isVisible()
+
+        confirm_bottom_right = dlg.btn_confirm.mapTo(
+            dlg,
+            dlg.btn_confirm.rect().bottomRight(),
+        )
+        assert confirm_bottom_right.x() < dlg.width()
+        assert confirm_bottom_right.y() < dlg.height()
+
+        image = dlg.grab().toImage()
+        confirm_center = dlg.btn_confirm.mapTo(dlg, dlg.btn_confirm.rect().center())
+        assert not image.isNull()
+        assert image.pixelColor(confirm_center).name() != "#1b1b1d"
 
     def test_real_study_requires_explicit_service_context(self, qtbot, controller):
         from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
@@ -260,6 +335,24 @@ class TestDataSplittingDialog:
         split_panel_style = split_panel_style.split("}", 1)[0]
         assert "border: none;" in split_panel_style
         assert "border: none;" in dlg.styleSheet()
+
+        dlg.tree.clear()
+        rows = []
+        for name in ("Fold_0", "Fold_1"):
+            row = QTreeWidgetItem(dlg.tree)
+            row.setText(0, name)
+            rows.append(row)
+        dlg._resize_tree_to_rows()
+        dlg.show()
+        qtbot.wait(10)
+
+        last_row = dlg.tree.visualItemRect(rows[-1])
+        unused_viewport_height = dlg.tree.viewport().height() - last_row.bottom()
+        assert unused_viewport_height <= 12
+        assert (
+            dlg.tree.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        assert "gridline-color: transparent;" in dlg.tree.styleSheet()
 
     def test_data_splitting_cards_do_not_draw_internal_vertical_frame_lines(
         self,

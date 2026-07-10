@@ -11,9 +11,10 @@ from typing import Any
 from unittest.mock import Mock
 
 import numpy as np
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QRect, Qt
 from PyQt6.QtGui import QBrush, QColor, QPainter
 from PyQt6.QtWidgets import (
+    QBoxLayout,
     QCheckBox,
     QComboBox,
     QFrame,
@@ -21,6 +22,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -44,6 +46,7 @@ from .data_splitting_preview_dialog import (
 )
 
 _UNSET = object()
+_NARROW_FLOW_BREAKPOINT = 800
 _CHEVRON_DOWN_ICON = (
     Path(__file__).resolve().parents[3] / "resources" / "icons" / "chevron-down.svg"
 ).as_posix()
@@ -312,7 +315,18 @@ class PreviewCanvas(QWidget):
                     x2 = left + delta_x * (i + region.to_canvas[i, j])
                     y2 = top + delta_y * (j + 1)
 
-                    painter.drawRect(int(x1), int(y1), int(x2 - x1), int(y2 - y1))
+                    left_px = round(x1)
+                    top_px = round(y1)
+                    right_px = round(x2)
+                    bottom_px = round(y2)
+                    painter.drawRect(
+                        QRect(
+                            left_px,
+                            top_px,
+                            max(1, right_px - left_px),
+                            max(1, bottom_px - top_px),
+                        )
+                    )
 
         # Draw box
         painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -415,6 +429,10 @@ class DataSplittingDialog(BaseDialog):
         self.cv_check = None
         self.btn_confirm = None
         self.blocked_label = None
+        self.content_layout = None
+        self.content_scroll = None
+        self.preview_group = None
+        self.options_group = None
 
         super().__init__(parent, title="Data Splitting Setting")
         self.setObjectName("DataSplittingDialog")
@@ -430,14 +448,30 @@ class DataSplittingDialog(BaseDialog):
         layout.setContentsMargins(18, 16, 18, 16)
         layout.setSpacing(14)
 
-        content_layout = QHBoxLayout()
-        content_layout.setSpacing(16)
+        self.content_scroll = QScrollArea()
+        self.content_scroll.setObjectName("DataSplitContentScroll")
+        self.content_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.content_scroll.setMinimumSize(500, 260)
+        self.content_scroll.setWidgetResizable(True)
+        self.content_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.content_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        content_widget = QWidget()
+        content_widget.setObjectName("DataSplitContentWidget")
+        self.content_layout = QBoxLayout(QBoxLayout.Direction.LeftToRight)
+        self.content_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_layout.setSpacing(16)
+        content_widget.setLayout(self.content_layout)
+        self.content_scroll.setWidget(content_widget)
 
         # Left: Preview
-        preview_group = QFrame()
-        preview_group.setObjectName("DataSplitPreviewGroup")
-        preview_group.setFrameShape(QFrame.Shape.NoFrame)
-        left_layout = QVBoxLayout(preview_group)
+        self.preview_group = QFrame()
+        self.preview_group.setObjectName("DataSplitPreviewGroup")
+        self.preview_group.setFrameShape(QFrame.Shape.NoFrame)
+        left_layout = QVBoxLayout(self.preview_group)
         left_layout.setContentsMargins(12, 12, 12, 12)
         left_layout.setSpacing(12)
         preview_title = QLabel("Data splitting preview")
@@ -461,19 +495,19 @@ class DataSplittingDialog(BaseDialog):
             legend_layout.addWidget(QLabel(name))
         legend_layout.addStretch(1)
         left_layout.addLayout(legend_layout)
-        content_layout.addWidget(preview_group, stretch=1)
+        self.content_layout.addWidget(self.preview_group, stretch=1)
 
         # Right: Options
-        options_group = QFrame()
-        options_group.setObjectName("DataSplitOptionsGroup")
-        options_group.setFrameShape(QFrame.Shape.NoFrame)
-        options_group.setMinimumWidth(260)
-        options_group.setMaximumWidth(300)
-        options_group.setSizePolicy(
+        self.options_group = QFrame()
+        self.options_group.setObjectName("DataSplitOptionsGroup")
+        self.options_group.setFrameShape(QFrame.Shape.NoFrame)
+        self.options_group.setMinimumWidth(260)
+        self.options_group.setMaximumWidth(300)
+        self.options_group.setSizePolicy(
             QSizePolicy.Policy.Fixed,
             QSizePolicy.Policy.Maximum,
         )
-        right_layout = QVBoxLayout(options_group)
+        right_layout = QVBoxLayout(self.options_group)
         right_layout.setContentsMargins(12, 12, 12, 12)
         right_layout.setSpacing(12)
         right_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -523,9 +557,12 @@ class DataSplittingDialog(BaseDialog):
         self.blocked_label.setWordWrap(True)
         self.blocked_label.setStyleSheet("color: #f59e0b;")
         right_layout.addWidget(self.blocked_label)
-        content_layout.addWidget(options_group, stretch=0)
-        content_layout.setAlignment(options_group, Qt.AlignmentFlag.AlignTop)
-        layout.addLayout(content_layout)
+        self.content_layout.addWidget(self.options_group, stretch=0)
+        self.content_layout.setAlignment(
+            self.options_group,
+            Qt.AlignmentFlag.AlignTop,
+        )
+        layout.addWidget(self.content_scroll, stretch=1)
 
         action_layout = QHBoxLayout()
         action_layout.addStretch(1)
@@ -536,6 +573,40 @@ class DataSplittingDialog(BaseDialog):
         self.btn_confirm.clicked.connect(self.confirm)
         action_layout.addWidget(self.btn_confirm)
         layout.addLayout(action_layout)
+        self._update_content_flow(self.width())
+
+    def resizeEvent(self, event):  # noqa: N802
+        """Reflow preview and settings before narrow layouts can clip them."""
+        self._update_content_flow(event.size().width())
+        super().resizeEvent(event)
+
+    def _update_content_flow(self, width: int) -> None:
+        if (
+            self.content_layout is None
+            or self.preview_group is None
+            or self.options_group is None
+        ):
+            return
+        is_narrow = width < _NARROW_FLOW_BREAKPOINT
+        direction = (
+            QBoxLayout.Direction.TopToBottom
+            if is_narrow
+            else QBoxLayout.Direction.LeftToRight
+        )
+        if self.content_layout.direction() == direction:
+            return
+
+        self.content_layout.setDirection(direction)
+        self.options_group.setMaximumWidth(300)
+        self.options_group.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Maximum,
+        )
+        alignment = Qt.AlignmentFlag.AlignTop
+        if is_narrow:
+            alignment |= Qt.AlignmentFlag.AlignLeft
+        self.content_layout.setAlignment(self.options_group, alignment)
+        self.content_layout.invalidate()
 
     @staticmethod
     def _configure_split_combo(combo: QComboBox) -> None:
@@ -738,6 +809,12 @@ class DataSplittingDialog(BaseDialog):
         QDialog#DataSplittingDialog {
             background: #1b1b1d;
             color: #f2f5f8;
+        }
+        QScrollArea#DataSplitContentScroll,
+        QScrollArea#DataSplitContentScroll > QWidget > QWidget,
+        QWidget#DataSplitContentWidget {
+            border: none;
+            background: transparent;
         }
         QLabel {
             background: transparent;
