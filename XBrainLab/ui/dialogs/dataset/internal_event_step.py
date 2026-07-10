@@ -17,6 +17,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application.data_interpretation_pairing import (
+    resolve_label_file_pairing,
+)
+
 if TYPE_CHECKING:
     from XBrainLab.ui.dialogs.dataset.wizard_host_protocol import (
         DataImportWizardStepHostProtocol,
@@ -474,12 +478,11 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
         return "Not detected"
 
     def _preview_matched_eeg_pair_count(self) -> int:
-        matched: set[str] = set()
-        for carrier in self._bids_event_carriers():
-            match = self._label_carrier_match_text(carrier)
-            if match and match != "Needs review":
-                matched.add(Path(match).name)
-        return len(matched)
+        pairing = resolve_label_file_pairing(
+            self._bids_event_carriers(),
+            self._selected_eeg_file_names(),
+        )
+        return pairing.matched_count
 
     def _bids_payload(self) -> dict[str, Any]:
         bids = self.scan_result.get("bids") or {}

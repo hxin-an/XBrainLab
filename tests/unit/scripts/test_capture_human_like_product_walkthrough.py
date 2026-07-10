@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+import pytest
+from PIL import Image, ImageDraw
 from PyQt6.QtCore import QSize, QTimer
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
+    QLabel,
     QTableWidget,
     QTextBrowser,
     QVBoxLayout,
@@ -18,6 +21,8 @@ from scripts.dev.capture_data_interpretation_replay import (
 )
 from scripts.dev.capture_human_like_product_walkthrough import (
     REQUIRED_PHASES,
+    _assert_step_navigation_rendered,
+    _data_import_visual_evidence_failures,
     apply_review_choices,
     build_chat_geometry_review,
     build_observable_evidence_summary,
@@ -136,6 +141,96 @@ def test_validate_walkthrough_payload_accepts_complete_artifact_without_files() 
 
     assert ok is True
     assert reason == ""
+
+
+def test_data_import_visual_evidence_requires_distinct_expected_steps(tmp_path) -> None:
+    expected = {
+        "data_interpretation_scan_result": "Choose EEG Data",
+        "data_interpretation_preview": "Review Metadata",
+        "data_interpretation_confirm_metadata_labels": "Match Labels",
+        "data_interpretation_review_and_import": "Review and Import",
+    }
+    phases = []
+    for index, (phase, active_step) in enumerate(expected.items()):
+        screenshot = tmp_path / f"step-{index}.png"
+        screenshot.write_bytes(f"distinct-{index}".encode())
+        phases.append(
+            {
+                "phase": phase,
+                "screenshot": str(screenshot),
+                "notes": {"active_step": active_step},
+            }
+        )
+
+    assert _data_import_visual_evidence_failures(phases) == []
+
+
+def test_data_import_visual_evidence_rejects_duplicate_or_wrong_step(tmp_path) -> None:
+    preview = tmp_path / "preview.png"
+    review = tmp_path / "review.png"
+    preview.write_bytes(b"same-image")
+    review.write_bytes(b"same-image")
+    phases = [
+        {
+            "phase": "data_interpretation_scan_result",
+            "screenshot": str(preview),
+            "notes": {"active_step": "Choose EEG Data"},
+        },
+        {
+            "phase": "data_interpretation_review_and_import",
+            "screenshot": str(review),
+            "notes": {"active_step": "Match Labels"},
+        },
+    ]
+
+    failures = _data_import_visual_evidence_failures(phases)
+
+    assert any("expected Review and Import" in failure for failure in failures)
+    assert "Data Import walkthrough step screenshots are duplicated" in failures
+
+
+def test_step_navigation_pixel_guard_rejects_unpainted_label(qtbot, tmp_path) -> None:
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    widget.resize(180, 70)
+    label = QLabel("1. Choose EEG Data", widget)
+    label.setGeometry(10, 10, 150, 34)
+    widget.step_labels = [label]
+    widget.show()
+    qtbot.wait(0)
+
+    empty = tmp_path / "empty.png"
+    Image.new("RGB", (180, 70), "#1e1e1e").save(empty)
+    with pytest.raises(RuntimeError, match="not fully rendered"):
+        _assert_step_navigation_rendered(widget, empty)
+
+    painted = tmp_path / "painted.png"
+    image = Image.new("RGB", (180, 70), "#1e1e1e")
+    ImageDraw.Draw(image).rectangle((10, 10, 159, 43), fill="#23303a")
+    image.save(painted)
+    with pytest.raises(RuntimeError, match="not fully rendered"):
+        _assert_step_navigation_rendered(widget, painted)
+
+    styled_blank = tmp_path / "styled-blank.png"
+    image = Image.new("RGB", (180, 70), "#1e1e1e")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle(
+        (10, 10, 159, 43),
+        fill="#23303a",
+        outline="#5b7db1",
+        width=1,
+    )
+    image.save(styled_blank)
+    with pytest.raises(RuntimeError, match="not fully rendered"):
+        _assert_step_navigation_rendered(widget, styled_blank)
+
+    text_painted = tmp_path / "text-painted.png"
+    image = Image.new("RGB", (180, 70), "#1e1e1e")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((10, 10, 159, 43), fill="#23303a")
+    draw.text((25, 20), "1. Choose EEG Data", fill="#ffffff")
+    image.save(text_painted)
+    _assert_step_navigation_rendered(widget, text_painted)
 
 
 def test_settle_window_geometry_reapplies_target_after_startup_timer(qtbot) -> None:

@@ -24,6 +24,7 @@ from .data_interpretation_metadata import (
 from .data_interpretation_metadata import (
     metadata_for_file as _metadata_for_file,
 )
+from .data_interpretation_pairing import label_mapping_key
 
 _MAX_SCAN_DEPTH = 8
 _MAX_SCAN_FILES = 5000
@@ -253,7 +254,7 @@ def _auto_label_carriers_for_source(source_path: Path, files: list[Path]) -> lis
             for item in files
             if _is_label_carrier(item) or _is_bids_events_file(item)
         ]
-    source_key = _label_mapping_key(source_path)
+    source_key = label_mapping_key(source_path)
     candidates: list[Path] = []
     for item in _nearby_label_candidates_for_file(source_path):
         if not item.is_file():
@@ -284,7 +285,7 @@ def _nearby_label_matches_source(source_key: str, label_path: Path) -> bool:
     label_name = label_path.name.lower()
     if label_name == "events.tsv":
         return True
-    return _label_mapping_key(label_path) == source_key
+    return label_mapping_key(label_path) == source_key
 
 
 def _label_carriers_from_sources(
@@ -344,29 +345,6 @@ def _is_label_carrier(path: Path) -> bool:
 
 def _is_bids_events_file(path: Path) -> bool:
     return path.name.endswith("_events.tsv") or path.name == "events.tsv"
-
-
-def _label_mapping_key(path: Path) -> str:
-    name = path.name
-    lowered = name.lower()
-    stem = name[: -len(".fif.gz")] if lowered.endswith(".fif.gz") else path.stem
-    normalized = stem.lower()
-    for suffix in (
-        "_events",
-        "-events",
-        "_labels",
-        "-labels",
-        "_label",
-        "-label",
-        "_raw",
-        "-raw",
-        "_eeg",
-        "-eeg",
-    ):
-        if normalized.endswith(suffix):
-            normalized = normalized[: -len(suffix)]
-            break
-    return normalized.strip()
 
 
 def _looks_like_bids(path: Path) -> bool:

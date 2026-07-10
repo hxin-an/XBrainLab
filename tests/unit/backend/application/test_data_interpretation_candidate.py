@@ -9,6 +9,10 @@ from XBrainLab.backend.application.data_interpretation_metadata import (
     FileMetadataResolution,
     MetadataFieldResolution,
 )
+from XBrainLab.backend.application.data_interpretation_review import (
+    build_interpretation_preview,
+    validate_interpretation_candidate,
+)
 from XBrainLab.backend.application.data_interpretation_scan import ScanResult
 
 
@@ -172,6 +176,112 @@ def test_bids_candidate_blocks_selected_scope_without_events_tsv():
         "BIDS events.tsv was not found for the selected EEG file(s). "
         "Choose a BIDS run with events.tsv, or use Import folder for non-BIDS labels."
         in candidate.blocked_reasons
+    )
+
+
+def test_candidate_blocks_partial_manual_label_pairing(tmp_path):
+    eeg_1 = tmp_path / "sub-01_task-mi_run-1_raw.fif"
+    eeg_2 = tmp_path / "sub-01_task-mi_run-2_raw.fif"
+    labels = tmp_path / "events.tsv"
+    labels.write_text("onset\ttrial_type\n0.5\tleft\n", encoding="utf-8")
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            source_kind="folder",
+            eeg_files=[str(eeg_1), str(eeg_2)],
+            label_carriers=[str(labels)],
+            label_carrier_sources={str(labels): "auto"},
+            bids={"is_bids": False, "events_files": []},
+        ),
+        choices={
+            "label_carrier_choices": {
+                str(labels): {
+                    "target_file": eeg_2.name,
+                    "label_field": "trial_type",
+                    "anchor": "onset",
+                }
+            }
+        },
+    )
+
+    assert any(
+        "Label carrier pairing is incomplete" in reason
+        and "sub-01_task-mi_run-1_raw.fif" in reason
+        for reason in candidate.blocked_reasons
+    )
+    preview = build_interpretation_preview(
+        preview_id="preview-1",
+        candidate=candidate,
+    )
+    decision = validate_interpretation_candidate(candidate)
+    assert decision.decision == "blocked"
+    assert any(
+        item["target_step"] == "Match Labels"
+        and "pairing is incomplete" in item["issue"]
+        for item in preview.action_items
+    )
+
+
+def test_bids_candidate_blocks_when_one_selected_run_has_no_events_tsv(tmp_path):
+    eeg_1 = tmp_path / "sub-01_task-mi_run-1_raw.fif"
+    eeg_2 = tmp_path / "sub-01_task-mi_run-2_raw.fif"
+    events_1 = tmp_path / "sub-01_task-mi_run-1_events.tsv"
+    events_1.write_text("onset\ttrial_type\n0.5\tleft\n", encoding="utf-8")
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            source_kind="bids",
+            eeg_files=[str(eeg_1), str(eeg_2)],
+            label_carriers=[str(events_1)],
+            label_carrier_sources={str(events_1): "auto"},
+            bids={
+                "is_bids": True,
+                "events_files": [str(events_1)],
+                "layout": [
+                    {"file": str(eeg_1), "events_file": str(events_1)},
+                    {"file": str(eeg_2), "events_file": ""},
+                ],
+            },
+        ),
+    )
+
+    assert any(
+        "Label carrier pairing is incomplete" in reason and eeg_2.name in reason
+        for reason in candidate.blocked_reasons
+    )
+
+
+def test_bids_candidate_accepts_unique_events_tsv_for_each_selected_run(tmp_path):
+    eeg_1 = tmp_path / "sub-01_task-mi_run-1_raw.fif"
+    eeg_2 = tmp_path / "sub-01_task-mi_run-2_raw.fif"
+    events_1 = tmp_path / "sub-01_task-mi_run-1_events.tsv"
+    events_2 = tmp_path / "sub-01_task-mi_run-2_events.tsv"
+    for events in (events_1, events_2):
+        events.write_text("onset\ttrial_type\n0.5\tleft\n", encoding="utf-8")
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            source_kind="bids",
+            eeg_files=[str(eeg_1), str(eeg_2)],
+            label_carriers=[str(events_1), str(events_2)],
+            label_carrier_sources={
+                str(events_1): "auto",
+                str(events_2): "auto",
+            },
+            bids={
+                "is_bids": True,
+                "events_files": [str(events_1), str(events_2)],
+                "layout": [
+                    {"file": str(eeg_1), "events_file": str(events_1)},
+                    {"file": str(eeg_2), "events_file": str(events_2)},
+                ],
+            },
+        ),
+    )
+
+    assert not any(
+        "Label carrier pairing is incomplete" in reason
+        for reason in candidate.blocked_reasons
     )
 
 

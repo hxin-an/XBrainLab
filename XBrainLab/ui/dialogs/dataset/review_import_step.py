@@ -17,6 +17,10 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from XBrainLab.backend.application.data_interpretation_pairing import (
+    LabelPairingResult,
+    resolve_label_file_pairing,
+)
 from XBrainLab.backend.application.resource_guard import (
     RISK_BLOCKING,
     RISK_SAFE,
@@ -242,6 +246,8 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
                 return True
             if self._should_show_label_table_fallback():
                 return True
+            if self._loaded_label_pairing_needs_review():
+                return True
         summary = self._review_label_placement_text().casefold()
         return any(
             marker in summary
@@ -252,6 +258,25 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
                 "no external labels selected",
             )
         )
+
+    def _loaded_label_pairing_needs_review(self) -> bool:
+        result = self._loaded_label_pairing_result()
+        return bool(self._selected_eeg_file_names()) and not result.complete
+
+    def _loaded_label_pairing_result(self) -> LabelPairingResult:
+        plans: list[dict[str, Any]] = []
+        for item, original in self._label_carrier_items:
+            carrier_key = self._label_carrier_key(item, original)
+            if self._is_label_carrier_excluded(carrier_key):
+                continue
+            plan = dict(original)
+            plan["path"] = carrier_key
+            plan["selected_target_file"] = self._label_carrier_choice_text(
+                "target_file",
+                self._label_carrier_item_text(item, 1),
+            )
+            plans.append(plan)
+        return resolve_label_file_pairing(plans, self._selected_eeg_file_names())
 
     def _has_unresolved_required_decisions(self) -> bool:
         _complete_count, missing_fields = self._metadata_completion_counts()
@@ -329,6 +354,13 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             return "No external labels selected"
         if self._should_show_label_table_fallback():
             return "Label format needs conversion before matching labels to EEG"
+        if self._loaded_label_pairing_needs_review():
+            pairing = self._loaded_label_pairing_result()
+            total = len(self._selected_eeg_file_names())
+            return (
+                f"{pairing.matched_count}/{total} EEG files paired · "
+                f"{len(pairing.unmatched_eeg_files)} need label"
+            )
         if not hasattr(self, "rule_placement_method_combo"):
             return self._label_rule_status_text()
 

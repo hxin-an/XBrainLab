@@ -22,6 +22,7 @@ from .data_interpretation_metadata import (
     MetadataFieldResolution,
     bids_scope_summary,
 )
+from .data_interpretation_pairing import resolve_label_file_pairing
 from .data_interpretation_placement import (
     annotate_label_carrier_placements as _annotate_label_carrier_placements,
 )
@@ -273,6 +274,15 @@ def build_interpretation_candidate(
             + ", ".join(missing_label_carriers)
             + "."
         )
+    if (
+        not missing_selected_files
+        and use_external_label_carriers
+        and label_carrier_plan
+        and selected_files
+    ):
+        pairing = resolve_label_file_pairing(label_carrier_plan, selected_files)
+        if not pairing.complete:
+            blocked_reasons.append(pairing.blocking_reason())
 
     return InterpretationCandidate(
         candidate_id=candidate_id,

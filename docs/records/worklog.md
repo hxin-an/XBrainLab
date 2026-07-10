@@ -15965,3 +15965,19 @@
   - It does not claim full BIDS validator compliance, arbitrary proprietary format support, or
     scientific model-quality evidence.
   - Human Windows click-through remains separate from the offscreen and scripted gates above.
+
+### 2026-07-10 Desktop MVP handoff-candidate closure
+
+- scope：收斂 `stabilize/desktop-mvp` 的 backend、Data Import、assistant、UI repaint、tests、
+  multi-dataset evidence 與 canonical docs，不擴張 MCP 或 thesis experiment。
+- completed：
+  - shared Study command serialization、ToolExecutionCoordinator、immutable worker runtime
+    snapshot 與 capability-only agent tool exposure；
+  - GDF event semantics、real GDF/MAT full workflow、CUDA OOM recovery；
+  - shared label pairing policy，generic/BIDS partial mapping 在 import 前 blocked；
+  - Data Import Step 1/3/4/5、main nav、RightPanel 與 evaluation table 的可見 artifact guards；
+  - architecture/clean-code、UI product、test/EEG 三個 reviewer gates 全數 PASS。
+- validation：Application unit `301 passed`、LLM unit `850 passed`、real/multi-dataset `46 passed`、
+  strict cross-source `4 passed`、human-like walkthrough `27/27` PASS、MkDocs strict PASS。
+- claim boundary：仍需 Windows 真人 click-through；不宣稱 full BIDS validator、BIDS events
+  inheritance、長時間訓練、任意資料格式或 scientific accuracy。

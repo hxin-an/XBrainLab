@@ -6601,3 +6601,31 @@ call sites into explicit legacy/fallback helpers.
   population paths.
 - This does not complete human Windows desktop acceptance, Data Import UX approval, answer UI
   approval, release approval, or product completion.
+
+## 2026-07-10 Desktop MVP Pairing And UI Evidence Closure
+
+### 實作
+
+- Added one pure `data_interpretation_pairing` policy shared by scan discovery, candidate
+  validation, apply mapping, Match Labels suggestions, BIDS summary, and Review and Import.
+- Incomplete generic or BIDS run-level pairing now produces a backend blocker and a structured
+  `Match Labels` action before data is loaded; Apply no longer skips unpaired selected EEG files.
+- Hardened Qt navigation repaint after stacked-page transitions and replaced duplicate Data Import
+  screenshots with real Step 1 / 3 / 4 / 5 captures.
+- Added glyph-, main-navigation-, and right-panel paint guards. A styled blank step with the real
+  background and border is rejected.
+
+### 驗證
+
+- Backend ApplicationService/Data Interpretation unit suite: `301 passed`.
+- Agent/LLM unit suite: `850 passed`.
+- Real IO + public BIDS + cross-source + checked-in real workflow: `46 passed`.
+- Strict cross-source runner: `4 passed` (`3` training, `1` CNT epoch-only).
+- Human-like desktop walkthrough: `27/27` phases and `21` screenshots, PASS.
+- Architecture/clean-code, UI product, and test/EEG independent reviewers: PASS.
+
+### 邊界
+
+- Windows DPI/multi-monitor human acceptance is still required before merging to `main`.
+- This does not claim full BIDS validation, BIDS events inheritance, proprietary converters,
+  long-duration training stability, or scientific model accuracy.

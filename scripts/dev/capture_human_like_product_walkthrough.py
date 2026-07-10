@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import hashlib
 import json
 import os
 import re
@@ -23,6 +24,7 @@ from typing import Any
 
 from PIL import Image
 from PyQt6.QtCore import QPoint, QSize, Qt, QThreadPool, QTimer
+from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import (
     QAbstractButton,
     QApplication,
@@ -38,6 +40,7 @@ from scripts.dev.capture_data_interpretation_replay import (
     SOURCE_DIR,
     SOURCE_PATH,
     apply_replay_review_choices,
+    show_dialog_step,
     table_state,
     tree_rows,
     tree_state,
@@ -92,7 +95,9 @@ SCREENSHOT_NAMES: dict[str, str] = {
     "dataset_page": "02-dataset-page.png",
     "source_selection": "02-dataset-page.png",
     "wizard_preview": "04-interpretation-preview.png",
-    "wizard_confirm": "05-interpretation-confirm.png",
+    "wizard_metadata": "05-interpretation-metadata.png",
+    "wizard_confirm": "05-interpretation-match-labels.png",
+    "wizard_review": "05-interpretation-review-import.png",
     "applied": "06-interpretation-applied.png",
     "recipe_reloaded": "07-recipe-reloaded.png",
     "preprocess": "08-preprocessing.png",
@@ -117,6 +122,7 @@ REQUIRED_PHASES = (
     "data_interpretation_select_source",
     "data_interpretation_scan_result",
     "data_interpretation_preview",
+    "data_interpretation_review_and_import",
     "data_interpretation_decisions",
     "data_interpretation_confirm_metadata_labels",
     "data_interpretation_apply",
@@ -268,6 +274,7 @@ def _run_walkthrough_steps(
     ) -> None:
         target = widget or window
         screenshot_path = output_dir / SCREENSHOT_NAMES[screenshot_key]
+        settle_widget_for_capture(app, target)
         capture_widget(target, screenshot_path)
         screenshots[screenshot_key] = str(screenshot_path)
         phases.append(
@@ -300,8 +307,8 @@ def _run_walkthrough_steps(
         "data_source_selection",
         "source_selection",
         notes={
-            "selected_source": sanitize_path(str(source_path.parent)),
-            "input_mode": "folder",
+            "selected_source": sanitize_path(str(source_path)),
+            "input_mode": "file",
             "source_button": window.dataset_panel.sidebar.import_btn.text(),
         },
     )
@@ -311,12 +318,12 @@ def _run_walkthrough_steps(
         screenshots["source_selection"],
         window.dataset_panel,
         service,
-        {"selected_source": sanitize_path(str(source_path.parent))},
+        {"selected_source": sanitize_path(str(source_path))},
     )
 
     scan = execute_recorded(
         service,
-        ScanSourceCommand(source_path=str(source_path.parent)),
+        ScanSourceCommand(source_path=str(source_path), source_hint="file"),
         command_results,
     )
     preview = execute_recorded(service, PreviewInterpretationCommand(), command_results)
@@ -342,6 +349,7 @@ def _run_walkthrough_steps(
         "wizard_preview",
         widget=dialog,
         notes={
+            "active_step": active_dialog_step(dialog),
             "decision": validation.diagnostics["validation_decision"]["decision"],
             "eeg_files": len(scan.diagnostics["scan_result"]["eeg_files"]),
             "label_carriers": len(scan.diagnostics["scan_result"]["label_carriers"]),
@@ -353,24 +361,43 @@ def _run_walkthrough_steps(
     app.processEvents()
     dialog_result = dialog.get_result()
     review_choices = dialog_result.get("choices", {})
+    show_dialog_step(dialog, "Review Metadata", app)
+    app.processEvents()
     capture_step(
         "data_interpretation_preview",
+        "wizard_metadata",
+        widget=dialog,
+        notes={
+            "active_step": active_dialog_step(dialog),
+            "review_choices": sanitize(review_choices),
+            "metadata_rows": tree_rows(dialog.file_tree),
+            "ui_geometry": sanitize(interpretation_dialog_geometry(dialog)),
+        },
+    )
+    show_dialog_step(dialog, "Match Labels", app)
+    app.processEvents()
+    capture_step(
+        "data_interpretation_confirm_metadata_labels",
         "wizard_confirm",
         widget=dialog,
         notes={
-            "review_choices": sanitize(review_choices),
-            "metadata_rows": tree_rows(dialog.file_tree),
+            "active_step": active_dialog_step(dialog),
             "label_carrier_rows": tree_rows(dialog.label_carrier_tree),
             "ui_geometry": sanitize(interpretation_dialog_geometry(dialog)),
         },
     )
-    append_phase_alias(
-        phases,
-        "data_interpretation_confirm_metadata_labels",
-        screenshots["wizard_confirm"],
-        dialog,
-        service,
-        {"review_choices": sanitize(review_choices)},
+    show_dialog_step(dialog, "Review and Import", app)
+    app.processEvents()
+    capture_step(
+        "data_interpretation_review_and_import",
+        "wizard_review",
+        widget=dialog,
+        notes={
+            "active_step": active_dialog_step(dialog),
+            "apply_enabled": dialog.apply_button.isEnabled(),
+            "review_summary_rows": tree_rows(dialog.review_tree),
+            "ui_geometry": sanitize(interpretation_dialog_geometry(dialog)),
+        },
     )
     dialog.close()
 
@@ -896,6 +923,21 @@ def run_chatpanel_walkthrough(
 def apply_review_choices(dialog: DataInterpretationPreviewDialog) -> None:
     """Apply deterministic human-like review choices to the wizard."""
     apply_replay_review_choices(dialog)
+    carrier = dialog.label_carrier_tree.topLevelItem(0)
+    if carrier is None:
+        return
+    target_selector = dialog._label_target_widgets.get(id(carrier))
+    if isinstance(target_selector, QComboBox):
+        index = target_selector.findData(SOURCE_PATH.name)
+        if index >= 0:
+            target_selector.setCurrentIndex(index)
+    dialog._refresh_pairing_status()
+
+
+def active_dialog_step(dialog: DataInterpretationPreviewDialog) -> str:
+    """Return the task step currently presented to the user."""
+    index = dialog.step_stack.currentIndex()
+    return dialog._step_titles[index] if 0 <= index < len(dialog._step_titles) else ""
 
 
 def dataset_page_geometry(window: MainWindow) -> dict[str, Any]:
@@ -1326,13 +1368,147 @@ def capture_named(window: QWidget, output_dir: Path, key: str) -> str:
 def capture_widget(widget: QWidget, output_path: Path) -> None:
     """Capture a nonblank widget screenshot."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    pixmap = widget.grab()
+    screen = widget.screen() or QApplication.primaryScreen()
+    if widget.isWindow() and screen is not None:
+        pixmap = screen.grabWindow(
+            int(widget.winId()),
+            0,
+            0,
+            widget.width(),
+            widget.height(),
+        )
+    else:
+        pixmap = widget.grab()
     if pixmap.isNull():
         raise RuntimeError(f"Could not grab screenshot for {output_path.name}.")
     if not pixmap.save(str(output_path)):
         raise RuntimeError(f"Could not save screenshot {output_path}.")
     if is_nearly_black(output_path):
         raise RuntimeError(f"Screenshot is nearly black: {output_path}.")
+    _assert_step_navigation_rendered(widget, output_path)
+    _assert_main_navigation_rendered(widget, output_path)
+    _assert_right_panels_rendered(widget, output_path)
+
+
+def _assert_step_navigation_rendered(widget: QWidget, screenshot: Path) -> None:
+    """Reject wizard evidence when a visible step label was not painted."""
+    step_labels = getattr(widget, "step_labels", [])
+    if not isinstance(step_labels, list) or not step_labels:
+        return
+    with Image.open(screenshot) as captured:
+        rgb = captured.convert("RGB")
+        for label in step_labels:
+            if not isinstance(label, QLabel) or not label.isVisible():
+                continue
+            top_left = label.mapTo(widget, QPoint(0, 0))
+            bounds = (
+                max(top_left.x(), 0),
+                max(top_left.y(), 0),
+                min(top_left.x() + label.width(), rgb.width),
+                min(top_left.y() + label.height(), rgb.height),
+            )
+            region = rgb.crop(bounds)
+            border_margin = min(4, region.width // 4, region.height // 4)
+            if border_margin:
+                region = region.crop(
+                    (
+                        border_margin,
+                        border_margin,
+                        region.width - border_margin,
+                        region.height - border_margin,
+                    )
+                )
+            histogram = region.convert("L").histogram()
+            pixel_count = sum(histogram)
+            glyph_pixels = sum(histogram[110:])
+            if not pixel_count or glyph_pixels < pixel_count * 0.01:
+                raise RuntimeError(
+                    "Wizard step navigation was not fully rendered in "
+                    f"{screenshot.name}: {label.text()}"
+                )
+
+
+def _assert_main_navigation_rendered(widget: QWidget, screenshot: Path) -> None:
+    """Reject main-window evidence with missing navigation buttons."""
+    nav_buttons = getattr(widget, "nav_btns", [])
+    _assert_widget_regions_painted(
+        widget,
+        screenshot,
+        nav_buttons if isinstance(nav_buttons, list) else [],
+        surface_name="Main navigation",
+        brightness_threshold=150,
+        minimum_ratio=0.005,
+    )
+
+
+def _assert_right_panels_rendered(widget: QWidget, screenshot: Path) -> None:
+    """Reject main-window evidence with a partially painted workflow sidebar."""
+    right_panels = [
+        panel
+        for panel in widget.findChildren(QWidget, "RightPanel")
+        if panel.isVisible()
+    ]
+    _assert_widget_regions_painted(
+        widget,
+        screenshot,
+        right_panels,
+        surface_name="Right panel",
+        brightness_threshold=40,
+        minimum_ratio=0.70,
+    )
+
+
+def _assert_widget_regions_painted(
+    root: QWidget,
+    screenshot: Path,
+    controls: list[QWidget],
+    *,
+    surface_name: str,
+    brightness_threshold: int,
+    minimum_ratio: float,
+) -> None:
+    if not controls:
+        return
+    with Image.open(screenshot) as captured:
+        grayscale = captured.convert("L")
+        for control in controls:
+            if not control.isVisible():
+                continue
+            top_left = control.mapTo(root, QPoint(0, 0))
+            bounds = (
+                max(top_left.x(), 0),
+                max(top_left.y(), 0),
+                min(top_left.x() + control.width(), grayscale.width),
+                min(top_left.y() + control.height(), grayscale.height),
+            )
+            histogram = grayscale.crop(bounds).histogram()
+            pixel_count = sum(histogram)
+            painted = sum(histogram[brightness_threshold:])
+            if not pixel_count or painted < pixel_count * minimum_ratio:
+                name = control.objectName() or control.__class__.__name__
+                ratio = painted / pixel_count if pixel_count else 0.0
+                raise RuntimeError(
+                    f"{surface_name} was not fully rendered in "
+                    f"{screenshot.name}: {name} ({ratio:.1%} painted)"
+                )
+
+
+def settle_widget_for_capture(
+    app: QApplication,
+    widget: QWidget,
+    *,
+    wait_ms: int = 120,
+) -> None:
+    """Flush deferred layouts and paints before recording UI evidence."""
+    app.processEvents()
+    widget.updateGeometry()
+    widget.repaint()
+    for child in widget.findChildren(QWidget):
+        if child.isVisible():
+            child.update()
+    app.processEvents()
+    QTest.qWait(max(wait_ms, 0))
+    app.processEvents()
 
 
 def is_nearly_black(path: Path) -> bool:
@@ -1500,6 +1676,7 @@ def build_pass_fail_summary(
             failed.append(f"{phase.get('phase')} is missing button state")
         if "workflow_state" not in phase:
             failed.append(f"{phase.get('phase')} is missing workflow state")
+    failed.extend(_data_import_visual_evidence_failures(phases))
     resource_smoke = build_resource_smoke_summary(resource_notes)
     failed.extend(resource_smoke["failed_checks"])
     return {
@@ -1511,6 +1688,38 @@ def build_pass_fail_summary(
         "human_desktop_acceptance": "not performed",
         "resource_smoke": resource_smoke,
     }
+
+
+def _data_import_visual_evidence_failures(
+    phases: list[dict[str, Any]],
+) -> list[str]:
+    expected_steps = {
+        "data_interpretation_scan_result": "Choose EEG Data",
+        "data_interpretation_preview": "Review Metadata",
+        "data_interpretation_confirm_metadata_labels": "Match Labels",
+        "data_interpretation_review_and_import": "Review and Import",
+    }
+    by_name = {str(phase.get("phase")): phase for phase in phases}
+    failures: list[str] = []
+    captured_paths: list[Path] = []
+    for phase_name, expected_step in expected_steps.items():
+        phase = by_name.get(phase_name)
+        if phase is None:
+            continue
+        screenshot = Path(str(phase.get("screenshot") or ""))
+        if not screenshot.is_file():
+            continue
+        active_step = str((phase.get("notes") or {}).get("active_step") or "")
+        if active_step != expected_step:
+            failures.append(
+                f"{phase_name} captured {active_step or 'unknown step'}; "
+                f"expected {expected_step}"
+            )
+        captured_paths.append(screenshot)
+    digests = [hashlib.sha256(path.read_bytes()).hexdigest() for path in captured_paths]
+    if len(digests) != len(set(digests)):
+        failures.append("Data Import walkthrough step screenshots are duplicated")
+    return failures
 
 
 def build_resource_smoke_summary(

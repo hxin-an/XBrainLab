@@ -1010,16 +1010,13 @@ def test_apply_interpretation_skips_ambiguous_multi_file_timestamp_labels(tmp_pa
     apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
 
     assert apply_result.failed is True
-    assert apply_result.error_type == ErrorType.VALIDATION
-    assert apply_result.diagnostics["label_apply"]["status"] == "skipped"
-    assert (
-        "No reviewed label carrier uniquely matches"
-        in apply_result.diagnostics["label_apply"]["reason"]
-    )
+    assert apply_result.error_type == ErrorType.PRECONDITION
+    assert "Label carrier pairing is incomplete" in apply_result.message
+    service.dataset.import_files.assert_not_called()
     service.dataset.apply_labels_batch.assert_not_called()
 
 
-def test_apply_interpretation_applies_manually_mapped_generic_timestamp_label(
+def test_apply_interpretation_blocks_partial_manual_timestamp_label_mapping(
     tmp_path,
 ):
     source_dir = tmp_path / "manual_timestamp_mapping"
@@ -1061,15 +1058,12 @@ def test_apply_interpretation_applies_manually_mapped_generic_timestamp_label(
     service.execute(ValidateInterpretationCommand())
     apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
 
-    assert apply_result.ok is True
-    assert apply_result.diagnostics["label_apply"]["status"] == "applied"
-    assert apply_result.diagnostics["label_apply"]["success_count"] == 1
-    args = service.dataset.apply_labels_batch.call_args.args
-    assert args[0] == [raw_2]
-    assert args[2] == {str(eeg_2): str(events)}
-    assert apply_result.state.interpretation.label_imports[0]["target_files"] == [
-        str(eeg_2)
-    ]
+    assert apply_result.failed is True
+    assert apply_result.error_type == ErrorType.PRECONDITION
+    assert "Label carrier pairing is incomplete" in apply_result.message
+    assert eeg_1.name in apply_result.message
+    service.dataset.import_files.assert_not_called()
+    service.dataset.apply_labels_batch.assert_not_called()
 
 
 def test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier(
@@ -1139,9 +1133,11 @@ def test_apply_interpretation_blocks_mixed_label_placement_modes(
     source_dir = tmp_path / "mixed_label_placement"
     source_dir.mkdir()
     eeg_path = source_dir / "A01T.gdf"
+    second_eeg_path = source_dir / "B01T.gdf"
     sequence_labels = source_dir / "A01T.mat"
-    timed_labels = source_dir / "A01T_events.tsv"
+    timed_labels = source_dir / "B01T_events.tsv"
     eeg_path.write_bytes(b"not loaded during scan")
+    second_eeg_path.write_bytes(b"not loaded during scan")
     savemat(sequence_labels, {"classlabel": np.array([1, 2])})
     timed_labels.write_text(
         "onset\ttrial_type\n0.5\tleft\n1.5\tright\n",
@@ -1155,10 +1151,12 @@ def test_apply_interpretation_blocks_mixed_label_placement_modes(
     raw = _raw_mock()
     raw.get_filepath.return_value = str(eeg_path)
     raw.get_filename.return_value = eeg_path.name
-    service.dataset.import_files = MagicMock(return_value=(1, []))
-    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
-    service.dataset.apply_labels_batch = MagicMock(return_value=1)
-    service.dataset.apply_labels_batch = MagicMock(return_value=1)
+    second_raw = _raw_mock()
+    second_raw.get_filepath.return_value = str(second_eeg_path)
+    second_raw.get_filename.return_value = second_eeg_path.name
+    service.dataset.import_files = MagicMock(return_value=(2, []))
+    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw, second_raw])
+    service.dataset.apply_labels_batch = MagicMock(return_value=2)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -1694,16 +1692,13 @@ def test_apply_interpretation_blocks_ambiguous_multi_file_sequence_labels(
     apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
 
     assert apply_result.failed is True
-    assert apply_result.error_type == ErrorType.VALIDATION
-    assert apply_result.diagnostics["label_apply"]["status"] == "skipped"
-    assert (
-        "No reviewed label carrier uniquely matches"
-        in apply_result.diagnostics["label_apply"]["reason"]
-    )
+    assert apply_result.error_type == ErrorType.PRECONDITION
+    assert "Label carrier pairing is incomplete" in apply_result.message
+    service.dataset.import_files.assert_not_called()
     service.dataset.apply_labels_batch.assert_not_called()
 
 
-def test_apply_interpretation_applies_manually_mapped_generic_sequence_label(
+def test_apply_interpretation_blocks_partial_manual_sequence_label_mapping(
     tmp_path,
     monkeypatch,
 ):
@@ -1756,14 +1751,12 @@ def test_apply_interpretation_applies_manually_mapped_generic_sequence_label(
     service.execute(ValidateInterpretationCommand())
     apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
 
-    assert apply_result.ok is True
-    assert apply_result.diagnostics["label_apply"]["status"] == "applied"
-    assert apply_result.diagnostics["label_apply"]["success_count"] == 1
-    call = service.dataset.apply_labels_batch.call_args
-    assert call.args[0] == [raw_1]
-    assert apply_result.state.interpretation.label_imports[0]["file_mapping"] == {
-        str(eeg_1): str(labels)
-    }
+    assert apply_result.failed is True
+    assert apply_result.error_type == ErrorType.PRECONDITION
+    assert "Label carrier pairing is incomplete" in apply_result.message
+    assert eeg_2.name in apply_result.message
+    service.dataset.import_files.assert_not_called()
+    service.dataset.apply_labels_batch.assert_not_called()
 
 
 def test_data_interpretation_blocks_sources_without_eeg_files(tmp_path):

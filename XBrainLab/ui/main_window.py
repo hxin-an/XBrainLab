@@ -644,10 +644,25 @@ class MainWindow(QMainWindow):
             btn.setChecked(i == index)
 
         refresh_after_navigation(self, index)
+        self._repaint_navigation_surface()
+        QTimer.singleShot(0, self._repaint_navigation_surface)
         if self.agent_manager is None:
             status_bar = self.statusBar()
             if status_bar is not None:
                 status_bar.showMessage(self._backend_status_bar_hint())
+
+    def _repaint_navigation_surface(self) -> None:
+        """Flush page and navigation paints after a stacked-page transition."""
+        for button in self.nav_btns:
+            button.updateGeometry()
+            button.repaint()
+        current = self.stack.currentWidget()
+        if current is not None:
+            current.updateGeometry()
+            current.repaint()
+            for right_panel in current.findChildren(QWidget, "RightPanel"):
+                if right_panel.isVisible():
+                    right_panel.repaint()
 
     def _backend_status_bar_hint(self) -> str:
         """Return a user-facing workflow hint without requiring the AI dock."""

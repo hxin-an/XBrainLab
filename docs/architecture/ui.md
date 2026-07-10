@@ -111,6 +111,9 @@ panel、aggregate info panel 和 assistant backend status。因此 tab-switch re
 與 shared status refresh 不再散在 `MainWindow` 內。Navigation refresh 現在也有 same-main-window
 re-entrancy guard，避免 nested tab-switch refresh 對同一個 main window 重複刷新；但 refresh
 來源仍有兩種：使用者切換頁面，以及 backend event 經 observer bridge 觸發。
+頁面切換完成後，`MainWindow` 會立即並在下一個 Qt event-loop turn 重繪 nav 與 current panel，
+避免 XCB / WSLg 下 stacked-page transition 留下 partial backing store；human-like walkthrough 會以
+main-nav 與 visible `RightPanel` 像素 guard 保護這個可見 regression。
 後續 observer cleanup 已把單純的 `event -> update_panel()` bridge 先收斂到
 `BasePanel._create_refresh_bridge()`；該 helper 統一接到 `refresh_from_observer()`，再委派
 `refresh_coordinator.refresh_after_observer()`。這保留 backend observer event 語意，但把 safe

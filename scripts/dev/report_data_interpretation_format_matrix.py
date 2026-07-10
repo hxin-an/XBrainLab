@@ -224,7 +224,7 @@ FORMAT_CASES: tuple[FormatCase, ...] = (
         title="Generic CSV, TSV, and TXT label carriers",
         source_entry=".",
         source_hint="folder",
-        expected_validation="needs_confirmation",
+        expected_validation="blocked",
         files=(
             FixtureFile("sub-01_ses-01_task-mi_run-1_raw.fif"),
             FixtureFile("labels.csv", "csv_labels"),

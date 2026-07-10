@@ -16,6 +16,7 @@ from XBrainLab.backend.utils.logger import logger
 
 from .commands import LabelImportPlan
 from .data_interpretation import InterpretationCandidate
+from .data_interpretation_pairing import resolve_label_file_pairing
 from .epoch_context import EPOCH_HINT_KEY
 
 
@@ -179,16 +180,12 @@ class DataInterpretationApplyService:
                 "reason": "Automatic label application found no loaded EEG files.",
             }
 
-        if len(applicable) == 1 and len(target_files) == 1:
-            carrier_path = str(applicable[0].get("path") or "").strip()
-            file_mapping = {self._data_filepath(target_files[0]): carrier_path}
-        else:
-            file_mapping, reason = self._reviewed_label_file_mapping(
-                applicable,
-                target_files,
-            )
-            if reason:
-                return {"status": "skipped", "reason": reason}
+        file_mapping, reason = self._reviewed_label_file_mapping(
+            applicable,
+            target_files,
+        )
+        if reason:
+            return {"status": "skipped", "reason": reason}
 
         carrier_label = ", ".join(
             str(item.get("path") or "").strip() for item in applicable
@@ -755,94 +752,12 @@ class DataInterpretationApplyService:
         label_plans: list[dict[str, Any]],
         target_files: list[Any],
     ) -> tuple[dict[str, str], str | None]:
-        manual_mapping_requested = any(
-            str(carrier.get("selected_target_file") or "").strip()
-            for carrier in label_plans
+        target_paths = [self._data_filepath(target) for target in target_files]
+        pairing = resolve_label_file_pairing(label_plans, target_paths)
+        return (
+            dict(pairing.file_mapping),
+            None if pairing.complete else pairing.blocking_reason(),
         )
-        file_mapping: dict[str, str] = {}
-        used_carriers: set[str] = set()
-        remaining_plans: list[dict[str, Any]] = []
-        for carrier in label_plans:
-            carrier_path = str(carrier.get("path") or "").strip()
-            selected_target = str(carrier.get("selected_target_file") or "").strip()
-            if not selected_target:
-                remaining_plans.append(carrier)
-                continue
-            target = self._target_file_for_reviewed_label_choice(
-                target_files,
-                selected_target,
-            )
-            if target is None:
-                return (
-                    {},
-                    (
-                        "Reviewed label carrier target file does not match a "
-                        f"loaded EEG file: {selected_target}."
-                    ),
-                )
-            data_path = self._data_filepath(target)
-            if data_path in file_mapping:
-                return (
-                    {},
-                    "Multiple reviewed label carriers target the same EEG file.",
-                )
-            if not carrier_path:
-                return {}, "Reviewed label carrier is missing a usable path."
-            file_mapping[data_path] = carrier_path
-            used_carriers.add(carrier_path)
-
-        carrier_by_key: dict[str, str] = {}
-        for carrier in remaining_plans:
-            carrier_path = str(carrier.get("path") or "").strip()
-            key = self._label_mapping_key(carrier_path)
-            if not carrier_path or not key:
-                return {}, "Reviewed label carrier is missing a usable path."
-            if key in carrier_by_key:
-                return (
-                    {},
-                    "Multiple reviewed label carriers match the same EEG file stem.",
-                )
-            carrier_by_key[key] = carrier_path
-
-        for target in target_files:
-            data_path = self._data_filepath(target)
-            if data_path in file_mapping:
-                continue
-            key = self._label_mapping_key(data_path)
-            carrier_path = carrier_by_key.get(key)
-            if not carrier_path:
-                if manual_mapping_requested:
-                    continue
-                return (
-                    {},
-                    (
-                        "No reviewed label carrier uniquely matches loaded EEG "
-                        f"file {Path(data_path).name}."
-                    ),
-                )
-            file_mapping[data_path] = carrier_path
-            used_carriers.add(carrier_path)
-
-        unused = sorted(set(carrier_by_key.values()) - used_carriers)
-        if unused:
-            return (
-                {},
-                "Reviewed label carriers did not all match loaded EEG files.",
-            )
-        return file_mapping, None
-
-    def _target_file_for_reviewed_label_choice(
-        self,
-        target_files: list[Any],
-        selected_target: str,
-    ) -> Any | None:
-        selected = selected_target.strip()
-        for target in target_files:
-            data_path = self._data_filepath(target)
-            filename = self._data_filename(target)
-            if selected in {data_path, filename, Path(data_path).name}:
-                return target
-        return None
 
     def _safe_data_filepath(self, data: Any) -> str:
         with contextlib.suppress(Exception):
@@ -856,32 +771,6 @@ class DataInterpretationApplyService:
         with contextlib.suppress(Exception):
             return str(Path(path).resolve())
         return str(path)
-
-    @staticmethod
-    def _label_mapping_key(path: str) -> str:
-        name = Path(path).name
-        lowered = name.lower()
-        if lowered.endswith(".fif.gz"):
-            stem = name[: -len(".fif.gz")]
-        else:
-            stem = Path(name).stem
-        normalized = stem.lower()
-        for suffix in (
-            "_events",
-            "-events",
-            "_labels",
-            "-labels",
-            "_label",
-            "-label",
-            "_raw",
-            "-raw",
-            "_eeg",
-            "-eeg",
-        ):
-            if normalized.endswith(suffix):
-                normalized = normalized[: -len(suffix)]
-                break
-        return normalized.strip()
 
     @staticmethod
     def _is_auto_applicable_timestamp_label_plan(plan: dict[str, Any]) -> bool:

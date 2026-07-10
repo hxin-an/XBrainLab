@@ -2968,6 +2968,78 @@ def test_bids_preset_surfaces_scope_labels_metadata_and_review(qtbot):
     )
 
 
+def test_bids_review_blocks_when_one_selected_run_has_no_events_tsv(qtbot):
+    eeg_1 = "/tmp/source/sub-01_task-mi_run-01_raw.fif"
+    eeg_2 = "/tmp/source/sub-01_task-mi_run-02_raw.fif"
+    events_1 = "/tmp/source/sub-01_task-mi_run-01_events.tsv"
+    blocker = (
+        "Label carrier pairing is incomplete: 1/2 selected EEG files are paired; "
+        "unpaired EEG files: sub-01_task-mi_run-02_raw.fif."
+    )
+    action_item = {
+        "target_step": "Match Labels",
+        "issue": blocker,
+        "impact": "Every selected EEG file needs a label carrier.",
+        "next_action": "Go to Label Alignment.",
+        "severity": "blocked",
+    }
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "source_kind": "bids",
+            "eeg_files": [eeg_1, eeg_2],
+            "label_carriers": [events_1],
+            "bids": {"is_bids": True, "events_files": [events_1]},
+        },
+        preview={
+            "summary": "Found 2 EEG file(s) and 1 label/event carrier(s).",
+            "source_selection": "BIDS folder",
+            "selected_eeg_files": [eeg_1, eeg_2],
+            "metadata_preview": [
+                {
+                    "file": eeg.rsplit("/", 1)[-1],
+                    "subject": {"value": "01", "decision": "safe"},
+                    "session": {"value": "", "decision": "safe"},
+                    "task": {"value": "mi", "decision": "safe"},
+                    "run": {"value": run, "decision": "safe"},
+                }
+                for eeg, run in ((eeg_1, "01"), (eeg_2, "02"))
+            ],
+            "label_carrier_preview": [
+                {
+                    "path": events_1,
+                    "name": "sub-01_task-mi_run-01_events.tsv",
+                    "format": "BIDS events",
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                    "selected_duration_field": "duration",
+                    "time_model": "seconds",
+                    "placement_method": "interval",
+                    "granularity": "trial",
+                }
+            ],
+            "blocked_reasons": [blocker],
+            "action_items": [action_item],
+        },
+        validation_decision={
+            "decision": "blocked",
+            "blocked_reasons": [blocker],
+            "action_items": [action_item],
+        },
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Review and Import")
+    qtbot.wait(0)
+
+    review_text = _visible_step_text(dialog, "Review and Import")
+    assert "1/2 EEG files paired" in review_text
+    assert "1 need label" in review_text
+    assert "Needs review" in review_text
+    assert not dialog.apply_button.isEnabled()
+
+
 def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,
@@ -4129,6 +4201,15 @@ def test_data_interpretation_preview_dialog_returns_manual_label_target_mapping(
     visible_selector.setCurrentIndex(visible_selector.findData(generic_events))
     assert target_selector.currentData() == target_name
     assert "1/2 EEG files paired" in dialog.pairing_status_label.text()
+
+    _show_step(dialog, "Review and Import")
+    review_text = _visible_step_text(dialog, "Review and Import")
+    assert "Label placement" in review_text
+    assert "Needs review" in review_text
+    assert "1/2 EEG files paired" in review_text
+    assert "1 need label" in review_text
+    assert not dialog.apply_button.isEnabled()
+
     result = dialog.get_result()
 
     assert result["choices"]["label_carrier_choices"] == {

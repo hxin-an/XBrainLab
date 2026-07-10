@@ -279,6 +279,11 @@ Data Import wizard baseline 和仍未完成的產品化差距，不是新增目�
 - label carrier planner 也會為 active label carriers 建立 placement evidence：EEG event order、
   label time、label interval、label event code 四種模式各有可審查 review；目前 active
   `placement_review` 會保存到 candidate，供 UI / agent / recipe 使用。
+- `data_interpretation_pairing.py` 是 external label carrier 對 selected EEG file 的共用 policy：
+  candidate validation、apply mapping 與 wizard 即時 review 都讀同一個 resolver。單一 EEG / 單一
+  carrier 可自動配對；多檔必須能以唯一 stem 或明確 target 完整覆蓋，partial mapping 會在 import
+  前 blocked。Strict BIDS 也遵守同一規則；目前只認實際 run-specific carrier，不宣稱 events
+  inheritance。
 - multi-file UI 會以 common parent scan，並透過 `choices.selected_eeg_files` 限定實際 import
   scope；preview payload 已開始區分 selected scope 和 scan location。
 - `ScanSourceCommand.label_sources` 可帶入 EEG source 之外的 label / event file 或 folder；
@@ -290,8 +295,8 @@ Data Import wizard baseline 和仍未完成的產品化差距，不是新增目�
 - Dataset sidebar 主要入口已改成 `Import file`、`Import folder`、`Import BIDS folder`；
   `Import BIDS folder` 是 strict BIDS path，一般 `Import folder` 即使掃到 `events.tsv`
   仍走普通 label-file flow。
-- apply path 能在部分情況自動套 label：timestamp labels、sample-index anchored MAT labels、
-  trial-order sequence labels。
+- apply path 能在完整且唯一的 file pairing 下自動套 label：timestamp labels、sample-index
+  anchored MAT labels、trial-order sequence labels；不再默默跳過未配到 label 的 selected EEG。
 - metadata edit、smart parse、remove files 已有 `DataTableCommandService` command path。
 
 ### 2026-05-10 已交付 slice

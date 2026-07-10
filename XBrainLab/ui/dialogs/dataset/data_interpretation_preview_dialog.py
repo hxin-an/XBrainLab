@@ -30,6 +30,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application.data_interpretation_pairing import (
+    resolve_label_file_pairing,
+)
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.dataset.internal_event_step import InternalEventStepMixin
 from XBrainLab.ui.dialogs.dataset.label_placement_step import LabelPlacementStepMixin
@@ -1659,6 +1662,8 @@ class DataInterpretationPreviewDialog(
             if style is not None:
                 style.unpolish(label)
                 style.polish(label)
+            label.updateGeometry()
+            label.repaint()
 
     def _sync_step_label_text(self) -> None:
         if not hasattr(self, "step_labels"):
@@ -3407,11 +3412,13 @@ class DataInterpretationPreviewDialog(
 
     def _populate_label_carrier_tree(self) -> None:
         carriers = self._label_carrier_preview_rows()
+        pairing_suggestions = self._label_carrier_pairing_suggestions(carriers)
 
         for carrier in carriers:
             if not isinstance(carrier, dict):
                 continue
-            match_text = self._label_carrier_match_text(carrier)
+            carrier_path = str(carrier.get("path") or carrier.get("name") or "").strip()
+            match_text = pairing_suggestions.get(carrier_path, "Needs review")
             match_display = self._label_target_display(match_text)
             original = dict(carrier)
             original["_matched_eeg_text"] = match_text
@@ -4098,49 +4105,18 @@ class DataInterpretationPreviewDialog(
             return ""
         return text
 
-    def _label_carrier_match_text(self, carrier: dict[str, Any]) -> str:
-        eeg_files = self._selected_eeg_file_names()
-        carrier_path = str(carrier.get("path") or carrier.get("name") or "").strip()
-        if not eeg_files:
-            return "Needs review"
-        if len(eeg_files) == 1:
-            return Path(eeg_files[0]).name
-
-        carrier_key = self._label_mapping_key(carrier_path)
-        matches = [
-            Path(eeg_file).name
-            for eeg_file in eeg_files
-            if self._label_mapping_key(eeg_file) == carrier_key
-        ]
-        if len(matches) == 1:
-            return matches[0]
-        return "Needs review"
-
-    @staticmethod
-    def _label_mapping_key(path: str) -> str:
-        name = Path(path).name
-        lowered = name.lower()
-        if lowered.endswith(".fif.gz"):
-            stem = name[: -len(".fif.gz")]
-        else:
-            stem = Path(name).stem
-        normalized = stem.lower()
-        for suffix in (
-            "_events",
-            "-events",
-            "_labels",
-            "-labels",
-            "_label",
-            "-label",
-            "_raw",
-            "-raw",
-            "_eeg",
-            "-eeg",
-        ):
-            if normalized.endswith(suffix):
-                normalized = normalized[: -len(suffix)]
-                break
-        return normalized.strip()
+    def _label_carrier_pairing_suggestions(
+        self,
+        carriers: list[dict[str, Any]],
+    ) -> dict[str, str]:
+        pairing = resolve_label_file_pairing(
+            carriers,
+            self._selected_eeg_file_names(),
+        )
+        return {
+            carrier_path: Path(eeg_file).name
+            for eeg_file, carrier_path in pairing.file_mapping.items()
+        }
 
     @staticmethod
     def _candidate_tooltip(carrier: dict[str, Any], key: str) -> str:

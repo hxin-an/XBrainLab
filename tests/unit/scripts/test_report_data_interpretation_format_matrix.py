@@ -44,9 +44,13 @@ def test_build_format_capability_snapshot_covers_import_boundary_formats():
     assert rows_by_label["MNE FIF"]["status"] == "supported"
     assert rows_by_label["MNE FIF"]["validation_decision"] == "safe"
     assert rows_by_label["BrainVision VMRK"]["status"] == "context"
-    assert rows_by_label["CSV labels"]["validation_decision"] == "needs_confirmation"
-    assert rows_by_label["TSV labels"]["validation_decision"] == "needs_confirmation"
-    assert rows_by_label["TXT labels"]["validation_decision"] == "needs_confirmation"
+    assert rows_by_label["CSV labels"]["validation_decision"] == "blocked"
+    assert any(
+        "Label carrier pairing is incomplete" in reason
+        for reason in rows_by_label["CSV labels"]["blocked_reasons"]
+    )
+    assert rows_by_label["TSV labels"]["validation_decision"] == "blocked"
+    assert rows_by_label["TXT labels"]["validation_decision"] == "blocked"
     assert rows_by_label["XDF / LSL stream export"]["status"] == "blocked"
     assert rows_by_label["XDF / LSL stream export"]["validation_decision"] == (
         "blocked"

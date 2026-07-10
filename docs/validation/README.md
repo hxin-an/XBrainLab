@@ -19,6 +19,27 @@
 | tool-call eval | tool selection / parameter / state transition 的 benchmark slice。 | EEG training quality、UI completion、產品完成。 |
 | launcher smoke | launcher / startup baseline。 | signed installer、release approval。 |
 
+## Latest Desktop MVP Handoff Evidence
+
+2026-07-10 的 stabilization candidate 新增兩個會直接阻止假通過的 gate：
+
+- external label pairing 由 `data_interpretation_pairing.py` 統一供 candidate validation、apply
+  與 wizard review 使用。Generic multi-file partial mapping、BIDS multi-run 缺少一個
+  `events.tsv` 都會在 import 前 blocked；完整 run-specific mapping 才能 apply。
+- human-like walkthrough 會實際擷取 Data Import Step 1 / 3 / 4 / 5，檢查 active step、distinct
+  screenshot hash、step text glyph、main navigation 與 visible `RightPanel`。純色 step background
+  不再能冒充文字已渲染。
+
+本輪最新 focused / product evidence：
+
+- pairing / candidate / apply / Data Import dialog / walkthrough focused batch：`225 passed`。
+- real IO + public BIDS + cross-source + checked-in real workflow：`46 passed`。
+- strict cross-source runner：`4 passed`，其中 3 個 source family 完成 one-epoch training，CNT
+  明確只算 epoch-only。
+- human-like desktop walkthrough：`27/27` phases，`21` screenshots，resource smoke PASS。
+
+以上仍不代表 Windows DPI、多螢幕、長時間 local LLM session 或 full BIDS validator acceptance。
+
 ## Roadmap Evidence Gate
 
 | Phase | 需要的最低 evidence |
