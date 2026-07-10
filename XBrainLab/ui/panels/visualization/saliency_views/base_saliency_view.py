@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QApplication, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from XBrainLab.ui.styles.theme import Theme
 
@@ -50,6 +50,12 @@ class BaseSaliencyView(QWidget):
         # 2. Error Message (Hidden by default)
         self.error_label = QLabel()
         self.error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.error_label.setWordWrap(True)
+        self.error_label.setContentsMargins(16, 8, 16, 8)
+        self.error_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
         self.error_label.setStyleSheet(
             f"color: {Theme.ACCENT_ERROR}; font-size: 14px; font-weight: bold;",
         )

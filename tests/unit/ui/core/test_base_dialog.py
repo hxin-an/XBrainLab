@@ -29,6 +29,19 @@ def test_init_defaults(qtbot):
     qtbot.addWidget(dlg)
     assert isinstance(dlg, QDialog)
     assert dlg.windowTitle() == ""
+    assert "QDialog" in dlg.styleSheet()
+    assert "background-color" in dlg.styleSheet()
+    assert "QListWidget:disabled" in dlg.styleSheet()
+    assert "QScrollBar::handle:vertical" in dlg.styleSheet()
+
+
+def test_dialog_size_is_clamped_to_available_screen(qtbot):
+    dlg = ConcreteDialog(width=5000, height=5000)
+    qtbot.addWidget(dlg)
+    available = dlg.screen().availableGeometry()
+
+    assert dlg.width() <= available.width() - 48
+    assert dlg.height() <= available.height() - 48
 
 
 def test_init_params(dialog):

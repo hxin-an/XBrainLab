@@ -1,7 +1,15 @@
 """Base dialog class providing standardized initialization for all dialogs."""
 
-from PyQt6.QtGui import QIcon
+from __future__ import annotations
+
+from PyQt6.QtCore import QSize
+from PyQt6.QtGui import QIcon, QShowEvent
 from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QPushButton
+
+from XBrainLab.ui.dialogs.common import dark_dialog_stylesheet
+from XBrainLab.ui.window_placement import center_widget_on_screen
+
+_DIALOG_SCREEN_MARGIN = 24
 
 
 class BaseDialog(QDialog):
@@ -36,6 +44,7 @@ class BaseDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.controller = controller
+        self.setStyleSheet(dark_dialog_stylesheet())
 
         if width and height:
             self.resize(width, height)
@@ -45,6 +54,34 @@ class BaseDialog(QDialog):
             self.resize(self.width(), height)
         self.init_ui()
         self._normalize_dialog_buttons()
+        self._fit_to_available_screen()
+
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
+        """Keep top-level dialogs usable on the screen where they open."""
+        self._fit_to_available_screen()
+        super().showEvent(event)
+
+    def _fit_to_available_screen(self) -> None:
+        screen = self.screen()
+        if screen is None:
+            return
+        available = screen.availableGeometry()
+        max_width = max(available.width() - (_DIALOG_SCREEN_MARGIN * 2), 1)
+        max_height = max(available.height() - (_DIALOG_SCREEN_MARGIN * 2), 1)
+        minimum = self.minimumSize()
+        if minimum.width() > max_width or minimum.height() > max_height:
+            self.setMinimumSize(
+                QSize(
+                    min(minimum.width(), max_width),
+                    min(minimum.height(), max_height),
+                ),
+            )
+        target = QSize(
+            min(max(self.width(), 1), max_width),
+            min(max(self.height(), 1), max_height),
+        )
+        self.resize(target)
+        center_widget_on_screen(self, screen)
 
     def _normalize_dialog_buttons(self) -> None:
         """Normalize dialog buttons without removing intentional action icons.

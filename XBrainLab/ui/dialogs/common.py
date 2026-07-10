@@ -161,9 +161,29 @@ def dark_dialog_stylesheet() -> str:
             padding: 0 4px;
             color: {Theme.TEXT_PRIMARY};
         }}
+        QListWidget, QListView, QTreeWidget, QTreeView {{
+            background-color: {Theme.METRICS_TABLE_BG};
+            alternate-background-color: {Theme.METRICS_TABLE_ALT_BG};
+            color: {Theme.TEXT_PRIMARY};
+            border: 1px solid {Theme.METRICS_TABLE_BORDER};
+            border-radius: 4px;
+            selection-background-color: {Theme.METRICS_TABLE_SELECTION};
+            selection-color: {Theme.TEXT_PRIMARY};
+        }}
+        QListWidget:disabled, QListView:disabled,
+        QTreeWidget:disabled, QTreeView:disabled {{
+            background-color: {Theme.BACKGROUND_DARK};
+            color: {Theme.TEXT_MUTED};
+            border-color: {Theme.BACKGROUND_LIGHT};
+        }}
+        QListWidget::item, QListView::item,
+        QTreeWidget::item, QTreeView::item {{
+            padding: 3px 5px;
+        }}
         {form_control_stylesheet()}
         {button_stylesheet()}
         {checkbox_stylesheet()}
+        {scrollbar_stylesheet()}
         QDialogButtonBox {{
             background-color: transparent;
         }}
@@ -300,6 +320,33 @@ def checkbox_stylesheet() -> str:
     """
 
 
+def scrollbar_stylesheet() -> str:
+    """Dark scrollbars for dialogs that can also run without the main window."""
+    return f"""
+        QScrollBar:vertical {{
+            border: none;
+            background: {Theme.BACKGROUND_DARK};
+            width: 10px;
+            margin: 0;
+        }}
+        QScrollBar::handle:vertical {{
+            background: {Theme.SCROLLBAR_HANDLE};
+            border-radius: 5px;
+            min-height: 24px;
+        }}
+        QScrollBar::add-line:vertical,
+        QScrollBar::sub-line:vertical {{
+            height: 0;
+            border: none;
+            background: transparent;
+        }}
+        QScrollBar::add-page:vertical,
+        QScrollBar::sub-page:vertical {{
+            background: transparent;
+        }}
+    """
+
+
 def dark_table_stylesheet(*, object_name: str | None = None) -> str:
     """Common low-contrast dark table style."""
     selector = f"QTableWidget#{object_name}" if object_name else "QTableWidget"
@@ -330,25 +377,5 @@ def dark_table_stylesheet(*, object_name: str | None = None) -> str:
             padding: 5px 8px;
             font-weight: 700;
         }}
-        QScrollBar:vertical {{
-            border: none;
-            background: {Theme.BACKGROUND_DARK};
-            width: 10px;
-            margin: 0;
-        }}
-        QScrollBar::handle:vertical {{
-            background: {Theme.SCROLLBAR_HANDLE};
-            border-radius: 5px;
-            min-height: 24px;
-        }}
-        QScrollBar::add-line:vertical,
-        QScrollBar::sub-line:vertical {{
-            height: 0;
-            border: none;
-            background: transparent;
-        }}
-        QScrollBar::add-page:vertical,
-        QScrollBar::sub-page:vertical {{
-            background: transparent;
-        }}
+        {scrollbar_stylesheet()}
     """

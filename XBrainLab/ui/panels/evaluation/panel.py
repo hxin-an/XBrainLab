@@ -26,6 +26,7 @@ from XBrainLab.ui.application_capabilities import (
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
+from XBrainLab.ui.components.presentation import ElidingComboBox, ResponsiveControlsBar
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.panels.evaluation.confusion_matrix import ConfusionMatrixWidget
 from XBrainLab.ui.panels.evaluation.metrics_bar_chart import MetricsBarChartWidget
@@ -709,26 +710,16 @@ class EvaluationPanel(BasePanel):
         self.no_data_label.setStyleSheet(f"color: {Theme.TEXT_MUTED}; font-size: 11pt;")
         self.plot_stack.addWidget(self.no_data_label)
 
-        # Toolbar (Above Charts)
-        self.evaluation_controls_bar = QWidget()
-        self.evaluation_controls_bar.setObjectName("EvaluationControlsBar")
-        toolbar_layout = QHBoxLayout(self.evaluation_controls_bar)
-        toolbar_layout.setContentsMargins(0, 0, 0, 8)
-        toolbar_layout.setSpacing(10)
-
         # Model Selection
-        model_label = QLabel("Model:")
-        model_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        toolbar_layout.addWidget(model_label)
-        self.model_combo = QComboBox()
-        self.model_combo.setMinimumWidth(190)
-        self.model_combo.setMaximumWidth(260)
+        self.model_combo = ElidingComboBox()
+        self.model_combo.setMinimumWidth(120)
+        self.model_combo.setMaximumWidth(360)
         self.model_combo.setMinimumContentsLength(20)
         self.model_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
         )
         self.model_combo.setSizePolicy(
-            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
         self.model_combo.setStyleSheet(Stylesheets.COMBO_BOX)
@@ -736,22 +727,17 @@ class EvaluationPanel(BasePanel):
         if model_view is not None:
             model_view.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.model_combo.currentIndexChanged.connect(self.on_model_changed)
-        self.model_combo.currentTextChanged.connect(self.model_combo.setToolTip)
-        toolbar_layout.addWidget(self.model_combo)
 
         # Run Selection
-        run_label = QLabel("Run:")
-        run_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        toolbar_layout.addWidget(run_label)
-        self.run_combo = QComboBox()
-        self.run_combo.setMinimumWidth(180)
-        self.run_combo.setMaximumWidth(240)
+        self.run_combo = ElidingComboBox()
+        self.run_combo.setMinimumWidth(110)
+        self.run_combo.setMaximumWidth(300)
         self.run_combo.setMinimumContentsLength(18)
         self.run_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
         )
         self.run_combo.setSizePolicy(
-            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
         self.run_combo.setStyleSheet(Stylesheets.COMBO_BOX)
@@ -759,15 +745,18 @@ class EvaluationPanel(BasePanel):
         if run_view is not None:
             run_view.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.run_combo.currentIndexChanged.connect(self.update_views)
-        self.run_combo.currentTextChanged.connect(self.run_combo.setToolTip)
-        toolbar_layout.addWidget(self.run_combo)
 
         # Options
         self.chk_percentage = QCheckBox("Percent")
         self.chk_percentage.setStyleSheet(Stylesheets.CHECKBOX_MUTED)
         self.chk_percentage.toggled.connect(self.update_views)
-        toolbar_layout.addWidget(self.chk_percentage)
-        toolbar_layout.addStretch(1)
+
+        self.evaluation_controls_bar = ResponsiveControlsBar(
+            [("Model", self.model_combo), ("Run", self.run_combo)],
+            [self.chk_percentage],
+            wrap_width=500,
+        )
+        self.evaluation_controls_bar.setObjectName("EvaluationControlsBar")
         plots_layout.addWidget(self.evaluation_controls_bar)
         plots_layout.addWidget(self.plot_stack, stretch=1)
 

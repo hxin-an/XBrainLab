@@ -177,12 +177,58 @@ def test_evaluation_controls_are_compact_toolbar(qtbot):
     panel.show()
     qtbot.wait(50)
 
-    assert panel.model_combo.maximumWidth() <= 280
-    assert panel.run_combo.maximumWidth() <= 260
-    assert panel.model_combo.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Fixed
-    assert panel.run_combo.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Fixed
+    assert panel.model_combo.maximumWidth() <= 360
+    assert panel.run_combo.maximumWidth() <= 300
+    assert (
+        panel.model_combo.sizePolicy().horizontalPolicy()
+        == QSizePolicy.Policy.Expanding
+    )
+    assert (
+        panel.run_combo.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Expanding
+    )
+    assert panel.evaluation_controls_bar.is_wrapped() is False
     assert abs(panel.model_combo.y() - panel.run_combo.y()) <= 4
     assert panel.chk_percentage.x() < panel.run_combo.x() + panel.run_combo.width() + 80
+
+
+def test_evaluation_controls_reflow_and_preserve_long_selection_tooltips(qtbot):
+    panel = EvaluationPanel(controller=MagicMock(), parent=None)
+    qtbot.addWidget(panel)
+    long_model = (
+        "Fold 1: EEGNet with a deliberately long model label for constrained "
+        "evaluation panel overflow verification"
+    )
+    long_run = (
+        "Repeat 1 (Finished, best validation accuracy across all validation sessions)"
+    )
+    panel.model_combo.blockSignals(True)
+    panel.run_combo.blockSignals(True)
+    panel.model_combo.addItem(long_model, object())
+    panel.run_combo.addItem(long_run, object())
+    panel.model_combo.blockSignals(False)
+    panel.run_combo.blockSignals(False)
+
+    panel.resize(720, 620)
+    panel.show()
+    qtbot.wait(50)
+
+    assert panel.evaluation_controls_bar.is_wrapped() is True
+    assert panel.model_combo.y() < panel.run_combo.y()
+    assert (
+        abs(
+            panel.run_combo.geometry().center().y()
+            - panel.chk_percentage.geometry().center().y()
+        )
+        <= 2
+    )
+    assert not panel.run_combo.geometry().intersects(panel.chk_percentage.geometry())
+    assert panel.chk_percentage.geometry().right() <= (
+        panel.evaluation_controls_bar.contentsRect().right()
+    )
+    assert panel.model_combo.elided_current_text() != long_model
+    assert panel.run_combo.elided_current_text() != long_run
+    assert panel.model_combo.toolTip() == long_model
+    assert panel.run_combo.toolTip() == long_run
 
 
 def test_metrics_table_selection_uses_dark_theme(qtbot):

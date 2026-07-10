@@ -40,7 +40,7 @@ from XBrainLab.ui.application_capabilities import (
     local_result_payload,
     run_controller_compatibility_call,
 )
-from XBrainLab.ui.components.info_panel import AggregateInfoPanel
+from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
 
 # Dialog imports will be local to avoid circular deps if needed,
 # or top level if no circular dep.
@@ -115,8 +115,12 @@ class TrainingSidebar(QWidget):
         self.setObjectName("RightPanel")
         self.setStyleSheet(Stylesheets.SIDEBAR_CONTAINER)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 20, 10, 20)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+        self.scroll_area = SidebarScrollArea(self)
+        root_layout.addWidget(self.scroll_area)
+        layout = self.scroll_area.content_layout
 
         # 1. Aggregate Information
         # Note: AggregateInfoPanel expects "main_window" as parent

@@ -2,12 +2,17 @@
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QAbstractScrollArea,
+    QFrame,
     QGroupBox,
     QHeaderView,
+    QLayout,
+    QScrollArea,
     QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
+    QWidget,
 )
 
 from XBrainLab.backend.utils.logger import logger
@@ -17,6 +22,30 @@ from XBrainLab.ui.styles.theme import Theme
 INFO_ROW_HEIGHT = 22
 INFO_TABLE_FRAME_BUFFER = 6
 INFO_GROUP_VERTICAL_BUFFER = 42
+
+
+class SidebarScrollArea(QScrollArea):
+    """Single responsive scroll owner for an action-bearing sidebar."""
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setObjectName("SidebarScrollArea")
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setWidgetResizable(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setSizeAdjustPolicy(
+            QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored,
+        )
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+        self.content = QWidget(self)
+        self.content.setObjectName("SidebarScrollContent")
+        self.content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.content_layout = QVBoxLayout(self.content)
+        self.content_layout.setContentsMargins(10, 20, 10, 20)
+        self.content_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+        self.setWidget(self.content)
 
 
 class AggregateInfoPanel(QGroupBox):
@@ -66,6 +95,12 @@ class AggregateInfoPanel(QGroupBox):
         self.table.setShowGrid(False)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        self.table.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+        )
+        self.table.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+        )
 
         self.table.setStyleSheet(
             f"""

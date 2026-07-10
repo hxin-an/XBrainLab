@@ -863,6 +863,29 @@ def test_visualization_panel_update_panel_refreshes_combos_and_tab(qtbot):
     mock_update.assert_called_once()
 
 
+def test_visualization_placeholder_wraps_inside_narrow_view(qtbot):
+    from XBrainLab.ui.panels.visualization.saliency_views.base_saliency_view import (
+        BaseSaliencyView,
+    )
+
+    view = BaseSaliencyView()
+    qtbot.addWidget(view)
+    message = (
+        "Create epochs, complete training, or configure saliency before "
+        "opening visualization views."
+    )
+
+    view.resize(360, 240)
+    view.show_message(message)
+    view.show()
+    qtbot.wait(0)
+
+    assert view.error_label.wordWrap()
+    assert view.error_label.text() == message
+    assert view.error_label.geometry().left() >= 0
+    assert view.error_label.geometry().right() <= view.contentsRect().right()
+
+
 def test_visualization_panel_uses_application_query_before_stale_controller_trainers(
     qtbot,
 ):

@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.backend.application.epoch_context import build_epoching_context
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.ui.components.presentation import fit_table_to_all_rows
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import (
     checkbox_stylesheet,
@@ -223,18 +224,7 @@ class EpochingDialog(BaseDialog):
             header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
             header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
             header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        if len(rows) <= 6:
-            self.event_list.setVerticalScrollBarPolicy(
-                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-            )
-            event_list_height = max(116, len(rows) * 30 + 36)
-        else:
-            self.event_list.setVerticalScrollBarPolicy(
-                Qt.ScrollBarPolicy.ScrollBarAsNeeded
-            )
-            event_list_height = 210
-        self.event_list.setMinimumHeight(event_list_height)
-        self.event_list.setMaximumHeight(event_list_height)
+        fit_table_to_all_rows(self.event_list)
         event_layout.addWidget(self.event_list)
         content_layout.addWidget(event_group)
 
