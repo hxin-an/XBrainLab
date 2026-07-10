@@ -346,95 +346,122 @@ class _LazyAnalysisCommandService:
 class ApplicationService:
     """Command-oriented application layer over the existing backend controllers."""
 
+    _application_service_initialization_lock: Any
+    _application_service_initialized: bool
+
     def __new__(cls, study: Study | None = None):
         if study is None:
             return super().__new__(cls)
-        with study._application_command_lock:
+        initialization_lock = study._application_command_lock
+        initialization_lock.acquire()
+        try:
             cached = getattr(study, "_application_service", None)
-            if isinstance(cached, cls):
+            if isinstance(cached, cls) and getattr(
+                cached,
+                "_application_service_initialized",
+                False,
+            ):
+                initialization_lock.release()
                 return cached
             instance = super().__new__(cls)
-            study._application_service = instance
+            instance._application_service_initialization_lock = initialization_lock
+        except Exception:
+            initialization_lock.release()
+            raise
+        else:
             return instance
 
     def __init__(self, study: Study | None = None):
-        target_study = study if study is not None else Study()
-        command_lock = getattr(target_study, "_application_command_lock", RLock())
-        with command_lock:
-            if getattr(self, "_application_service_initialized", False):
-                return
-            self.study = target_study
-            self._command_lock = command_lock
-            self.study._application_service = self
-            self.dataset = DatasetControllerAdapter(self.study)
-            self.preprocess = PreprocessControllerAdapter(self.study)
-            self.training = TrainingControllerAdapter(self.study)
-            self.evaluation = EvaluationControllerAdapter(self.study)
-            self.visualization = VisualizationControllerAdapter(self.study)
-            self.training_state = TrainingStateReadModel(self.study)
-            self.evaluation_state = EvaluationStateReadModel(self.study)
-            self._last_error: ErrorSnapshot | None = None
-            self._last_state: ApplicationStateSnapshot | None = None
-            self.pipeline_transaction = PipelineStateTransaction(self.study)
-            self.interpretation = _LazyDataInterpretationCommandService(
-                self.dataset,
-                self.pipeline_transaction,
-            )
-            self.data_compatibility = _LazyDataCompatibilityCommandService(
-                dataset=self.dataset,
-                interpretation=self.interpretation,
-            )
-            self.data_table = DataTableCommandService(dataset=self.dataset)
-            self.preprocess_commands = PreprocessCommandService(
-                preprocess=self.preprocess,
-                dataset=self.dataset,
-                get_state=self.get_state,
-            )
-            self.dataset_generation = _LazyDatasetGenerationCommandService(
-                study=self.study,
-                training=self.training,
-            )
-            self.training_commands = _LazyTrainingCommandService(
-                training=self.training,
-                get_state=self.get_state,
-            )
-            self.state_snapshot = StateSnapshotService(
-                study=self.study,
-                dataset=self.dataset,
-                preprocess=self.preprocess,
-                training=self.training,
-                training_state=self.training_state,
-                evaluation=self.evaluation,
-                evaluation_state=self.evaluation_state,
-                visualization=self.visualization,
-                dataset_generation=self.dataset_generation,
-                training_commands=self.training_commands,
-                interpretation=self.interpretation,
-            )
-            self.query_state_commands = QueryStateCommandService(
-                study=self.study,
-                dataset=self.dataset,
-                state_builder=self.state_snapshot,
-                get_state=self.get_state,
-                get_capabilities=self.get_capabilities,
-            )
-            self.analysis = _LazyAnalysisCommandService(
-                evaluation=self.evaluation,
-                visualization=self.visualization,
-                preprocess=self.preprocess,
-                get_state=self.get_state,
-            )
-            self.lifecycle = LifecycleCommandService(
-                study=self.study,
-                dataset=self.dataset,
-                preprocess=self.preprocess,
-                training=self.training,
-                training_commands=self.training_commands,
-                interpretation=self.interpretation,
-                get_state=self.get_state,
-                pipeline_transaction=self.pipeline_transaction,
-            )
-            self._application_service_initialized = True
+        initialization_lock = getattr(
+            self,
+            "_application_service_initialization_lock",
+            None,
+        )
+        try:
+            target_study = study if study is not None else Study()
+            command_lock = getattr(target_study, "_application_command_lock", RLock())
+            with command_lock:
+                if getattr(self, "_application_service_initialized", False):
+                    return
+                self._initialize_components(target_study, command_lock)
+                self._application_service_initialized = True
+                self.study._application_service = self
+        finally:
+            if initialization_lock is not None:
+                self._application_service_initialization_lock = None
+                initialization_lock.release()
+
+    def _initialize_components(self, study: Study, command_lock: RLock) -> None:
+        self.study = study
+        self._command_lock = command_lock
+        self.dataset = DatasetControllerAdapter(self.study)
+        self.preprocess = PreprocessControllerAdapter(self.study)
+        self.training = TrainingControllerAdapter(self.study)
+        self.evaluation = EvaluationControllerAdapter(self.study)
+        self.visualization = VisualizationControllerAdapter(self.study)
+        self.training_state = TrainingStateReadModel(self.study)
+        self.evaluation_state = EvaluationStateReadModel(self.study)
+        self._last_error: ErrorSnapshot | None = None
+        self._last_state: ApplicationStateSnapshot | None = None
+        self.pipeline_transaction = PipelineStateTransaction(self.study)
+        self.interpretation = _LazyDataInterpretationCommandService(
+            self.dataset,
+            self.pipeline_transaction,
+        )
+        self.data_compatibility = _LazyDataCompatibilityCommandService(
+            dataset=self.dataset,
+            interpretation=self.interpretation,
+        )
+        self.data_table = DataTableCommandService(dataset=self.dataset)
+        self.preprocess_commands = PreprocessCommandService(
+            preprocess=self.preprocess,
+            dataset=self.dataset,
+            get_state=self.get_state,
+        )
+        self.dataset_generation = _LazyDatasetGenerationCommandService(
+            study=self.study,
+            training=self.training,
+        )
+        self.training_commands = _LazyTrainingCommandService(
+            training=self.training,
+            get_state=self.get_state,
+        )
+        self.state_snapshot = StateSnapshotService(
+            study=self.study,
+            dataset=self.dataset,
+            preprocess=self.preprocess,
+            training=self.training,
+            training_state=self.training_state,
+            evaluation=self.evaluation,
+            evaluation_state=self.evaluation_state,
+            visualization=self.visualization,
+            dataset_generation=self.dataset_generation,
+            training_commands=self.training_commands,
+            interpretation=self.interpretation,
+        )
+        self.query_state_commands = QueryStateCommandService(
+            study=self.study,
+            dataset=self.dataset,
+            state_builder=self.state_snapshot,
+            get_state=self.get_state,
+            get_capabilities=self.get_capabilities,
+        )
+        self.analysis = _LazyAnalysisCommandService(
+            evaluation=self.evaluation,
+            visualization=self.visualization,
+            preprocess=self.preprocess,
+            get_state=self.get_state,
+        )
+        self.lifecycle = LifecycleCommandService(
+            study=self.study,
+            dataset=self.dataset,
+            preprocess=self.preprocess,
+            training=self.training,
+            training_commands=self.training_commands,
+            interpretation=self.interpretation,
+            get_state=self.get_state,
+            pipeline_transaction=self.pipeline_transaction,
+        )
 
     def get_state(self) -> ApplicationStateSnapshot:
         """Return a fresh serializable snapshot of backend state."""

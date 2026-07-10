@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any
 
 from .commands import LabelImportPlan
@@ -18,6 +18,17 @@ from .data_interpretation import (
 )
 from .errors import PreconditionError
 from .state import InterpretationStateSnapshot
+
+
+@dataclass(frozen=True)
+class InterpretationApplyCheckpoint:
+    """Interpretation records that must roll back with an apply failure."""
+
+    applied_interpretations: dict[str, AppliedInterpretation]
+    recipes: dict[str, ImportRecipe]
+    latest_interpretation_id: str | None
+    latest_recipe_id: str | None
+    latest_recipe_path: str | None
 
 
 class DataInterpretationSessionState:
@@ -83,6 +94,24 @@ class DataInterpretationSessionState:
                 reversed(self._applied_interpretations),
                 None,
             )
+
+    def checkpoint_apply_state(self) -> InterpretationApplyCheckpoint:
+        """Capture interpretation records changed by the apply transaction."""
+        return InterpretationApplyCheckpoint(
+            applied_interpretations=dict(self._applied_interpretations),
+            recipes=dict(self._recipes),
+            latest_interpretation_id=self._latest_interpretation_id,
+            latest_recipe_id=self._latest_recipe_id,
+            latest_recipe_path=self._latest_recipe_path,
+        )
+
+    def restore_apply_state(self, checkpoint: InterpretationApplyCheckpoint) -> None:
+        """Restore interpretation records after an apply transaction fails."""
+        self._applied_interpretations = dict(checkpoint.applied_interpretations)
+        self._recipes = dict(checkpoint.recipes)
+        self._latest_interpretation_id = checkpoint.latest_interpretation_id
+        self._latest_recipe_id = checkpoint.latest_recipe_id
+        self._latest_recipe_path = checkpoint.latest_recipe_path
 
     def record_recipe(
         self,
@@ -332,12 +361,13 @@ class DataInterpretationSessionState:
 
         if self._latest_recipe_id and self._latest_recipe_id in self._recipes:
             recipe = self._recipes[self._latest_recipe_id]
-            self._recipes[self._latest_recipe_id] = replace(
-                recipe,
-                label_carriers=sorted({*recipe.label_carriers, *label_carriers}),
-                label_imports=[*recipe.label_imports, record],
-                recipe_trace=[*recipe.recipe_trace, label_import_trace],
-            )
+            if recipe.interpretation_id == updated.interpretation_id:
+                self._recipes[self._latest_recipe_id] = replace(
+                    recipe,
+                    label_carriers=sorted({*recipe.label_carriers, *label_carriers}),
+                    label_imports=[*recipe.label_imports, record],
+                    recipe_trace=[*recipe.recipe_trace, label_import_trace],
+                )
         return record
 
     def _latest_scan(self) -> ScanResult | None:

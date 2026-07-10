@@ -112,12 +112,15 @@ class _TrainingController:
     def __init__(self, study: _Study) -> None:
         self.study = study
         self.cleaned = False
+        self.fail_clean = False
 
     def clean_datasets(self, *, force_update: bool) -> None:
         assert force_update is True
         self.cleaned = True
         self.study.data_manager.datasets = []
         self.study.training_manager.trainer = None
+        if self.fail_clean:
+            raise RuntimeError("dataset cleanup failed")
 
 
 class _TrainingCommands:
@@ -246,6 +249,38 @@ def test_lifecycle_service_rolls_back_reset_preprocess_failure() -> None:
     assert study.data_manager.epoch_data is previous_epoch
     assert study.data_manager.datasets == [previous_dataset]
     assert study.data_manager.dataset_generator is previous_generator
+    assert study.training_manager.trainer is previous_trainer
+
+
+def test_lifecycle_service_rolls_back_second_stage_cleanup_failure() -> None:
+    service, study, _dataset, _preprocess, training, _, _ = _service()
+    previous_loaded = [object()]
+    previous_backup = [object()]
+    previous_preprocessed = [object()]
+    previous_epoch = object()
+    previous_dataset = object()
+    previous_generator = object()
+    previous_trainer = object()
+    study.data_manager.loaded_data_list = previous_loaded
+    study.data_manager.backup_loaded_data_list = previous_backup
+    study.data_manager.preprocessed_data_list = previous_preprocessed
+    study.data_manager.epoch_data = previous_epoch
+    study.data_manager.datasets = [previous_dataset]
+    study.data_manager.dataset_generator = previous_generator
+    study.data_manager.dataset_locked = True
+    study.training_manager.trainer = previous_trainer
+    training.fail_clean = True
+
+    with pytest.raises(RuntimeError, match="dataset cleanup failed"):
+        service.handle_reset_preprocess(ResetPreprocessCommand(confirmed=True))
+
+    assert study.data_manager.loaded_data_list == previous_loaded
+    assert study.data_manager.backup_loaded_data_list == previous_backup
+    assert study.data_manager.preprocessed_data_list == previous_preprocessed
+    assert study.data_manager.epoch_data is previous_epoch
+    assert study.data_manager.datasets == [previous_dataset]
+    assert study.data_manager.dataset_generator is previous_generator
+    assert study.data_manager.dataset_locked is True
     assert study.training_manager.trainer is previous_trainer
 
 

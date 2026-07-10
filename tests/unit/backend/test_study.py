@@ -174,6 +174,12 @@ class FakeTrainer:
     def set_interrupt(self):
         self.interrupt = True
 
+    def stop(self, wait_timeout=None):
+        del wait_timeout
+        self.set_interrupt()
+        self.running = False
+        return True
+
     def is_running(self):
         return self.running
 

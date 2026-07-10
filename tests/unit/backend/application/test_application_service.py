@@ -194,11 +194,13 @@ def test_apply_interpretation_rolls_back_when_metadata_apply_raises(
         ),
     )
     service.execute(ValidateInterpretationCommand())
+    service.dataset.notify = MagicMock(side_effect=RuntimeError("notify failed"))
 
     result = service.execute(ApplyInterpretationCommand(confirmed=True))
 
     assert result.failed is True
     assert result.error_type == ErrorType.INTERNAL
+    assert "metadata write failed" in result.message
     assert manager.loaded_data_list == [old_raw]
     assert manager.backup_loaded_data_list == [old_backup]
     assert manager.preprocessed_data_list == [old_preprocessed]
@@ -220,6 +222,83 @@ def test_reset_preprocess_is_blocked_while_training_is_running() -> None:
 
     assert capability.available is False
     assert any("training" in reason.lower() for reason in capability.reasons)
+
+
+def test_reset_preprocess_command_does_not_mutate_live_training_state() -> None:
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    raw.get_preprocess_history.return_value = ["filter"]
+    service.study.data_manager.loaded_data_list = [raw]
+    service.study.data_manager.preprocessed_data_list = [raw]
+    trainer = MagicMock()
+    trainer.is_running.return_value = True
+    service.study.training_manager.trainer = trainer
+    service.study.reset_preprocess = MagicMock()
+    service.training.clean_datasets = MagicMock()
+
+    result = service.execute(ResetPreprocessCommand(confirmed=True))
+
+    assert result.failed is True
+    assert result.error_type == ErrorType.PRECONDITION
+    service.study.reset_preprocess.assert_not_called()
+    service.training.clean_datasets.assert_not_called()
+    assert service.study.data_manager.loaded_data_list == [raw]
+    assert service.study.data_manager.preprocessed_data_list == [raw]
+    assert service.study.training_manager.trainer is trainer
+
+
+def test_reset_preprocess_command_rolls_back_second_stage_failure() -> None:
+    service = ApplicationService(Study())
+    manager = service.study.data_manager
+    raw = _raw_mock()
+    raw.get_preprocess_history.return_value = ["filter"]
+    backup = _raw_mock()
+    preprocessed = _raw_mock()
+    preprocessed.get_preprocess_history.return_value = ["filter"]
+    epoch = MagicMock()
+    dataset = MagicMock()
+    generator = MagicMock()
+    trainer = MagicMock()
+    trainer.is_running.return_value = False
+    manager.loaded_data_list = [raw]
+    manager.backup_loaded_data_list = [backup]
+    manager.preprocessed_data_list = [preprocessed]
+    manager.epoch_data = epoch
+    manager.datasets = [dataset]
+    manager.dataset_generator = generator
+    manager.dataset_locked = True
+    service.study.training_manager.trainer = trainer
+
+    def reset_preprocess(*, force_update: bool) -> None:
+        assert force_update is True
+        manager.loaded_data_list = [backup]
+        manager.backup_loaded_data_list = None
+        manager.preprocessed_data_list = []
+        manager.epoch_data = None
+        manager.dataset_locked = False
+
+    def fail_cleanup(*, force_update: bool) -> None:
+        assert force_update is True
+        manager.datasets = []
+        manager.dataset_generator = None
+        service.study.training_manager.trainer = None
+        raise RuntimeError("downstream cleanup failed")
+
+    service.study.reset_preprocess = MagicMock(side_effect=reset_preprocess)
+    service.training.clean_datasets = MagicMock(side_effect=fail_cleanup)
+
+    result = service.execute(ResetPreprocessCommand(confirmed=True))
+
+    assert result.failed is True
+    assert result.error_type == ErrorType.INTERNAL
+    assert manager.loaded_data_list == [raw]
+    assert manager.backup_loaded_data_list == [backup]
+    assert manager.preprocessed_data_list == [preprocessed]
+    assert manager.epoch_data is epoch
+    assert manager.datasets == [dataset]
+    assert manager.dataset_generator is generator
+    assert manager.dataset_locked is True
+    assert service.study.training_manager.trainer is trainer
 
 
 def test_empty_state_snapshot_and_policy():

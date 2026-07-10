@@ -10,6 +10,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from XBrainLab.backend.utils.logger import logger
+
 from .commands import (
     ApplyInterpretationCommand,
     Command,
@@ -182,7 +184,7 @@ class DataInterpretationCommandService:
             raise PreconditionError("Validate an interpretation before applying it.")
         self._ensure_candidate_can_apply(command, decision)
         snapshot = self._snapshot_raw_state()
-        interpretation_id: str | None = None
+        state_checkpoint = self.state.checkpoint_apply_state()
         try:
             count, errors = self._replace_active_raw_data(
                 candidate.selected_eeg_files,
@@ -207,9 +209,8 @@ class DataInterpretationCommandService:
             )
             self._ensure_label_apply_succeeded(candidate, label_apply)
         except Exception:
+            self.state.restore_apply_state(state_checkpoint)
             self._restore_raw_state(snapshot)
-            if interpretation_id is not None:
-                self.state.discard_applied(interpretation_id)
             raise
         applied_payload = self.state.resolve_applied_interpretation().to_dict()
         label_message = ""
@@ -368,7 +369,13 @@ class DataInterpretationCommandService:
                 self.dataset.imported_paths = list(snapshot["imported_paths"])
         notify = getattr(self.dataset, "notify", None)
         if callable(notify):
-            notify("data_changed")
+            try:
+                notify("data_changed")
+            except Exception:
+                logger.warning(
+                    "Failed to notify observers after restoring EEG data.",
+                    exc_info=True,
+                )
 
     @staticmethod
     def _build_applied_interpretation(

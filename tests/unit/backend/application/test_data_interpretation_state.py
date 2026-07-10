@@ -198,6 +198,63 @@ def test_discard_failed_replacement_restores_previous_applied_interpretation() -
     assert state.snapshot().latest_interpretation_id == old_applied.interpretation_id
 
 
+def test_apply_checkpoint_restores_applied_and_recipe_state() -> None:
+    state = _state()
+    old_scan = _scan(state.next_id("scan"))
+    old_candidate = _candidate(old_scan, state.next_id("candidate"))
+    old_applied = _applied(state, old_candidate)
+    old_recipe = _recipe(state, old_applied)
+    state.record_applied(old_applied)
+    state.record_recipe(old_recipe, recipe_path="/tmp/xbrainlab/old-recipe.json")
+    checkpoint = state.checkpoint_apply_state()
+    new_scan = _scan(state.next_id("scan"))
+    new_candidate = _candidate(new_scan, state.next_id("candidate"))
+    new_applied = _applied(state, new_candidate)
+    state.record_applied(new_applied)
+
+    state.restore_apply_state(checkpoint)
+
+    assert state.resolve_applied_interpretation() is old_applied
+    assert state.resolve_recipe(None) is old_recipe
+    snapshot = state.snapshot()
+    assert snapshot.latest_interpretation_id == old_applied.interpretation_id
+    assert snapshot.latest_recipe_id == old_recipe.recipe_id
+    assert snapshot.recipe_path == "/tmp/xbrainlab/old-recipe.json"
+
+
+def test_new_label_import_does_not_mutate_previous_recipe() -> None:
+    state = _state()
+    old_scan = _scan(state.next_id("scan"))
+    old_candidate = _candidate(old_scan, state.next_id("candidate"))
+    old_applied = _applied(state, old_candidate)
+    old_recipe = _recipe(state, old_applied)
+    state.record_applied(old_applied)
+    state.record_recipe(old_recipe, recipe_path="/tmp/xbrainlab/old-recipe.json")
+    new_scan = _scan(state.next_id("scan"))
+    new_candidate = _candidate(new_scan, state.next_id("candidate"))
+    state.record_applied(_applied(state, new_candidate))
+    target = _LoadedData(new_candidate.selected_eeg_files[0])
+    carrier = new_candidate.label_carriers[0]
+
+    state.record_label_import_for_recipe(
+        plan=LabelImportPlan(
+            target_indices=[0],
+            label_map={carrier: ["left"]},
+            mapping={"left": "left hand"},
+            file_mapping={target.filepath: carrier},
+            mode="sequence",
+        ),
+        mode="sequence",
+        target_files=[target],
+        file_mapping={target.filepath: carrier},
+        selected_event_names={"768"},
+        success_count=1,
+    )
+
+    assert state.resolve_recipe(None) is old_recipe
+    assert state.resolve_recipe(None).label_imports == []
+
+
 def test_snapshot_uses_latest_review_state_before_previous_applied_truth() -> None:
     state = _state()
     old_scan = _scan(state.next_id("scan"))

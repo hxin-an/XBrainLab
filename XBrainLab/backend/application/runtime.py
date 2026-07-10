@@ -18,6 +18,10 @@ def get_application_service(study: Study | None = None) -> ApplicationService:
 
     with _SERVICE_CREATION_LOCK:
         cached_service = getattr(study, "_application_service", None)
-        if isinstance(cached_service, ApplicationService):
+        if isinstance(cached_service, ApplicationService) and getattr(
+            cached_service,
+            "_application_service_initialized",
+            False,
+        ):
             return cached_service
         return ApplicationService(study)
