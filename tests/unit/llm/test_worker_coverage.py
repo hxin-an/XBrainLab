@@ -124,7 +124,11 @@ class TestAgentWorkerGenerate:
 
     @patch("XBrainLab.llm.agent.worker.LLMConfig")
     @patch("XBrainLab.llm.agent.worker.GenerationThread")
-    def test_user_message_truncation(self, mock_gt_cls, mock_config):
+    def test_user_message_logs_size_without_prompt_content(
+        self,
+        mock_gt_cls,
+        mock_config,
+    ):
         from XBrainLab.llm.agent.worker import AgentWorker
 
         worker = AgentWorker()
@@ -143,9 +147,13 @@ class TestAgentWorkerGenerate:
         mock_gt_cls.return_value = mock_thread
 
         long_msg = "x" * 100
-        worker.generate_from_messages([{"role": "user", "content": long_msg}])
-        # Verify log truncation happened (log_text should be 50+3 chars)
+        with patch("XBrainLab.llm.agent.worker.logger") as mock_logger:
+            worker.generate_from_messages([{"role": "user", "content": long_msg}])
+
         worker.log.emit.assert_called()
+        log_args = " ".join(str(value) for value in mock_logger.info.call_args.args)
+        assert long_msg not in log_args
+        assert "100" in log_args
 
     @patch("XBrainLab.llm.agent.worker.LLMConfig")
     @patch("XBrainLab.llm.agent.worker.GenerationThread")
