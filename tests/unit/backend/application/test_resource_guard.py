@@ -150,9 +150,14 @@ def test_training_vram_check_unknown_when_cuda_memory_unavailable(monkeypatch) -
 
 def test_cuda_oom_detection_matches_common_runtime_errors(monkeypatch) -> None:
     calls: list[str] = []
-    monkeypatch.setattr(resource_guard.torch.cuda, "is_available", lambda: True)
+    cuda = SimpleNamespace(
+        is_available=lambda: True,
+        empty_cache=lambda: calls.append("empty"),
+    )
     monkeypatch.setattr(
-        resource_guard.torch.cuda, "empty_cache", lambda: calls.append("empty")
+        resource_guard,
+        "_torch_module",
+        lambda: SimpleNamespace(cuda=cuda),
     )
 
     assert resource_guard.is_cuda_oom_error(RuntimeError("CUDA out of memory")) is True

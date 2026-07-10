@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
+import pytest
+
 from XBrainLab.backend.application.state_read_models import (
     EvaluationStateReadModel,
     TrainingStateReadModel,
@@ -74,3 +76,31 @@ def test_evaluation_state_read_model_lists_plans_without_controller_lookup() -> 
 
     assert len(plans) == 1
     assert isinstance(plans[0], _Plan)
+
+
+def test_training_state_read_failure_is_not_reported_as_idle() -> None:
+    study = _Study()
+    study.training_manager = type(
+        "BrokenTrainingManager",
+        (),
+        {"is_training": lambda self: (_ for _ in ()).throw(RuntimeError("boom"))},
+    )()
+
+    with pytest.raises(RuntimeError, match="boom"):
+        TrainingStateReadModel(study).is_training()
+
+
+def test_evaluation_state_read_failure_is_not_reported_as_no_plans() -> None:
+    study = _Study()
+    study.trainer = type(
+        "BrokenTrainer",
+        (),
+        {
+            "get_training_plan_holders": lambda self: (_ for _ in ()).throw(
+                RuntimeError("plans unavailable")
+            )
+        },
+    )()
+
+    with pytest.raises(RuntimeError, match="plans unavailable"):
+        EvaluationStateReadModel(study).get_plans()

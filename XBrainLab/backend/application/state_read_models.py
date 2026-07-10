@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from XBrainLab.backend.study import Study
-from XBrainLab.backend.utils.logger import logger
 
 
 class TrainingStateReadModel:
@@ -18,21 +17,13 @@ class TrainingStateReadModel:
         training_manager = getattr(self._study, "training_manager", None)
         if training_manager is None:
             return False
-        try:
-            return bool(training_manager.is_training())
-        except Exception:
-            logger.debug("Failed to read training state", exc_info=True)
-            return False
+        return bool(training_manager.is_training())
 
     def get_formatted_history(self) -> list[dict[str, Any]]:
         trainer = getattr(self._study, "trainer", None)
         if trainer is None:
             return []
-        try:
-            holders = list(trainer.get_training_plan_holders())
-        except Exception:
-            logger.debug("Failed to read training plan holders", exc_info=True)
-            return []
+        holders = list(trainer.get_training_plan_holders())
 
         history: list[dict[str, Any]] = []
         for plan_idx, plan in enumerate(holders):
@@ -48,11 +39,7 @@ class TrainingStateReadModel:
                 )
                 == plan_idx
             )
-            try:
-                records = list(plan.get_plans())
-            except Exception:
-                logger.debug("Failed to read training records", exc_info=True)
-                continue
+            records = list(plan.get_plans())
             for run_idx, record in enumerate(records):
                 history.append(
                     {
@@ -85,10 +72,7 @@ class TrainingStateReadModel:
     def _is_current_run(plan: Any, record: Any, is_active_plan: bool) -> bool:
         if not is_active_plan:
             return False
-        try:
-            current_repeat = plan.get_training_repeat()
-        except Exception:
-            return False
+        current_repeat = plan.get_training_repeat()
         return current_repeat == getattr(record, "repeat", None)
 
 
@@ -102,8 +86,4 @@ class EvaluationStateReadModel:
         trainer = getattr(self._study, "trainer", None)
         if trainer is None:
             return []
-        try:
-            return list(trainer.get_training_plan_holders())
-        except Exception:
-            logger.debug("Failed to read training plans", exc_info=True)
-            return []
+        return list(trainer.get_training_plan_holders())

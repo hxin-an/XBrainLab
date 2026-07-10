@@ -56,7 +56,7 @@ from .commands import (
     VisualizeCommand,
 )
 from .data_interpretation_choice_schema import data_interpretation_choices_schema
-from .results import _serialize
+from .serialization import serialize_json_value
 from .service import ApplicationService
 
 
@@ -74,7 +74,7 @@ class AutomationCommandSpec:
     preferred_commands: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
-        return _serialize(self)
+        return serialize_json_value(self)
 
 
 @dataclass(frozen=True)
@@ -90,7 +90,7 @@ class AutomationExecution:
     state: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
-        return _serialize(self)
+        return serialize_json_value(self)
 
 
 class AutomationPayloadError(ValueError):

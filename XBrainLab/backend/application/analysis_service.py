@@ -7,8 +7,6 @@ from typing import Any
 
 import numpy as np
 
-from XBrainLab.backend.utils.logger import logger
-
 from .commands import (
     ApplyMontageCommand,
     Command,
@@ -42,7 +40,7 @@ class AnalysisCommandService:
     def handle_evaluate(self, command: Command) -> HandlerResult:
         if not isinstance(command, EvaluateCommand):
             raise TypeError("Invalid command for evaluate")
-        plans = self._safe_call_list(self.evaluation.get_plans)
+        plans = self._call_list(self.evaluation.get_plans)
         summaries = []
         pooled_eval_results: list[Any] = []
         model_summaries: list[dict[str, Any]] = []
@@ -52,14 +50,8 @@ class AnalysisCommandService:
             metrics: dict[str, Any] = {}
             pooled_result: Any = None
             if finished and (command.include_metrics or command.include_pooled_results):
-                try:
-                    labels, outputs, metrics = self.evaluation.get_pooled_eval_result(
-                        plan,
-                    )
-                    pooled_result = (labels, outputs, metrics)
-                except Exception:
-                    logger.debug("Failed to pool evaluation metrics", exc_info=True)
-                    metrics = {}
+                labels, outputs, metrics = self.evaluation.get_pooled_eval_result(plan)
+                pooled_result = (labels, outputs, metrics)
             summaries.append(
                 {
                     "index": plan_idx,
@@ -115,7 +107,7 @@ class AnalysisCommandService:
         if not isinstance(command, VisualizeCommand):
             raise TypeError("Invalid command for visualize")
         state = self._get_state()
-        trainers = self._safe_call_list(self.visualization.get_trainers)
+        trainers = self._call_list(self.visualization.get_trainers)
         available_views = []
         blocked_views: dict[str, list[str]] = {}
         if state.epoch.available:
@@ -155,7 +147,7 @@ class AnalysisCommandService:
             diagnostics["trainer_objects"] = trainers
         if command.include_averaged_records:
             diagnostics["averaged_records"] = [
-                self._safe_averaged_record(trainer) for trainer in trainers
+                self._averaged_record(trainer) for trainer in trainers
             ]
         return (
             message,
@@ -248,19 +240,13 @@ class AnalysisCommandService:
         return ["Select a model and training settings before configuring saliency."]
 
     @staticmethod
-    def _safe_call_list(call: Callable[[], Any]) -> list[Any]:
-        try:
-            value = call()
-        except Exception:
-            return []
+    def _call_list(call: Callable[[], Any]) -> list[Any]:
+        value = call()
         return list(value) if value is not None else []
 
     @staticmethod
     def _safe_plan_runs(plan: Any) -> list[Any]:
-        try:
-            return list(plan.get_plans())
-        except Exception:
-            return []
+        return list(plan.get_plans())
 
     @staticmethod
     def _safe_plan_name(plan: Any, idx: int) -> str:
@@ -269,12 +255,8 @@ class AnalysisCommandService:
         except Exception:
             return f"Plan {idx + 1}"
 
-    def _safe_model_summary(self, plan: Any, record: Any | None = None) -> str:
-        try:
-            return str(self.evaluation.get_model_summary_str(plan, record))
-        except Exception:
-            logger.debug("Failed to build evaluation model summary", exc_info=True)
-            return ""
+    def _model_summary(self, plan: Any, record: Any | None = None) -> str:
+        return str(self.evaluation.get_model_summary_str(plan, record))
 
     def _model_summary_payload(
         self,
@@ -288,8 +270,8 @@ class AnalysisCommandService:
         """Build only the requested model summary to avoid UI-triggered stalls."""
         if requested_plan_index is None and requested_run_index is None:
             return {
-                "plan": self._safe_model_summary(plan),
-                "runs": [self._safe_model_summary(plan, run) for run in runs],
+                "plan": self._model_summary(plan),
+                "runs": [self._model_summary(plan, run) for run in runs],
             }
 
         if requested_plan_index is not None and plan_index != requested_plan_index:
@@ -298,30 +280,23 @@ class AnalysisCommandService:
         run_summaries = [""] * len(runs)
         if requested_run_index is None:
             return {
-                "plan": self._safe_model_summary(plan),
+                "plan": self._model_summary(plan),
                 "runs": run_summaries,
             }
 
         if 0 <= requested_run_index < len(runs):
-            run_summaries[requested_run_index] = self._safe_model_summary(
+            run_summaries[requested_run_index] = self._model_summary(
                 plan,
                 runs[requested_run_index],
             )
         return {"plan": "", "runs": run_summaries}
 
-    def _safe_averaged_record(self, trainer: Any) -> Any:
-        try:
-            return self.visualization.get_averaged_record(trainer)
-        except Exception:
-            logger.debug("Failed to build averaged visualization record", exc_info=True)
-            return None
+    def _averaged_record(self, trainer: Any) -> Any:
+        return self.visualization.get_averaged_record(trainer)
 
     @staticmethod
     def _run_finished(run: Any) -> bool:
-        try:
-            return bool(run.is_finished())
-        except Exception:
-            return False
+        return bool(run.is_finished())
 
     @classmethod
     def _json_safe(cls, value: Any) -> Any:

@@ -75,6 +75,40 @@ def test_empty_state_snapshot_and_policy():
     assert policy.get(CommandName.RESET_SESSION).confirmation_required is False
 
 
+def test_execute_returns_failure_envelope_when_initial_state_read_fails() -> None:
+    service = ApplicationService(Study())
+    service.state_snapshot.build = MagicMock(
+        side_effect=RuntimeError("state backend unavailable"),
+    )
+
+    result = service.execute(QueryStateCommand(query="state"))
+
+    assert result.failed is True
+    assert result.error_type == ErrorType.INTERNAL
+    assert result.diagnostics["state_read_failed"] is True
+    assert result.state.state_reliable is False
+    assert result.state.pipeline_stage == "unavailable"
+    assert "state backend unavailable" in result.message
+
+
+def test_refresh_failure_does_not_mask_original_command_error() -> None:
+    service = ApplicationService(Study())
+    before = service.get_state()
+    service.state_snapshot.build = MagicMock(
+        side_effect=[before, RuntimeError("refresh unavailable")],
+    )
+
+    result = service.execute(
+        ConfigureTrainingCommand(model_name="not-a-real-model"),
+    )
+
+    assert result.failed is True
+    assert result.error_type == ErrorType.VALIDATION
+    assert "Unknown model architecture" in result.message
+    assert result.diagnostics["state_refresh_error"] == "refresh unavailable"
+    assert result.state is before
+
+
 def test_train_capability_blocks_short_epoch_for_selected_model():
     state = ApplicationService(Study()).get_state()
     ready_for_train = replace(
@@ -1844,6 +1878,66 @@ def test_saliency_command_can_configure_params():
     assert {"SmoothGrad", "SmoothGrad_Squared", "VarGrad"}.issubset(params)
 
 
+def test_reconfiguring_saliency_marks_visualization_changed() -> None:
+    service = ApplicationService(Study())
+    service.study.training_manager.model_holder = MagicMock()
+    service.study.training_manager.training_option = MagicMock()
+    first = service.execute(
+        SaliencyCommand(method="SmoothGrad", params={"nt_samples": 2}),
+    )
+
+    second = service.execute(
+        SaliencyCommand(method="SmoothGrad", params={"nt_samples": 7}),
+    )
+
+    assert first.ok is True
+    assert second.ok is True
+    assert second.changed_state.visualization_changed is True
+    assert second.state.visualization.saliency_params["SmoothGrad"]["nt_samples"] == 7
+
+
+def test_reapplying_montage_with_new_positions_marks_visualization_changed() -> None:
+    class EpochWithMontage:
+        def __init__(self) -> None:
+            self.ch_names = ["Cz"]
+            self.channel_position = [(0.0, 0.0, 0.0)]
+
+        def set_channels(
+            self,
+            channels: list[str],
+            positions: list[tuple[float, float, float]],
+        ) -> None:
+            self.ch_names = list(channels)
+            self.channel_position = list(positions)
+
+        def get_channel_names(self) -> list[str]:
+            return list(self.ch_names)
+
+    service = ApplicationService(Study())
+    service.study.data_manager.epoch_data = EpochWithMontage()
+    first = service.execute(
+        ApplyMontageCommand(
+            channels=["Cz"],
+            positions=[(0.0, 0.0, 0.0)],
+            montage_name="custom-a",
+        ),
+    )
+
+    second = service.execute(
+        ApplyMontageCommand(
+            channels=["Cz"],
+            positions=[(0.1, 0.2, 0.3)],
+            montage_name="custom-b",
+        ),
+    )
+
+    assert first.ok is True
+    assert second.ok is True
+    assert second.changed_state.visualization_changed is True
+    assert second.state.visualization.montage_channels == ["Cz"]
+    assert second.state.visualization.montage_positions == [[0.1, 0.2, 0.3]]
+
+
 def test_saliency_command_normalizes_flat_method_params():
     service = ApplicationService(Study())
     service.study.training_manager.model_holder = MagicMock()
@@ -2449,7 +2543,10 @@ def test_destructive_capabilities_expose_confirmation_boundary_metadata():
     service.study.data_manager.loaded_data_list = [raw]
     service.study.data_manager.preprocessed_data_list = [raw]
     cast(Any, service.study).datasets = [object()]
-    cast(Any, service.study).trainer = object()
+    trainer = MagicMock()
+    trainer.is_running.return_value = False
+    trainer.get_training_plan_holders.return_value = []
+    cast(Any, service.study).trainer = trainer
 
     policy = service.get_capabilities()
 

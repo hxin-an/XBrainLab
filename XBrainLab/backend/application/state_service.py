@@ -10,6 +10,7 @@ from XBrainLab.backend.utils.logger import logger
 
 from .commands import Command, QueryStateCommand
 from .errors import PreconditionError
+from .serialization import serialize_json_value
 from .state import (
     ActiveDatasetSnapshot,
     ActiveTrainingSnapshot,
@@ -64,6 +65,7 @@ class StateSnapshotService:
         last_error: ErrorSnapshot | None = None,
     ) -> ApplicationStateSnapshot:
         """Return a fresh serializable snapshot of backend state."""
+        read_errors: list[str] = []
         raw_data = list(getattr(self.study, "loaded_data_list", []) or [])
         preprocessed = list(getattr(self.study, "preprocessed_data_list", []) or [])
         epoch_data = getattr(self.study, "epoch_data", None)
@@ -85,7 +87,7 @@ class StateSnapshotService:
         event_info = (
             self._safe_call_dict(self.dataset.get_event_info) if raw_data else {}
         )
-        evaluation = self._evaluation_snapshot()
+        evaluation = self._evaluation_snapshot(read_errors)
 
         raw = RawStateSnapshot(
             loaded=bool(raw_data),
@@ -98,7 +100,12 @@ class StateSnapshotService:
             unique_events=[
                 str(item) for item in event_info.get("unique_labels", []) or []
             ],
-            locked=self._safe_bool(getattr(self.study, "is_locked", lambda: False)),
+            locked=self._read_bool(
+                getattr(self.study, "is_locked", lambda: False),
+                label="dataset.is_locked",
+                errors=read_errors,
+                default=True,
+            ),
             diagnostics=raw_diagnostics,
         )
         has_preprocess_context = bool(preprocessed) or epoch_data is not None
@@ -147,7 +154,12 @@ class StateSnapshotService:
                 training_option,
             ),
             has_trainer=trainer is not None,
-            is_running=self._safe_bool(self.training_state.is_training),
+            is_running=self._read_bool(
+                self.training_state.is_training,
+                label="training.is_running",
+                errors=read_errors,
+                default=True,
+            ),
             plan_count=evaluation.total_plans,
             run_count=evaluation.total_runs,
             finished_run_count=evaluation.finished_runs,
@@ -166,6 +178,9 @@ class StateSnapshotService:
             montage_available=self._montage_available(epoch_data),
             channel_positions_available=self._channel_positions_available(epoch_data),
             channel_count=len(epoch.channel_names),
+            saliency_params=self._json_mapping(saliency_params),
+            montage_channels=list(epoch.channel_names),
+            montage_positions=self._montage_positions(epoch_data),
         )
         interpretation = self._interpretation_snapshot()
         active_dataset = ActiveDatasetSnapshot(
@@ -198,6 +213,8 @@ class StateSnapshotService:
             active_dataset=active_dataset,
             active_training=active_training,
             last_error=last_error,
+            state_reliable=not read_errors,
+            read_errors=sorted(read_errors),
         )
 
     def data_summary_from_state(
@@ -251,7 +268,7 @@ class StateSnapshotService:
     ) -> list[dict[str, Any]]:
         """Return formatted training-history rows for UI or headless queries."""
         getter = getattr(self.training_state, "get_formatted_history", None)
-        rows = self._safe_call_list(getter) if callable(getter) else []
+        rows = list(cast(Callable[[], Any], getter)() or []) if callable(getter) else []
         result: list[dict[str, Any]] = []
         for row in rows:
             if not isinstance(row, dict):
@@ -393,8 +410,15 @@ class StateSnapshotService:
                 pass
         return f"Dataset {idx + 1}"
 
-    def _evaluation_snapshot(self) -> EvaluationStateSnapshot:
-        plans = self._safe_call_list(self.evaluation_state.get_plans)
+    def _evaluation_snapshot(
+        self,
+        read_errors: list[str],
+    ) -> EvaluationStateSnapshot:
+        try:
+            plans = list(self.evaluation_state.get_plans() or [])
+        except Exception as exc:
+            read_errors.append(f"evaluation.plans: {exc}")
+            plans = []
         total_runs = 0
         finished_runs = 0
         metrics_available = False
@@ -601,6 +625,37 @@ class StateSnapshotService:
         return StateSnapshotService._montage_available(epoch_data)
 
     @staticmethod
+    def _montage_positions(epoch_data: Any) -> list[list[float]]:
+        if epoch_data is None:
+            return []
+        positions = getattr(epoch_data, "channel_position", None)
+        if isinstance(positions, dict):
+            values = positions.values()
+        elif isinstance(positions, (list, tuple)):
+            values = positions
+        else:
+            return []
+        result: list[list[float]] = []
+        for position in values:
+            normalized = StateSnapshotService._float_position(position)
+            if normalized is not None:
+                result.append(normalized)
+        return result
+
+    @staticmethod
+    def _float_position(position: Any) -> list[float] | None:
+        try:
+            return [float(value) for value in position]
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _json_mapping(value: Any) -> dict[str, Any]:
+        if not isinstance(value, dict):
+            return {}
+        return cast(dict[str, Any], serialize_json_value(value))
+
+    @staticmethod
     def _safe_call_dict(call: Callable[[], Any]) -> dict[str, Any]:
         try:
             value = call()
@@ -630,6 +685,20 @@ class StateSnapshotService:
             return bool(call())
         except Exception:
             return False
+
+    @staticmethod
+    def _read_bool(
+        call: Callable[[], Any],
+        *,
+        label: str,
+        errors: list[str],
+        default: bool,
+    ) -> bool:
+        try:
+            return bool(call())
+        except Exception as exc:
+            errors.append(f"{label}: {exc}")
+            return default
 
     @staticmethod
     def _safe_string_call(call: Callable[[], Any] | None) -> str | None:

@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, cast
 
-from XBrainLab.backend.application.capabilities import CapabilityPolicy
-from XBrainLab.backend.application.commands import QueryStateCommand
+from XBrainLab.backend.application.capabilities import (
+    CapabilityPolicy,
+    build_capability_policy,
+)
+from XBrainLab.backend.application.commands import CommandName, QueryStateCommand
 from XBrainLab.backend.application.dataset_generation_service import (
     DatasetGenerationCommandService,
 )
@@ -68,6 +71,9 @@ class _Study:
         self.dataset_generator = object()
         self.saliency_params = object()
         self.pipeline_stage = "loaded"
+
+    def is_locked(self) -> bool:
+        return True
 
 
 class _DatasetController:
@@ -155,6 +161,16 @@ class _EvaluationController:
         return []
 
 
+class _BrokenEvaluationController:
+    def get_plans(self) -> list[Any]:
+        raise RuntimeError("evaluation state unavailable")
+
+
+class _BrokenTrainingController(_TrainingController):
+    def is_training(self) -> bool:
+        raise RuntimeError("training state unavailable")
+
+
 class _FinishedRun:
     def __init__(self, eval_record: Any) -> None:
         self.eval_record = eval_record
@@ -231,6 +247,46 @@ def test_state_snapshot_service_builds_workflow_snapshot() -> None:
     assert state.visualization.saliency_configured is True
     assert state.interpretation.has_scan_result is True
     assert state.active_dataset.has_epoch_data is True
+
+
+def test_state_snapshot_records_critical_read_failures_and_fails_closed() -> None:
+    state_builder = _snapshot_service()
+    state_builder.training_state = _BrokenTrainingController()
+    state_builder.evaluation_state = _BrokenEvaluationController()
+
+    state = state_builder.build()
+
+    assert state.training.is_running is True
+    assert state.evaluation.total_plans == 0
+    assert state.state_reliable is False
+    assert state.read_errors == [
+        "evaluation.plans: evaluation state unavailable",
+        "training.is_running: training state unavailable",
+    ]
+
+    policy = build_capability_policy(state)
+    assert policy.get(CommandName.UPDATE_METADATA).enabled is False
+    assert policy.get(CommandName.TRAIN).enabled is False
+    assert policy.get(CommandName.QUERY_STATE).enabled is True
+
+
+def test_state_snapshot_lock_failure_blocks_raw_edits() -> None:
+    state_builder = _snapshot_service()
+    state_builder.study.is_locked = lambda: (_ for _ in ()).throw(
+        RuntimeError("lock unavailable")
+    )
+
+    state = state_builder.build()
+    policy = build_capability_policy(state)
+
+    assert state.active_dataset.is_locked is True
+    assert state.state_reliable is False
+    assert state.read_errors == ["dataset.is_locked: lock unavailable"]
+    assert policy.get(CommandName.UPDATE_METADATA).enabled is False
+    assert (
+        "Backend state could not be verified"
+        in policy.get(CommandName.UPDATE_METADATA).reasons[0]
+    )
 
 
 def test_state_snapshot_requires_real_saliency_arrays_for_availability() -> None:

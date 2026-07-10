@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 from XBrainLab.backend.study import Study
@@ -348,6 +349,7 @@ class ApplicationService:
         self.training_state = TrainingStateReadModel(self.study)
         self.evaluation_state = EvaluationStateReadModel(self.study)
         self._last_error: ErrorSnapshot | None = None
+        self._last_state: ApplicationStateSnapshot | None = None
         self.interpretation = _LazyDataInterpretationCommandService(self.dataset)
         self.data_compatibility = _LazyDataCompatibilityCommandService(
             dataset=self.dataset,
@@ -406,7 +408,9 @@ class ApplicationService:
 
     def get_state(self) -> ApplicationStateSnapshot:
         """Return a fresh serializable snapshot of backend state."""
-        return self.state_snapshot.build(last_error=self._last_error)
+        state = self.state_snapshot.build(last_error=self._last_error)
+        self._last_state = state
+        return state
 
     def get_capabilities(self) -> CapabilityPolicy:
         """Return command capabilities for the current state."""
@@ -414,11 +418,14 @@ class ApplicationService:
 
     def execute(self, command: Command | Any) -> CommandResult:
         """Execute a command and return a result envelope."""
-        before = self.get_state()
         try:
             name = command_name(command)
         except Exception as exc:
-            return self._unsupported_command_result(before, exc)
+            return self._unsupported_command_result(self._state_fallback(exc), exc)
+        try:
+            before = self.get_state()
+        except Exception as exc:
+            return self._state_read_failure_result(name.value, exc)
         try:
             self._ensure_command_allowed(command, before)
             message, diagnostics = self._normalize_handler_result(
@@ -434,7 +441,13 @@ class ApplicationService:
                     diagnostics=diagnostics,
                 )
             self._last_error = None
-            after = self.get_state()
+            after, refresh_error = self._state_after_command(before)
+            if refresh_error is not None:
+                diagnostics = {
+                    **diagnostics,
+                    "state_refresh_error": str(refresh_error),
+                    "state_refresh_exception_type": refresh_error.__class__.__name__,
+                }
             return CommandResult.success_result(
                 command_name=name.value,
                 message=message,
@@ -449,7 +462,20 @@ class ApplicationService:
                 message=app_error.message,
                 recoverable=app_error.recoverable,
             )
-            after = self.get_state()
+            after, refresh_error = self._state_after_command(before)
+            failure_diagnostics = {
+                **app_error.diagnostics,
+                "exception_type": exc.__class__.__name__,
+            }
+            if refresh_error is not None:
+                failure_diagnostics.update(
+                    {
+                        "state_refresh_error": str(refresh_error),
+                        "state_refresh_exception_type": (
+                            refresh_error.__class__.__name__
+                        ),
+                    },
+                )
             return CommandResult.failure_result(
                 command_name=name.value,
                 message=app_error.message,
@@ -458,11 +484,58 @@ class ApplicationService:
                 error_type=app_error.error_type,
                 recoverable=app_error.recoverable,
                 error_message=app_error.message,
-                diagnostics={
-                    **app_error.diagnostics,
-                    "exception_type": exc.__class__.__name__,
-                },
+                diagnostics=failure_diagnostics,
             )
+
+    def _state_after_command(
+        self,
+        before: ApplicationStateSnapshot,
+    ) -> tuple[ApplicationStateSnapshot, Exception | None]:
+        try:
+            return self.get_state(), None
+        except Exception as exc:
+            return before, exc
+
+    def _state_fallback(self, exc: Exception) -> ApplicationStateSnapshot:
+        message = f"state snapshot unavailable: {exc}"
+        if self._last_state is not None:
+            errors = [*self._last_state.read_errors, message]
+            return replace(
+                self._last_state,
+                state_reliable=False,
+                read_errors=errors,
+            )
+        return ApplicationStateSnapshot.empty(read_errors=[message])
+
+    def _state_read_failure_result(
+        self,
+        command_name_value: str,
+        exc: Exception,
+    ) -> CommandResult:
+        app_error = map_exception(exc)
+        message = f"Unable to verify application state: {app_error.message}"
+        self._last_error = ErrorSnapshot(
+            error_type=ErrorType.INTERNAL.value,
+            message=message,
+            recoverable=False,
+        )
+        state = replace(
+            self._state_fallback(exc),
+            last_error=self._last_error,
+        )
+        return CommandResult.failure_result(
+            command_name=command_name_value,
+            message=message,
+            state=state,
+            changed_state=ChangedState(error_changed=True),
+            error_type=ErrorType.INTERNAL,
+            recoverable=False,
+            error_message=message,
+            diagnostics={
+                "exception_type": exc.__class__.__name__,
+                "state_read_failed": True,
+            },
+        )
 
     def _execute_allowed(self, command: Command, name: CommandName) -> HandlerResult:
         route = self._handler_route(name)
@@ -749,7 +822,15 @@ class ApplicationService:
             message=str(exc),
             recoverable=True,
         )
-        after = self.get_state()
+        after, refresh_error = self._state_after_command(before)
+        diagnostics = {"exception_type": exc.__class__.__name__}
+        if refresh_error is not None:
+            diagnostics.update(
+                {
+                    "state_refresh_error": str(refresh_error),
+                    "state_refresh_exception_type": refresh_error.__class__.__name__,
+                },
+            )
         return CommandResult.failure_result(
             command_name=ErrorType.UNSUPPORTED_COMMAND.value,
             message=str(exc),
@@ -758,7 +839,7 @@ class ApplicationService:
             error_type=ErrorType.UNSUPPORTED_COMMAND,
             recoverable=True,
             error_message=str(exc),
-            diagnostics={"exception_type": exc.__class__.__name__},
+            diagnostics=diagnostics,
         )
 
     @staticmethod

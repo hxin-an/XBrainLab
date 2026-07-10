@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field, is_dataclass
+from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, cast
+from typing import Any
+
+from .serialization import serialize_json_value
 
 
 class CommandStatus(str, Enum):
@@ -124,16 +126,4 @@ class CommandResult:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return _serialize(self)
-
-
-def _serialize(value: Any) -> Any:
-    if isinstance(value, Enum):
-        return value.value
-    if is_dataclass(value):
-        return {k: _serialize(v) for k, v in asdict(cast(Any, value)).items()}
-    if isinstance(value, dict):
-        return {str(k): _serialize(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_serialize(v) for v in value]
-    return value
+        return serialize_json_value(self)

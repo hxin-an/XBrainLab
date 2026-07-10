@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field, is_dataclass
-from enum import Enum
-from typing import Any, cast
+from dataclasses import dataclass, field
+from typing import Any
+
+from .serialization import serialize_json_value
 
 
 @dataclass(frozen=True)
@@ -101,6 +102,9 @@ class VisualizationStateSnapshot:
     montage_available: bool = False
     channel_positions_available: bool = False
     channel_count: int = 0
+    saliency_params: dict[str, Any] = field(default_factory=dict)
+    montage_channels: list[str] = field(default_factory=list)
+    montage_positions: list[list[float]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -187,19 +191,35 @@ class ApplicationStateSnapshot:
     active_dataset: ActiveDatasetSnapshot
     active_training: ActiveTrainingSnapshot
     last_error: ErrorSnapshot | None = None
+    state_reliable: bool = True
+    read_errors: list[str] = field(default_factory=list)
+
+    @classmethod
+    def empty(
+        cls,
+        *,
+        last_error: ErrorSnapshot | None = None,
+        read_errors: list[str] | None = None,
+    ) -> ApplicationStateSnapshot:
+        """Return a safe empty snapshot when live state cannot be acquired."""
+        errors = list(read_errors or [])
+        return cls(
+            pipeline_stage="unavailable" if errors else "empty",
+            raw=RawStateSnapshot(locked=bool(errors)),
+            preprocessed=PreprocessedStateSnapshot(),
+            epoch=EpochStateSnapshot(),
+            dataset=DatasetStateSnapshot(locked=bool(errors)),
+            training=TrainingStateSnapshot(is_running=bool(errors)),
+            evaluation=EvaluationStateSnapshot(),
+            visualization=VisualizationStateSnapshot(),
+            interpretation=InterpretationStateSnapshot(),
+            active_dataset=ActiveDatasetSnapshot(is_locked=bool(errors)),
+            active_training=ActiveTrainingSnapshot(is_running=bool(errors)),
+            last_error=last_error,
+            state_reliable=not errors,
+            read_errors=errors,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-friendly dictionary."""
-        return _serialize(self)
-
-
-def _serialize(value: Any) -> Any:
-    if isinstance(value, Enum):
-        return value.value
-    if is_dataclass(value):
-        return {k: _serialize(v) for k, v in asdict(cast(Any, value)).items()}
-    if isinstance(value, dict):
-        return {str(k): _serialize(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_serialize(v) for v in value]
-    return value
+        return serialize_json_value(self)

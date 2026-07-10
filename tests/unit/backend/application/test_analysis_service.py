@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 import numpy as np
+import pytest
 
 from XBrainLab.backend.application.analysis_service import (
     AnalysisCommandService,
@@ -74,6 +75,16 @@ class _EvaluationController:
         return f"{plan.get_name()} summary{suffix}"
 
 
+class _BrokenEvaluationController(_EvaluationController):
+    def get_plans(self) -> list[_Plan]:
+        raise RuntimeError("evaluation query failed")
+
+
+class _BrokenModelSummaryController(_EvaluationController):
+    def get_model_summary_str(self, plan: _Plan, record: _Run | None = None) -> str:
+        raise RuntimeError("model summary failed")
+
+
 class _VisualizationController:
     def __init__(self) -> None:
         self.params: dict[str, Any] | None = None
@@ -91,6 +102,16 @@ class _VisualizationController:
 
     def get_saliency_params(self) -> dict[str, Any] | None:
         return self.params
+
+
+class _BrokenVisualizationController(_VisualizationController):
+    def get_trainers(self) -> list[str]:
+        raise RuntimeError("visualization query failed")
+
+
+class _BrokenAveragedRecordController(_VisualizationController):
+    def get_averaged_record(self, trainer: Any) -> str:
+        raise RuntimeError("averaged record failed")
 
 
 class _PreprocessController:
@@ -215,6 +236,55 @@ def test_analysis_service_reports_no_results_without_facade() -> None:
     assert diagnostics["finished_run_count"] == 0
     assert diagnostics["training_active"] is False
     assert diagnostics["plans"] == []
+
+
+def test_analysis_service_does_not_turn_evaluation_failure_into_empty_success() -> None:
+    service, _visualization, _preprocess = _service(
+        evaluation=_BrokenEvaluationController([]),
+    )
+
+    with pytest.raises(RuntimeError, match="evaluation query failed"):
+        service.handle_evaluate(EvaluateCommand(target="latest"))
+
+
+def test_analysis_service_does_not_turn_visualization_failure_into_empty_success() -> (
+    None
+):
+    visualization = _BrokenVisualizationController()
+    service = AnalysisCommandService(
+        evaluation=_EvaluationController([]),
+        visualization=visualization,
+        preprocess=_PreprocessController(),
+        get_state=_state,
+    )
+
+    with pytest.raises(RuntimeError, match="visualization query failed"):
+        service.handle_visualize(VisualizeCommand(view="summary"))
+
+
+def test_analysis_service_does_not_hide_requested_model_summary_failure() -> None:
+    plan = _Plan("Plan A", [_Run(finished=True)])
+    service, _visualization, _preprocess = _service(
+        evaluation=_BrokenModelSummaryController([plan]),
+    )
+
+    with pytest.raises(RuntimeError, match="model summary failed"):
+        service.handle_evaluate(EvaluateCommand(include_model_summaries=True))
+
+
+def test_analysis_service_does_not_hide_requested_averaged_record_failure() -> None:
+    visualization = _BrokenAveragedRecordController()
+    service = AnalysisCommandService(
+        evaluation=_EvaluationController([]),
+        visualization=visualization,
+        preprocess=_PreprocessController(),
+        get_state=lambda: _state(finished_runs=1),
+    )
+
+    with pytest.raises(RuntimeError, match="averaged record failed"):
+        service.handle_visualize(
+            VisualizeCommand(view="summary", include_averaged_records=True),
+        )
 
 
 def test_analysis_service_reports_training_active_without_facade() -> None:

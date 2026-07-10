@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 from XBrainLab.backend.model_requirements import minimum_samples_for_model
@@ -439,7 +439,35 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         else None,
     )
 
+    if not state.state_reliable:
+        _fail_closed_for_unreliable_state(capabilities, state.read_errors)
+
     return CapabilityPolicy(capabilities)
+
+
+def _fail_closed_for_unreliable_state(
+    capabilities: dict[str, CommandCapability],
+    read_errors: list[str],
+) -> None:
+    """Block commands that could act on an uncertain backend snapshot."""
+    allowed_during_recovery = {
+        CommandName.QUERY_STATE.value,
+        CommandName.STOP_TRAINING.value,
+        CommandName.RESET_SESSION.value,
+        CommandName.NEW_SESSION.value,
+    }
+    reason = "Backend state could not be verified. Refresh or reset the session."
+    if read_errors:
+        reason = f"{reason} ({read_errors[0]})"
+    for name, capability in tuple(capabilities.items()):
+        if name in allowed_during_recovery:
+            continue
+        capabilities[name] = replace(
+            capability,
+            enabled=False,
+            reasons=[reason, *capability.reasons],
+            can_auto_execute=False,
+        )
 
 
 def _cap(
