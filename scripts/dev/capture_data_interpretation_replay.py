@@ -116,9 +116,11 @@ def write_synthetic_raw_fif() -> Path:
     _write_raw_file(SECOND_SOURCE_PATH, seed=23)
     LABEL_PATH.write_text(
         "onset\tduration\ttrial_type\n"
-        "1.0\t0.5\tleft\n"
-        "2.0\t0.5\tright\n"
-        "3.0\t0.5\tleft\n"
+        "0.5\t0.5\tleft\n"
+        "1.2\t0.5\tright\n"
+        "1.9\t0.5\tleft\n"
+        "2.6\t0.5\tright\n"
+        "3.3\t0.5\tleft\n"
         "4.0\t0.5\tright\n",
         encoding="utf-8",
     )

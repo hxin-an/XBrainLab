@@ -22,7 +22,7 @@ from html import escape
 from pathlib import Path
 from typing import Any
 
-from PIL import Image
+from PIL import Image, ImageStat
 from PyQt6.QtCore import QPoint, QSize, Qt, QThreadPool, QTimer
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import (
@@ -62,6 +62,7 @@ from XBrainLab.backend.application import (
     SaliencyCommand,
     SaveInterpretationRecipeCommand,
     ScanSourceCommand,
+    TrainCommand,
     ValidateInterpretationCommand,
     VisualizeCommand,
 )
@@ -571,19 +572,27 @@ def _run_walkthrough_steps(
         ),
         command_results,
     )
+    train = execute_recorded(
+        service,
+        TrainCommand(confirmed=True, interactive=False),
+        command_results,
+    )
     evaluate = execute_recorded(service, EvaluateCommand(), command_results)
     visualize = execute_recorded(service, VisualizeCommand(), command_results)
     saliency = execute_recorded(service, SaliencyCommand(), command_results)
     tool_transcript.extend(
         command_summary(item)
-        for item in [configure_training, evaluate, visualize, saliency]
+        for item in [configure_training, train, evaluate, visualize, saliency]
     )
     window.switch_page(2)
     app.processEvents()
     capture_step(
         "training_readiness",
         "training_readiness",
-        notes={"training": command_summary(configure_training)},
+        notes={
+            "training": command_summary(configure_training),
+            "train": command_summary(train),
+        },
     )
     window.switch_page(3)
     app.processEvents()
@@ -1512,17 +1521,17 @@ def settle_widget_for_capture(
 
 
 def is_nearly_black(path: Path) -> bool:
-    """Return whether an image contains almost no visible content."""
+    """Return whether an image contains almost no visible UI content."""
     with Image.open(path) as image:
-        rgb = image.convert("RGB")
-        histogram = rgb.histogram()
-    total_pixels = sum(histogram[:256])
-    bright_pixels = 0
-    for value in range(16, 256):
-        bright_pixels += histogram[value]
-        bright_pixels += histogram[256 + value]
-        bright_pixels += histogram[512 + value]
-    return total_pixels == 0 or bright_pixels < total_pixels * 0.01
+        grayscale = image.convert("L")
+        histogram = grayscale.histogram()
+        pixel_count = grayscale.width * grayscale.height
+        contrast = float(ImageStat.Stat(grayscale).stddev[0])
+    if pixel_count <= 0:
+        return True
+    visible_pixels = sum(histogram[90:])
+    visible_ratio = visible_pixels / pixel_count
+    return visible_ratio < 0.001 or contrast < 2.0
 
 
 def visible_text_snapshot(widget: QWidget) -> list[str]:
@@ -1676,6 +1685,7 @@ def build_pass_fail_summary(
             failed.append(f"{phase.get('phase')} is missing button state")
         if "workflow_state" not in phase:
             failed.append(f"{phase.get('phase')} is missing workflow state")
+    failed.extend(build_workflow_contract_failures(phases))
     failed.extend(_data_import_visual_evidence_failures(phases))
     resource_smoke = build_resource_smoke_summary(resource_notes)
     failed.extend(resource_smoke["failed_checks"])
@@ -1688,6 +1698,97 @@ def build_pass_fail_summary(
         "human_desktop_acceptance": "not performed",
         "resource_smoke": resource_smoke,
     }
+
+
+def build_workflow_contract_failures(phases: list[dict[str, Any]]) -> list[str]:
+    """Validate that named happy-path phases changed the real backend state."""
+    by_name = {str(phase.get("phase") or ""): phase for phase in phases}
+    failures: list[str] = []
+
+    def require_command(phase_name: str, note_name: str) -> None:
+        phase = by_name.get(phase_name)
+        if phase is None:
+            return
+        result = (phase.get("notes") or {}).get(note_name)
+        if not isinstance(result, dict) or not bool(result.get("ok")):
+            command_name = (
+                str(result.get("command") or note_name)
+                if isinstance(result, dict)
+                else note_name
+            )
+            failures.append(f"{phase_name} command {command_name} did not succeed")
+
+    def require_state(phase_name: str, path: tuple[str, ...], message: str) -> None:
+        phase = by_name.get(phase_name)
+        if phase is None:
+            return
+        value: Any = phase.get("workflow_state", {})
+        for key in path:
+            value = value.get(key) if isinstance(value, dict) else None
+        if not value:
+            failures.append(f"{phase_name} {message}")
+
+    for phase_name, note_names in {
+        "data_interpretation_apply": ("applied", "recipe"),
+        "data_interpretation_reload_recipe": ("reload",),
+        "preprocessing": ("preprocess",),
+        "epoch_creation": ("epoch",),
+        "dataset_generation": ("dataset",),
+        "training_readiness": ("training", "train"),
+        "evaluation_visualization_saliency_readiness": (
+            "evaluate",
+            "visualize",
+            "saliency",
+        ),
+        "reset_new_session_boundary": ("confirmed",),
+        "error_recovery": ("recovery_scan",),
+    }.items():
+        for note_name in note_names:
+            require_command(phase_name, note_name)
+
+    require_state(
+        "preprocessing",
+        ("preprocessed", "available"),
+        "did not produce preprocessed data",
+    )
+    require_state("epoch_creation", ("epoch", "exists"), "did not produce epochs")
+    require_state(
+        "dataset_generation", ("dataset", "available"), "did not produce a dataset"
+    )
+    require_state(
+        "training_readiness",
+        ("training", "finished_run_count"),
+        "did not finish a training run",
+    )
+    require_state(
+        "evaluation_visualization_saliency_readiness",
+        ("evaluation", "available"),
+        "did not produce evaluation results",
+    )
+
+    intentional_failures = {
+        "data_interpretation_decisions": (
+            "unconfirmed_apply",
+            "confirmation_required",
+        ),
+        "reset_new_session_boundary": ("unconfirmed", "confirmation_required"),
+        "error_recovery": ("blocked_preview", "precondition"),
+    }
+    for phase_name, (note_name, expected_error) in intentional_failures.items():
+        phase = by_name.get(phase_name)
+        if phase is None:
+            continue
+        result = (phase.get("notes") or {}).get(note_name)
+        if (
+            not isinstance(result, dict)
+            or bool(result.get("ok"))
+            or str(result.get("error_type") or "") != expected_error
+        ):
+            failures.append(
+                f"{phase_name} did not preserve the expected {expected_error} boundary"
+            )
+
+    return failures
 
 
 def _data_import_visual_evidence_failures(

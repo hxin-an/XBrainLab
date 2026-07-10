@@ -333,3 +333,76 @@ def test_internal_event_epoch_handoff_keeps_raw_event_codes_with_aliases() -> No
         {"event": "770", "source": "internal_events", "label": "Right hand"},
         {"event": "771", "source": "internal_events", "label": "Feet"},
     ]
+
+
+def test_pending_recipe_review_does_not_replace_active_epoch_handoff() -> None:
+    """A pending review must not rewrite truth for already-loaded EEG data."""
+    state = _state()
+    active_scan = ScanResult(
+        scan_id=state.next_id("scan"),
+        source_path="/tmp/xbrainlab/active",
+        source_kind="file",
+        eeg_files=["/tmp/xbrainlab/active/A01T.gdf"],
+    )
+    active_candidate = InterpretationCandidate(
+        candidate_id=state.next_id("candidate"),
+        scan_id=active_scan.scan_id,
+        source_path=active_scan.source_path,
+        source_kind=active_scan.source_kind,
+        selected_eeg_files=list(active_scan.eeg_files),
+        class_map={"769": "Left hand", "770": "Right hand"},
+        internal_event_selection={
+            "label_event_codes": ["769", "770"],
+            "class_map": {"769": "Left hand", "770": "Right hand"},
+        },
+        choices={"label_carrier": "embedded_events"},
+    )
+    active_preview = InterpretationPreview(
+        preview_id=state.next_id("preview"),
+        candidate_id=active_candidate.candidate_id,
+        summary="Active import",
+        file_count=1,
+        label_carrier_count=0,
+        class_map=dict(active_candidate.class_map),
+    )
+    active_applied = AppliedInterpretation(
+        interpretation_id=state.next_id("interpretation"),
+        candidate_id=active_candidate.candidate_id,
+        source_path=active_candidate.source_path,
+        source_kind=active_candidate.source_kind,
+        loaded_files=list(active_candidate.selected_eeg_files),
+        validation_decision="safe",
+        class_map=dict(active_candidate.class_map),
+        internal_event_selection=dict(active_candidate.internal_event_selection),
+    )
+    state.record_scan(active_scan)
+    state.record_preview(active_candidate, active_preview)
+    state.record_applied(active_applied)
+
+    pending_scan = _scan(state.next_id("scan"))
+    pending_candidate = _candidate(
+        pending_scan,
+        state.next_id("candidate"),
+    )
+    pending_preview = _preview(
+        pending_candidate,
+        state.next_id("preview"),
+    )
+    state.record_recipe_reload(
+        recipe=_recipe(state, active_applied),
+        scan=pending_scan,
+        candidate=pending_candidate,
+        preview=pending_preview,
+        decision=_decision(pending_candidate),
+        recipe_path="/tmp/xbrainlab/pending.recipe.json",
+    )
+
+    snapshot = state.snapshot()
+
+    assert snapshot.pending_confirmation is True
+    assert snapshot.latest_candidate_id == pending_candidate.candidate_id
+    assert snapshot.has_applied_interpretation is True
+    assert snapshot.epoch_handoff["source"] == "applied_interpretation"
+    assert snapshot.epoch_handoff["ready"] is True
+    assert snapshot.epoch_handoff["supervised_ready"] is True
+    assert snapshot.epoch_handoff["default_epoch_events"] == ["769", "770"]
