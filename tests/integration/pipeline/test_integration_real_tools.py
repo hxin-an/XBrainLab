@@ -21,12 +21,16 @@ from XBrainLab.llm.tools.real.training_real import (
 )
 
 
-def _query_diagnostics(study, query: str, *, include_objects: bool = False):
+def _query_result(study, query: str, *, include_objects: bool = False):
     result = get_application_service(study).execute(
         QueryStateCommand(query=query, include_objects=include_objects),
     )
     assert result.ok, result.message
-    return result.local_payload
+    return result
+
+
+def _query_diagnostics(study, query: str):
+    return _query_result(study, query).diagnostics
 
 
 def _state(study):
@@ -34,9 +38,9 @@ def _state(study):
 
 
 def _first_preprocessed_data(study):
-    diagnostics = _query_diagnostics(study, "data_lists", include_objects=True)
-    assert diagnostics["preprocessed_count"] == 1
-    return diagnostics["preprocessed_data_list"][0]
+    result = _query_result(study, "data_lists", include_objects=True)
+    assert result.diagnostics["preprocessed_count"] == 1
+    return result.runtime["preprocessed_data_list"][0]
 
 
 def _command_result(
@@ -105,18 +109,16 @@ TEST_DATA_DIR = os.path.abspath(
 )
 GDF_FILE = os.path.join(TEST_DATA_DIR, "A01T.gdf")
 EXPECTED_A01T_REAL_TOOL_EPOCH_EVENT_IDS = {
-    "32766": 0,
-    "768": 1,
-    "769": 2,
-    "770": 3,
-    "771": 4,
-    "772": 5,
+    "769": 0,
+    "770": 1,
+    "771": 2,
+    "772": 3,
 }
 EXPECTED_A01T_REAL_TOOL_SPLIT_SUMMARY = {
     "count": 1,
-    "train_count": 375,
-    "val_count": 93,
-    "test_count": 117,
+    "train_count": 185,
+    "val_count": 46,
+    "test_count": 57,
     "audit": {"ok": True, "dataset_count": 1, "issues": []},
 }
 
@@ -151,11 +153,16 @@ class TestRealToolChain:
 
         # 2.3 Epoch Data (Required for Dataset Generation)
         epoch_tool = RealEpochDataTool()
-        res_epoch = epoch_tool.execute(study, t_min=0, t_max=2.0, event_id=None)
+        res_epoch = epoch_tool.execute(
+            study,
+            t_min=0,
+            t_max=2.0,
+            event_id=["769", "770", "771", "772"],
+        )
         assert "Data epoched" in res_epoch
         epoch_state = _state(study)["epoch"]
         assert epoch_state["exists"] is True
-        assert epoch_state["epoch_count"] == 585
+        assert epoch_state["epoch_count"] == 288
         assert epoch_state["n_channels"] == 25
         assert epoch_state["n_times"] == 501
         assert epoch_state["event_ids"] == EXPECTED_A01T_REAL_TOOL_EPOCH_EVENT_IDS

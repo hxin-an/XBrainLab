@@ -2,15 +2,18 @@
 End-to-end integration test: Load → Preprocess → Split → Train → Evaluate.
 
 Uses real MNE processing with synthetic data and a real EEGNet model
-(1 epoch, 2 trials per class) to verify the complete pipeline works.
+(1-2 epochs, 6 trials per class) to verify the complete pipeline works.
 """
 
 from unittest.mock import patch
 
+import mne
 import numpy as np
 import pytest
 import torch
 
+from XBrainLab.backend.dataset import Dataset, DataSplittingConfig, Epochs, TrainingType
+from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.model_base import EEGNet
 from XBrainLab.backend.training import (
     ModelHolder,
@@ -23,34 +26,51 @@ from XBrainLab.backend.training.record import RecordKey
 
 
 def _make_synthetic_dataset():
-    """Create a mock dataset with realistic synthetic data for training tests."""
-    from unittest.mock import MagicMock
+    """Create a real tiny Dataset with mutually exclusive split masks."""
+    n_trials, n_channels, n_samples, n_classes = 12, 4, 168, 2
+    rng = np.random.default_rng(0)
+    X = rng.standard_normal((n_trials, n_channels, n_samples)).astype(np.float32)
+    y = np.arange(n_trials, dtype=int) % n_classes
+    events = np.column_stack(
+        (np.arange(n_trials), np.zeros(n_trials, dtype=int), y),
+    )
+    info = mne.create_info(
+        [f"EEG-{index}" for index in range(n_channels)],
+        sfreq=128,
+        ch_types="eeg",
+    )
+    mne_epochs = mne.EpochsArray(
+        X,
+        info,
+        events=events,
+        event_id={"class-0": 0, "class-1": 1},
+        verbose=False,
+    )
+    epoch_data = Epochs([Raw("tiny-synthetic-epo.fif", mne_epochs)])
+    config = DataSplittingConfig(TrainingType.FULL, False, [], [])
+    dataset = Dataset(epoch_data, config)
+    dataset.set_name("tiny-synthetic")
+    dataset.train_mask[:8] = True
+    dataset.val_mask[8:10] = True
+    dataset.test_mask[10:] = True
+    dataset.remaining_mask[:] = False
 
-    n_trials, n_channels, n_samples, n_classes = 4, 4, 168, 2
-    X = np.random.randn(n_trials, n_channels, n_samples).astype(np.float32)
-    y = np.array([0, 1, 0, 1])
-
-    dataset = MagicMock()
-    dataset.get_training_data.return_value = (X, y)
-    dataset.get_val_data.return_value = (X, y)
-    dataset.get_test_data.return_value = (X, y)
-    dataset.get_training_indices.return_value = np.arange(n_trials)
-    dataset.get_val_indices.return_value = np.arange(n_trials)
-    dataset.get_test_indices.return_value = np.arange(n_trials)
-    dataset.train_mask = np.ones(n_trials, dtype=bool)
-    dataset.val_mask = np.ones(n_trials, dtype=bool)
-    dataset.test_mask = np.ones(n_trials, dtype=bool)
-
-    epoch_data = MagicMock()
-    epoch_data.get_model_args.return_value = {
-        "n_classes": n_classes,
-        "channels": n_channels,
-        "samples": n_samples,
-        "sfreq": 128,
-    }
-    epoch_data.get_data.return_value = X
-    epoch_data.get_label_list.return_value = y
-    dataset.get_epoch_data.return_value = epoch_data
+    split_indices = (
+        set(dataset.get_training_indices()),
+        set(dataset.get_val_indices()),
+        set(dataset.get_test_indices()),
+    )
+    assert split_indices[0].isdisjoint(split_indices[1])
+    assert split_indices[0].isdisjoint(split_indices[2])
+    assert split_indices[1].isdisjoint(split_indices[2])
+    assert set.union(*split_indices) == set(range(n_trials))
+    assert np.all(
+        np.count_nonzero(
+            np.stack((dataset.train_mask, dataset.val_mask, dataset.test_mask)),
+            axis=0,
+        )
+        == 1,
+    )
 
     return dataset, n_classes, n_channels, n_samples
 
@@ -87,7 +107,6 @@ class TestFullPipeline:
             patch("torch.save"),
             patch("numpy.savetxt"),
             patch("os.makedirs"),
-            patch("XBrainLab.backend.training.training_plan.validate_type"),
         ):
             plan = TrainingPlanHolder(holder, dataset, option, {})
             trainer = Trainer([plan])
@@ -141,7 +160,6 @@ class TestFullPipeline:
             patch("torch.save"),
             patch("numpy.savetxt"),
             patch("os.makedirs"),
-            patch("XBrainLab.backend.training.training_plan.validate_type"),
         ):
             plan = TrainingPlanHolder(holder, dataset, option, {})
             trainer = Trainer([plan])
@@ -180,7 +198,6 @@ class TestMultiRepeatTraining:
             patch("torch.save"),
             patch("numpy.savetxt"),
             patch("os.makedirs"),
-            patch("XBrainLab.backend.training.training_plan.validate_type"),
         ):
             plan = TrainingPlanHolder(holder, dataset, option, {})
             trainer = Trainer([plan])

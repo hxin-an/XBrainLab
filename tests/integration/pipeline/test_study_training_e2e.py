@@ -7,10 +7,13 @@ Covers: Study.generate_plan, train, stop_training, export_output_csv,
 
 from unittest.mock import MagicMock, patch
 
+import mne
 import numpy as np
 import pytest
 import torch
 
+from XBrainLab.backend.dataset import Dataset, DataSplittingConfig, Epochs, TrainingType
+from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.model_base import EEGNet, SCCNet
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import (
@@ -26,33 +29,52 @@ from XBrainLab.backend.training_manager import TrainingManager
 # ---------------------------------------------------------------------------
 
 
-def _make_mock_dataset(n_trials=4, n_channels=4, n_samples=168, n_classes=2):
-    """Return a mock dataset usable by TrainingPlanHolder."""
-    X = np.random.randn(n_trials, n_channels, n_samples).astype(np.float32)
-    y = np.array([i % n_classes for i in range(n_trials)])
+def _make_tiny_dataset(n_trials=12, n_channels=4, n_samples=168, n_classes=2):
+    """Return a real tiny Dataset with disjoint train, validation, and test data."""
+    if n_trials != 12:
+        raise ValueError("The canonical tiny split requires exactly 12 trials")
+    rng = np.random.default_rng(0)
+    X = rng.standard_normal((n_trials, n_channels, n_samples)).astype(np.float32)
+    y = np.arange(n_trials, dtype=int) % n_classes
+    events = np.column_stack(
+        (np.arange(n_trials), np.zeros(n_trials, dtype=int), y),
+    )
+    info = mne.create_info(
+        [f"EEG-{index}" for index in range(n_channels)],
+        sfreq=128,
+        ch_types="eeg",
+    )
+    mne_epochs = mne.EpochsArray(
+        X,
+        info,
+        events=events,
+        event_id={f"class-{index}": index for index in range(n_classes)},
+        verbose=False,
+    )
+    epoch_data = Epochs([Raw("tiny-study-epo.fif", mne_epochs)])
+    config = DataSplittingConfig(TrainingType.FULL, False, [], [])
+    dataset = Dataset(epoch_data, config)
+    dataset.set_name("tiny-study")
+    dataset.train_mask[:8] = True
+    dataset.val_mask[8:10] = True
+    dataset.test_mask[10:] = True
+    dataset.remaining_mask[:] = False
 
-    ds = MagicMock()
-    ds.get_training_data.return_value = (X, y)
-    ds.get_val_data.return_value = (X, y)
-    ds.get_test_data.return_value = (X, y)
-    ds.get_training_indices.return_value = np.arange(n_trials)
-    ds.get_val_indices.return_value = np.arange(n_trials)
-    ds.get_test_indices.return_value = np.arange(n_trials)
-    ds.train_mask = np.ones(n_trials, dtype=bool)
-    ds.val_mask = np.ones(n_trials, dtype=bool)
-    ds.test_mask = np.ones(n_trials, dtype=bool)
-
-    epoch_data = MagicMock()
-    epoch_data.get_model_args.return_value = {
-        "n_classes": n_classes,
-        "channels": n_channels,
-        "samples": n_samples,
-        "sfreq": 128,
-    }
-    epoch_data.get_data.return_value = X
-    epoch_data.get_label_list.return_value = y
-    ds.get_epoch_data.return_value = epoch_data
-    return ds
+    train = set(dataset.get_training_indices())
+    validation = set(dataset.get_val_indices())
+    test = set(dataset.get_test_indices())
+    assert train.isdisjoint(validation)
+    assert train.isdisjoint(test)
+    assert validation.isdisjoint(test)
+    assert train | validation | test == set(range(n_trials))
+    assert np.all(
+        np.count_nonzero(
+            np.stack((dataset.train_mask, dataset.val_mask, dataset.test_mask)),
+            axis=0,
+        )
+        == 1,
+    )
+    return dataset
 
 
 def _make_option(epoch=1, repeat=1):
@@ -76,7 +98,6 @@ _FS_PATCHES = (
     patch("torch.save"),
     patch("numpy.savetxt"),
     patch("os.makedirs"),
-    patch("XBrainLab.backend.training.training_plan.validate_type"),
 )
 
 
@@ -125,7 +146,7 @@ class TestStudyGeneratePlan:
     @pytest.fixture
     def ready_study(self):
         study = Study()
-        study.datasets = [_make_mock_dataset()]
+        study.datasets = [_make_tiny_dataset()]
         study.set_training_option(_make_option())
         study.set_model_holder(ModelHolder(EEGNet, {}))
         return study
@@ -136,7 +157,6 @@ class TestStudyGeneratePlan:
             _FS_PATCHES[1],
             _FS_PATCHES[2],
             _FS_PATCHES[3],
-            _FS_PATCHES[4],
         ):
             ready_study.generate_plan(force_update=True)
             assert ready_study.trainer is not None
@@ -151,14 +171,14 @@ class TestStudyGeneratePlan:
 
     def test_generate_plan_no_option_raises(self):
         study = Study()
-        study.datasets = [_make_mock_dataset()]
+        study.datasets = [_make_tiny_dataset()]
         study.set_model_holder(ModelHolder(EEGNet, {}))
         with pytest.raises(ValueError, match="training option"):
             study.generate_plan()
 
     def test_generate_plan_no_model_raises(self):
         study = Study()
-        study.datasets = [_make_mock_dataset()]
+        study.datasets = [_make_tiny_dataset()]
         study.set_training_option(_make_option())
         with pytest.raises(ValueError, match="model holder"):
             study.generate_plan()
@@ -174,14 +194,13 @@ class TestStudyTrainCycle:
             _FS_PATCHES[1],
             _FS_PATCHES[2],
             _FS_PATCHES[3],
-            _FS_PATCHES[4],
         ):
             study.generate_plan(force_update=True)
             study.trainer.job()
 
     def test_full_cycle_eegnet(self):
         study = Study()
-        study.datasets = [_make_mock_dataset()]
+        study.datasets = [_make_tiny_dataset()]
         study.set_training_option(_make_option(epoch=2))
         study.set_model_holder(ModelHolder(EEGNet, {}))
 
@@ -195,7 +214,7 @@ class TestStudyTrainCycle:
 
     def test_full_cycle_sccnet(self):
         study = Study()
-        study.datasets = [_make_mock_dataset()]
+        study.datasets = [_make_tiny_dataset()]
         study.set_training_option(_make_option(epoch=1))
         study.set_model_holder(ModelHolder(SCCNet, {}))
 
@@ -206,7 +225,7 @@ class TestStudyTrainCycle:
 
     def test_multi_repeat(self):
         study = Study()
-        study.datasets = [_make_mock_dataset()]
+        study.datasets = [_make_tiny_dataset()]
         study.set_training_option(_make_option(epoch=1, repeat=2))
         study.set_model_holder(ModelHolder(EEGNet, {}))
 
@@ -217,7 +236,7 @@ class TestStudyTrainCycle:
 
     def test_multi_datasets(self):
         study = Study()
-        study.datasets = [_make_mock_dataset(), _make_mock_dataset()]
+        study.datasets = [_make_tiny_dataset(), _make_tiny_dataset()]
         study.set_training_option(_make_option(epoch=1))
         study.set_model_holder(ModelHolder(EEGNet, {}))
 
@@ -234,7 +253,7 @@ class TestAppendPlan:
 
     def test_append_doubles_plans(self):
         study = Study()
-        study.datasets = [_make_mock_dataset()]
+        study.datasets = [_make_tiny_dataset()]
         study.set_training_option(_make_option())
         study.set_model_holder(ModelHolder(EEGNet, {}))
 
@@ -243,7 +262,6 @@ class TestAppendPlan:
             _FS_PATCHES[1],
             _FS_PATCHES[2],
             _FS_PATCHES[3],
-            _FS_PATCHES[4],
         ):
             study.generate_plan(force_update=True)
             assert len(study.trainer.get_training_plan_holders()) == 1
@@ -288,11 +306,14 @@ class TestCleanCascade:
 class TestStopTraining:
     """Study.stop_training delegates to TrainingManager."""
 
-    def test_stop_sets_interrupt(self):
+    def test_stop_delegates_to_trainer(self):
         study = Study()
-        study.trainer = MagicMock()
-        study.stop_training()
-        study.trainer.set_interrupt.assert_called_once()
+        trainer = MagicMock()
+        trainer.stop.return_value = True
+        study.trainer = trainer
+
+        assert study.stop_training() is True
+        trainer.stop.assert_called_once_with(wait_timeout=None)
 
     def test_stop_no_trainer_raises(self):
         study = Study()
@@ -317,7 +338,7 @@ class TestSaliencyPropagation:
 
     def test_propagation_through_study(self):
         study = Study()
-        study.datasets = [_make_mock_dataset()]
+        study.datasets = [_make_tiny_dataset()]
         study.set_training_option(_make_option())
         study.set_model_holder(ModelHolder(EEGNet, {}))
 
@@ -326,7 +347,6 @@ class TestSaliencyPropagation:
             _FS_PATCHES[1],
             _FS_PATCHES[2],
             _FS_PATCHES[3],
-            _FS_PATCHES[4],
         ):
             study.generate_plan(force_update=True)
             params = {

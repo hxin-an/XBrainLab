@@ -18,20 +18,20 @@ from XBrainLab.llm.tools.real.training_real import (
 from XBrainLab.llm.tools.real.ui_control_real import RealSwitchPanelTool
 
 
-def _query_diagnostics(study, query: str, *, include_objects: bool = False):
+def _query_result(study, query: str, *, include_objects: bool = False):
     result = get_application_service(study).execute(
         QueryStateCommand(query=query, include_objects=include_objects),
     )
     assert result.ok, result.message
-    return result.diagnostics
+    return result
 
 
 def _state(study):
-    return _query_diagnostics(study, "state")["state"]
+    return _query_result(study, "state").diagnostics["state"]
 
 
 def _data_lists(study):
-    return _query_diagnostics(study, "data_lists", include_objects=True)
+    return _query_result(study, "data_lists", include_objects=True)
 
 
 def create_dummy_eeg_file(tmp_path):
@@ -127,20 +127,14 @@ def test_real_tools_e2e_flow(test_app, tmp_path):
     )
     assert res_prep == "Standard preprocessing applied successfully."
 
-    data_lists = _data_lists(study)
-    assert {
-        key: value for key, value in data_lists.items() if not key.endswith("_list")
-    } == {
+    data_lists_result = _data_lists(study)
+    assert data_lists_result.diagnostics == {
         "raw_count": 1,
         "preprocessed_count": 1,
         "raw_files": ["test_data_raw.fif"],
         "preprocessed_files": ["test_data_raw.fif"],
     }
-    if data_lists["preprocessed_count"] > 0:
-        raw_wrapper = data_lists["preprocessed_data_list"][0]
-    else:
-        assert data_lists["loaded_count"] == 1
-        raw_wrapper = data_lists["loaded_data_list"][0]
+    raw_wrapper = data_lists_result.runtime["preprocessed_data_list"][0]
 
     raw = raw_wrapper.get_mne() if hasattr(raw_wrapper, "get_mne") else raw_wrapper
 

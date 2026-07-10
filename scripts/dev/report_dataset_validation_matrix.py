@@ -40,6 +40,8 @@ PUBLIC_EVENT_RICH_TRAINING_FIXTURES = (
         "source_family": "SCCN / EEGLAB",
         "format": "EEGLAB .set",
     },
+)
+PUBLIC_EPOCH_ONLY_FIXTURES = (
     {
         "filename": "scan41_short.cnt",
         "source_family": "MNE testing-data",
@@ -120,6 +122,11 @@ def build_dataset_validation_rows(
         for fixture in PUBLIC_EVENT_RICH_TRAINING_FIXTURES
         if _nonempty_file(tests_data_dir / "public" / fixture["filename"])
     ]
+    public_epoch_only_fixtures = [
+        fixture
+        for fixture in PUBLIC_EPOCH_ONLY_FIXTURES
+        if _nonempty_file(tests_data_dir / "public" / fixture["filename"])
+    ]
     public_import_only_fixtures = [
         fixture
         for fixture in PUBLIC_IMPORT_ONLY_FIXTURES
@@ -133,11 +140,17 @@ def build_dataset_validation_rows(
     public_training_source_families = sorted(
         {str(fixture["source_family"]) for fixture in public_training_fixtures}
     )
+    public_epoch_only_source_families = sorted(
+        {str(fixture["source_family"]) for fixture in public_epoch_only_fixtures}
+    )
     public_import_only_source_families = sorted(
         {str(fixture["source_family"]) for fixture in public_import_only_fixtures}
     )
     public_training_formats = [
         str(fixture["format"]) for fixture in public_training_fixtures
+    ]
+    public_epoch_only_formats = [
+        str(fixture["format"]) for fixture in public_epoch_only_fixtures
     ]
     public_import_only_formats = [
         str(fixture["format"]) for fixture in public_import_only_fixtures
@@ -203,6 +216,35 @@ def build_dataset_validation_rows(
             notes=(
                 "Extends training smoke into non-Graz sources using intrinsic event"
                 " structure, but remains local-only."
+            ),
+        ),
+        DatasetLayerRow(
+            layer="public local-only epoch-only fixtures",
+            representative_data=(
+                ", ".join(public_epoch_only_formats)
+                if public_epoch_only_formats
+                else "not downloaded"
+            ),
+            reproducibility_class="local-only",
+            source_families=(
+                "{} ({})".format(
+                    len(public_epoch_only_source_families),
+                    ", ".join(public_epoch_only_source_families),
+                )
+                if public_epoch_only_source_families
+                else "not downloaded"
+            ),
+            import_facade="yes" if public_epoch_only_fixtures else "pending",
+            label_attach="no",
+            dataset_generation=(
+                "epoch-only" if public_epoch_only_fixtures else "pending"
+            ),
+            training_smoke=(
+                "no (epoch-only)" if public_epoch_only_fixtures else "pending"
+            ),
+            notes=(
+                "CNT protects load, preprocess, and epoch behavior only; its tiny "
+                "event count cannot support class-balanced train/validation/test splits."
             ),
         ),
         DatasetLayerRow(
@@ -292,6 +334,11 @@ def validate_required_dataset_matrix(
     public_training_source_families = sorted(
         {str(fixture["source_family"]) for fixture in public_training_fixtures}
     )
+    public_epoch_only_fixtures = [
+        fixture
+        for fixture in PUBLIC_EPOCH_ONLY_FIXTURES
+        if _nonempty_file(tests_data_dir / "public" / fixture["filename"])
+    ]
     public_bids_fixtures = [
         fixture
         for fixture in PUBLIC_BIDS_FIXTURES
@@ -331,6 +378,22 @@ def validate_required_dataset_matrix(
             ),
         ),
         DatasetMatrixRequirement(
+            key="public_epoch_only_cnt",
+            label="Public CNT epoch-only fixture",
+            ok=len(public_epoch_only_fixtures) >= len(PUBLIC_EPOCH_ONLY_FIXTURES),
+            observed=(
+                ", ".join(
+                    str(fixture["filename"]) for fixture in public_epoch_only_fixtures
+                )
+                if public_epoch_only_fixtures
+                else "none"
+            ),
+            required=(
+                "downloaded scan41_short.cnt for load/preprocess/epoch-only smoke; "
+                "it is not training evidence"
+            ),
+        ),
+        DatasetMatrixRequirement(
             key="public_bids_eeg",
             label="Public BIDS EEG folder fixture",
             ok=bool(public_bids_fixtures),
@@ -366,10 +429,11 @@ def build_snapshot(repo_root: Path = ROOT) -> dict[str, object]:
             ),
             "cross_source_breadth": (
                 "event-rich public local-only fixtures now extend one-epoch training "
-                "smoke into PhysioNet, BBCI, SCCN / EEGLAB, and MNE testing-data "
-                "CNT sources, while rest-style PhysioNet EDF and BrainVision stay "
-                "at import/facade-only; a downloaded MNE-BIDS tiny EEG root covers "
-                "folder-level Data Import and BIDS events epoch handoff"
+                "smoke into PhysioNet, BBCI, and SCCN / EEGLAB; MNE testing-data "
+                "CNT is explicitly load/preprocess/epoch-only because it cannot "
+                "support a class-balanced split; rest-style PhysioNet EDF and "
+                "BrainVision stay at import/facade-only; a downloaded MNE-BIDS tiny "
+                "EEG root covers folder-level Data Import and BIDS events epoch handoff"
             ),
             "main_limit": (
                 "cross-source evidence is stronger, but part of it remains local-only "

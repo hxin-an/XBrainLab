@@ -3,16 +3,33 @@ from __future__ import annotations
 from pathlib import Path
 
 from scripts.dev.report_dataset_validation_matrix import (
+    PUBLIC_EPOCH_ONLY_FIXTURES,
+    PUBLIC_EVENT_RICH_TRAINING_FIXTURES,
     build_dataset_validation_rows,
     build_snapshot,
     render_markdown,
     validate_required_dataset_matrix,
+)
+from scripts.dev.run_public_cross_source_training_smoke import (
+    PUBLIC_EPOCH_ONLY_FIXTURES as RUNNER_EPOCH_ONLY_FIXTURES,
+)
+from scripts.dev.run_public_cross_source_training_smoke import (
+    PUBLIC_TRAINING_FIXTURES as RUNNER_TRAINING_FIXTURES,
 )
 
 
 def _touch(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("fixture", encoding="utf-8")
+
+
+def test_matrix_protocol_matches_strict_cross_source_runner():
+    assert {fixture["filename"] for fixture in PUBLIC_EVENT_RICH_TRAINING_FIXTURES} == {
+        fixture["filename"] for fixture in RUNNER_TRAINING_FIXTURES
+    }
+    assert {fixture["filename"] for fixture in PUBLIC_EPOCH_ONLY_FIXTURES} == {
+        fixture["filename"] for fixture in RUNNER_EPOCH_ONLY_FIXTURES
+    }
 
 
 def test_build_dataset_validation_rows_reports_checked_in_and_public_layers(
@@ -48,6 +65,7 @@ def test_build_dataset_validation_rows_reports_checked_in_and_public_layers(
         / "bbci-competition-iii-O3VR.gdf"
     )
     _touch(tmp_path / "tests" / "fixtures" / "data" / "public" / "sccn-eeglab_data.set")
+    _touch(tmp_path / "tests" / "fixtures" / "data" / "public" / "scan41_short.cnt")
     _touch(
         tmp_path
         / "tests"
@@ -72,14 +90,19 @@ def test_build_dataset_validation_rows_reports_checked_in_and_public_layers(
     assert rows[2].training_smoke == "yes (3 fixtures)"
     assert "BBCI" in rows[2].source_families
     assert "PhysioNet" in rows[2].source_families
-    assert rows[3].layer == "public local-only import-only fixtures"
-    assert "PhysioNet" in rows[3].source_families
-    assert rows[4].layer == "public local-only BIDS EEG fixture"
-    assert rows[4].representative_data == "BIDS EEG"
-    assert rows[4].label_attach == "BIDS events.tsv"
+    assert rows[3].layer == "public local-only epoch-only fixtures"
+    assert rows[3].representative_data == "CNT"
+    assert rows[3].dataset_generation == "epoch-only"
+    assert rows[3].training_smoke == "no (epoch-only)"
+    assert rows[4].layer == "public local-only import-only fixtures"
+    assert "PhysioNet" in rows[4].source_families
+    assert rows[5].layer == "public local-only BIDS EEG fixture"
+    assert rows[5].representative_data == "BIDS EEG"
+    assert rows[5].label_attach == "BIDS events.tsv"
     assert rows[2].reproducibility_class == "local-only"
     assert rows[3].reproducibility_class == "local-only"
-    assert rows[4].reproducibility_class == "local-only downloaded"
+    assert rows[4].reproducibility_class == "local-only"
+    assert rows[5].reproducibility_class == "local-only downloaded"
 
 
 def test_render_markdown_includes_current_truth(tmp_path: Path):
@@ -93,6 +116,7 @@ def test_render_markdown_includes_current_truth(tmp_path: Path):
     assert "# Dataset Validation Matrix" in rendered
     assert "checked-in core GDF + MAT" in rendered
     assert "public local-only event-rich fixtures" in rendered
+    assert "public local-only epoch-only fixtures" in rendered
     assert "public local-only BIDS EEG fixture" in rendered
     assert "Required Hand-Test Dataset Gate" in rendered
     assert "event-rich public local-only fixtures" in rendered
@@ -109,6 +133,18 @@ def test_dataset_validation_rows_ignore_empty_public_fixture(tmp_path: Path):
     assert rows[2].layer == "public local-only event-rich fixtures"
     assert rows[2].representative_data == "not downloaded"
     assert rows[2].training_smoke == "pending"
+
+
+def test_cnt_fixture_is_reported_as_epoch_only_not_training(tmp_path: Path):
+    _touch(tmp_path / "tests" / "fixtures" / "data" / "public" / "scan41_short.cnt")
+
+    rows = build_dataset_validation_rows(tmp_path)
+
+    assert rows[2].representative_data == "not downloaded"
+    assert rows[2].training_smoke == "pending"
+    assert rows[3].representative_data == "CNT"
+    assert rows[3].dataset_generation == "epoch-only"
+    assert rows[3].training_smoke == "no (epoch-only)"
 
 
 def test_required_dataset_matrix_passes_only_with_source_diverse_fixtures(
@@ -133,6 +169,7 @@ def test_required_dataset_matrix_passes_only_with_source_diverse_fixtures(
         "physionet-eegmmidb-S008R04.edf",
         "bbci-competition-iii-O3VR.gdf",
         "sccn-eeglab_data.set",
+        "scan41_short.cnt",
     ):
         _touch(tmp_path / "tests" / "fixtures" / "data" / "public" / filename)
     _touch(
@@ -154,6 +191,7 @@ def test_required_dataset_matrix_passes_only_with_source_diverse_fixtures(
         "checked_in_gdf_mat",
         "compact_multiformat",
         "public_event_rich_sources",
+        "public_epoch_only_cnt",
         "public_bids_eeg",
     ]
     assert all(requirement.ok for requirement in requirements)
@@ -177,4 +215,5 @@ def test_required_dataset_matrix_rejects_single_source_only(tmp_path: Path):
     assert by_key["checked_in_gdf_mat"].ok is False
     assert by_key["compact_multiformat"].ok is False
     assert by_key["public_event_rich_sources"].ok is False
+    assert by_key["public_epoch_only_cnt"].ok is False
     assert by_key["public_bids_eeg"].ok is False

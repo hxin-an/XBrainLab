@@ -22,12 +22,16 @@ from XBrainLab.llm.tools.real.preprocess_real import (
 from XBrainLab.llm.tools.real.ui_control_real import RealSwitchPanelTool
 
 
-def _query_diagnostics(study, query: str, *, include_objects: bool = False):
+def _query_result(study, query: str, *, include_objects: bool = False):
     result = get_application_service(study).execute(
         QueryStateCommand(query=query, include_objects=include_objects),
     )
     assert result.ok, result.message
-    return result.local_payload
+    return result
+
+
+def _query_diagnostics(study, query: str):
+    return _query_result(study, query).diagnostics
 
 
 def _state(study):
@@ -35,9 +39,9 @@ def _state(study):
 
 
 def _first_preprocessed_data(study):
-    diagnostics = _query_diagnostics(study, "data_lists", include_objects=True)
-    assert diagnostics["preprocessed_count"] == 1
-    return diagnostics["preprocessed_data_list"][0]
+    result = _query_result(study, "data_lists", include_objects=True)
+    assert result.diagnostics["preprocessed_count"] == 1
+    return result.runtime["preprocessed_data_list"][0]
 
 
 # Locate test data
@@ -45,6 +49,7 @@ TEST_DATA_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "../../fixtures/data")
 )
 GDF_FILE = os.path.join(TEST_DATA_DIR, "A01T.gdf")
+LABEL_FILE = os.path.join(TEST_DATA_DIR, "label", "A01T.mat")
 
 
 class TestAllRealTools:
@@ -88,23 +93,37 @@ class TestAllRealTools:
         assert "Loaded 1 files" in res
         assert "A01T.gdf" in res
 
-    def test_attach_labels_tool(self, loaded_study, tmp_path):
-        """Test RealAttachLabelsTool using a dummy label file."""
-        # Create dummy label file
-        label_file = tmp_path / "labels.txt"
-        label_file.write_text("769 770 769 770 769 770\n")
+    def test_attach_labels_tool(self, loaded_study):
+        """Attach the real A01T class labels to its 769-772 trial markers."""
+        if not os.path.exists(LABEL_FILE):
+            pytest.skip("Test label data A01T.mat not found")
+        before = _query_result(loaded_study, "data_lists", include_objects=True)
+        source_data = before.runtime["loaded_data_list"][0]
+        source_events, source_event_id = source_data.get_event_list()
+        target_event_ids = {
+            source_event_id[code] for code in ("769", "770", "771", "772")
+        }
+        assert (
+            sum(event_id in target_event_ids for event_id in source_events[:, -1])
+            == 288
+        )
 
         tool = RealAttachLabelsTool()
-        mapping = {"A01T.gdf": str(label_file)}
+        mapping = {"A01T.gdf": LABEL_FILE}
 
         res = tool.execute(loaded_study, mapping=mapping)
         assert "Attached labels to 1 files" in res
-        data = _query_diagnostics(
+        result = _query_result(
             loaded_study,
             "data_lists",
             include_objects=True,
-        )["loaded_data_list"][0]
+        )
+        data = result.runtime["loaded_data_list"][0]
         assert data.is_labels_imported()
+        events, event_id = data.get_event_list()
+        assert len(events) == 288
+        assert set(events[:, -1]) == {1, 2, 3, 4}
+        assert event_id == {"1": 1, "2": 2, "3": 3, "4": 4}
 
     def test_clear_dataset_tool(self, loaded_study):
         """Test RealClearDatasetTool."""

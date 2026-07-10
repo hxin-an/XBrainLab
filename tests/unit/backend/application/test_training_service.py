@@ -383,7 +383,20 @@ def test_training_service_blocks_cuda_training_when_batch_exceeds_available_vram
         ),
     }
     monkeypatch.setattr(resource_guard, "available_ram_bytes", lambda: 10_000_000)
-    monkeypatch.setattr(resource_guard, "available_vram_bytes", lambda _idx=None: 5_000)
+    monkeypatch.setattr(
+        resource_guard.ResourceChecker,
+        "get_gpu_vram_status",
+        staticmethod(
+            lambda _idx=None: {
+                "gpu_name": "synthetic CUDA device",
+                "available_bytes": 5_000,
+                "total_bytes": 10_000,
+                "used_bytes": 5_000,
+                "allocated_bytes": 0,
+                "reserved_bytes": 0,
+            },
+        ),
+    )
 
     with pytest.raises(PreconditionError, match="GPU memory"):
         service.handle_train(TrainCommand())
