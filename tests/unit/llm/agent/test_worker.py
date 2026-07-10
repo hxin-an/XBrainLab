@@ -462,6 +462,38 @@ class TestReinitializeAgent:
         worker.error.emit.assert_called_once()
         assert "generation" in worker.error.emit.call_args.args[0].lower()
 
+    def test_double_switch_failure_marks_runtime_uninitialized(self, worker):
+        from XBrainLab.llm.core.engine import LLMEngine
+
+        config = LLMConfig()
+        old_model_id = config.model_name
+        engine = LLMEngine(config)
+        old_backend = MagicMock()
+        old_backend.config = config
+        old_backend.load.side_effect = RuntimeError("rollback load failed")
+        engine.backends["local"] = old_backend
+        engine._backend_model_ids["local"] = old_model_id
+        engine.active_backend = old_backend
+        worker.engine = engine
+        replacement = MagicMock()
+        replacement.load.side_effect = RuntimeError("replacement load failed")
+
+        with patch(
+            "XBrainLab.llm.core.backends.local.LocalBackend",
+            return_value=replacement,
+        ):
+            worker.reinitialize_agent(LLMConfig.fallback_local_model_id())
+
+        assert worker.engine is None
+        worker.runtime_snapshot_changed.emit.assert_called_with(
+            {
+                "initialized": False,
+                "backend_mode": "",
+                "model_id": "",
+            },
+        )
+        worker.error.emit.assert_called_once()
+
     def test_legacy_remote_mode_is_rejected(self, worker):
         engine = MagicMock()
         engine.config = LLMConfig()

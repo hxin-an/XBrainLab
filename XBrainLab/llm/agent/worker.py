@@ -518,6 +518,11 @@ class AgentWorker(QObject):
                 model_id=old_model_id,
                 ui_active_mode=old_active_mode,
             )
+            if engine.active_backend is None:
+                with contextlib.suppress(Exception):
+                    engine.close()
+                self.engine = None
+            self._emit_runtime_snapshot()
             logger.error("Failed to switch model: %s", e, exc_info=True)
             self.error.emit(f"Switch Failed: {e}")
             return
