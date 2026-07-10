@@ -92,6 +92,8 @@ class AgentWorker(QObject):
         self.engine: LLMEngine | None = None
         self.generation_thread: GenerationThread | None = None
         self.timeout_timer: QTimer | None = None
+        self._is_timed_out = False
+        self._cancel_pending = False
 
     @staticmethod
     def _load_runtime_config(fallback: LLMConfig | None = None):
@@ -179,25 +181,58 @@ class AgentWorker(QObject):
                 )
                 self.log.emit(message)
 
+        candidate_engine: LLMEngine | None = None
         try:
             logger.info("Initializing LLM Engine...")
             self.log.emit("Loading AI Model...")
 
-            self.engine = LLMEngine(config)
-            self.engine.load_model()
+            candidate_engine = LLMEngine(config)
+            candidate_engine.load_model()
+            self.engine = candidate_engine
             self._emit_runtime_snapshot()
 
             self.log.emit(f"AI Model Loaded: {selection.model_id}")
             logger.info("Local Agent initialized successfully")
         except Exception as e:
+            close = getattr(candidate_engine, "close", None)
+            if callable(close):
+                with contextlib.suppress(Exception):
+                    close()
+            self.engine = None
+            self._emit_runtime_snapshot()
             logger.error("Failed to initialize Agent", exc_info=True)
             self.error.emit(f"Model Load Error: {e!s}")
 
     def _track_generation_thread(self, thread: GenerationThread) -> None:
         """Keep running generation threads alive until Qt reports finished."""
         ACTIVE_GENERATION_THREADS.add(thread)
-        thread.finished.connect(lambda: ACTIVE_GENERATION_THREADS.discard(thread))
+        thread.finished.connect(lambda: self._release_generation_thread(thread))
         thread.finished.connect(thread.deleteLater)
+
+    def _release_generation_thread(self, thread: GenerationThread) -> None:
+        """Release ownership only after Qt confirms the thread has finished."""
+        ACTIVE_GENERATION_THREADS.discard(thread)
+        if self.generation_thread is not thread:
+            return
+        self.generation_thread = None
+        if self._cancel_pending:
+            self._cancel_pending = False
+            self.generation_stop_finished.emit(True)
+
+    def _generation_is_active(self) -> bool:
+        """Return whether the worker still owns a running generation thread."""
+        thread = self.generation_thread
+        if thread is None:
+            return False
+        try:
+            running = thread.isRunning()
+        except RuntimeError:
+            self._release_generation_thread(thread)
+            return False
+        if not running:
+            self._release_generation_thread(thread)
+            return False
+        return True
 
     @staticmethod
     def _disconnect_generation_thread(thread: GenerationThread) -> None:
@@ -220,10 +255,12 @@ class AgentWorker(QObject):
             return True
 
         self._disconnect_generation_thread(thread)
-        running = False
-        wait_completed = False
-        with contextlib.suppress(RuntimeError):
+        try:
             running = thread.isRunning()
+        except RuntimeError:
+            self._release_generation_thread(thread)
+            return True
+        wait_completed = False
         if running:
             cancel = getattr(self.engine, "cancel_generation", None)
             if callable(cancel):
@@ -232,22 +269,32 @@ class AgentWorker(QObject):
             thread.requestInterruption()
             if wait_ms > 0:
                 wait_completed = bool(thread.wait(max(0, int(wait_ms))))
-        stopped = wait_completed if running and wait_ms > 0 else True
-        if not wait_completed:
-            with contextlib.suppress(RuntimeError):
+        stopped = not running or wait_completed
+        if running and not wait_completed:
+            try:
                 stopped = not thread.isRunning()
+            except RuntimeError:
+                stopped = True
         if stopped:
-            ACTIVE_GENERATION_THREADS.discard(thread)
-        if stopped or wait_ms <= 0:
-            self.generation_thread = None
+            self._release_generation_thread(thread)
         return stopped
 
     def cancel_generation(self) -> None:
         """Cancel generation on the worker's owning Qt thread."""
+        if self.timeout_timer is not None:
+            self.timeout_timer.stop()
+        if self.generation_thread is None:
+            self.generation_stop_finished.emit(True)
+            return
+        self._cancel_pending = True
         stopped = self._cleanup_generation_thread(
             wait_ms=GENERATION_THREAD_SHUTDOWN_WAIT_MS,
         )
-        self.generation_stop_finished.emit(stopped)
+        if stopped and self._cancel_pending:
+            self._cancel_pending = False
+            self.generation_stop_finished.emit(True)
+        elif not stopped:
+            self.generation_stop_finished.emit(False)
 
     def generate_from_messages(self, messages):
         """Runs LLM generation using a full message history.
@@ -268,15 +315,21 @@ class AgentWorker(QObject):
                 self.finished.emit([])
                 return
 
+        if not self._cleanup_generation_thread():
+            self.error.emit(
+                "Previous generation is still stopping. Please wait and retry.",
+            )
+            self.finished.emit([])
+            return
+
         last_msg = messages[-1]
         if last_msg["role"] == "user":
-            log_text = (
-                last_msg["content"][:50] + "..."
-                if len(last_msg["content"]) > 50
-                else last_msg["content"]
-            )
+            message_length = len(str(last_msg.get("content", "")))
             self.log.emit("Processing...")
-            logger.info("Agent generating for input: %s", log_text)
+            logger.info(
+                "Agent generation requested (message_chars=%s)",
+                message_length,
+            )
         else:
             self.log.emit("Processing...")
 
@@ -339,9 +392,6 @@ class AgentWorker(QObject):
             self.finished.emit([])
             return
 
-        # Start Generation Thread — clean up any previous thread first
-        self._cleanup_generation_thread()
-
         self.generation_thread = GenerationThread(self.engine, messages)
         self.generation_thread.chunk_received.connect(self.chunk_received)
         self.generation_thread.finished_generation.connect(self._on_generation_finished)
@@ -371,6 +421,8 @@ class AgentWorker(QObject):
         """
         if self.generation_thread and self.generation_thread.isRunning():
             self._is_timed_out = True
+            if self.timeout_timer is not None:
+                self.timeout_timer.stop()
             logger.error("Agent generation timed out.")
 
             # We can't safely kill the thread in Python, but we can ignore its
@@ -420,6 +472,12 @@ class AgentWorker(QObject):
             model_id: Identifier or display name of the target local model.
 
         """
+        if self._generation_is_active():
+            self.error.emit(
+                "Switch Failed: wait for the active generation to finish or stop it.",
+            )
+            return
+
         logger.info("Worker switching model to: %s", model_id)
         self.log.emit(f"Switching to {model_id}...")
 
@@ -430,6 +488,7 @@ class AgentWorker(QObject):
 
         old_inference_mode = engine.config.inference_mode
         old_active_mode = engine.config.active_mode
+        old_model_id = engine.config.model_name
 
         try:
             allowed_models = LLMConfig.allowed_local_model_ids()
@@ -453,18 +512,32 @@ class AgentWorker(QObject):
             )
             engine.switch_backend("local")
 
-            # Persist change so Settings Dialog sees it
-            engine.config.save_to_file()
-
-            self.log.emit(f"Switched to local model: {new_model_id}")
-            self._emit_runtime_snapshot()
-            logger.info("Model switch successful to local model %s", new_model_id)
-
         except Exception as e:
-            engine.config.inference_mode = old_inference_mode
-            engine.config.active_mode = old_active_mode
+            engine.config.apply_runtime_selection(
+                old_inference_mode,
+                model_id=old_model_id,
+                ui_active_mode=old_active_mode,
+            )
+            if engine.active_backend is None:
+                with contextlib.suppress(Exception):
+                    engine.close()
+                self.engine = None
+            self._emit_runtime_snapshot()
             logger.error("Failed to switch model: %s", e, exc_info=True)
             self.error.emit(f"Switch Failed: {e}")
+            return
+
+        try:
+            engine.config.save_to_file()
+        except Exception as e:
+            logger.warning("Model switch settings could not be saved: %s", e)
+            self.error.emit(
+                "Model switched for this session, but the setting could not be saved.",
+            )
+
+        self.log.emit(f"Switched to local model: {new_model_id}")
+        self._emit_runtime_snapshot()
+        logger.info("Model switch successful to local model %s", new_model_id)
 
     def shutdown(self, wait_ms: int = GENERATION_THREAD_SHUTDOWN_WAIT_MS) -> bool:
         """Stop generation work and release the loaded local model backend."""

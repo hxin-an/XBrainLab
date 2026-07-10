@@ -748,7 +748,6 @@ class AgentManager(QObject):
         """Stop the currently running LLM generation."""
         if self.agent_controller:
             self._agent_dispatcher.stop()
-        self.chat_controller.set_processing(False)
 
     def set_model(self, model_name):
         """Switch the active LLM model and check for VRAM conflicts.
@@ -917,7 +916,7 @@ class AgentManager(QObject):
             product_status = self._workflow_product_status(msg)
             if product_status:
                 self.chat_panel.set_workflow_status(product_status)
-        if "Error" in msg or "Stopping" in msg:
+        if "Error" in msg:
             self.chat_controller.set_processing(False)
             if self.chat_panel and hasattr(self.chat_panel, "show_notice"):
                 self.chat_panel.show_notice(

@@ -2701,7 +2701,7 @@ class TestAgentManagerDeep:
     def test_stop_generation(self, mgr):
         mgr.stop_generation()
         mgr.agent_controller.stop_generation.assert_called_once()
-        mgr.chat_controller.set_processing.assert_called_with(False)
+        mgr.chat_controller.set_processing.assert_not_called()
 
     def test_set_model(self, mgr):
         mgr.vram_checker = MagicMock()
@@ -2733,6 +2733,10 @@ class TestAgentManagerDeep:
     def test_on_agent_status_update_error(self, mgr):
         mgr.on_agent_status_update("Error occurred")
         mgr.chat_controller.set_processing.assert_called_with(False)
+
+    def test_on_agent_status_update_stopping_keeps_processing(self, mgr):
+        mgr.on_agent_status_update("Stopping...")
+        mgr.chat_controller.set_processing.assert_not_called()
 
     def test_handle_agent_error(self, mgr):
         mgr.handle_agent_error("test error")

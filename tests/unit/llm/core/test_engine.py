@@ -60,6 +60,53 @@ def test_engine_close_unloads_cached_backends(mock_config):
     assert engine.active_backend is None
 
 
+def test_engine_unloads_partially_initialized_backend_when_load_fails(mock_config):
+    backend = MagicMock()
+    backend.load.side_effect = RuntimeError("partial load failed")
+    with patch(
+        "XBrainLab.llm.core.backends.local.LocalBackend",
+        return_value=backend,
+    ):
+        engine = LLMEngine(mock_config)
+
+        with pytest.raises(RuntimeError, match="partial load failed"):
+            engine.load_model()
+
+    backend.unload.assert_called_once()
+    assert engine.backends == {}
+    assert engine.active_backend is None
+
+
+@patch("transformers.AutoTokenizer")
+@patch("transformers.AutoModelForCausalLM")
+def test_engine_cleans_real_local_backend_after_partial_model_load(
+    model_class,
+    tokenizer_class,
+    mock_config,
+):
+    mock_config.device = "cpu"
+    mock_config.load_in_4bit = False
+    tokenizer_class.from_pretrained.return_value = MagicMock()
+    model_class.from_pretrained.side_effect = RuntimeError("model load failed")
+    original_unload = LocalBackend.unload
+    with patch.object(
+        LocalBackend,
+        "unload",
+        autospec=True,
+        side_effect=original_unload,
+    ) as unload:
+        engine = LLMEngine(mock_config)
+
+        with pytest.raises(RuntimeError, match="model load failed"):
+            engine.load_model()
+
+    unload.assert_called_once()
+    backend = unload.call_args.args[0]
+    assert backend.tokenizer is None
+    assert backend.model is None
+    assert backend.is_loaded is False
+
+
 # --- Test LocalBackend ---
 
 

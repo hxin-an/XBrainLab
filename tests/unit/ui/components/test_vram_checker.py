@@ -113,3 +113,17 @@ class TestVRAMConflictChecker:
         mock_main_window.visualization_panel.isHidden.return_value = True
         checker = make_checker()
         assert checker._is_3d_active(switching_to_3d=False) is False
+
+    def test_is_3d_active_ignores_lazy_placeholder(
+        self,
+        make_checker,
+        mock_main_window,
+    ):
+        class LazyPlaceholder:
+            def isHidden(self) -> bool:
+                return False
+
+        mock_main_window.visualization_panel = LazyPlaceholder()
+        checker = make_checker()
+
+        assert checker._is_3d_active(switching_to_3d=False) is False

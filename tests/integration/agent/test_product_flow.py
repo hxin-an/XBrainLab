@@ -15,22 +15,15 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtCore import QObject, pyqtSignal
 
 from XBrainLab.backend.controller.chat_controller import ChatController
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.agent.controller import LLMController
+from XBrainLab.llm.agent.worker import AgentWorker
 
 
-class _NoopWorker(QObject):
-    chunk_received = pyqtSignal(str)
-    finished = pyqtSignal()
-    error = pyqtSignal(str)
-    log = pyqtSignal(str)
-
-    def __init__(self):
-        super().__init__()
-        self.generation_thread = None
+class _NoopWorker(AgentWorker):
+    """Real worker contract with inference suppressed for product-language tests."""
 
     def initialize_agent(self) -> None:
         return None
@@ -40,6 +33,14 @@ class _NoopWorker(QObject):
 
     def reinitialize_agent(self, _mode: str) -> None:
         return None
+
+    def cancel_generation(self) -> None:
+        self.generation_stop_finished.emit(True)
+
+    def shutdown(self, wait_ms: int = 0) -> bool:
+        del wait_ms
+        self.shutdown_finished.emit(True)
+        return True
 
 
 class _NoopRag:

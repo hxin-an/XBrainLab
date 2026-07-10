@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -57,3 +57,55 @@ class TestLLMEngineHotSwap:
         result = list(engine.generate_stream(["msg"]))
         assert result == ["chunk1", "chunk2"]
         mock_backend_instance.generate_stream.assert_called_with(["msg"])
+
+    @patch("XBrainLab.llm.core.backends.local.LocalBackend")
+    def test_failed_hot_swap_restores_previous_backend(self, mock_local, engine):
+        old_model_id = engine.config.model_name
+        old_backend = MagicMock()
+        old_backend.config = engine.config
+        engine.backends["local"] = old_backend
+        engine._backend_model_ids["local"] = old_model_id
+        engine.active_backend = old_backend
+        new_model_id = LLMConfig.fallback_local_model_id()
+        assert new_model_id != old_model_id
+        engine.config.apply_runtime_selection("local", model_id=new_model_id)
+        replacement = mock_local.return_value
+        replacement.load.side_effect = RuntimeError("replacement load failed")
+
+        with pytest.raises(RuntimeError, match="replacement load failed"):
+            engine.switch_backend("local")
+
+        replacement.unload.assert_called_once()
+        old_backend.unload.assert_called_once()
+        old_backend.load.assert_called_once()
+        assert engine.config.model_name == old_model_id
+        assert engine.backends["local"] is old_backend
+        assert engine.active_backend is old_backend
+        assert engine._backend_model_ids["local"] == old_model_id
+
+    @patch("XBrainLab.llm.core.backends.local.LocalBackend")
+    def test_double_hot_swap_failure_leaves_engine_fail_closed(
+        self,
+        mock_local,
+        engine,
+    ):
+        old_model_id = engine.config.model_name
+        old_backend = MagicMock()
+        old_backend.config = engine.config
+        old_backend.load.side_effect = RuntimeError("rollback load failed")
+        engine.backends["local"] = old_backend
+        engine._backend_model_ids["local"] = old_model_id
+        engine.active_backend = old_backend
+        engine.config.apply_runtime_selection(
+            "local",
+            model_id=LLMConfig.fallback_local_model_id(),
+        )
+        replacement = mock_local.return_value
+        replacement.load.side_effect = RuntimeError("replacement load failed")
+
+        with pytest.raises(RuntimeError, match="previous model could not be restored"):
+            engine.switch_backend("local")
+
+        assert engine.config.model_name == old_model_id
+        assert engine.backends == {}
+        assert engine.active_backend is None

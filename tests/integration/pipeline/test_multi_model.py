@@ -43,7 +43,10 @@ def test_model_switching(test_app, qtbot):
             agent_mgr.set_model("Gemini 2.0 Flash")
 
         # Wait for worker to process
-        qtbot.wait(500)
+        qtbot.waitUntil(
+            lambda: mock_engine_instance.switch_backend.called,
+            timeout=1000,
+        )
 
         # 3. Verify Switch Attempt
         # AgentWorker should have re-instantiated or called a method on Engine
@@ -52,3 +55,4 @@ def test_model_switching(test_app, qtbot):
 
         # Verify Mock interaction
         assert MockEngine.called
+        mock_engine_instance.switch_backend.assert_called_once_with("local")

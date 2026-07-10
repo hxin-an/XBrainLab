@@ -55,16 +55,49 @@ class TestAgentWorkerCleanup:
         with patch("XBrainLab.llm.agent.worker.QApplication"):
             yield
 
-    def test_cleanup_disconnects_signals(self):
+    def test_cleanup_retains_ownership_while_thread_is_running(self):
         from XBrainLab.llm.agent.worker import AgentWorker
 
         worker = AgentWorker()
         mock_thread = MagicMock()
         mock_thread.isRunning.return_value = True
         worker.generation_thread = mock_thread
-        worker._cleanup_generation_thread()
+        stopped = worker._cleanup_generation_thread()
         mock_thread.requestInterruption.assert_called_once()
+        assert stopped is False
+        assert worker.generation_thread is mock_thread
+
+    def test_finished_thread_releases_worker_ownership(self):
+        from XBrainLab.llm.agent.worker import ACTIVE_GENERATION_THREADS, AgentWorker
+
+        worker = AgentWorker()
+        mock_thread = MagicMock()
+        worker.generation_thread = mock_thread
+        ACTIVE_GENERATION_THREADS.add(mock_thread)
+
+        worker._release_generation_thread(mock_thread)
+
         assert worker.generation_thread is None
+        assert mock_thread not in ACTIVE_GENERATION_THREADS
+
+    def test_cancel_waits_for_finished_acknowledgement(self):
+        from XBrainLab.llm.agent.worker import AgentWorker
+
+        worker = AgentWorker()
+        worker.timeout_timer = MagicMock()
+        worker.generation_stop_finished = MagicMock()
+        mock_thread = MagicMock()
+        mock_thread.isRunning.return_value = True
+        mock_thread.wait.return_value = False
+        worker.generation_thread = mock_thread
+
+        worker.cancel_generation()
+
+        worker.timeout_timer.stop.assert_called_once()
+        worker.generation_stop_finished.emit.assert_called_once_with(False)
+        assert worker.generation_thread is mock_thread
+        worker._release_generation_thread(mock_thread)
+        assert worker.generation_stop_finished.emit.call_args_list[-1].args == (True,)
 
     def test_shutdown_waits_for_generation_and_closes_engine(self):
         from XBrainLab.llm.agent.worker import AgentWorker
@@ -112,7 +145,11 @@ class TestAgentWorkerGenerate:
 
     @patch("XBrainLab.llm.agent.worker.LLMConfig")
     @patch("XBrainLab.llm.agent.worker.GenerationThread")
-    def test_user_message_truncation(self, mock_gt_cls, mock_config):
+    def test_user_message_logs_size_without_prompt_content(
+        self,
+        mock_gt_cls,
+        mock_config,
+    ):
         from XBrainLab.llm.agent.worker import AgentWorker
 
         worker = AgentWorker()
@@ -130,10 +167,15 @@ class TestAgentWorkerGenerate:
         mock_thread = MagicMock()
         mock_gt_cls.return_value = mock_thread
 
-        long_msg = "x" * 100
-        worker.generate_from_messages([{"role": "user", "content": long_msg}])
-        # Verify log truncation happened (log_text should be 50+3 chars)
+        long_msg = "SECRET_EEG_SUBJECT_42_" + "x" * 100
+        with patch("XBrainLab.llm.agent.worker.logger") as mock_logger:
+            worker.generate_from_messages([{"role": "user", "content": long_msg}])
+
         worker.log.emit.assert_called()
+        mock_logger.info.assert_called_once_with(
+            "Agent generation requested (message_chars=%s)",
+            len(long_msg),
+        )
 
     @patch("XBrainLab.llm.agent.worker.LLMConfig")
     @patch("XBrainLab.llm.agent.worker.GenerationThread")

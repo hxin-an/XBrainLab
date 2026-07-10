@@ -761,19 +761,31 @@ class TestClose:
 class TestStopGeneration:
     def test_stops_when_processing(self, ctrl):
         ctrl.is_processing = True
-        ctrl.worker.generation_thread = MagicMock()
-        ctrl.worker.generation_thread.isRunning.return_value = True
         ctrl.stop_generation()
+        assert ctrl.is_processing
+        ctrl.worker.cancel_generation.assert_called_once()
+        ctrl.processing_finished.emit.assert_not_called()
+
+        ctrl._on_generation_stop_finished(True)
+
         assert not ctrl.is_processing
-        ctrl.worker._cleanup_generation_thread.assert_called_once()
+        ctrl.processing_finished.emit.assert_called_once()
 
     def test_stop_generation_cancels_backend_generation(self, ctrl):
         ctrl.is_processing = True
         ctrl.stop_generation()
 
-        ctrl.worker._cleanup_generation_thread.assert_called_once()
-        wait_ms = ctrl.worker._cleanup_generation_thread.call_args.kwargs["wait_ms"]
-        assert wait_ms > 0
+        ctrl.worker.cancel_generation.assert_called_once()
+
+    def test_stop_generation_stays_stopping_after_failed_ack(self, ctrl):
+        ctrl.is_processing = True
+        ctrl.stop_generation()
+
+        ctrl._on_generation_stop_finished(False)
+
+        assert ctrl.is_processing is True
+        ctrl.processing_finished.emit.assert_not_called()
+        ctrl.status_update.emit.assert_called_with("Stopping...")
 
 
 # --- set_model ---
