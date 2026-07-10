@@ -55,15 +55,27 @@ class TestAgentWorkerCleanup:
         with patch("XBrainLab.llm.agent.worker.QApplication"):
             yield
 
-    def test_cleanup_disconnects_signals(self):
+    def test_cleanup_retains_ownership_while_thread_is_running(self):
         from XBrainLab.llm.agent.worker import AgentWorker
 
         worker = AgentWorker()
         mock_thread = MagicMock()
         mock_thread.isRunning.return_value = True
         worker.generation_thread = mock_thread
-        worker._cleanup_generation_thread()
+        stopped = worker._cleanup_generation_thread()
         mock_thread.requestInterruption.assert_called_once()
+        assert stopped is False
+        assert worker.generation_thread is mock_thread
+
+    def test_finished_thread_releases_worker_ownership(self):
+        from XBrainLab.llm.agent.worker import AgentWorker
+
+        worker = AgentWorker()
+        mock_thread = MagicMock()
+        worker.generation_thread = mock_thread
+
+        worker._release_generation_thread(mock_thread)
+
         assert worker.generation_thread is None
 
     def test_shutdown_waits_for_generation_and_closes_engine(self):

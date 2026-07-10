@@ -164,6 +164,35 @@ class TestInitializeAgent:
             worker.initialize_agent()
             worker.error.emit.assert_called_once()
 
+    def test_load_failure_releases_engine_and_retry_can_succeed(self, worker):
+        cfg = LLMConfig()
+        cfg.model_name = LLMConfig.default_local_model_id()
+        cfg.inference_mode = "local"
+        cfg.available_local_model_id = MagicMock(
+            return_value=(cfg.model_name, "Local runtime ready."),
+        )
+        failed_engine = MagicMock()
+        failed_engine.load_model.side_effect = RuntimeError("load failed")
+        working_engine = MagicMock()
+        with (
+            patch(
+                "XBrainLab.llm.agent.worker.LLMConfig.load_from_file",
+                return_value=cfg,
+            ),
+            patch(
+                "XBrainLab.llm.agent.worker.LLMEngine",
+                side_effect=[failed_engine, working_engine],
+            ),
+        ):
+            worker.initialize_agent()
+            assert worker.engine is None
+            failed_engine.close.assert_called_once()
+
+            worker.initialize_agent()
+
+        assert worker.engine is working_engine
+        working_engine.load_model.assert_called_once()
+
 
 class TestGenerateFromMessages:
     def test_initializes_if_needed(self, worker):
@@ -195,6 +224,37 @@ class TestGenerateFromMessages:
             worker.generate_from_messages(msgs)
             gt.start.assert_called_once()
             timer.start.assert_called_once_with(30000)
+
+    def test_does_not_overlap_generation_that_is_still_stopping(self, worker):
+        cfg = LLMConfig()
+        cfg.inference_mode = "local"
+        cfg.active_mode = "local"
+        cfg.model_name = LLMConfig.default_local_model_id()
+        cfg.timeout = 30
+        cfg.available_local_model_id = MagicMock(
+            return_value=(cfg.model_name, "Local runtime ready."),
+        )
+        engine = MagicMock()
+        engine.config = cfg
+        worker.engine = engine
+        running_thread = MagicMock()
+        running_thread.isRunning.return_value = True
+        worker.generation_thread = running_thread
+
+        with (
+            patch("XBrainLab.llm.agent.worker.GenerationThread") as thread_class,
+            patch(
+                "XBrainLab.llm.agent.worker.LLMConfig.load_from_file",
+                return_value=cfg,
+            ),
+        ):
+            worker.generate_from_messages([{"role": "user", "content": "retry"}])
+
+        thread_class.assert_not_called()
+        assert worker.generation_thread is running_thread
+        worker.error.emit.assert_called_once()
+        assert "still stopping" in worker.error.emit.call_args.args[0].lower()
+        worker.finished.emit.assert_called_once_with([])
 
     def test_syncs_legacy_remote_config_without_remote_switch(self, worker):
         engine = MagicMock()

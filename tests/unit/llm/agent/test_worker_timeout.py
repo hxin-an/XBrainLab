@@ -1,8 +1,10 @@
 """Tests for AgentWorker timeout mechanism."""
 
+from threading import Event, Lock
 from unittest.mock import MagicMock, patch
 
 from XBrainLab.llm.agent.worker import AgentWorker
+from XBrainLab.llm.core.config import LLMConfig
 
 
 class TestAgentWorkerTimeout:
@@ -75,3 +77,66 @@ class TestAgentWorkerTimeout:
         # Verify timer stopped
         worker.timeout_timer.stop.assert_called_once()
         worker.finished.emit.assert_called_with([])
+
+    def test_timeout_retry_never_overlaps_live_generation(self, qtbot):
+        started = Event()
+        release = Event()
+
+        class BlockingEngine:
+            def __init__(self) -> None:
+                self.config = LLMConfig()
+                self.config.timeout = 60
+                self.config.available_local_model_id = MagicMock(
+                    return_value=(
+                        self.config.model_name,
+                        "Local runtime ready.",
+                    ),
+                )
+                self.calls = 0
+                self.active = 0
+                self.max_active = 0
+                self.lock = Lock()
+
+            def generate_stream(self, _messages):
+                with self.lock:
+                    self.calls += 1
+                    self.active += 1
+                    self.max_active = max(self.max_active, self.active)
+                started.set()
+                release.wait(timeout=2)
+                try:
+                    yield "done"
+                finally:
+                    with self.lock:
+                        self.active -= 1
+
+            def cancel_generation(self, *, wait_timeout: float) -> bool:
+                del wait_timeout
+                return False
+
+        worker = AgentWorker()
+        engine = BlockingEngine()
+        worker.engine = engine
+        errors: list[str] = []
+        worker.error.connect(errors.append)
+        messages = [{"role": "user", "content": "run"}]
+        with patch(
+            "XBrainLab.llm.agent.worker.LLMConfig.load_from_file",
+            return_value=engine.config,
+        ):
+            worker.generate_from_messages(messages)
+            qtbot.waitUntil(started.is_set, timeout=1000)
+            active_thread = worker.generation_thread
+
+            worker._on_timeout()
+            worker.generate_from_messages(messages)
+
+            assert worker.generation_thread is active_thread
+            assert engine.calls == 1
+            assert engine.max_active == 1
+            assert any("still stopping" in message.lower() for message in errors)
+            release.set()
+            qtbot.waitUntil(lambda: worker.generation_thread is None, timeout=2000)
+
+        if worker.timeout_timer is not None:
+            worker.timeout_timer.stop()

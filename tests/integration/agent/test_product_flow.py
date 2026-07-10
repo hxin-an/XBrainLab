@@ -27,6 +27,9 @@ class _NoopWorker(QObject):
     finished = pyqtSignal()
     error = pyqtSignal(str)
     log = pyqtSignal(str)
+    generation_stop_finished = pyqtSignal(bool)
+    shutdown_finished = pyqtSignal(bool)
+    runtime_snapshot_changed = pyqtSignal(dict)
 
     def __init__(self):
         super().__init__()
@@ -40,6 +43,14 @@ class _NoopWorker(QObject):
 
     def reinitialize_agent(self, _mode: str) -> None:
         return None
+
+    def cancel_generation(self) -> None:
+        self.generation_stop_finished.emit(True)
+
+    def shutdown(self, wait_ms: int = 0) -> bool:
+        del wait_ms
+        self.shutdown_finished.emit(True)
+        return True
 
 
 class _NoopRag:
