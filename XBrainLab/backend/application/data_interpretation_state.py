@@ -195,7 +195,10 @@ class DataInterpretationSessionState:
         )
         class_map = self._class_map(candidate_review, preview_review, applied_review)
         run_event_mappings = self._run_event_mappings(candidate_review, applied_review)
-        epoch_handoff = self._epoch_handoff(candidate_review, applied_review)
+        # Epoching operates on the data already loaded into the active pipeline.
+        # A newly opened scan/recipe review is pending state and must not replace
+        # the applied interpretation until the user explicitly applies it.
+        epoch_handoff = self._epoch_handoff(candidate_review, applied)
         return InterpretationStateSnapshot(
             has_scan_result=scan is not None,
             has_candidate=candidate is not None,

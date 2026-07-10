@@ -29,9 +29,11 @@ from scripts.dev.capture_human_like_product_walkthrough import (
     build_pass_fail_summary,
     build_resource_smoke_summary,
     build_ui_quality_review,
+    build_workflow_contract_failures,
     chat_panel_geometry,
     dataset_page_geometry,
     forbidden_visible_text,
+    is_nearly_black,
     merge_ui_quality_into_pass_fail_summary,
     render_eval_dashboard_html,
     render_markdown,
@@ -315,6 +317,42 @@ def test_build_pass_fail_summary_requires_all_phases() -> None:
 
     assert summary["passed"] is False
     assert "missing phase" in "; ".join(summary["failed_checks"])
+
+
+def test_workflow_contract_rejects_failed_happy_path_command() -> None:
+    phases = [
+        {
+            "phase": "epoch_creation",
+            "workflow_state": {
+                "epoch": {"exists": False},
+                "dataset": {"available": False},
+            },
+            "notes": {
+                "epoch": {
+                    "command": "create_epoch",
+                    "ok": False,
+                    "error_type": "precondition",
+                },
+                "dataset": {
+                    "command": "generate_dataset",
+                    "ok": False,
+                    "error_type": "precondition",
+                },
+            },
+        },
+    ]
+
+    failures = build_workflow_contract_failures(phases)
+
+    assert "epoch_creation command create_epoch did not succeed" in failures
+    assert "epoch_creation did not produce epochs" in failures
+
+
+def test_nearly_black_guard_rejects_uniform_dark_ui_frame(tmp_path) -> None:
+    blank = tmp_path / "blank-dark-frame.png"
+    Image.new("RGB", (640, 480), "#2d2d2d").save(blank)
+
+    assert is_nearly_black(blank) is True
 
 
 def test_build_pass_fail_summary_flags_unsettled_threads() -> None:
