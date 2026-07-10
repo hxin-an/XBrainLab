@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QMessageBox,
     QSizePolicy,
     QSpinBox,
@@ -49,7 +50,7 @@ class SaliencySettingDialog(BaseDialog):
         self.param_editors: dict[str, dict[str, QSpinBox | QDoubleSpinBox]] = {}
 
         super().__init__(parent, title="Saliency Setting")
-        self.setMinimumWidth(480)
+        self.setMinimumWidth(440)
         self.setStyleSheet(dark_dialog_stylesheet() + self._dialog_style())
 
         self.check_init_data()
@@ -64,6 +65,7 @@ class SaliencySettingDialog(BaseDialog):
     def init_ui(self):
         """Initialize method checkboxes and dynamic parameter tabs."""
         layout = QVBoxLayout(self)
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
         layout.setContentsMargins(18, 16, 18, 14)
         layout.setSpacing(12)
 
@@ -76,14 +78,15 @@ class SaliencySettingDialog(BaseDialog):
 
         methods_group = QWidget()
         methods_group.setObjectName("SaliencyComputeMethodsRow")
-        methods_group.setMaximumWidth(460)
+        methods_group.setMaximumWidth(420)
+        methods_group.setMinimumWidth(410)
         methods_group.setSizePolicy(
             QSizePolicy.Policy.Fixed,
             QSizePolicy.Policy.Preferred,
         )
         methods_layout = QHBoxLayout(methods_group)
-        methods_layout.setContentsMargins(0, 0, 0, 0)
-        methods_layout.setSpacing(16)
+        methods_layout.setContentsMargins(4, 2, 4, 2)
+        methods_layout.setSpacing(22)
 
         selected_methods = selected_saliency_methods_from_params(
             self.saliency_params or {"methods": list(ADVANCED_SALIENCY_METHODS)}
@@ -104,26 +107,38 @@ class SaliencySettingDialog(BaseDialog):
         methods_layout.addStretch(1)
         layout.addWidget(methods_group)
 
-        params_title = QLabel("Method parameters")
-        params_title.setObjectName("SaliencySectionTitle")
-        layout.addWidget(params_title)
+        self.params_title = QLabel("Method parameters")
+        self.params_title.setObjectName("SaliencySectionTitle")
+        layout.addWidget(self.params_title)
 
         params_group = QWidget()
         params_group.setObjectName("SaliencyMethodParametersPanel")
-        params_group.setMaximumWidth(430)
+        self.params_group = params_group
+        params_group.setMaximumWidth(390)
+        params_group.setMinimumWidth(380)
         params_group.setSizePolicy(
             QSizePolicy.Policy.Fixed,
             QSizePolicy.Policy.Preferred,
         )
         params_layout = QVBoxLayout(params_group)
-        params_layout.setContentsMargins(0, 0, 0, 0)
+        params_layout.setContentsMargins(4, 0, 0, 0)
         params_layout.setSpacing(8)
+
+        self.single_method_host = QWidget()
+        self.single_method_host.setObjectName("SaliencySingleMethodHost")
+        self.single_method_layout = QVBoxLayout(self.single_method_host)
+        self.single_method_layout.setContentsMargins(0, 0, 0, 0)
+        self.single_method_layout.setSpacing(0)
+        params_layout.addWidget(
+            self.single_method_host,
+            alignment=Qt.AlignmentFlag.AlignLeft,
+        )
 
         self.method_tabs = QTabWidget()
         self.method_tabs.setObjectName("SaliencyMethodTabs")
         self.method_tabs.setDocumentMode(True)
         self.method_tabs.setMovable(False)
-        self.method_tabs.setMaximumWidth(430)
+        self.method_tabs.setMaximumWidth(380)
         self.method_tabs.setSizePolicy(
             QSizePolicy.Policy.Fixed,
             QSizePolicy.Policy.Preferred,
@@ -141,7 +156,16 @@ class SaliencySettingDialog(BaseDialog):
         )
         self.empty_state_label.setObjectName("SaliencyEmptyState")
         self.empty_state_label.setWordWrap(True)
-        self.empty_state_label.setMaximumWidth(430)
+        self.empty_state_label.setMaximumWidth(372)
+        self.empty_state_label.setMinimumWidth(360)
+        self.empty_state_label.setMinimumHeight(42)
+        self.empty_state_label.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.MinimumExpanding,
+        )
+        self.empty_state_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
         params_layout.addWidget(
             self.empty_state_label,
             alignment=Qt.AlignmentFlag.AlignLeft,
@@ -211,10 +235,10 @@ class SaliencySettingDialog(BaseDialog):
         page = QWidget()
         page.setObjectName("SaliencyMethodParamPage")
         layout = QGridLayout(page)
-        page.setMaximumWidth(390)
+        page.setMaximumWidth(360)
         page.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
-        layout.setContentsMargins(0, 10, 0, 0)
-        layout.setHorizontalSpacing(14)
+        layout.setContentsMargins(6, 8, 0, 0)
+        layout.setHorizontalSpacing(12)
         layout.setVerticalSpacing(10)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
@@ -222,7 +246,7 @@ class SaliencySettingDialog(BaseDialog):
         for row, param in enumerate(self.algo_map.get(method) or []):
             label = QLabel(param)
             label.setObjectName("SaliencyParamLabel")
-            label.setFixedWidth(170)
+            label.setFixedWidth(180)
             label.setAlignment(
                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
             )
@@ -231,8 +255,8 @@ class SaliencySettingDialog(BaseDialog):
             self.param_editors[method][param] = editor
             layout.addWidget(label, row, 0, alignment=Qt.AlignmentFlag.AlignVCenter)
             layout.addWidget(editor, row, 1, alignment=Qt.AlignmentFlag.AlignLeft)
-        layout.setColumnMinimumWidth(0, 170)
-        layout.setColumnMinimumWidth(1, 160)
+        layout.setColumnMinimumWidth(0, 180)
+        layout.setColumnMinimumWidth(1, 150)
         return page
 
     def _build_param_editor(self, param: str) -> QSpinBox | QDoubleSpinBox:
@@ -250,7 +274,7 @@ class SaliencySettingDialog(BaseDialog):
                 editor.setRange(1, 100_000)
         editor.setObjectName("SaliencyParamEditor")
         editor.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
-        editor.setFixedWidth(160)
+        editor.setFixedWidth(150)
         editor.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         return editor
 
@@ -289,21 +313,65 @@ class SaliencySettingDialog(BaseDialog):
             method for method, check in self.method_checks.items() if check.isChecked()
         ]
         self.method_tabs.clear()
-        for method in selected_methods:
-            self.method_tabs.addTab(
-                self.method_param_pages[method],
-                self._display_method_name(method),
-            )
+        self._clear_single_method_host()
 
         has_methods = bool(selected_methods)
-        self.method_tabs.setVisible(has_methods)
-        self.empty_state_label.setVisible(not has_methods)
+        is_single_method = len(selected_methods) == 1
+        is_multi_method = len(selected_methods) > 1
+
+        if not has_methods:
+            self.params_title.setText("Method parameters")
+            self.single_method_host.setVisible(False)
+            self.method_tabs.setVisible(False)
+            self.method_tabs.setMinimumHeight(0)
+            self.method_tabs.setMaximumHeight(0)
+            self.empty_state_label.setVisible(True)
+            self.empty_state_label.adjustSize()
+            empty_height = max(42, self.empty_state_label.sizeHint().height())
+            self.empty_state_label.setMinimumHeight(empty_height)
+            self.params_group.setMaximumHeight(empty_height + 4)
+        elif is_single_method:
+            method = selected_methods[0]
+            self.params_title.setText(f"{self._display_method_name(method)} parameters")
+            self.single_method_host.setVisible(True)
+            self.method_param_pages[method].setVisible(True)
+            self.single_method_layout.addWidget(
+                self.method_param_pages[method],
+                alignment=Qt.AlignmentFlag.AlignLeft,
+            )
+            self.method_tabs.setVisible(False)
+            self.method_tabs.setMinimumHeight(0)
+            self.method_tabs.setMaximumHeight(0)
+            self.empty_state_label.setVisible(False)
+            self.params_group.setMaximumHeight(16_777_215)
+        elif is_multi_method:
+            self.params_title.setText("Method parameters")
+            self.single_method_host.setVisible(False)
+            self.method_tabs.setMinimumHeight(0)
+            self.method_tabs.setMaximumHeight(16_777_215)
+            self.params_group.setMaximumHeight(16_777_215)
+            for method in selected_methods:
+                self.method_tabs.addTab(
+                    self.method_param_pages[method],
+                    self._display_method_name(method),
+                )
+            self.method_tabs.setVisible(True)
+            self.empty_state_label.setVisible(False)
         ok_button = self.button_box.button(QDialogButtonBox.StandardButton.Ok)
         if ok_button is not None:
             ok_button.setEnabled(has_methods)
-        if activated_method in selected_methods:
+        if activated_method in selected_methods and is_multi_method:
             self.method_tabs.setCurrentWidget(self.method_param_pages[activated_method])
+        if self.layout() is not None:
+            self.layout().activate()
         self.adjustSize()
+
+    def _clear_single_method_host(self) -> None:
+        while self.single_method_layout.count():
+            item = self.single_method_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
 
     @staticmethod
     def _display_method_name(method: str) -> str:
@@ -317,8 +385,15 @@ class SaliencySettingDialog(BaseDialog):
                 font-weight: bold;
                 background: transparent;
             }}
+            QCheckBox {{
+                color: {Theme.TEXT_PRIMARY};
+                spacing: 8px;
+                padding: 2px 0;
+                background: transparent;
+            }}
             QWidget#SaliencyComputeMethodsRow,
-            QWidget#SaliencyMethodParametersPanel {{
+            QWidget#SaliencyMethodParametersPanel,
+            QWidget#SaliencySingleMethodHost {{
                 background-color: transparent;
                 border: none;
             }}
@@ -328,7 +403,8 @@ class SaliencySettingDialog(BaseDialog):
             }}
             QLabel#SaliencyParamLabel {{
                 color: {Theme.TEXT_SECONDARY};
-                min-width: 160px;
+                min-width: 180px;
+                background: transparent;
             }}
             QLabel#SaliencyEmptyState {{
                 color: {Theme.TEXT_SECONDARY};
@@ -343,15 +419,15 @@ class SaliencySettingDialog(BaseDialog):
                 top: 0;
             }}
             QTabBar::tab {{
-                background-color: {Theme.BACKGROUND_MID};
+                background-color: transparent;
                 color: {Theme.TEXT_SECONDARY};
                 border: none;
                 border-bottom: 2px solid transparent;
-                padding: 6px 10px;
-                margin-right: 3px;
+                padding: 6px 9px;
+                margin-right: 4px;
             }}
             QTabBar::tab:selected {{
-                background-color: {Theme.BACKGROUND_DARK};
+                background-color: transparent;
                 color: {Theme.TEXT_PRIMARY};
                 border-bottom: 2px solid {Theme.BLUE_HOVER};
             }}
@@ -365,12 +441,16 @@ class SaliencySettingDialog(BaseDialog):
             }}
             QSpinBox#SaliencyParamEditor,
             QDoubleSpinBox#SaliencyParamEditor {{
-                min-width: 150px;
-                max-width: 160px;
+                min-width: 140px;
+                max-width: 150px;
                 background-color: {Theme.METRICS_TABLE_BG};
                 color: {Theme.TEXT_PRIMARY};
                 border: 1px solid {Theme.METRICS_TABLE_BORDER};
                 border-radius: 4px;
                 padding: 5px 8px;
+            }}
+            QSpinBox#SaliencyParamEditor:focus,
+            QDoubleSpinBox#SaliencyParamEditor:focus {{
+                border-color: {Theme.BLUE_FOCUS_BORDER};
             }}
         """

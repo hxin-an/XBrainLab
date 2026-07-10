@@ -436,6 +436,7 @@ class DataSplittingDialog(BaseDialog):
         # Left: Preview
         preview_group = QFrame()
         preview_group.setObjectName("DataSplitPreviewGroup")
+        preview_group.setFrameShape(QFrame.Shape.NoFrame)
         left_layout = QVBoxLayout(preview_group)
         left_layout.setContentsMargins(12, 12, 12, 12)
         left_layout.setSpacing(12)
@@ -465,6 +466,7 @@ class DataSplittingDialog(BaseDialog):
         # Right: Options
         options_group = QFrame()
         options_group.setObjectName("DataSplitOptionsGroup")
+        options_group.setFrameShape(QFrame.Shape.NoFrame)
         options_group.setMinimumWidth(260)
         options_group.setMaximumWidth(300)
         options_group.setSizePolicy(
@@ -747,7 +749,7 @@ class DataSplittingDialog(BaseDialog):
         }
         QFrame#DataSplitPreviewGroup,
         QFrame#DataSplitOptionsGroup {
-            border: 1px solid #3d454d;
+            border: none;
             border-radius: 6px;
             background: #202225;
         }

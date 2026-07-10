@@ -1,5 +1,6 @@
 import pytest
-from PyQt6.QtWidgets import QDialog
+from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QPushButton, QVBoxLayout
 
 from XBrainLab.ui.core.base_dialog import BaseDialog
 
@@ -62,3 +63,40 @@ def test_abstract_methods():
 def test_concrete_implementation(dialog):
     assert dialog.get_result() == "result"
     # init_ui called in __init__
+
+
+def test_base_dialog_normalizes_standard_buttons_without_removing_custom_icons(qtbot):
+    class ButtonDialog(BaseDialog):
+        def init_ui(self):
+            layout = QVBoxLayout(self)
+            self.custom_button = QPushButton("Custom action")
+            self.custom_button.setIcon(QIcon(QPixmap(1, 1)))
+            layout.addWidget(self.custom_button)
+            self.button_box = QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Ok
+                | QDialogButtonBox.StandardButton.Cancel
+            )
+            for standard_button in (
+                QDialogButtonBox.StandardButton.Ok,
+                QDialogButtonBox.StandardButton.Cancel,
+            ):
+                self.button_box.button(standard_button).setIcon(QIcon(QPixmap(1, 1)))
+            layout.addWidget(self.button_box)
+
+        def get_result(self):
+            return None
+
+    dlg = ButtonDialog()
+    qtbot.addWidget(dlg)
+
+    assert not dlg.custom_button.autoDefault()
+    assert not dlg.custom_button.isDefault()
+    assert not dlg.custom_button.icon().isNull()
+    for standard_button in (
+        QDialogButtonBox.StandardButton.Ok,
+        QDialogButtonBox.StandardButton.Cancel,
+    ):
+        button = dlg.button_box.button(standard_button)
+        assert not button.autoDefault()
+        assert not button.isDefault()
+        assert button.icon().isNull()

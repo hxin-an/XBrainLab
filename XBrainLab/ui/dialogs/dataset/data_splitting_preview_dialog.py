@@ -58,7 +58,12 @@ _PREVIEW_DIALOG_STYLE = f"""
     }}
     QFrame#SplitPreviewPanel {{
         background-color: {Theme.BACKGROUND_MID};
-        border: 1px solid {Theme.BACKGROUND_LIGHT};
+        border: none;
+        border-radius: 6px;
+    }}
+    QFrame#SplitPreviewSummaryPanel {{
+        background-color: {Theme.BACKGROUND_MID};
+        border: none;
         border-radius: 6px;
     }}
     QLabel#SplitPreviewSectionTitle {{
@@ -110,9 +115,13 @@ _RESULT_TREE_STYLE = f"""
         background-color: {Theme.METRICS_TABLE_BG};
         alternate-background-color: {Theme.METRICS_TABLE_ALT_BG};
         color: {Theme.TEXT_PRIMARY};
-        border: 1px solid {Theme.METRICS_TABLE_BORDER};
+        border: none;
         border-radius: 4px;
         gridline-color: transparent;
+    }}
+    QTreeWidget::viewport {{
+        background-color: {Theme.METRICS_TABLE_BG};
+        border: none;
     }}
     QTreeWidget::item {{
         padding: 5px 8px;
@@ -273,6 +282,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         left_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         results_group = QFrame()
         results_group.setObjectName("SplitPreviewPanel")
+        results_group.setFrameShape(QFrame.Shape.NoFrame)
         results_group.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Maximum,
@@ -285,6 +295,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         results_title.setObjectName("SplitPreviewSectionTitle")
         results_layout.addWidget(results_title)
         self.tree = QTreeWidget()
+        self.tree.setFrameShape(QFrame.Shape.NoFrame)
         self.tree.setHeaderLabels(["Dataset", "Train", "Validation", "Test"])
         self.tree.setRootIsDecorated(False)
         self.tree.setAlternatingRowColors(True)
@@ -483,7 +494,8 @@ class DataSplittingPreviewDialog(BaseDialog):
     @staticmethod
     def _panel_grid(title: str) -> tuple[QFrame, QGridLayout]:
         panel = QFrame()
-        panel.setObjectName("SplitPreviewPanel")
+        panel.setObjectName("SplitPreviewSummaryPanel")
+        panel.setFrameShape(QFrame.Shape.NoFrame)
         panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         panel_layout = QVBoxLayout(panel)
         panel_layout.setContentsMargins(12, 10, 12, 10)

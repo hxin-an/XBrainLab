@@ -1,6 +1,7 @@
 """Base dialog class providing standardized initialization for all dialogs."""
 
-from PyQt6.QtWidgets import QDialog
+from PyQt6.QtGui import QIcon
+from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QPushButton
 
 
 class BaseDialog(QDialog):
@@ -43,6 +44,27 @@ class BaseDialog(QDialog):
         elif height:
             self.resize(self.width(), height)
         self.init_ui()
+        self._normalize_dialog_buttons()
+
+    def _normalize_dialog_buttons(self) -> None:
+        """Normalize dialog buttons without removing intentional action icons.
+
+        Some Qt platform styles draw an enter/return indicator for default or
+        auto-default buttons. XBrainLab dialogs use explicit button labels, so
+        the platform glyph adds noise. Standard OK/Cancel icons are also hidden,
+        while icons on explicit product actions remain intact.
+        """
+        for button in self.findChildren(QPushButton):
+            button.setAutoDefault(False)
+            button.setDefault(False)
+        for button_box in self.findChildren(QDialogButtonBox):
+            for standard_button in (
+                QDialogButtonBox.StandardButton.Ok,
+                QDialogButtonBox.StandardButton.Cancel,
+            ):
+                button = button_box.button(standard_button)
+                if button is not None:
+                    button.setIcon(QIcon())
 
     def init_ui(self) -> None:
         """Initialize dialog UI components.

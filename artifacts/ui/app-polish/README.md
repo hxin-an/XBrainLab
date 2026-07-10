@@ -16,6 +16,8 @@ Focused current screenshots for manual review of surfaces that are not fully rep
 - `data-splitting-dialog.png`
 - `data-splitting-preview-dialog.png`
 - `saliency-setting-dialog.png`
+- `saliency-setting-single-method.png`
+- `saliency-setting-empty-state.png`
 - `set-montage-dialog.png`
 - `evaluation-controls-panel.png`
 - `evaluation-metrics-table.png`

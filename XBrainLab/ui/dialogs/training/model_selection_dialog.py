@@ -120,6 +120,7 @@ class ModelSelectionDialog(BaseDialog):
         # Model setup
         setup_frame = QFrame()
         setup_frame.setObjectName("ModelSection")
+        setup_frame.setFrameShape(QFrame.Shape.NoFrame)
         setup_frame.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Maximum,
@@ -154,6 +155,7 @@ class ModelSelectionDialog(BaseDialog):
         # Parameters Table
         self.params_group = QFrame()
         self.params_group.setObjectName("ModelSection")
+        self.params_group.setFrameShape(QFrame.Shape.NoFrame)
         self.params_group.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
@@ -215,7 +217,7 @@ class ModelSelectionDialog(BaseDialog):
         }}
         QDialog#ModelSelectionDialog QFrame#ModelSection {{
             color: {Theme.TEXT_PRIMARY};
-            border: 1px solid {Theme.BACKGROUND_LIGHT};
+            border: none;
             border-radius: 6px;
             background: {Theme.BACKGROUND_MID};
         }}
@@ -259,8 +261,8 @@ class ModelSelectionDialog(BaseDialog):
             background: {Theme.BACKGROUND_DARK};
         }}
         QDialog#ModelSelectionDialog QScrollBar:vertical {{
-            background: {Theme.BACKGROUND_MID};
-            width: 10px;
+            background: transparent;
+            width: 8px;
             margin: 0;
             border: none;
         }}

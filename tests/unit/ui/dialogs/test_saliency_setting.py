@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
     QDoubleSpinBox,
     QFrame,
     QGridLayout,
+    QLabel,
     QSizePolicy,
     QSpinBox,
     QTabWidget,
@@ -159,6 +160,92 @@ class TestSaliencySettingMethods:
         assert buttons is not None
         assert not buttons.button(QDialogButtonBox.StandardButton.Ok).isEnabled()
         assert not dialog.empty_state_label.isHidden()
+
+    def test_empty_state_text_is_not_clipped_when_all_methods_are_unchecked(
+        self,
+        dialog,
+        qtbot,
+    ):
+        for check in dialog.method_checks.values():
+            check.setChecked(False)
+        qtbot.wait(0)
+
+        label = dialog.findChild(QLabel, "SaliencyEmptyState")
+        assert label is not None
+        assert not label.isHidden()
+        assert label.wordWrap()
+        assert (
+            label.text()
+            == "Select at least one saliency method to configure parameters."
+        )
+        assert label.minimumWidth() >= 360
+        assert label.minimumHeight() >= 42
+        assert label.sizeHint().height() <= label.minimumHeight()
+        tabs = dialog.findChild(QTabWidget, "SaliencyMethodTabs")
+        assert tabs is not None
+        assert tabs.maximumHeight() == 0
+        assert dialog.params_group.maximumHeight() <= label.minimumHeight() + 4
+
+        buttons = dialog.findChild(QDialogButtonBox)
+        assert buttons is not None
+        ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        cancel_button = buttons.button(QDialogButtonBox.StandardButton.Cancel)
+        assert ok_button is not None and not ok_button.isEnabled()
+        assert cancel_button is not None and cancel_button.isEnabled()
+
+    def test_single_selected_method_uses_direct_form_without_tabs(self, dialog, qtbot):
+        for method, check in dialog.method_checks.items():
+            check.setChecked(method == "SmoothGrad")
+        qtbot.wait(0)
+
+        tabs = dialog.findChild(QTabWidget, "SaliencyMethodTabs")
+        assert tabs is not None
+        assert tabs.count() == 0
+        assert tabs.maximumHeight() == 0
+        assert dialog.params_title.text() == "SmoothGrad parameters"
+        assert not dialog.single_method_host.isHidden()
+        assert dialog.method_param_pages["SmoothGrad"].parent() is (
+            dialog.single_method_host
+        )
+        assert not dialog.method_param_pages["SmoothGrad"].isHidden()
+
+        buttons = dialog.findChild(QDialogButtonBox)
+        assert buttons is not None
+        ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        assert ok_button is not None and ok_button.isEnabled()
+
+    def test_multiple_selected_methods_use_dynamic_tabs(self, dialog, qtbot):
+        dialog.method_checks["VarGrad"].setChecked(False)
+        qtbot.wait(0)
+
+        tabs = dialog.findChild(QTabWidget, "SaliencyMethodTabs")
+        assert tabs is not None
+        assert [tabs.tabText(index) for index in range(tabs.count())] == [
+            "SmoothGrad",
+            "SmoothGrad Squared",
+        ]
+        assert dialog.params_title.text() == "Method parameters"
+        assert dialog.single_method_host.isHidden()
+
+    @pytest.mark.parametrize("selected_count", [0, 1, 3])
+    def test_dialog_actions_remain_inside_viewport(
+        self,
+        dialog,
+        qtbot,
+        selected_count,
+    ):
+        selected = set(list(dialog.method_checks)[:selected_count])
+        for method, check in dialog.method_checks.items():
+            check.setChecked(method in selected)
+        dialog.show()
+        qtbot.wait(0)
+
+        buttons = dialog.findChild(QDialogButtonBox)
+        assert buttons is not None
+        button_bottom_right = buttons.mapTo(dialog, buttons.rect().bottomRight())
+        assert button_bottom_right.x() <= dialog.contentsRect().right()
+        assert button_bottom_right.y() <= dialog.contentsRect().bottom()
+        assert buttons.geometry().top() > dialog.params_group.geometry().bottom()
 
     def test_accept_reads_compact_form_values(self, dialog):
         dialog.param_editors["SmoothGrad"]["nt_samples"].setValue(7)

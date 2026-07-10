@@ -6,6 +6,7 @@ from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QDialogButtonBox,
+    QFrame,
     QHeaderView,
     QScrollArea,
     QTableWidgetItem,
@@ -120,6 +121,17 @@ class TestModelSelection:
         scrollbar = scroll.verticalScrollBar()
         assert scrollbar is not None
         assert scrollbar.maximum() == 0
+
+    def test_model_sections_do_not_draw_internal_vertical_frame_lines(self, dialog):
+        sections = dialog.findChildren(QFrame, "ModelSection")
+        assert len(sections) >= 2
+        assert all(section.frameShape() == QFrame.Shape.NoFrame for section in sections)
+        section_style = dialog.styleSheet().split("QFrame#ModelSection", 1)[1]
+        section_style = section_style.split("}", 1)[0]
+        assert "border: none;" in section_style
+        scrollbar_style = dialog.styleSheet().split("QScrollBar:vertical", 1)[1]
+        scrollbar_style = scrollbar_style.split("}", 1)[0]
+        assert "background: transparent;" in scrollbar_style
 
     def test_realistic_parameter_count_does_not_force_outer_scrollbar(self, qtbot):
         with patch("inspect.getmembers") as mock_getmembers:

@@ -49,6 +49,8 @@ def main() -> int:
         ("data-splitting-dialog.png", _data_splitting_dialog()),
         ("data-splitting-preview-dialog.png", _data_splitting_preview_dialog()),
         ("saliency-setting-dialog.png", _saliency_setting_dialog()),
+        ("saliency-setting-single-method.png", _saliency_setting_single_method()),
+        ("saliency-setting-empty-state.png", _saliency_setting_empty_state()),
         ("set-montage-dialog.png", _set_montage_dialog()),
         ("evaluation-controls-panel.png", _evaluation_controls_panel()),
         ("evaluation-metrics-table.png", _metrics_table()),
@@ -198,6 +200,24 @@ def _saliency_setting_dialog() -> QWidget:
     return dialog
 
 
+def _saliency_setting_single_method() -> QWidget:
+    dialog = SaliencySettingDialog(None, saliency_params=None)
+    for method, check in dialog.method_checks.items():
+        check.setChecked(method == "SmoothGrad")
+    dialog.adjustSize()
+    dialog.resize(dialog.sizeHint())
+    return dialog
+
+
+def _saliency_setting_empty_state() -> QWidget:
+    dialog = SaliencySettingDialog(None, saliency_params=None)
+    for check in dialog.method_checks.values():
+        check.setChecked(False)
+    dialog.adjustSize()
+    dialog.resize(dialog.sizeHint())
+    return dialog
+
+
 def _set_montage_dialog() -> QWidget:
     positions = {
         "Fz": (0.0, 0.8, 0.0),
@@ -317,6 +337,8 @@ def _write_readme() -> None:
         "- `data-splitting-dialog.png`\n"
         "- `data-splitting-preview-dialog.png`\n"
         "- `saliency-setting-dialog.png`\n"
+        "- `saliency-setting-single-method.png`\n"
+        "- `saliency-setting-empty-state.png`\n"
         "- `set-montage-dialog.png`\n"
         "- `evaluation-controls-panel.png`\n"
         "- `evaluation-metrics-table.png`\n",

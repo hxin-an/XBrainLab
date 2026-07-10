@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QFrame, QWidget
 
 from XBrainLab.backend.study import Study
 
@@ -199,6 +199,145 @@ class TestDataSplittingDialog:
 
         with pytest.raises(ValueError, match="Create epochs"):
             DataSplittingPreviewDialog(None, "Data Splitting Step 2", None, config)
+
+    def test_preview_dialog_uses_frameless_summary_cards(self, qtbot, epoch_data):
+        from XBrainLab.backend.dataset import (
+            DataSplittingConfig,
+            SplitByType,
+            TrainingType,
+            ValSplitByType,
+        )
+        from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
+            DataSplitterHolder,
+            DataSplittingPreviewDialog,
+        )
+
+        config = DataSplittingConfig(
+            train_type=TrainingType.FULL,
+            is_cross_validation=True,
+            val_splitter_list=[DataSplitterHolder(True, ValSplitByType.TRIAL)],
+            test_splitter_list=[DataSplitterHolder(True, SplitByType.TRIAL)],
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog."
+                "DatasetGenerator"
+            ),
+            patch("threading.Thread") as mock_thread,
+        ):
+            mock_thread.return_value.is_alive.return_value = False
+            dlg = DataSplittingPreviewDialog(
+                None,
+                "Data Splitting Step 2",
+                epoch_data,
+                config,
+            )
+
+        qtbot.addWidget(dlg)
+        if dlg.timer is not None:
+            dlg.timer.stop()
+        if dlg.preview_debounce_timer is not None:
+            dlg.preview_debounce_timer.stop()
+
+        summary_panels = [
+            frame
+            for frame in dlg.findChildren(QFrame)
+            if frame.objectName() == "SplitPreviewSummaryPanel"
+        ]
+        assert len(summary_panels) == 3
+        assert all(
+            panel.frameShape() == QFrame.Shape.NoFrame for panel in summary_panels
+        )
+        assert dlg.tree is not None
+        assert dlg.tree.frameShape() == QFrame.Shape.NoFrame
+        results_panel = dlg.findChild(QFrame, "SplitPreviewPanel")
+        assert results_panel is not None
+        assert results_panel.frameShape() == QFrame.Shape.NoFrame
+        assert "QFrame#SplitPreviewSummaryPanel" in dlg.styleSheet()
+        assert "QFrame#SplitPreviewPanel" in dlg.styleSheet()
+        split_panel_style = dlg.styleSheet().split("QFrame#SplitPreviewPanel", 1)[1]
+        split_panel_style = split_panel_style.split("}", 1)[0]
+        assert "border: none;" in split_panel_style
+        assert "border: none;" in dlg.styleSheet()
+
+    def test_data_splitting_cards_do_not_draw_internal_vertical_frame_lines(
+        self,
+        qtbot,
+        controller,
+    ):
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+            DataSplittingDialog,
+        )
+
+        dlg = DataSplittingDialog(None, controller)
+        qtbot.addWidget(dlg)
+
+        for object_name in ("DataSplitPreviewGroup", "DataSplitOptionsGroup"):
+            frame = dlg.findChild(QFrame, object_name)
+            assert frame is not None
+            assert frame.frameShape() == QFrame.Shape.NoFrame
+        assert (
+            "QFrame#DataSplitPreviewGroup,\n        QFrame#DataSplitOptionsGroup"
+            in (dlg.styleSheet())
+        )
+        assert "border: none;" in dlg.styleSheet()
+
+    def test_data_splitting_buttons_do_not_render_enter_glyphs(
+        self,
+        qtbot,
+        controller,
+        epoch_data,
+    ):
+        from XBrainLab.backend.dataset import (
+            DataSplittingConfig,
+            SplitByType,
+            TrainingType,
+            ValSplitByType,
+        )
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+            DataSplittingDialog,
+        )
+        from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
+            DataSplitterHolder,
+            DataSplittingPreviewDialog,
+        )
+
+        dialog = DataSplittingDialog(None, controller)
+        qtbot.addWidget(dialog)
+
+        config = DataSplittingConfig(
+            train_type=TrainingType.FULL,
+            is_cross_validation=True,
+            val_splitter_list=[DataSplitterHolder(True, ValSplitByType.TRIAL)],
+            test_splitter_list=[DataSplitterHolder(True, SplitByType.TRIAL)],
+        )
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog."
+                "DatasetGenerator"
+            ),
+            patch("threading.Thread") as mock_thread,
+        ):
+            mock_thread.return_value.is_alive.return_value = False
+            preview = DataSplittingPreviewDialog(
+                None,
+                "Data Splitting Step 2",
+                epoch_data,
+                config,
+            )
+        qtbot.addWidget(preview)
+        if preview.timer is not None:
+            preview.timer.stop()
+        if preview.preview_debounce_timer is not None:
+            preview.preview_debounce_timer.stop()
+
+        for button in (dialog.btn_confirm, preview.btn_confirm):
+            assert button is not None
+            assert button.text() == "Confirm"
+            assert not button.autoDefault()
+            assert not button.isDefault()
+            assert button.icon().isNull()
 
     def test_default_split_config_uses_trainable_trial_splits(
         self,
