@@ -230,7 +230,7 @@ def _configure_training(service: ApplicationService, output_dir: Path) -> None:
                 batch_size=16,
                 learning_rate=0.001,
                 save_checkpoints_every=1,
-                evaluation_option="test_acc",
+                evaluation_option="val_acc",
             ),
         ).ok
         is True

@@ -24,6 +24,15 @@ from .commands import (
 from .errors import PreconditionError
 from .resource_guard import check_training_resource_preflight
 from .state import ApplicationStateSnapshot
+from .training_snapshot import (
+    model_name as snapshot_model_name,
+)
+from .training_snapshot import (
+    model_params_snapshot as build_model_params_snapshot,
+)
+from .training_snapshot import (
+    training_option_snapshot as build_training_option_snapshot,
+)
 
 HandlerResult = str | tuple[str, dict[str, Any]]
 
@@ -69,12 +78,13 @@ class TrainingCommandService:
 
         option: TrainingOption | None = None
         if wants_option:
-            self._validate_training_numbers(command)
-            epoch = command.epoch
-            batch_size = command.batch_size
-            learning_rate = command.learning_rate
-            if epoch is None or batch_size is None or learning_rate is None:
-                raise AssertionError("Validated training values must be present")
+            (
+                epoch,
+                batch_size,
+                learning_rate,
+                save_checkpoints_every,
+                repeat,
+            ) = self._normalize_training_numbers(command)
             optim_class = self._resolve_optimizer(command.optimizer)
             use_cpu, gpu_idx = self._resolve_training_device(command.device)
             evaluation_option = self._resolve_training_evaluation(
@@ -89,9 +99,9 @@ class TrainingCommandService:
                 epoch=epoch,
                 bs=batch_size,
                 lr=learning_rate,
-                checkpoint_epoch=command.save_checkpoints_every,
+                checkpoint_epoch=save_checkpoints_every,
                 evaluation_option=evaluation_option,
-                repeat_num=command.repeat,
+                repeat_num=repeat,
             )
 
         holder: ModelHolder | None = None
@@ -194,34 +204,15 @@ class TrainingCommandService:
 
     @staticmethod
     def model_name(model_holder: Any) -> str | None:
-        target_model = getattr(model_holder, "target_model", None)
-        if target_model is None:
-            return None
-        return getattr(target_model, "__name__", str(target_model))
+        return snapshot_model_name(model_holder)
 
     @staticmethod
     def model_params_snapshot(model_holder: Any) -> dict[str, Any]:
-        params = getattr(model_holder, "model_params_map", None)
-        if not isinstance(params, dict):
-            return {}
-        return dict(params)
+        return build_model_params_snapshot(model_holder)
 
     @staticmethod
     def training_option_snapshot(option: Any) -> dict[str, Any]:
-        if option is None:
-            return {}
-        return {
-            "epoch": getattr(option, "epoch", None),
-            "batch_size": getattr(option, "bs", None),
-            "learning_rate": getattr(option, "lr", None),
-            "repeat": getattr(option, "repeat_num", None),
-            "device": option.get_device() if hasattr(option, "get_device") else None,
-            "optimizer": option.get_optim_name()
-            if hasattr(option, "get_optim_name")
-            else None,
-            "checkpoint_epoch": getattr(option, "checkpoint_epoch", None),
-            "output_dir": getattr(option, "output_dir", None),
-        }
+        return build_training_option_snapshot(option)
 
     @staticmethod
     def _resolve_model_class(model_name: str) -> type:
@@ -277,24 +268,72 @@ class TrainingCommandService:
         if value is None:
             return TrainingEvaluation.LAST_EPOCH
         normalized = str(value).strip().lower()
+        legacy_aliases = {
+            "test_acc": TrainingEvaluation.VAL_ACC,
+            "best testing performance": TrainingEvaluation.VAL_ACC,
+            "test_auc": TrainingEvaluation.VAL_AUC,
+            "best testing auc": TrainingEvaluation.VAL_AUC,
+        }
+        migrated = legacy_aliases.get(normalized)
+        if migrated is not None:
+            logger.warning(
+                "Migrating legacy test-based model selection %r to %s",
+                value,
+                migrated.value,
+            )
+            return migrated
         for option in TrainingEvaluation:
             if normalized in {option.name.lower(), option.value.lower()}:
                 return option
         raise ValueError(f"Unknown training evaluation: {value}")
 
     @staticmethod
-    def _validate_training_numbers(command: ConfigureTrainingCommand) -> None:
-        if command.epoch is None or command.epoch <= 0:
-            raise ValueError("epoch must be greater than zero")
-        if command.batch_size is None or command.batch_size <= 0:
-            raise ValueError("batch_size must be greater than zero")
-        if (
-            command.learning_rate is None
-            or not math.isfinite(command.learning_rate)
-            or command.learning_rate <= 0
-        ):
+    def _normalize_training_numbers(
+        command: ConfigureTrainingCommand,
+    ) -> tuple[int, int, float, int, int]:
+        def positive_int(name: str, value: Any) -> int:
+            if isinstance(value, bool):
+                raise ValueError(f"{name} must be greater than zero")
+            try:
+                parsed = int(value)
+                numeric = float(value)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError(f"{name} must be greater than zero") from exc
+            if not math.isfinite(numeric) or parsed <= 0 or numeric != parsed:
+                raise ValueError(f"{name} must be greater than zero")
+            return parsed
+
+        epoch = positive_int("epoch", command.epoch)
+        batch_size = positive_int("batch_size", command.batch_size)
+        repeat = positive_int("repeat", command.repeat)
+
+        learning_rate_value: Any = command.learning_rate
+        if isinstance(learning_rate_value, bool):
             raise ValueError("learning_rate must be greater than zero")
-        if command.repeat <= 0:
-            raise ValueError("repeat must be greater than zero")
-        if command.save_checkpoints_every < 0:
+        try:
+            learning_rate = float(learning_rate_value)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("learning_rate must be greater than zero") from exc
+        if not math.isfinite(learning_rate) or learning_rate <= 0:
+            raise ValueError("learning_rate must be greater than zero")
+
+        try:
+            save_checkpoints_every = int(command.save_checkpoints_every)
+            checkpoint_numeric = float(command.save_checkpoints_every)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("save_checkpoints_every cannot be negative") from exc
+        if (
+            isinstance(command.save_checkpoints_every, bool)
+            or not math.isfinite(checkpoint_numeric)
+            or save_checkpoints_every < 0
+            or checkpoint_numeric != save_checkpoints_every
+        ):
             raise ValueError("save_checkpoints_every cannot be negative")
+
+        return (
+            epoch,
+            batch_size,
+            learning_rate,
+            save_checkpoints_every,
+            repeat,
+        )

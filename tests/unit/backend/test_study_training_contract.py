@@ -24,7 +24,7 @@ def _training_option() -> TrainingOption:
         bs=_ui_text("4"),
         lr=_ui_text("0.001"),
         checkpoint_epoch=_ui_text("1"),
-        evaluation_option=TrainingEvaluation.TEST_ACC,
+        evaluation_option=TrainingEvaluation.VAL_ACC,
         repeat_num=_ui_text("1"),
     )
 

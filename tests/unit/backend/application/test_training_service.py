@@ -180,6 +180,8 @@ def test_training_service_configures_model_and_options() -> None:
         "repeat": 1,
         "device": "cpu",
         "optimizer": "SGD",
+        "optimizer_params": {},
+        "evaluation_option": "Last Epoch",
         "checkpoint_epoch": 0,
         "output_dir": "./tmp-output",
     }
@@ -204,6 +206,46 @@ def test_training_service_rejects_unknown_model_without_facade() -> None:
         service.handle_configure_training(
             ConfigureTrainingCommand(model_name="nonexistent_model"),
         )
+
+
+@pytest.mark.parametrize(
+    ("legacy_value", "expected"),
+    [
+        ("test_acc", training_option_module.TrainingEvaluation.VAL_ACC),
+        ("Best testing performance", training_option_module.TrainingEvaluation.VAL_ACC),
+        ("test_auc", training_option_module.TrainingEvaluation.VAL_AUC),
+        ("Best testing AUC", training_option_module.TrainingEvaluation.VAL_AUC),
+    ],
+)
+def test_legacy_test_selection_is_migrated_to_validation(
+    legacy_value: str,
+    expected: training_option_module.TrainingEvaluation,
+) -> None:
+    assert TrainingCommandService._resolve_training_evaluation(legacy_value) is expected
+
+
+def test_training_snapshot_preserves_evaluation_and_optimizer_settings() -> None:
+    service, _training = _service()
+
+    result = service.handle_configure_training(
+        ConfigureTrainingCommand(
+            output_dir="./output",
+            optimizer="Adam",
+            optimizer_params={"weight_decay": 0.01},
+            device="cpu",
+            epoch=3,
+            batch_size=8,
+            learning_rate=0.001,
+            save_checkpoints_every=0,
+            evaluation_option="val_acc",
+            repeat=1,
+        )
+    )
+
+    assert isinstance(result, tuple)
+    snapshot = result[1]["training_option"]
+    assert snapshot["evaluation_option"] == "Best validation performance"
+    assert snapshot["optimizer_params"] == {"weight_decay": 0.01}
 
 
 def test_incomplete_training_configuration_does_not_mutate_model() -> None:
@@ -235,6 +277,7 @@ def test_incomplete_training_configuration_does_not_mutate_model() -> None:
         ({"epoch": 0}, "epoch must be greater than zero"),
         ({"batch_size": 0}, "batch_size must be greater than zero"),
         ({"learning_rate": 0.0}, "learning_rate must be greater than zero"),
+        ({"learning_rate": True}, "learning_rate must be greater than zero"),
         ({"repeat": 0}, "repeat must be greater than zero"),
         ({"save_checkpoints_every": -1}, "save_checkpoints_every cannot be negative"),
     ],

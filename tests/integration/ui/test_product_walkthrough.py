@@ -512,7 +512,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
                 bs=2,
                 lr=0.001,
                 checkpoint_epoch=0,
-                evaluation_option=TrainingEvaluation.TEST_ACC,
+                evaluation_option=TrainingEvaluation.VAL_ACC,
                 repeat_num=1,
             )
             training_option_holder["option"] = option

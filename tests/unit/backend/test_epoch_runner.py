@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import threading
+from inspect import signature
 from unittest.mock import MagicMock, patch
 
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
 from XBrainLab.backend.training.epoch_runner import EpochRunner
+from XBrainLab.backend.training.evaluator import Evaluator
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -48,7 +50,7 @@ class TestEpochRunner:
         record = MagicMock()
         record.get_epoch.return_value = 1
 
-        runner.run(model, loader, None, None, optimizer, criterion, record)
+        runner.run(model, loader, None, optimizer, criterion, record)
 
         record.update_train.assert_called_once()
         record.update_statistic.assert_called_once()
@@ -66,14 +68,14 @@ class TestEpochRunner:
         criterion = torch.nn.CrossEntropyLoss()
         record = MagicMock()
 
-        runner.run(model, loader, None, None, optimizer, criterion, record)
+        runner.run(model, loader, None, optimizer, criterion, record)
 
         # Should have returned early — no record updates
         record.update_train.assert_not_called()
         record.step.assert_not_called()
 
     def test_validation_loader_triggers_eval(self):
-        """Providing a val_loader should invoke Evaluator.test_model."""
+        """Providing a val_loader should invoke Evaluator.evaluate_metrics."""
         interrupt = threading.Event()
         runner = EpochRunner(interrupt=interrupt)
 
@@ -85,14 +87,17 @@ class TestEpochRunner:
         record = MagicMock()
         record.get_epoch.return_value = 1
 
-        with patch("XBrainLab.backend.training.epoch_runner.Evaluator") as mock_eval:
-            mock_eval.compute_auc.return_value = 0.5
-            mock_eval.test_model.return_value = {"loss": 0.1, "acc": 90.0}
-            runner.run(
-                model, train_loader, val_loader, None, optimizer, criterion, record
-            )
-            mock_eval.test_model.assert_called_once()
-            record.update_eval.assert_called_once()
+        with (
+            patch.object(Evaluator, "compute_auc", return_value=0.5),
+            patch.object(
+                Evaluator,
+                "evaluate_metrics",
+                return_value={"loss": 0.1, "accuracy": 90.0, "auc": 0.5},
+            ) as test_model,
+        ):
+            runner.run(model, train_loader, val_loader, optimizer, criterion, record)
+            test_model.assert_called_once()
+            record.update_validation.assert_called_once()
 
     def test_checkpoint_called_at_interval(self):
         """Checkpoint should be exported when epoch matches interval."""
@@ -106,9 +111,8 @@ class TestEpochRunner:
         record = MagicMock()
         record.get_epoch.return_value = 2  # divisible by 2
 
-        with patch("XBrainLab.backend.training.epoch_runner.Evaluator") as mock_eval:
-            mock_eval.compute_auc.return_value = 0.5
-            runner.run(model, loader, None, None, optimizer, criterion, record)
+        with patch.object(Evaluator, "compute_auc", return_value=0.5):
+            runner.run(model, loader, None, optimizer, criterion, record)
 
         record.export_checkpoint.assert_called_once()
 
@@ -124,8 +128,11 @@ class TestEpochRunner:
         record = MagicMock()
         record.get_epoch.return_value = 10
 
-        with patch("XBrainLab.backend.training.epoch_runner.Evaluator") as mock_eval:
-            mock_eval.compute_auc.return_value = 0.5
-            runner.run(model, loader, None, None, optimizer, criterion, record)
+        with patch.object(Evaluator, "compute_auc", return_value=0.5):
+            runner.run(model, loader, None, optimizer, criterion, record)
 
         record.export_checkpoint.assert_not_called()
+
+    def test_public_api_does_not_accept_test_loader(self):
+        """Epoch-level checkpoint selection must never inspect the test split."""
+        assert "test_loader" not in signature(EpochRunner.run).parameters

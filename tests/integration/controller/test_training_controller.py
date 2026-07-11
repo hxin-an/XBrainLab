@@ -38,7 +38,7 @@ def valid_training_option():
         bs=4,
         lr=0.001,
         checkpoint_epoch=1,
-        evaluation_option=TrainingEvaluation.TEST_ACC,
+        evaluation_option=TrainingEvaluation.VAL_ACC,
         repeat_num=1,
     )
 

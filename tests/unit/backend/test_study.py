@@ -203,7 +203,7 @@ def trainer_study():
 @pytest.mark.parametrize("force_update", [True, False])
 def test_study_set_training_option(trainer_study, force_update):
     option = TrainingOption(
-        "test", int, {}, True, None, 1, 1, 1, 1, TrainingEvaluation.TEST_ACC, 1
+        "test", int, {}, True, None, 1, 1, 1, 1, TrainingEvaluation.VAL_ACC, 1
     )
 
     trainer_study.set_training_option(option, force_update)

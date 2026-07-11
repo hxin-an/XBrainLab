@@ -65,6 +65,15 @@ from .results import ChangedState, CommandResult, ErrorType
 from .state import ApplicationStateSnapshot, ErrorSnapshot
 from .state_read_models import EvaluationStateReadModel, TrainingStateReadModel
 from .state_service import QueryStateCommandService, StateSnapshotService
+from .training_snapshot import (
+    model_name as snapshot_model_name,
+)
+from .training_snapshot import (
+    model_params_snapshot as build_model_params_snapshot,
+)
+from .training_snapshot import (
+    training_option_snapshot as build_training_option_snapshot,
+)
 
 HandlerResult = str | tuple[str, dict[str, Any]]
 
@@ -260,34 +269,15 @@ class _LazyTrainingCommandService:
 
     @staticmethod
     def model_name(model_holder: Any) -> str | None:
-        target_model = getattr(model_holder, "target_model", None)
-        if target_model is None:
-            return None
-        return getattr(target_model, "__name__", str(target_model))
+        return snapshot_model_name(model_holder)
 
     @staticmethod
     def model_params_snapshot(model_holder: Any) -> dict[str, Any]:
-        params = getattr(model_holder, "model_params_map", None)
-        if not isinstance(params, dict):
-            return {}
-        return dict(params)
+        return build_model_params_snapshot(model_holder)
 
     @staticmethod
     def training_option_snapshot(option: Any) -> dict[str, Any]:
-        if option is None:
-            return {}
-        return {
-            "epoch": getattr(option, "epoch", None),
-            "batch_size": getattr(option, "bs", None),
-            "learning_rate": getattr(option, "lr", None),
-            "repeat": getattr(option, "repeat_num", None),
-            "device": option.get_device() if hasattr(option, "get_device") else None,
-            "optimizer": option.get_optim_name()
-            if hasattr(option, "get_optim_name")
-            else None,
-            "checkpoint_epoch": getattr(option, "checkpoint_epoch", None),
-            "output_dir": getattr(option, "output_dir", None),
-        }
+        return build_training_option_snapshot(option)
 
     def handle_configure_training(self, command: Command) -> CommandResult:
         return self._service().handle_configure_training(command)

@@ -286,6 +286,36 @@ Data Interpretation format matrix: observed = true, match = true
 concurrency、agent control-loop 與 validation traceability blockers；修復並在目前 HEAD 重建完整
 gate 前，不支撐 handoff candidate，也不能取代 Windows 真人 click-through。
 
+## 2026-07-11 Training Selection Integrity Checkpoint
+
+目前 training runtime 不再在每個 epoch 評估 test split，也不再提供 test-based checkpoint
+selection。每個 epoch 只更新 train / validation；validation metric 或 last epoch 固定模型後，才在
+test loader 上建立一次 final `EvalRecord`。AUC 無法定義時保存為 `None` / UI `N/A`，不會用
+`0.0` 參與 best-checkpoint ranking。舊的 `test_acc` / `test_auc` command value 會記錄 warning 並
+明確 migration 到對應 validation strategy。Saliency 參數可以在訓練前保存，但未完成的 record
+不會建立 loader 或重算 attribution；只有 checkpoint 與 final evaluation 已完成的 record 才能
+重新計算。結構化 evaluation summary 會回傳實際的 test / validation / training provenance。
+
+本 checkpoint 已通過：
+
+```text
+Training contract/regression batch: 464 passed, 1 skipped
+Representative pipeline and public-source integration: 54 passed
+Strict public cross-source smoke: 4 passed (3 training, 1 epoch-only)
+Ruff: PASS
+Configured Basedpyright: 0 errors
+```
+
+完整 unit suite 尚未通過 handoff gate：它在約 88% 時由
+`application_capabilities._handle_result` 的 Qt callback segmentation fault 中止。此 crash 與
+shutdown/read-model lifecycle 會在獨立修復 slice 處理；本節只能支撐 training selection
+correctness checkpoint，不能支撐整體產品 handoff-ready。
+
+其中 `464` tests 的 timeline、loader identity、state-dict、weighted-loss、AUC edge 與
+saliency-before-finish assertions 支撐 training-selection integrity。`54` integration tests 與
+strict cross-source runner 只證明改動後的 EDF / GDF / EEGLAB SET / CNT workflow 相容性，
+不能單獨證明 test isolation 或 scientific model quality。
+
 ### 2026-06-20 Clean-Code Boundary Follow-Up
 
 `refactor/saliency-resource-boundaries` keeps the BIDS epoch / saliency behavior

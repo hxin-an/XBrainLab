@@ -48,6 +48,17 @@ def test_parse_optim_name():
     assert parse_optim_name(target, params_map) == "FakeOptim (a=1, b=2)"
 
 
+def test_training_evaluation_exposes_validation_only_selection() -> None:
+    assert [option.name for option in TrainingEvaluation] == [
+        "VAL_LOSS",
+        "VAL_AUC",
+        "VAL_ACC",
+        "LAST_EPOCH",
+    ]
+    assert TrainingEvaluation("Best testing performance") is TrainingEvaluation.VAL_ACC
+    assert TrainingEvaluation("Best testing AUC") is TrainingEvaluation.VAL_AUC
+
+
 @pytest.mark.parametrize(
     "kwargs, has_error",
     [

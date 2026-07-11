@@ -8,10 +8,11 @@
 ## 一句話
 
 `2026-07-11` 重新稽核已撤銷先前的 handoff-candidate 判定。UI worker lifecycle 與 Windows
-launcher 已有 current 修復與 focused evidence，但稽核找到會影響產品與科學正確性的 blocker：
-test split 參與 checkpoint selection、長命令期間同步 UI query 可能卡住 event loop、agent 會把
-混合說明文字中的 JSON 當成 tool call、以及 walkthrough/dashboard evidence 沒有完整綁定目前
-HEAD。這些問題修完並重跑完整 gate 前，不應交給使用者作第一層 QA。
+launcher 已有 current 修復與 focused evidence。Training checkpoint selection 已改成只看
+validation / last epoch，test split 只在模型固定後作一次 final evaluation，undefined AUC 也不再
+偽裝成 `0.0`。仍未關閉的 blocker 包含：長命令期間同步 UI query、shutdown fence 競態與 Qt
+callback crash、agent tool envelope / repair loop，以及其餘 BIDS / split leakage correctness 問題。
+這些問題修完並重跑完整 gate 前，不應交給使用者作第一層 QA。
 
 MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測試與 artifacts 只代表
 歷史探索或相容性證據，不再是 MVP、release candidate 或 thesis evidence 的必要路線。
@@ -22,7 +23,7 @@ MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測�
 
 | 區域 | 目前狀態 | 邊界 |
 | --- | --- | --- |
-| Backend | `ApplicationService / Command API` 是主要 command spine；lock 由 Study 擁有，因此 cached 或直接建立的 service 都會序列化同一份 state，首次 cached service 建立也有競態保護。Desktop close 會先安裝 command-admission fence，新 mutation 會在 admission 與 command lock 後各檢查一次。`CommandResult.diagnostics` 保持 JSON-safe，runtime object 只放在 `runtime`。 | 仍要持續防止 controller compatibility 與 duplicate state truth 回流。 |
+| Backend | `ApplicationService / Command API` 是主要 command spine；lock 由 Study 擁有，因此 cached 或直接建立的 service 都會序列化同一份 state，首次 cached service 建立也有競態保護。Training model selection 已移除 test-based checkpoint path。`CommandResult.diagnostics` 保持 JSON-safe，runtime object 只放在 `runtime`。 | Desktop close 的 admission fence 仍有 thread-pool 空窗與 cancel failure recovery 缺口；長 mutation 期間 UI read 也可能等待 command lock。 |
 | UI | PyQt 主流程、Data Interpretation wizard、training / evaluation / visualization surface 都有 baseline；command 執行期間會抑制 observer duplicate refresh，完成後依 `changed_state` 走 shared refresh coordinator。Data Interpretation review/apply/recipe 已改為 QThreadPool continuation，不使用自訂 nested event loop；Data Splitting preview 與 MainWindow close 有明確 worker ownership、failed/cancelled/slow-stop 狀態。 | automated walkthrough 不等於 human Windows desktop acceptance；仍需真人 Windows click-through，尤其是真訓練中關閉與 Windows/WSLg native teardown。 |
 | Data Interpretation | `scan -> preview -> validate -> apply -> recipe` baseline 已存在；Data Import wizard 已補強 Tier 1/Tier 2 label-source、strict BIDS folder events、internal event evidence、external label placement、structured review coverage，並把 reviewed label placement 寫成 epoch 建議。Label carrier pairing 現由 backend domain policy 統一供 candidate、apply 與 UI 使用；只配到部分 selected EEG 時會在載入前 blocked。 | BIDS 支援目前是 EEG task import MVP，不是 full BIDS validator；每個 selected run 必須有實際可解析的 events carrier，目前不宣稱 BIDS events inheritance。一般 folder 掃到 `events.tsv` 仍走普通 label-file flow。P300/SSVEP/clinical/XDF/LSL/MOABB/proprietary converters 不能誇大。 |
 | Assistant / Agent | in-app assistant 提供 `One Step` 與 `Workflow`：前者只做一個可執行步驟，後者可持續到真正的 confirmation / decision / UI dialog / terminal-command 邊界。工具曝光只由 backend capability policy 決定；單次 tool execution 已抽到 coordinator，UI 只讀 worker runtime snapshot。 | approved local model cache 目前仍缺；不能宣稱長時間本地模型 session、thesis-grade tool-call accuracy 或 Windows assistant acceptance。 |
@@ -35,10 +36,10 @@ MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測�
 
 目前優先順序：
 
-1. training selection 不再使用 test split；undefined metrics 不再偽裝成 `0.0`。
-2. UI read model 在長命令期間不等待 mutation lock；post-command/state reliability fail closed。
-3. agent 只接受完整 tool-call envelope，repair context 可見且 loop guard 以單一 user turn 為界。
-4. 補 BIDS event bounds、run-dependent mapping、overlapping-window split leakage 與 saliency atomicity。
+1. 修正 Qt callback crash、shutdown admission/cancel recovery 與長命令期間的非阻塞 UI read model。
+2. agent 只接受完整 tool-call envelope，repair context 可見且 loop guard 以單一 user turn 為界。
+3. 補 BIDS event bounds、run-dependent mapping、overlapping-window split leakage 與 saliency atomicity。
+4. 針對 BIDS / split / saliency 相鄰修復重跑科學正確性與多資料集 gate。
 5. 重跑完整 unit/dashboard/multi-dataset/真 workflow artifact，再進 Windows 真人 acceptance。
 
 Rebaseline 後的工程入口：
@@ -93,6 +94,7 @@ Desktop MVP 前仍要先把 backend / UI 穩定化繼續收乾淨：
 | Data Interpretation format matrix | expected capabilities observed / match | 支撐代表性 scan / preview / validation format boundary。 |
 | Required multi-dataset gate | strict dataset / format matrix OK；expanded IO + public BIDS + cross-source + checked-in real GDF pipeline `46 passed`；strict cross-source smoke `4 passed`（3 training + 1 CNT epoch-only） | 支撐 checked-in GDF/MAT、compact multiformat、public event-rich fixtures、public BIDS EEG fixture，並避免把 epoch-only CNT 誤稱可訓練。 |
 | Human-like desktop walkthrough | current script 已要求 epoch/dataset/train/evaluate/visualize 真正成功，且明確把注入的 assistant 文案限制為 layout evidence；artifact 仍需在最終整合 HEAD 重建。 | 支撐 Xvfb workflow/UI evidence；不支撐 local-model tool-call correctness，也不等於 Windows acceptance。 |
+| Training selection integrity | training contract/regression `464 passed, 1 skipped`；Ruff / Basedpyright clean。Timeline、loader identity、state-dict、uneven-batch loss、AUC edge 與 saliency-before-finish tests 保護科學契約。另有代表性 pipeline `54 passed`、strict public cross-source `4 passed`。 | 前一組支撐 validation-only checkpoint、模型固定後 final evaluation、evaluation provenance、undefined AUC=N/A，以及未完成 training 不讀 test split；public cross-source 只支撐 EDF/GDF/SET/CNT workflow 相容性。完整 unit suite 仍有 Qt callback segmentation fault，因此不是 handoff gate。 |
 | Assistant focused regression | command policy、controller/worker lifecycle、refresh、UI wiring focused suites 已通過；核心合併批次最高 `283 passed`，後續 thread/UI targeted tests 亦通過 | 支撐 One Step / Workflow policy、owner-thread teardown、changed-state refresh；不代表本地模型長時間 session。 |
 | Saliency / visualization focused tests | ApplicationService / training / UI saliency regression passed on `stabilize/bids-epoch-saliency-baseline`. | 支撐 background baseline、advanced settings recompute boundary、BIDS epoch handoff 和 resource preflight；不取代人工 UX review。 |
 | Windows launcher walkthrough | PASS | 自動化 launcher command / bounded startup evidence，不是 signed installer 或真人 click-through。 |

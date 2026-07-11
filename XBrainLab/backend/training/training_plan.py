@@ -384,20 +384,24 @@ class TrainingPlanHolder:
         """
         target_loader = test_loader or val_loader
 
-        # Determine the state_dict to load before allocating the model on GPU
+        # Determine the state_dict without consulting test-set metrics.
         if self.option.evaluation_option == TrainingEvaluation.VAL_LOSS:
             state = getattr(train_record, f"best_val_{RecordKey.LOSS}_model")
-        elif self.option.evaluation_option == TrainingEvaluation.TEST_ACC:
-            state = getattr(train_record, f"best_test_{RecordKey.ACC}_model")
-        elif self.option.evaluation_option == TrainingEvaluation.TEST_AUC:
-            state = getattr(train_record, f"best_test_{RecordKey.AUC}_model")
+        elif self.option.evaluation_option == TrainingEvaluation.VAL_ACC:
+            state = getattr(train_record, f"best_val_{RecordKey.ACC}_model")
+        elif self.option.evaluation_option == TrainingEvaluation.VAL_AUC:
+            state = getattr(train_record, f"best_val_{RecordKey.AUC}_model")
         elif self.option.evaluation_option == TrainingEvaluation.LAST_EPOCH:
             state = train_record.model.state_dict()
         else:
             raise NotImplementedError
 
-        if not state:
-            return None, target_loader
+        if state is None:
+            logger.warning(
+                "Selected validation metric is unavailable; using the last epoch "
+                "for final evaluation"
+            )
+            state = train_record.model.state_dict()
 
         # Only create the model on GPU once we know we have a valid state_dict
         target_model = self.model_holder.get_model(
@@ -434,7 +438,6 @@ class TrainingPlanHolder:
                 model,
                 train_loader,
                 val_loader,
-                test_loader,
                 optimizer,
                 criterion,
                 train_record,
@@ -457,7 +460,17 @@ class TrainingPlanHolder:
                     target.eval()
 
             if target and target_loader:
-                eval_record = Evaluator.evaluate(target, target_loader)
+                evaluation_split = self._evaluation_split_name(
+                    target_loader,
+                    train_loader=train_loader,
+                    val_loader=val_loader,
+                    test_loader=test_loader,
+                )
+                eval_record = Evaluator.evaluate(
+                    target,
+                    target_loader,
+                    evaluation_split=evaluation_split,
+                )
                 train_record.set_eval_record(eval_record)
 
         train_record.export_checkpoint()
@@ -467,7 +480,6 @@ class TrainingPlanHolder:
         model: torch.nn.Module,
         train_loader: torch_data.DataLoader,
         val_loader: torch_data.DataLoader | None,
-        test_loader: torch_data.DataLoader | None,
         optimizer: torch.optim.Optimizer,
         criterion: torch.nn.Module,
         train_record: TrainRecord,
@@ -482,7 +494,6 @@ class TrainingPlanHolder:
             model (torch.nn.Module): The model to train.
             train_loader (torch_data.DataLoader): Data loader for training set.
             val_loader (torch_data.DataLoader | None): Data loader for validation set.
-            test_loader (torch_data.DataLoader | None): Data loader for test set.
             optimizer (torch.optim.Optimizer): Optimizer for backpropagation.
             criterion (torch.nn.Module): Loss function.
             train_record (TrainRecord): Record to store training statistics.
@@ -498,7 +509,6 @@ class TrainingPlanHolder:
             model,
             train_loader,
             val_loader,
-            test_loader,
             optimizer,
             criterion,
             train_record,
@@ -565,13 +575,26 @@ class TrainingPlanHolder:
 
         """
         self.saliency_params = dict(saliency_params or {})
-        _, val_loader, test_loader = self.get_loader()
-        for i in range(self.option.repeat_num):
-            train_record = self.train_record_list[i]
+        finished_records = [
+            record for record in self.train_record_list if record.is_finished()
+        ]
+        if not finished_records:
+            return
+
+        train_loader, val_loader, test_loader = self.get_loader()
+        for train_record in finished_records:
             target, target_loader = self.get_eval_pair(
                 train_record,
                 val_loader,
                 test_loader,
+            )
+            if target_loader is None and train_loader is not None:
+                target_loader = train_loader
+            evaluation_split = self._evaluation_split_name(
+                target_loader,
+                train_loader=train_loader,
+                val_loader=val_loader,
+                test_loader=test_loader,
             )
             if target is not None and target_loader is not None:  # model is trained
                 if self.saliency_params:
@@ -579,10 +602,31 @@ class TrainingPlanHolder:
                         target,
                         target_loader,
                         self.saliency_params,
+                        evaluation_split=evaluation_split,
                     )
                 else:
-                    eval_record = Evaluator.evaluate(target, target_loader)
-                self.train_record_list[i].set_eval_record(eval_record)
+                    eval_record = Evaluator.evaluate(
+                        target,
+                        target_loader,
+                        evaluation_split=evaluation_split,
+                    )
+                train_record.set_eval_record(eval_record)
+
+    @staticmethod
+    def _evaluation_split_name(
+        target_loader: torch_data.DataLoader | None,
+        *,
+        train_loader: torch_data.DataLoader | None,
+        val_loader: torch_data.DataLoader | None,
+        test_loader: torch_data.DataLoader | None,
+    ) -> str:
+        if target_loader is test_loader and test_loader is not None:
+            return "test"
+        if target_loader is val_loader and val_loader is not None:
+            return "validation"
+        if target_loader is train_loader and train_loader is not None:
+            return "training"
+        return "unknown"
 
     # status
     def get_training_status(self) -> str:
@@ -674,8 +718,8 @@ class TrainingPlanHolder:
     def get_best_performance(self) -> float:
         """Return the best accuracy achieved during training.
 
-        Checks validation accuracy first, then test accuracy, then the most
-        recent validation accuracy. Falls back to ``0.0``.
+        Uses validation accuracy when available, then the final evaluation or
+        training accuracy. Test-set metrics never select a checkpoint.
 
         Returns:
             The best accuracy value as a float.
@@ -684,13 +728,18 @@ class TrainingPlanHolder:
         record = self.train_record_list[self.get_training_repeat()]
         # Check validation accuracy first
         best_val_acc = record.best_record.get(f"best_val_{RecordKey.ACC}", -1)
-        if best_val_acc != -1:
+        if best_val_acc is not None:
             return best_val_acc
-        # Fallback to test accuracy
-        best_test_acc = record.best_record.get(f"best_test_{RecordKey.ACC}", -1)
-        if best_test_acc != -1:
-            return best_test_acc
-        # Fallback to current accuracy if no best recorded (e.g. early epoch)
+        if record.eval_record is not None:
+            final_accuracy = record.eval_record.get_acc()
+            if final_accuracy is not None:
+                return final_accuracy * 100
         if len(record.val[RecordKey.ACC]) > 0:
-            return record.val[RecordKey.ACC][-1]
+            latest_validation = record.val[RecordKey.ACC][-1]
+            if latest_validation is not None:
+                return latest_validation
+        if len(record.train[RecordKey.ACC]) > 0:
+            latest_training = record.train[RecordKey.ACC][-1]
+            if latest_training is not None:
+                return latest_training
         return 0.0

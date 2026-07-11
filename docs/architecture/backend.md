@@ -161,6 +161,15 @@ also now passes `append` and `interactive` through `TrainingCommandService` to
 `TrainingController`, so synchronous test/product smoke training does not bypass the
 command contract.
 
+2026-07-11 training-selection hardening separated checkpoint selection from final test
+evaluation. `EpochRunner` accepts only train and validation loaders; validation loss,
+validation accuracy, validation AUC, or last epoch select the checkpoint. The test loader is
+used once only after that choice is fixed. Undefined AUC is represented as `None` and skipped by
+best-model tracking rather than being converted to a ranking value of `0.0`. Final `EvalRecord`
+also stores whether its data came from test, validation, or training fallback. Saliency settings
+may be saved before training, but recomputation is restricted to finished records so it cannot
+open the test split before checkpoint selection is complete.
+
 Follow-up command-spine hardening on 2026-05-12 fixed three product-runtime contract
 gaps. UI command execution now suppresses controller observer-driven refresh while
 `ApplicationService.execute(...)` is running, so synchronous controller notifications wait for

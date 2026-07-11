@@ -303,7 +303,7 @@ class TrainingSettingDialog(BaseDialog):
         self.evaluation_combo = QComboBox()
         self.evaluation_list = [i.value for i in TrainingEvaluation]
         self.evaluation_combo.addItems(self.evaluation_list)
-        self.evaluation_combo.setCurrentIndex(2)  # Default: Best testing performance
+        self.evaluation_combo.setCurrentText(TrainingEvaluation.VAL_LOSS.value)
         add_simple_row(7, "Evaluation", self.evaluation_combo)
 
         self.repeat_entry = QLineEdit("1")
@@ -367,7 +367,7 @@ class TrainingSettingDialog(BaseDialog):
         ):
             return
 
-        evaluation_option = TrainingEvaluation.TEST_ACC
+        evaluation_option = TrainingEvaluation.VAL_LOSS
         for i in TrainingEvaluation:
             if i.value == self.evaluation_combo.currentText():
                 evaluation_option = i

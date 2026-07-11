@@ -6,6 +6,7 @@ import os
 import time
 from typing import Any
 
+import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
@@ -30,6 +31,14 @@ def _prepare_figure(
         return fig, True
     fig.clf()
     return fig, False
+
+
+def _numeric_series(values: list[float | None]) -> np.ndarray:
+    """Convert optional metrics to a plottable series with explicit gaps."""
+    return np.asarray(
+        [np.nan if value is None else float(value) for value in values],
+        dtype=float,
+    )
 
 
 class TrainRecord:
@@ -58,21 +67,13 @@ class TrainRecord:
             Model with best validation accuracy, set during training
         best_val_auc_model: :class:`torch.nn.Module` | None
             Model with best validation auc, set during training
-        best_test_accuracy_model: :class:`torch.nn.Module` | None
-            Model with best test accuracy, set during training
-        best_test_auc_model: :class:`torch.nn.Module` | None
-            Model with best test auc, set during training
         train: dict
             Stores the statistics of each epoch, including loss, accuracy, auc,
             time used and learning rate
         val: dict
             Stores the statistics of each epoch, including loss, auc and accuracy
-        test: dict
-            Stores the statistics of each epoch, including loss, auc and accuracy
         best_record: dict
-            Stores the statistics of the best model, including best validation loss,
-            best validation auc, best validation accuracy, best test auc,
-            best test accuracy, and their corresponding epoch
+            Stores validation metrics used for checkpoint selection and their epochs.
         epoch: int
             Current epoch
         target_path: str
@@ -117,16 +118,16 @@ class TrainRecord:
         self.eval_record: EvalRecord | None = None
         for key in RecordKey():
             setattr(self, "best_val_" + key + "_model", None)
-            setattr(self, "best_test_" + key + "_model", None)
-        self.train: dict[str, list[float]] = {i: [] for i in TrainRecordKey()}
-        self.val: dict[str, list[float]] = {i: [] for i in RecordKey()}
-        self.test: dict[str, list[float]] = {i: [] for i in RecordKey()}
+        self.train: dict[str, list[float | None]] = {i: [] for i in TrainRecordKey()}
+        self.val: dict[str, list[float | None]] = {i: [] for i in RecordKey()}
+        # Private compatibility data used only to render records from older releases.
+        self._legacy_test_history: dict[str, list[float | None]] = {
+            i: [] for i in RecordKey()
+        }
         self.best_record: dict[str, Any] = {}
-        for record_type in ["val", "test"]:
-            for key in RecordKey():
-                self.best_record[f"best_{record_type}_{key}"] = -1
-                self.best_record[f"best_{record_type}_{key}_epoch"] = None
-            self.best_record[f"best_{record_type}_" + RecordKey.LOSS] = torch.inf
+        for key in RecordKey():
+            self.best_record[f"best_val_{key}"] = None
+            self.best_record[f"best_val_{key}_epoch"] = None
 
         self.epoch = 0
         self.target_path: str | None = None
@@ -233,57 +234,50 @@ class TrainRecord:
         elif len(arr) == self.epoch:
             arr.append(val)
 
-    def update(self, update_type: str, test_result: dict[str, float]) -> None:
-        """Append metrics for the current epoch and update best-model tracking.
+    def _update_validation_metrics(
+        self,
+        test_result: dict[str, float | None],
+    ) -> None:
+        """Append validation metrics and update validation checkpoint tracking.
 
         For each metric key in ``test_result``, appends the value to the
         corresponding record list and updates the best model state dict if
         the new value surpasses the previous best.
 
         Args:
-            update_type: Record type to update (``'val'`` or ``'test'``).
             test_result: Dictionary mapping :class:`RecordKey` values to
                 metric values for the current epoch.
 
         """
         for key, value in test_result.items():
-            self.append_record(value, getattr(self, update_type)[key])
-            should_update = False
+            self.append_record(value, self.val[key])
+            if value is None:
+                continue
+            best_key = f"best_val_{key}"
+            previous = self.best_record[best_key]
             if "loss" in key:
-                if value <= self.best_record["best_" + update_type + "_" + key]:
-                    should_update = True
-            elif value >= self.best_record["best_" + update_type + "_" + key]:
-                should_update = True
+                should_update = previous is None or value <= previous
+            else:
+                should_update = previous is None or value >= previous
             if should_update:
-                self.best_record["best_" + update_type + "_" + key] = value
-                self.best_record["best_" + update_type + "_" + key + "_epoch"] = (
-                    self.get_epoch()
-                )
+                self.best_record[best_key] = value
+                self.best_record[f"{best_key}_epoch"] = self.get_epoch()
                 setattr(
                     self,
-                    "best_" + update_type + "_" + key + "_model",
+                    f"best_val_{key}_model",
                     {k: v.cpu().clone() for k, v in self.model.state_dict().items()},
                 )
 
-    def update_eval(self, test_result: dict[str, float]) -> None:
+    def update_validation(self, result: dict[str, float | None]) -> None:
         """Append validation statistics and update the best validation model.
 
         Args:
-            test_result: Dictionary of validation metrics for the current epoch.
+            result: Dictionary of validation metrics for the current epoch.
 
         """
-        self.update("val", test_result)
+        self._update_validation_metrics(result)
 
-    def update_test(self, test_result: dict[str, float]) -> None:
-        """Append test statistics and update the best test model.
-
-        Args:
-            test_result: Dictionary of test metrics for the current epoch.
-
-        """
-        self.update("test", test_result)
-
-    def update_train(self, test_result: dict[str, float]) -> None:
+    def update_train(self, test_result: dict[str, float | None]) -> None:
         """Append training statistics for the current epoch.
 
         Args:
@@ -330,19 +324,18 @@ class TrainRecord:
         if self.eval_record:
             self.eval_record.export(self.target_path)
 
-        for best_type in ["val", "test"]:
-            for key in RecordKey():
-                full_key = "best_" + best_type + "_" + key + "_model"
-                model = getattr(self, full_key)
-                if model:
-                    torch.save(model, os.path.join(self.target_path, full_key))
+        for key in RecordKey():
+            full_key = f"best_val_{key}_model"
+            model = getattr(self, full_key)
+            if model:
+                torch.save(model, os.path.join(self.target_path, full_key))
 
         fname = f"Epoch-{epoch}-model"
         torch.save(self.model.state_dict(), os.path.join(self.target_path, fname))
         record = {
             "train": self.train,
             "val": self.val,
-            "test": self.test,
+            "test": self._legacy_test_history,
             "best_record": self.best_record,
             "seed": self.seed,
         }
@@ -367,8 +360,17 @@ class TrainRecord:
                 data = torch.load(record_path, weights_only=False)
                 self.train = data["train"]
                 self.val = data["val"]
-                self.test = data["test"]
-                self.best_record = data["best_record"]
+                self._legacy_test_history = data.get(
+                    "test",
+                    self._legacy_test_history,
+                )
+                loaded_best = data.get("best_record", {})
+                for key in self.best_record:
+                    if key in loaded_best:
+                        value = loaded_best[key]
+                        if not key.endswith("_epoch") and value in {-1, torch.inf}:
+                            value = None
+                        self.best_record[key] = value
                 self.seed = data["seed"]
                 # Restore epoch from train loss length
                 self.epoch = len(self.train[RecordKey.LOSS])
@@ -397,7 +399,8 @@ class TrainRecord:
                 continue
             epoch_key = key + "_epoch"
             epoch_val = self.best_record.get(epoch_key, "-")
-            lines.append(f"  {key}: {val:.4f} (Epoch {epoch_val})")
+            formatted = "N/A" if val is None else f"{val:.4f}"
+            lines.append(f"  {key}: {formatted} (Epoch {epoch_val or '-'})")
 
         # Last Epoch Stats
         lines.append("\n[Last Epoch Statistics]")
@@ -444,7 +447,7 @@ class TrainRecord:
 
         training_loss_list = self.train[RecordKey.LOSS]
         val_loss_list = self.val[RecordKey.LOSS]
-        test_loss_list = self.test[RecordKey.LOSS]
+        test_loss_list = self._legacy_test_history[RecordKey.LOSS]
         if (
             len(training_loss_list) == 0
             and len(val_loss_list) == 0
@@ -456,11 +459,11 @@ class TrainRecord:
 
         ax = fig.add_subplot(111)
         if len(training_loss_list) > 0:
-            ax.plot(training_loss_list, "g", label="Training loss")
+            ax.plot(_numeric_series(training_loss_list), "g", label="Training loss")
         if len(val_loss_list) > 0:
-            ax.plot(val_loss_list, "b", label="validation loss")
+            ax.plot(_numeric_series(val_loss_list), "b", label="validation loss")
         if len(test_loss_list) > 0:
-            ax.plot(test_loss_list, "r", label="testing loss")
+            ax.plot(_numeric_series(test_loss_list), "r", label="testing loss")
         ax.set_title("Training loss")
         ax.set_xlabel("Epochs")
         ax.set_ylabel("Loss")
@@ -490,7 +493,7 @@ class TrainRecord:
 
         training_acc_list = self.train[RecordKey.ACC]
         val_acc_list = self.val[RecordKey.ACC]
-        test_acc_list = self.test[RecordKey.ACC]
+        test_acc_list = self._legacy_test_history[RecordKey.ACC]
         if (
             len(training_acc_list) == 0
             and len(val_acc_list) == 0
@@ -502,11 +505,11 @@ class TrainRecord:
 
         ax = fig.add_subplot(111)
         if len(training_acc_list) > 0:
-            ax.plot(training_acc_list, "g", label="Training accuracy")
+            ax.plot(_numeric_series(training_acc_list), "g", label="Training accuracy")
         if len(val_acc_list) > 0:
-            ax.plot(val_acc_list, "b", label="validation accuracy")
+            ax.plot(_numeric_series(val_acc_list), "b", label="validation accuracy")
         if len(test_acc_list) > 0:
-            ax.plot(test_acc_list, "r", label="testing accuracy")
+            ax.plot(_numeric_series(test_acc_list), "r", label="testing accuracy")
         ax.set_title("Training Accuracy")
         ax.set_xlabel("Epochs")
         ax.set_ylabel("Accuracy (%)")
@@ -536,7 +539,7 @@ class TrainRecord:
 
         training_auc_list = self.train[RecordKey.AUC]
         val_auc_list = self.val[RecordKey.AUC]
-        test_auc_list = self.test[RecordKey.AUC]
+        test_auc_list = self._legacy_test_history[RecordKey.AUC]
         if (
             len(training_auc_list) == 0
             and len(val_auc_list) == 0
@@ -548,11 +551,11 @@ class TrainRecord:
 
         ax = fig.add_subplot(111)
         if len(training_auc_list) > 0:
-            ax.plot(training_auc_list, "g", label="Training AUC")
+            ax.plot(_numeric_series(training_auc_list), "g", label="Training AUC")
         if len(val_auc_list) > 0:
-            ax.plot(val_auc_list, "b", label="validation AUC")
+            ax.plot(_numeric_series(val_auc_list), "b", label="validation AUC")
         if len(test_auc_list) > 0:
-            ax.plot(test_auc_list, "r", label="testing AUC")
+            ax.plot(_numeric_series(test_auc_list), "r", label="testing AUC")
         ax.set_title("Training AUC")
         ax.set_xlabel("Epochs")
         ax.set_ylabel("AUC")
@@ -587,7 +590,7 @@ class TrainRecord:
             return None
 
         ax = fig.add_subplot(111)
-        ax.plot(lr_list, "g")
+        ax.plot(_numeric_series(lr_list), "g")
         ax.set_title("Learning Rate")
         ax.set_xlabel("Epochs")
         ax.set_ylabel("lr")

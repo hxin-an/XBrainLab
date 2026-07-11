@@ -50,7 +50,7 @@ class TestGetModelOutput:
             train_record.update_train(
                 {RecordKey.LOSS: 0.5 - i * 0.1, RecordKey.ACC: 50 + i * 10}
             )
-            train_record.update_eval(
+            train_record.update_validation(
                 {RecordKey.LOSS: 0.6 - i * 0.1, RecordKey.ACC: 45 + i * 10}
             )
             train_record.step()
@@ -132,8 +132,11 @@ class TestExportLoadRoundTrip:
             record.update_train(
                 {RecordKey.LOSS: 1.0 / (i + 1), RecordKey.ACC: i * 20.0}
             )
-            record.update_eval({RecordKey.LOSS: 1.1 / (i + 1), RecordKey.ACC: i * 18.0})
-            record.update_test({RecordKey.LOSS: 1.2 / (i + 1), RecordKey.ACC: i * 15.0})
+            record.update_validation(
+                {RecordKey.LOSS: 1.1 / (i + 1), RecordKey.ACC: i * 18.0}
+            )
+            record._legacy_test_history[RecordKey.LOSS].append(1.2 / (i + 1))
+            record._legacy_test_history[RecordKey.ACC].append(i * 15.0)
             record.step()
 
         record.export_checkpoint()

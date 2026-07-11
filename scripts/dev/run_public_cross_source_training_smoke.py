@@ -179,7 +179,7 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
                 batch_size=8,
                 learning_rate=0.001,
                 save_checkpoints_every=1,
-                evaluation_option="test_acc",
+                evaluation_option="val_acc",
             ),
         )
         _raise_if_failed(configure_training)

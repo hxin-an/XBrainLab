@@ -32,10 +32,15 @@ from XBrainLab.backend.application.state import (
 )
 
 
+class _EvalRecord:
+    def __init__(self, evaluation_split: str) -> None:
+        self.evaluation_split = evaluation_split
+
+
 class _Run:
-    def __init__(self, finished: bool) -> None:
+    def __init__(self, finished: bool, *, evaluation_split: str = "test") -> None:
         self._finished = finished
-        self.eval_record = object() if finished else None
+        self.eval_record = _EvalRecord(evaluation_split) if finished else None
 
     def is_finished(self) -> bool:
         return self._finished
@@ -215,9 +220,31 @@ def test_analysis_service_summarizes_finished_evaluation_runs() -> None:
     assert diagnostics["target"] == "latest"
     assert diagnostics["plan_count"] == 1
     assert diagnostics["finished_run_count"] == 1
+    assert diagnostics["evaluation_splits"] == ["test"]
     assert diagnostics["training_active"] is False
     assert diagnostics["plans"][0]["name"] == "Plan A"
+    assert diagnostics["plans"][0]["evaluation_splits"] == ["test"]
     assert diagnostics["plans"][0]["metrics"] == {"accuracy": 0.75}
+
+
+def test_analysis_service_reports_validation_fallback_provenance() -> None:
+    plan = _Plan(
+        "Plan A",
+        [
+            _Run(finished=True, evaluation_split="validation"),
+            _Run(finished=True, evaluation_split="test"),
+        ],
+    )
+    service, _visualization, _preprocess = _service(
+        evaluation=_EvaluationController([plan]),
+    )
+
+    _message, diagnostics = _expect_payload(
+        service.handle_evaluate(EvaluateCommand(target="latest")),
+    )
+
+    assert diagnostics["evaluation_splits"] == ["test", "validation"]
+    assert diagnostics["plans"][0]["evaluation_splits"] == ["test", "validation"]
 
 
 def test_analysis_service_reports_no_results_without_facade() -> None:

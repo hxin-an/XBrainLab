@@ -98,7 +98,7 @@ class TestFullPipeline:
             bs=2,
             lr=0.001,
             checkpoint_epoch=1,
-            evaluation_option=TrainingEvaluation.TEST_ACC,
+            evaluation_option=TrainingEvaluation.VAL_ACC,
             repeat_num=1,
         )
 
@@ -189,7 +189,7 @@ class TestMultiRepeatTraining:
             bs=2,
             lr=0.001,
             checkpoint_epoch=1,
-            evaluation_option=TrainingEvaluation.TEST_ACC,
+            evaluation_option=TrainingEvaluation.VAL_ACC,
             repeat_num=2,
         )
 

@@ -254,14 +254,6 @@
         ],
         "./XBrainLab/backend/training/evaluator.py": [
             {
-                "code": "reportReturnType",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 22,
-                    "lineCount": 1
-                }
-            },
-            {
                 "code": "reportPrivateImportUsage",
                 "range": {
                     "startColumn": 23,
@@ -289,22 +281,6 @@
             }
         ],
         "./XBrainLab/backend/training/record/eval.py": [
-            {
-                "code": "reportReturnType",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 13,
-                    "lineCount": 7
-                }
-            },
-            {
-                "code": "reportReturnType",
-                "range": {
-                    "startColumn": 15,
-                    "endColumn": 9,
-                    "lineCount": 5
-                }
-            },
             {
                 "code": "reportArgumentType",
                 "range": {

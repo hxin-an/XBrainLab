@@ -41,7 +41,7 @@ def real_training_option():
         bs=_ui_text("4"),
         lr=_ui_text("0.001"),  # lr is passed separately
         checkpoint_epoch=_ui_text("1"),
-        evaluation_option=TrainingEvaluation.TEST_ACC,
+        evaluation_option=TrainingEvaluation.VAL_ACC,
         repeat_num=_ui_text("1"),
     )
 
@@ -76,7 +76,7 @@ class TestTrainingOptionBugFix:
             bs=_ui_text("4"),
             lr=_ui_text("0.001"),
             checkpoint_epoch=_ui_text("1"),
-            evaluation_option=TrainingEvaluation.TEST_ACC,
+            evaluation_option=TrainingEvaluation.VAL_ACC,
             repeat_num=_ui_text("1"),
         )
 
@@ -142,7 +142,7 @@ class TestCompleteTrainingWorkflow:
                 bs=_ui_text("4"),
                 lr=_ui_text("0.001"),
                 checkpoint_epoch=_ui_text("1"),
-                evaluation_option=TrainingEvaluation.TEST_ACC,
+                evaluation_option=TrainingEvaluation.VAL_ACC,
                 repeat_num=_ui_text("1"),
             )
 
@@ -163,7 +163,7 @@ class TestApplicationServiceTrainingStateIntegration:
                 device="cpu",
                 optimizer="adam",
                 output_dir=str(tmp_path / "training-output"),
-                evaluation_option=TrainingEvaluation.TEST_ACC.value,
+                evaluation_option=TrainingEvaluation.VAL_ACC.value,
             ),
         )
 
@@ -178,6 +178,8 @@ class TestApplicationServiceTrainingStateIntegration:
             "repeat": 1,
             "device": "cpu",
             "optimizer": "Adam",
+            "optimizer_params": {},
+            "evaluation_option": "Best validation performance",
             "checkpoint_epoch": 0,
             "output_dir": str(tmp_path / "training-output"),
         }

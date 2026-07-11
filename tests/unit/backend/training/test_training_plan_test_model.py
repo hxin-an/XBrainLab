@@ -120,7 +120,7 @@ def loss_avg():
 def test_test_model(dataloader, loss_avg):
     model = FakeModel()
     criterion = torch.nn.CrossEntropyLoss()
-    test_dict = Evaluator.test_model(model, dataloader, criterion)
+    test_dict = Evaluator.evaluate_metrics(model, dataloader, criterion)
 
     assert test_dict.keys() == {"loss", "accuracy", "auc"}
     assert test_dict["accuracy"] == (TOTAL_NUM - ERROR_NUM) / (TOTAL_NUM) * 100

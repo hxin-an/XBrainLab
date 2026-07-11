@@ -520,9 +520,6 @@ class TrainingPanel(BasePanel):
             self._metric_at(record.val, RecordKey.LOSS, epoch_index),
             self._metric_at(record.val, RecordKey.ACC, epoch_index),
             self._metric_at(record.val, RecordKey.AUC, epoch_index),
-            self._metric_at(getattr(record, "test", {}), RecordKey.LOSS, epoch_index),
-            self._metric_at(getattr(record, "test", {}), RecordKey.ACC, epoch_index),
-            self._metric_at(getattr(record, "test", {}), RecordKey.AUC, epoch_index),
             self._metric_at(record.train, TrainRecordKey.LR, epoch_index),
             self._metric_at(record.train, TrainRecordKey.TIME, epoch_index),
         )
@@ -539,21 +536,6 @@ class TrainingPanel(BasePanel):
             "val_loss": self._metric_at(record.val, RecordKey.LOSS, epoch_index),
             "val_acc": self._metric_at(record.val, RecordKey.ACC, epoch_index),
             "val_auc": self._metric_at(record.val, RecordKey.AUC, epoch_index),
-            "test_loss": self._metric_at(
-                getattr(record, "test", {}),
-                RecordKey.LOSS,
-                epoch_index,
-            ),
-            "test_acc": self._metric_at(
-                getattr(record, "test", {}),
-                RecordKey.ACC,
-                epoch_index,
-            ),
-            "test_auc": self._metric_at(
-                getattr(record, "test", {}),
-                RecordKey.AUC,
-                epoch_index,
-            ),
             "lr": self._metric_at(record.train, TrainRecordKey.LR, epoch_index),
             "time": self._metric_at(record.train, TrainRecordKey.TIME, epoch_index),
         }
@@ -566,9 +548,6 @@ class TrainingPanel(BasePanel):
             f"val loss={self._format_metric(values['val_loss'])} "
             f"acc={self._format_metric(values['val_acc'])} "
             f"auc={self._format_metric(values['val_auc'])}; "
-            f"test loss={self._format_metric(values['test_loss'])} "
-            f"acc={self._format_metric(values['test_acc'])} "
-            f"auc={self._format_metric(values['test_auc'])}; "
             f"lr={self._format_metric(values['lr'])} "
             f"time={self._format_metric(values['time'])}"
         )
@@ -583,7 +562,7 @@ class TrainingPanel(BasePanel):
     @staticmethod
     def _format_metric(value) -> str:
         if value is None:
-            return "-"
+            return "N/A"
         try:
             return f"{float(value):.4g}"
         except (TypeError, ValueError):

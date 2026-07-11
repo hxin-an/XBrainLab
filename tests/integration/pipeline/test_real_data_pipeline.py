@@ -123,7 +123,7 @@ def test_real_data_pipeline():
             batch_size=16,
             learning_rate=0.001,
             save_checkpoints_every=1,
-            evaluation_option="test_acc",
+            evaluation_option="val_acc",
         ),
     )
     assert model_result.ok is True

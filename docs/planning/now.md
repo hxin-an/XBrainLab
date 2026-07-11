@@ -26,9 +26,9 @@
 | Done | Desktop MVP audit | Architecture、UI、test/EEG reviewer 已盤點 command concurrency、Qt lifecycle、assistant policy、validation truth、窄螢幕 layout 與 artifact determinism。 |
 | Done | Desktop MVP blocker repair | ApplicationService serialization、assistant refresh/lifecycle、Data Import review truth、real GDF event/evaluation evidence、validation matrix truth、narrow UI artifacts 已修復。 |
 | Invalidated | Previous handoff candidate | 舊 dashboard、walkthrough 與 reviewer 結論未完整綁定目前 HEAD，已撤銷 handoff-ready claim；只保留為歷史 checkpoint。 |
-| In progress | Validation truth reset | Windows launcher 已改指向唯一 active repo；walkthrough 必須讓核心 command 真成功，scripted assistant transcript 只算 layout evidence。 |
-| Next | Scientific training correctness | test split 不參與 checkpoint selection；undefined AUC 顯示 N/A；補 leakage 與 event bounds。 |
-| Next | Non-blocking application view | 長 mutation 期間 UI navigation/query 不等待 command lock；state read error 與 post-state failure fail closed。 |
+| Done | Validation truth reset | Windows launcher 已改指向唯一 active repo；walkthrough 要求 reload/reapply、training completion、evaluation、visualization 真成功，scripted assistant transcript 只算 layout evidence。 |
+| In progress | Scientific training correctness | 已完成 validation-only checkpoint、模型固定後 final evaluation、split provenance、undefined AUC=N/A 與 saliency-before-finish isolation；historical test curves 僅保留 private read compatibility。仍要補 overlapping-window leakage、BIDS event bounds 與 run mapping。 |
+| Next | Non-blocking application view / shutdown | 長 mutation 期間 UI navigation/query 不等待 command lock；state read error 與 post-state failure fail closed；修正 shutdown fence thread-pool 空窗、cancel recovery 與 full-unit Qt callback segmentation fault。 |
 | Next | Agent verified turn loop | tool-only envelope、repair context、turn-scoped loop guard、user-safe error text與真 runtime evidence。 |
 | Pending | Windows user acceptance | 只在 current-HEAD dashboard、完整 unit、multi-dataset、產品 walkthrough 與 reviewer gates 全數重建後進行。 |
 

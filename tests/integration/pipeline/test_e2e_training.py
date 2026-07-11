@@ -45,7 +45,7 @@ def real_training_option():
         bs=_ui_text("4"),
         lr=_ui_text("0.001"),
         checkpoint_epoch=_ui_text("1"),
-        evaluation_option=TrainingEvaluation.TEST_ACC,
+        evaluation_option=TrainingEvaluation.VAL_ACC,
         repeat_num=_ui_text("1"),
     )
 
@@ -197,8 +197,12 @@ class TestEvaluationPanelIntegration:
             panel.last_application_query.diagnostics.get("exception_type")
             == "PreconditionError"
         )
-        assert panel.model_combo.count() == 1
-        assert panel.model_combo.currentText() == "No Data Available"
+        assert panel.model_combo.count() == 0
+        assert panel.model_combo.isEnabled() is False
+        assert (
+            panel.no_data_label.text()
+            == "Create a training plan before evaluating results."
+        )
         assert panel.run_combo.count() == 0
 
     def test_evaluation_panel_with_unfinished_trainer_shows_unavailable_state(
@@ -243,8 +247,9 @@ class TestEvaluationPanelIntegration:
         assert diagnostics.get("available") is False
         assert diagnostics.get("plan_count") == 1
         assert diagnostics.get("finished_run_count") == 0
-        assert panel.model_combo.count() == 1
-        assert panel.model_combo.currentText() == "No Data Available"
+        assert panel.model_combo.count() == 0
+        assert panel.model_combo.isEnabled() is False
+        assert panel.no_data_label.text() == "No evaluation results available yet."
         assert panel.run_combo.count() == 0
 
 
@@ -305,7 +310,7 @@ class TestTrainingWorkflowWithUI:
                 batch_size=_ui_text("4"),
                 learning_rate=_ui_text("0.001"),
                 save_checkpoints_every=_ui_text("1"),
-                evaluation_option="test_acc",
+                evaluation_option="val_acc",
                 repeat=_ui_text("1"),
             ),
         )

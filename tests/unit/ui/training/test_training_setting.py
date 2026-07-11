@@ -50,6 +50,11 @@ class TestTrainingSetting:
         assert window.output_dir == "./output"
         assert window.optim == torch.optim.Adam  # Real Adam class
         assert window.use_cpu is True
+        assert window.evaluation_combo.currentText() == "Best validation loss"
+        assert all(
+            "testing" not in window.evaluation_combo.itemText(index).lower()
+            for index in range(window.evaluation_combo.count())
+        )
 
     def test_ok_cancel_buttons_have_no_icons(self, window):
         buttons = window.findChild(QDialogButtonBox)
@@ -92,6 +97,36 @@ class TestTrainingSetting:
         assert option.lr == 0.001
         assert option.output_dir == "/mock/output"
         assert option.use_cpu is True
+
+    def test_initial_snapshot_restores_evaluation_selection(self, qtbot):
+        controller = MagicMock()
+        controller.get_training_option.return_value = None
+        snapshot = {
+            "epoch": 10,
+            "batch_size": 32,
+            "learning_rate": 0.001,
+            "repeat": 1,
+            "device": "cpu",
+            "optimizer": "Adam",
+            "optimizer_params": {},
+            "checkpoint_epoch": 0,
+            "output_dir": "./output",
+            "evaluation_option": "Best validation performance",
+        }
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
+                return_value={"Adam": torch.optim.Adam},
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.training.training_setting_dialog.get_device_count",
+                return_value=0,
+            ),
+        ):
+            dialog = TrainingSettingDialog(None, controller, initial_option=snapshot)
+            qtbot.addWidget(dialog)
+
+        assert dialog.evaluation_combo.currentText() == "Best validation performance"
 
     def test_set_output_dir(self, window):
         with patch(

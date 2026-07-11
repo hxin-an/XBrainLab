@@ -93,7 +93,7 @@ class Evaluator:
         return value.detach().cpu().numpy()
 
     @staticmethod
-    def compute_auc(y_true, y_pred, multi_class="ovr") -> float:
+    def compute_auc(y_true, y_pred, multi_class="ovr") -> float | None:
         """Compute AUC score safely, handling tensor conversion and edge cases.
 
         Args:
@@ -103,45 +103,31 @@ class Evaluator:
                 Defaults to ``'ovr'`` (one-vs-rest).
 
         Returns:
-            The computed AUC score, or ``0.0`` if computation fails.
+            The computed AUC score, or ``None`` when AUC is undefined.
 
         """
         try:
             if y_true is None or y_pred is None:
                 logging.getLogger(__name__).warning("No data to compute AUC")
-                return 0.0
+                return None
 
             # Detach and CPU if tensors
             if isinstance(y_true, torch.Tensor):
                 y_true = y_true.detach().cpu().numpy()
+            y_true = np.asarray(y_true)
+            if np.unique(y_true).size < 2:
+                logging.getLogger(__name__).warning(
+                    "AUC is undefined because the split contains fewer than two classes"
+                )
+                return None
 
             # Handle predictions
             if isinstance(y_pred, torch.Tensor):
-                if multi_class == "ovr":
-                    probs = (
-                        torch.nn.functional.softmax(y_pred, dim=1)
-                        .detach()
-                        .cpu()
-                        .numpy()
-                    )
-                else:
-                    # For simple binary or other cases logic might differ,
-                    # but preserving original logic structure:
-                    # Actually original logical branch was:
-                    # if tensor: apply softmax (assuming logits)
-                    # else: assume probs
-                    # But wait, original code checked 'ovr' inside?
-                    # No, it checked 'ovr' inside the if tensor block?
-                    # Let's verify original logic.
-                    # Assuming y_pred IS logits if tensor.
-                    probs = (
-                        torch.nn.functional.softmax(y_pred, dim=1)
-                        .detach()
-                        .cpu()
-                        .numpy()
-                    )
+                probs = (
+                    torch.nn.functional.softmax(y_pred, dim=1).detach().cpu().numpy()
+                )
             else:
-                probs = y_pred
+                probs = np.asarray(y_pred)
 
             if probs.shape[-1] <= 2:
                 # Binary case
@@ -153,20 +139,20 @@ class Evaluator:
         except Exception as e:
             logger = logging.getLogger(__name__)
             logger.warning("Failed to calculate AUC: %s", e)
-            return 0.0
+            return None
         else:
             # roc_auc_score may return nan for undefined cases (e.g. single class)
             if np.isnan(auc):
-                return 0.0
-            return auc
+                return None
+            return float(auc)
 
     @staticmethod
-    def test_model(
+    def evaluate_metrics(
         model: torch.nn.Module,
         data_loader: torch_data.DataLoader,
         criterion: torch.nn.Module,
-    ) -> dict[str, float]:
-        """Test a model on the given data loader and compute metrics.
+    ) -> dict[str, float | None]:
+        """Compute aggregate metrics for a model and data loader.
 
         Args:
             model: The PyTorch model to evaluate.
@@ -195,10 +181,11 @@ class Evaluator:
                 )
                 outputs = model(batch_inputs)
                 loss = criterion(outputs, batch_labels)
-                running_loss += loss.item()
+                batch_count = len(batch_labels)
+                running_loss += loss.item() * batch_count
 
                 correct += (outputs.argmax(axis=1) == batch_labels).float().sum().item()
-                total_count += len(batch_labels)
+                total_count += batch_count
 
                 y_true_parts.append(batch_labels.detach().cpu())
                 y_pred_parts.append(outputs.detach().cpu())
@@ -207,9 +194,9 @@ class Evaluator:
         y_pred = torch.cat(y_pred_parts) if y_pred_parts else None
 
         if total_count == 0:
-            return {RecordKey.ACC: 0, RecordKey.AUC: 0, RecordKey.LOSS: 0}
+            return {RecordKey.ACC: 0, RecordKey.AUC: None, RecordKey.LOSS: 0}
 
-        running_loss /= len(data_loader)
+        running_loss /= total_count
         acc = correct / total_count * 100
 
         # Calculate AUC using shared helper
@@ -221,6 +208,8 @@ class Evaluator:
     def evaluate(
         model: torch.nn.Module,
         data_loader: torch_data.DataLoader,
+        *,
+        evaluation_split: str = "unknown",
     ) -> EvalRecord:
         """Evaluate model outputs without saliency attribution.
 
@@ -252,6 +241,7 @@ class Evaluator:
                 {},
                 {},
                 {},
+                evaluation_split=evaluation_split,
             )
 
         return EvalRecord(
@@ -262,6 +252,7 @@ class Evaluator:
             {},
             {},
             {},
+            evaluation_split=evaluation_split,
         )
 
     @staticmethod
@@ -269,6 +260,8 @@ class Evaluator:
         model: torch.nn.Module,
         data_loader: torch_data.DataLoader,
         saliency_params: dict,
+        *,
+        evaluation_split: str = "unknown",
     ) -> EvalRecord:
         """Evaluate model and compute saliency maps using multiple attribution methods.
 
@@ -417,4 +410,5 @@ class Evaluator:
             _by_class(smoothgrad_values, label_list, num_classes),
             _by_class(smoothgrad_sq_values, label_list, num_classes),
             _by_class(vargrad_values, label_list, num_classes),
+            evaluation_split=evaluation_split,
         )

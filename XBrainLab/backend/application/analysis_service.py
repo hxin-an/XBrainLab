@@ -44,9 +44,12 @@ class AnalysisCommandService:
         summaries = []
         pooled_eval_results: list[Any] = []
         model_summaries: list[dict[str, Any]] = []
+        evaluation_splits: set[str] = set()
         for plan_idx, plan in enumerate(plans):
             runs = self._safe_plan_runs(plan)
             finished = [run for run in runs if self._run_finished(run)]
+            plan_evaluation_splits = self._evaluation_splits(finished)
+            evaluation_splits.update(plan_evaluation_splits)
             metrics: dict[str, Any] = {}
             pooled_result: Any = None
             if finished and (command.include_metrics or command.include_pooled_results):
@@ -58,6 +61,7 @@ class AnalysisCommandService:
                     "name": self._safe_plan_name(plan, plan_idx),
                     "run_count": len(runs),
                     "finished_run_count": len(finished),
+                    "evaluation_splits": plan_evaluation_splits,
                     "metrics": self._json_safe(metrics),
                 }
             )
@@ -85,6 +89,7 @@ class AnalysisCommandService:
             "target": command.target,
             "plan_count": len(plans),
             "finished_run_count": finished_total,
+            "evaluation_splits": sorted(evaluation_splits),
             "training_active": self._get_state().training.is_running,
             "plans": summaries,
         }
@@ -297,6 +302,18 @@ class AnalysisCommandService:
     @staticmethod
     def _run_finished(run: Any) -> bool:
         return bool(run.is_finished())
+
+    @staticmethod
+    def _evaluation_splits(runs: list[Any]) -> list[str]:
+        """Return explicit final-evaluation provenance for completed runs."""
+        splits = {
+            str(
+                getattr(getattr(run, "eval_record", None), "evaluation_split", None)
+                or "unknown"
+            )
+            for run in runs
+        }
+        return sorted(splits)
 
     @classmethod
     def _json_safe(cls, value: Any) -> Any:

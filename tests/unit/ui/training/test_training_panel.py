@@ -15,6 +15,10 @@ from XBrainLab.ui.panels.training.panel import MetricTab, TrainingPanel
 app = QApplication.instance() or QApplication(sys.argv)
 
 
+def test_undefined_metric_is_rendered_as_not_available() -> None:
+    assert TrainingPanel._format_metric(None) == "N/A"
+
+
 @pytest.fixture
 def mock_main_window(qtbot):
     window = QMainWindow()

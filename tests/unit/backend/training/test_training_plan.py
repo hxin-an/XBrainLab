@@ -254,14 +254,11 @@ def test_training_plan_holder_get_eval_loader(
     "evaluation_option, state_dict_attr_name",
     [
         (TrainingEvaluation.VAL_LOSS, f"best_val_{RecordKey.LOSS}_model"),
-        (TrainingEvaluation.VAL_LOSS, f"best_val_{RecordKey.LOSS}_model"),
-        (TrainingEvaluation.TEST_AUC, f"best_test_{RecordKey.AUC}_model"),
-        (TrainingEvaluation.TEST_AUC, f"best_test_{RecordKey.AUC}_model"),
-        (TrainingEvaluation.TEST_ACC, f"best_test_{RecordKey.ACC}_model"),
-        (TrainingEvaluation.TEST_ACC, f"best_test_{RecordKey.ACC}_model"),
+        (TrainingEvaluation.VAL_AUC, f"best_val_{RecordKey.AUC}_model"),
+        (TrainingEvaluation.VAL_ACC, f"best_val_{RecordKey.ACC}_model"),
     ],
 )
-@pytest.mark.parametrize("expected", ["test", None])
+@pytest.mark.parametrize("has_best_state", [True, False])
 def test_training_plan_holder_get_eval_model(
     base_holder,
     dataset,
@@ -269,7 +266,7 @@ def test_training_plan_holder_get_eval_model(
     training_option,
     evaluation_option,
     state_dict_attr_name,
-    expected,
+    has_best_state,
 ):
     repeat = 0
     val_loader = None
@@ -280,16 +277,20 @@ def test_training_plan_holder_get_eval_model(
     record = TrainRecord(
         repeat=repeat, dataset=dataset, model=model, option=training_option, seed=seed
     )
-    if expected:
-        expected = np.random.rand(1)
+    expected = np.random.rand(1) if has_best_state else None
     setattr(record, state_dict_attr_name, expected)
 
     target_model, _ = base_holder.get_eval_pair(record, val_loader, test_loader)
-    if expected:
-        assert isinstance(target_model, FakeModel)
+    assert isinstance(target_model, FakeModel)
+    if has_best_state:
         assert target_model.my_state_dict == expected
     else:
-        assert target_model is None
+        expected_state = record.model.state_dict()
+        assert target_model.my_state_dict.keys() == expected_state.keys()
+        assert all(
+            torch.equal(target_model.my_state_dict[key], expected_state[key])
+            for key in expected_state
+        )
 
 
 @pytest.mark.parametrize(
@@ -371,7 +372,7 @@ def test_training_plan_holder_trivial_getter(base_holder, dataset):
 @pytest.mark.parametrize("interrupt", [True, False])
 def test_training_plan_holder_one_epoch(base_holder, interrupt):
     model = base_holder.model_holder.get_model({})
-    trainLoader, valLoader, testLoader = base_holder.get_loader()
+    trainLoader, valLoader, _ = base_holder.get_loader()
     train_record = base_holder.train_record_list[0]
     optimizer = train_record.optim
     criterion = train_record.criterion
@@ -380,12 +381,11 @@ def test_training_plan_holder_one_epoch(base_holder, interrupt):
 
     with (
         patch.object(train_record, "update_train") as update_train_mock,
-        patch.object(train_record, "update_eval") as update_val_mock,
-        patch.object(train_record, "update_test") as update_test_mock,
+        patch.object(train_record, "update_validation") as update_val_mock,
         patch.object(train_record, "update_statistic") as update_statistic_mock,
         patch.object(train_record, "export_checkpoint") as export_checkpoint_mock,
         patch(
-            "XBrainLab.backend.training.evaluator.Evaluator.test_model",
+            "XBrainLab.backend.training.evaluator.Evaluator.evaluate_metrics",
             return_value=fake_test_result,
         ),
     ):
@@ -397,7 +397,6 @@ def test_training_plan_holder_one_epoch(base_holder, interrupt):
             model,
             trainLoader,
             valLoader,
-            testLoader,
             optimizer,
             criterion,
             train_record,
@@ -407,14 +406,12 @@ def test_training_plan_holder_one_epoch(base_holder, interrupt):
         if interrupt:
             assert update_train_mock.call_count == 0
             assert update_val_mock.call_count == 0
-            assert update_test_mock.call_count == 0
             assert update_statistic_mock.call_count == 0
             assert export_checkpoint_mock.call_count == 0
             return
 
         update_train_mock.assert_called_once()
         update_val_mock.assert_called_once()
-        update_test_mock.assert_called_once()
         update_statistic_mock.assert_called_once()
         export_checkpoint_mock.assert_not_called()
 
@@ -425,14 +422,10 @@ def test_training_plan_holder_one_epoch(base_holder, interrupt):
         update_val_called_args = update_val_mock.call_args[0][0]
         assert update_val_called_args == fake_test_result
 
-        update_test_called_args = update_test_mock.call_args[0][0]
-        assert update_test_called_args == fake_test_result
-
         base_holder.train_one_epoch(
             model,
             trainLoader,
             valLoader,
-            testLoader,
             optimizer,
             criterion,
             train_record,
@@ -457,6 +450,72 @@ def test_training_plan_holder_train_one_repeat(base_holder):
 
         train_one_epoch_mock.assert_called_once()
         export_checkpoint_mock.assert_called_once()
+
+
+@pytest.mark.timeout(15)
+def test_training_uses_validation_per_epoch_and_test_only_after_selection(base_holder):
+    train_loader, val_loader, test_loader = base_holder.get_loader()
+    assert train_loader is not None
+    assert val_loader is not None
+    assert test_loader is not None
+    base_holder.option.epoch = 2
+    record = base_holder.train_record_list[0]
+    timeline: list[str] = []
+
+    original_evaluate_metrics = Evaluator.evaluate_metrics
+    original_evaluate = Evaluator.evaluate
+    original_get_eval_pair = base_holder.get_eval_pair
+
+    def validation_step(*args, **kwargs):
+        timeline.append("validation")
+        return original_evaluate_metrics(*args, **kwargs)
+
+    def select_checkpoint(*args, **kwargs):
+        timeline.append("select_checkpoint")
+        return original_get_eval_pair(*args, **kwargs)
+
+    def final_test(*args, **kwargs):
+        timeline.append("final_test")
+        return original_evaluate(*args, **kwargs)
+
+    with (
+        patch.object(
+            base_holder,
+            "get_loader",
+            return_value=(train_loader, val_loader, test_loader),
+        ),
+        patch.object(
+            Evaluator,
+            "evaluate_metrics",
+            side_effect=validation_step,
+        ) as evaluate_metrics,
+        patch.object(
+            base_holder,
+            "get_eval_pair",
+            side_effect=select_checkpoint,
+        ),
+        patch.object(
+            Evaluator,
+            "evaluate",
+            side_effect=final_test,
+        ) as final_evaluate,
+    ):
+        base_holder.train_one_repeat(record)
+
+    assert evaluate_metrics.call_count == 2
+    assert all(call.args[1] is val_loader for call in evaluate_metrics.call_args_list)
+    final_evaluate.assert_called_once()
+    assert final_evaluate.call_args.args[1] is test_loader
+    assert timeline == [
+        "validation",
+        "validation",
+        "select_checkpoint",
+        "final_test",
+    ]
+    assert record.eval_record is not None
+    assert record.eval_record.evaluation_split == "test"
+    assert not hasattr(record, "test")
+    assert all(not values for values in record._legacy_test_history.values())
 
 
 # check status
@@ -655,7 +714,7 @@ def test_test_model_metrics():
     loader = [(inputs, labels1), (inputs, labels2)]
 
     # Run
-    result = Evaluator.test_model(mock_model, loader, criterion)
+    result = Evaluator.evaluate_metrics(mock_model, loader, criterion)
 
     assert result[RecordKey.ACC] == 75.0
     assert RecordKey.AUC in result
@@ -712,6 +771,7 @@ def test_train_one_repeat_keeps_saliency_out_of_training_thread_when_configured(
 def test_set_saliency_params_recomputes_finished_metric_only_record(base_holder):
     base_holder.option.repeat_num = 1
     record = base_holder.get_plans()[0]
+    record.epoch = base_holder.option.epoch
     record.eval_record = object()
     sentinel = object()
 
@@ -735,9 +795,33 @@ def test_set_saliency_params_recomputes_finished_metric_only_record(base_holder)
 
     mock_evaluate.assert_not_called()
     mock_saliency.assert_called_once_with(
-        "model", "loader", base_holder.saliency_params
+        "model",
+        "loader",
+        base_holder.saliency_params,
+        evaluation_split="test",
     )
     assert record.eval_record is sentinel
+
+
+def test_set_saliency_params_does_not_open_test_split_before_training_finishes(
+    base_holder,
+):
+    record = base_holder.get_plans()[0]
+    assert record.is_finished() is False
+
+    with (
+        patch.object(base_holder, "get_loader") as get_loader,
+        patch.object(base_holder, "get_eval_pair") as get_eval_pair,
+        patch.object(Evaluator, "evaluate") as evaluate,
+        patch.object(Evaluator, "evaluate_with_saliency") as evaluate_with_saliency,
+    ):
+        base_holder.set_saliency_params({"SmoothGrad": {"nt_samples": 1}})
+
+    assert base_holder.saliency_params == {"SmoothGrad": {"nt_samples": 1}}
+    get_loader.assert_not_called()
+    get_eval_pair.assert_not_called()
+    evaluate.assert_not_called()
+    evaluate_with_saliency.assert_not_called()
 
 
 def test_training_plan_holder_init_error(

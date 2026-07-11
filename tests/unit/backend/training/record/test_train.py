@@ -149,73 +149,75 @@ def test_train_record_append_record_with_small_array(train_record):
 
 
 @pytest.mark.parametrize(
-    "update_type, test_result_key, expected_key",
+    "test_result_key, expected_key",
     [
-        ("val", TrainRecordKey.LOSS, "best_val_loss"),
-        ("test", TrainRecordKey.LOSS, "best_test_loss"),
+        (TrainRecordKey.LOSS, "best_val_loss"),
     ],
 )
-def test_train_record_update_smaller(
-    train_record, update_type, test_result_key, expected_key
-):
+def test_train_record_update_smaller(train_record, test_result_key, expected_key):
     for i in range(10):
         v = 0.1 / (i + 1)
-        train_record.update(update_type, {test_result_key: v})
+        train_record.update_validation({test_result_key: v})
         train_record.step()
-        assert getattr(train_record, update_type)[test_result_key][-1] == v
+        assert train_record.val[test_result_key][-1] == v
         assert train_record.best_record[expected_key] == v
         assert train_record.best_record[expected_key + "_epoch"] == i
 
     expected_value = v
     for i in range(10):
         v = i + 1
-        train_record.update(update_type, {test_result_key: v})
+        train_record.update_validation({test_result_key: v})
         train_record.step()
-        assert getattr(train_record, update_type)[test_result_key][-1] == v
+        assert train_record.val[test_result_key][-1] == v
         assert train_record.best_record[expected_key] == expected_value
         assert train_record.best_record[expected_key + "_epoch"] == 9
 
 
 @pytest.mark.parametrize(
-    "update_type, test_result_key, expected_key",
+    "test_result_key, expected_key",
     [
-        ("val", TrainRecordKey.ACC, "best_val_accuracy"),
-        ("val", TrainRecordKey.AUC, "best_val_auc"),
-        ("test", TrainRecordKey.ACC, "best_test_accuracy"),
-        ("test", TrainRecordKey.AUC, "best_test_auc"),
+        (TrainRecordKey.ACC, "best_val_accuracy"),
+        (TrainRecordKey.AUC, "best_val_auc"),
     ],
 )
-def test_train_record_update_larger(
-    train_record, update_type, test_result_key, expected_key
-):
+def test_train_record_update_larger(train_record, test_result_key, expected_key):
     for i in range(10):
         v = i + 1
-        train_record.update(update_type, {test_result_key: v})
+        train_record.update_validation({test_result_key: v})
         train_record.step()
-        assert getattr(train_record, update_type)[test_result_key][-1] == v
+        assert train_record.val[test_result_key][-1] == v
         assert train_record.best_record[expected_key] == v
         assert train_record.best_record[expected_key + "_epoch"] == i
 
     expected_value = v
     for i in range(10):
         v = 0.1 / (i + 1)
-        train_record.update(update_type, {test_result_key: v})
+        train_record.update_validation({test_result_key: v})
         train_record.step()
-        assert getattr(train_record, update_type)[test_result_key][-1] == v
+        assert train_record.val[test_result_key][-1] == v
         assert train_record.best_record[expected_key] == expected_value
         assert train_record.best_record[expected_key + "_epoch"] == 9
 
 
-def test_train_record_update_eval(train_record):
-    with patch.object(train_record, "update") as update_mock:
-        train_record.update_eval("testing")
-        update_mock.assert_called_once_with("val", "testing")
+def test_train_record_does_not_rank_undefined_auc(train_record):
+    train_record.update_validation({TrainRecordKey.AUC: None})
+
+    assert train_record.val[TrainRecordKey.AUC] == [None]
+    assert train_record.best_record["best_val_auc"] is None
+    assert train_record.best_record["best_val_auc_epoch"] is None
+    assert train_record.best_val_auc_model is None
 
 
-def test_train_record_update_test(train_record):
-    with patch.object(train_record, "update") as update_mock:
-        train_record.update_test("testing")
-        update_mock.assert_called_once_with("test", "testing")
+def test_train_record_update_validation(train_record):
+    with patch.object(train_record, "_update_validation_metrics") as update_mock:
+        train_record.update_validation("testing")
+        update_mock.assert_called_once_with("testing")
+
+
+def test_train_record_has_no_writable_per_epoch_test_api(train_record):
+    assert not hasattr(train_record, "test")
+    assert not hasattr(train_record, "update_test")
+    assert not any(key.startswith("best_test_") for key in train_record.best_record)
 
 
 def test_train_record_update_train(train_record):
@@ -258,10 +260,10 @@ def test_train_record_test_line_figure(
         train_record.update_train({add_target: 1})
     if val:
         counter += 1
-        train_record.update_eval({add_target: 1})
+        train_record.update_validation({add_target: 1})
     if test:
         counter += 1
-        train_record.update_test({add_target: 1})
+        train_record._legacy_test_history[add_target].append(1)
 
     if not train and not val and not test:
         assert getattr(train_record, test_func)() is None
@@ -321,9 +323,8 @@ def test_train_record_eval_record_getter(train_record, eval_record, func_name):
     assert getattr(train_record, func_name)() is not None
 
 
-@pytest.mark.parametrize("best_type", ["val", "test"])
 @pytest.mark.parametrize("key", list(RecordKey()))
-def test_export(train_record, best_type, key):
+def test_export_writes_only_validation_checkpoints(train_record, key):
     train_record.export_checkpoint()
 
     args_list = torch.save.call_args_list
@@ -331,10 +332,21 @@ def test_export(train_record, best_type, key):
     assert "Epoch-0-model" in files
     assert "record" in files
 
-    key = "best_" + best_type + "_" + key + "_model"
+    key = "best_val_" + key + "_model"
     setattr(train_record, key, "test")
     train_record.export_checkpoint()
 
     args_list = torch.save.call_args_list
     arg = [args[0][0] for args in args_list]
     assert "test" in arg
+
+
+def test_export_ignores_legacy_test_selected_checkpoint(train_record):
+    train_record.best_test_accuracy_model = "must-not-be-exported"
+
+    train_record.export_checkpoint()
+
+    saved_values = [args[0][0] for args in torch.save.call_args_list]
+    saved_files = [os.path.basename(args[0][1]) for args in torch.save.call_args_list]
+    assert "must-not-be-exported" not in saved_values
+    assert "best_test_accuracy_model" not in saved_files

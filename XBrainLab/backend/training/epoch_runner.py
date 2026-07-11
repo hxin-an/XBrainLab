@@ -1,7 +1,7 @@
 """Single-epoch training orchestrator.
 
 Encapsulates the sequence *batch-loop → metrics → record update →
-validation → test → checkpoint* so that
+validation → checkpoint* so that
 :class:`~XBrainLab.backend.training.training_plan.TrainingPlanHolder`
 can delegate to a focused, unit-testable component.
 """
@@ -26,7 +26,7 @@ class EpochRunner:
     1. Batch loop (forward + backward)
     2. Metric computation (AUC)
     3. Record update (loss / acc / auc / lr / time)
-    4. Validation & test evaluation
+    4. Validation evaluation
     5. Checkpoint export
 
     Args:
@@ -52,7 +52,6 @@ class EpochRunner:
         model: torch.nn.Module,
         train_loader: torch_data.DataLoader,
         val_loader: torch_data.DataLoader | None,
-        test_loader: torch_data.DataLoader | None,
         optimizer: torch.optim.Optimizer,
         criterion: torch.nn.Module,
         train_record: TrainRecord,
@@ -63,7 +62,6 @@ class EpochRunner:
             model: The model to train (will be put into ``.train()`` mode).
             train_loader: Training data loader.
             val_loader: Optional validation data loader.
-            test_loader: Optional test data loader.
             optimizer: Optimizer for back-propagation.
             criterion: Loss function.
             train_record: Record for storing epoch statistics.
@@ -86,7 +84,7 @@ class EpochRunner:
 
         # 2. Metrics
         train_auc = Evaluator.compute_auc(y_true, y_pred)
-        running_loss /= len(train_loader)
+        running_loss /= total_count
         train_acc = correct / total_count * 100
 
         # 3. Record update
@@ -99,14 +97,10 @@ class EpochRunner:
             time.time() - start_time,
         )
 
-        # 4. Validation & test
+        # 4. Validation. The test split is evaluated only after model selection.
         if val_loader:
-            result = Evaluator.test_model(model, val_loader, criterion)
-            train_record.update_eval(result)
-
-        if test_loader:
-            result = Evaluator.test_model(model, test_loader, criterion)
-            train_record.update_test(result)
+            result = Evaluator.evaluate_metrics(model, val_loader, criterion)
+            train_record.update_validation(result)
 
         train_record.step()
 
@@ -155,8 +149,9 @@ class EpochRunner:
             correct += (outputs.argmax(axis=1) == batch_labels).float().sum().item()
             y_true_parts.append(batch_labels.detach().cpu())
             y_pred_parts.append(outputs.detach().cpu())
-            total_count += len(batch_labels)
-            running_loss += loss.item()
+            batch_count = len(batch_labels)
+            total_count += batch_count
+            running_loss += loss.item() * batch_count
 
         y_true = torch.cat(y_true_parts) if y_true_parts else None
         y_pred = torch.cat(y_pred_parts) if y_pred_parts else None
@@ -167,7 +162,7 @@ class EpochRunner:
         train_record: TrainRecord,
         loss: float,
         acc: float,
-        auc: float,
+        auc: float | None,
         lr: float,
         duration: float,
     ) -> None:

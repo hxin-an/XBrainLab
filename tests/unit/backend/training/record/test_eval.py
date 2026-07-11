@@ -82,15 +82,21 @@ def test_kappa(value, expected):
         assert np.isclose(EvalRecord([], [], {}, {}, {}, {}, {}).get_kappa(), expected)
 
 
-@pytest.mark.xfail
 @pytest.mark.parametrize(
     "label, output, expected",
     [
-        (None, None, None),
+        ([], [], None),
+        ([0, 0], [[0.9, 0.1], [0.8, 0.2]], None),
+        ([0, 1], [[0.9, 0.1, 0.0], [0.2, 0.8, 0.0]], None),
+        ([0, 1], [[0.9, 0.1], [0.2, 0.8]], 1.0),
     ],
 )
 def test_auc(label, output, expected):
-    raise NotImplementedError
+    result = EvalRecord(label, output, {}, {}, {}, {}, {}).get_auc()
+    if expected is None:
+        assert result is None
+    else:
+        assert np.isclose(result, expected)
 
 
 def test_export():
@@ -98,7 +104,16 @@ def test_export():
         gradient = {"123": "test"}
         label = [1, 2]
         output = [1]
-        eval_record = EvalRecord(label, output, gradient, {}, {}, {}, {})
+        eval_record = EvalRecord(
+            label,
+            output,
+            gradient,
+            {},
+            {},
+            {},
+            {},
+            evaluation_split="test",
+        )
         eval_record.export("target_path")
         torch_mock.assert_called_once_with(
             {
@@ -109,6 +124,7 @@ def test_export():
                 "smoothgrad": {},
                 "smoothgrad_sq": {},
                 "vargrad": {},
+                "evaluation_split": "test",
             },
             os.path.join("target_path", "eval"),
         )

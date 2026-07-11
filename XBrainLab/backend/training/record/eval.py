@@ -59,6 +59,7 @@ class EvalRecord:
         smoothgrad: dict,
         smoothgrad_sq: dict,
         vargrad: dict,
+        evaluation_split: str = "unknown",
     ) -> None:
         """Initialize the evaluation record.
 
@@ -70,6 +71,7 @@ class EvalRecord:
             smoothgrad: Per-class SmoothGrad saliency maps.
             smoothgrad_sq: Per-class SmoothGrad² saliency maps.
             vargrad: Per-class VarGrad saliency maps.
+            evaluation_split: Data split used for this final evaluation.
 
         """
         self.label = label
@@ -79,6 +81,7 @@ class EvalRecord:
         self.smoothgrad = smoothgrad
         self.smoothgrad_sq = smoothgrad_sq
         self.vargrad = vargrad
+        self.evaluation_split = str(evaluation_split or "unknown")
 
     def export(self, target_path: str) -> None:
         """Export the evaluation record as a torch file.
@@ -95,6 +98,7 @@ class EvalRecord:
             "smoothgrad": self.smoothgrad,
             "smoothgrad_sq": self.smoothgrad_sq,
             "vargrad": self.vargrad,
+            "evaluation_split": self.evaluation_split,
         }
         torch.save(record, os.path.join(target_path, "eval"))
 
@@ -124,6 +128,7 @@ class EvalRecord:
                 smoothgrad=data.get("smoothgrad", {}),
                 smoothgrad_sq=data.get("smoothgrad_sq", {}),
                 vargrad=data.get("vargrad", {}),
+                evaluation_split=data.get("evaluation_split", "unknown"),
             )
         except Exception as e:
             logger.error("Failed to load EvalRecord: %s", e, exc_info=True)
@@ -191,35 +196,38 @@ class EvalRecord:
             return 0.0
         return sum(self.output.argmax(axis=1) == self.label) / len(self.label)
 
-    def get_auc(self) -> float:
+    def get_auc(self) -> float | None:
         """Compute the AUC (Area Under the ROC Curve) score.
 
         Handles both binary and multi-class scenarios using one-vs-rest.
 
         Returns:
-            AUC score as a float.
+            AUC score as a float, or ``None`` when it is undefined.
 
         """
         if len(self.label) == 0 or len(self.output) == 0:
-            return 0.0
-        if (
-            torch.nn.functional.softmax(torch.Tensor(self.output), dim=1)
-            .numpy()
-            .shape[-1]
-            <= 2
-        ):
-            return roc_auc_score(
-                self.label,
-                torch.nn.functional.softmax(torch.Tensor(self.output), dim=1).numpy()[
-                    :,
-                    -1,
-                ],
-            )
-        return roc_auc_score(
-            self.label,
-            torch.nn.functional.softmax(torch.Tensor(self.output), dim=1).numpy(),
-            multi_class="ovr",
-        )
+            return None
+        labels = np.asarray(self.label)
+        outputs = np.asarray(self.output)
+        if outputs.ndim != 2 or outputs.shape[0] != labels.shape[0]:
+            return None
+        unique_labels = np.unique(labels)
+        if unique_labels.size < 2 or outputs.shape[1] < 2:
+            return None
+        shifted_outputs = outputs - np.max(outputs, axis=1, keepdims=True)
+        exponentials = np.exp(shifted_outputs)
+        probabilities = exponentials / np.sum(exponentials, axis=1, keepdims=True)
+        if probabilities.shape[1] > 2 and unique_labels.size != probabilities.shape[1]:
+            return None
+        try:
+            if probabilities.shape[1] <= 2:
+                auc = roc_auc_score(labels, probabilities[:, -1])
+            else:
+                auc = roc_auc_score(labels, probabilities, multi_class="ovr")
+        except ValueError as exc:
+            logger.warning("Evaluation AUC is undefined: %s", exc)
+            return None
+        return None if np.isnan(auc) else float(auc)
 
     def get_kappa(self) -> float:
         """Compute Cohen's Kappa coefficient.

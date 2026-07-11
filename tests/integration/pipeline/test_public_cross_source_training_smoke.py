@@ -161,7 +161,7 @@ def test_public_cross_source_training_smoke(
                 batch_size=8,
                 learning_rate=0.001,
                 save_checkpoints_every=1,
-                evaluation_option="test_acc",
+                evaluation_option="val_acc",
             ),
         ).ok
         is True

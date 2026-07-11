@@ -37,17 +37,17 @@ class TestComputeAuc:
         assert 0.9 <= auc <= 1.0
 
     def test_none_inputs(self):
-        assert Evaluator.compute_auc(None, None) == 0.0
+        assert Evaluator.compute_auc(None, None) is None
 
-    def test_returns_zero_on_failure(self):
-        # Single class — roc_auc_score would fail; fallback must return 0.0
+    def test_returns_none_when_auc_is_undefined(self):
+        # A single-class split cannot define ROC AUC and must not rank checkpoints.
         y_true = np.array([0, 0, 0])
         y_pred = np.array([[0.9, 0.1], [0.8, 0.2], [0.7, 0.3]])
         auc = Evaluator.compute_auc(y_true, y_pred)
-        assert auc == 0.0
+        assert auc is None
 
 
-class TestTestModel:
+class TestEvaluateMetrics:
     @pytest.fixture
     def simple_model_and_loader(self):
         """Create a simple linear model and data loader for testing."""
@@ -64,7 +64,7 @@ class TestTestModel:
     def test_returns_dict_with_keys(self, simple_model_and_loader):
         model, loader = simple_model_and_loader
         criterion = torch.nn.CrossEntropyLoss()
-        result = Evaluator.test_model(model, loader, criterion)
+        result = Evaluator.evaluate_metrics(model, loader, criterion)
 
         assert isinstance(result, dict)
         assert RecordKey.ACC in result
@@ -74,14 +74,35 @@ class TestTestModel:
     def test_accuracy_range(self, simple_model_and_loader):
         model, loader = simple_model_and_loader
         criterion = torch.nn.CrossEntropyLoss()
-        result = Evaluator.test_model(model, loader, criterion)
+        result = Evaluator.evaluate_metrics(model, loader, criterion)
         assert 0.0 <= result[RecordKey.ACC] <= 100.0
 
     def test_loss_nonnegative(self, simple_model_and_loader):
         model, loader = simple_model_and_loader
         criterion = torch.nn.CrossEntropyLoss()
-        result = Evaluator.test_model(model, loader, criterion)
+        result = Evaluator.evaluate_metrics(model, loader, criterion)
         assert result[RecordKey.LOSS] >= 0.0
+
+    def test_loss_is_weighted_by_sample_count_for_uneven_batches(self):
+        logits = torch.tensor(
+            [[4.0, 0.0], [3.0, 0.0], [0.0, 4.0]],
+            dtype=torch.float32,
+        )
+        labels = torch.tensor([0, 0, 0], dtype=torch.long)
+        loader = torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(logits, labels),
+            batch_size=2,
+            shuffle=False,
+        )
+
+        result = Evaluator.evaluate_metrics(
+            torch.nn.Identity(),
+            loader,
+            torch.nn.CrossEntropyLoss(),
+        )
+
+        expected = torch.nn.functional.cross_entropy(logits, labels).item()
+        assert result[RecordKey.LOSS] == pytest.approx(expected)
 
     def test_empty_loader(self):
         model = torch.nn.Linear(4, 2)
@@ -90,7 +111,7 @@ class TestTestModel:
         )
         loader = torch.utils.data.DataLoader(empty_dataset, batch_size=1)
         criterion = torch.nn.CrossEntropyLoss()
-        result = Evaluator.test_model(model, loader, criterion)
+        result = Evaluator.evaluate_metrics(model, loader, criterion)
         assert result[RecordKey.ACC] == 0
-        assert result[RecordKey.AUC] == 0
+        assert result[RecordKey.AUC] is None
         assert result[RecordKey.LOSS] == 0

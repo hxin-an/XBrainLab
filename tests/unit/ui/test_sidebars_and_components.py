@@ -2024,7 +2024,7 @@ class TestTrainingSidebar:
             optim_params={},
             checkpoint_epoch=2,
             output_dir="./snapshot-output",
-            evaluation_option=SimpleNamespace(value="test_acc"),
+            evaluation_option=SimpleNamespace(value="val_acc"),
         )
 
         def accept_dialog(dialog):
@@ -2084,7 +2084,7 @@ class TestTrainingSidebar:
             optim_params={},
             checkpoint_epoch=2,
             output_dir="./snapshot-output",
-            evaluation_option=SimpleNamespace(value="test_acc"),
+            evaluation_option=SimpleNamespace(value="val_acc"),
         )
 
         def execute_for(_, command, refresh=True):

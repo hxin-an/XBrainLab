@@ -13,16 +13,32 @@ class TrainingEvaluation(Enum):
 
     Attributes:
         VAL_LOSS: Select model with the best (lowest) validation loss.
-        TEST_AUC: Select model with the best testing AUC.
-        TEST_ACC: Select model with the best testing accuracy.
+        VAL_AUC: Select model with the best validation AUC.
+        VAL_ACC: Select model with the best validation accuracy.
         LAST_EPOCH: Use the model from the last training epoch.
 
     """
 
     VAL_LOSS = "Best validation loss"
-    TEST_AUC = "Best testing AUC"
-    TEST_ACC = "Best testing performance"
+    VAL_AUC = "Best validation AUC"
+    VAL_ACC = "Best validation performance"
     LAST_EPOCH = "Last Epoch"
+
+    @classmethod
+    def _missing_(cls, value):
+        """Migrate persisted test-based choices to validation selection."""
+        legacy = {
+            "Best testing AUC": cls.VAL_AUC,
+            "Best testing performance": cls.VAL_ACC,
+        }
+        migrated = legacy.get(str(value))
+        if migrated is not None:
+            logger.warning(
+                "Migrating persisted test-based model selection %r to %s",
+                value,
+                migrated.value,
+            )
+        return migrated
 
 
 def parse_device_name(use_cpu: bool, gpu_idx: int | None) -> str:
