@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-07-19`
+最後更新：`2026-07-20`
 
 這頁說明 evidence 能證明什麼，也說明不能證明什麼。
 
@@ -21,9 +21,9 @@
 
 ## Latest Desktop MVP Handoff Evidence
 
-2026-07-19 dirty integration candidate 已重建 backend、UI、agent、資料與產品 walkthrough
-evidence。以下數字只綁定目前 dirty candidate；commit 後仍要重跑 clean dashboard 才能成為可推送
-checkpoint。
+2026-07-20 published automated handoff candidate 已重建 backend、UI、agent、資料與產品
+walkthrough evidence。以下數字綁定候選 branch；commit `aaa47923cf5e` 的 fast dashboard
+overall PASS，repo-root `settings.json` 保持可見、未 stage，並明確列為 protected local config。
 
 - external label pairing 由 `data_interpretation_pairing.py` 統一供 candidate validation、apply
   與 wizard review 使用。Generic multi-file partial mapping、BIDS multi-run 缺少一個
@@ -38,7 +38,7 @@ checkpoint。
 - full integration：`388 passed`。
 - fast dashboard：Ruff、BasedPyright、architecture、startup、UI baseline、dialog、product
   walkthrough、BIDS UI matrix、UI unit `2069 passed`、real-data IO `31 passed` 全數 PASS；
-  overall 只因 dirty-tree traceability 標為 WARN。
+  exact-commit overall 也是 PASS。
 - Data Interpretation real lifecycle：`20/20`，固定涵蓋 14 種 format paths、7 個 public cases、
   5 個 public source families、7 個 pinned fixture fact contracts、7 個 external placement
   contracts、4 個 internal-event profiles、固定 11 個 reviewed label/event cases。
@@ -59,8 +59,8 @@ checkpoint。
   conservative estimate 均覆蓋 observed allocated peak；artifact 在
   `artifacts/resource_guard/calibration.json`。範圍固定為 batch 8、22 channels、301 samples，
   folds / repeats 序列執行，不誇大為所有設定的完整訓練峰值。
-- quality dashboard 的 checks 已 PASS，但 dirty-tree policy 仍使 overall 為 WARN；這是 branch
-  hygiene 尚未關閉，不是測試失敗。
+- quality dashboard 每個 check 與 overall 都已 PASS；Workspace Traceability 確認 tracked
+  source clean，唯一 local change 是受保護且未 stage 的 `settings.json`。
 
 以上仍不代表 Windows DPI、多螢幕、互動式 3D、長時間 local LLM session、full BIDS validator
 acceptance 或 scientific model-quality claim。獨立 agent/runtime 與 test-quality reviewer 已在

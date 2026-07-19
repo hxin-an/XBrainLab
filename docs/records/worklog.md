@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-07-19`
+最後更新：`2026-07-20`
 
 ## 這份文件的用途
 
@@ -34,6 +34,23 @@
 - 證據：
 - 接續 / 本輪剩餘：
 ```
+
+## 2026-07-20
+
+### 00:48 Published automated handoff candidate
+
+- 做了什麼：
+  - 將整合候選版提交並 push 到 `fix/nonblocking-state-shutdown-lifecycle`。
+  - 在 commit `aaa47923cf5e` 重跑 fast dashboard，並確認 protected local config、
+    bounded child-process timeout 與所有產品子 gate。
+- 結果：
+  - dashboard overall PASS；Ruff、BasedPyright、architecture、startup、7 個 UI baseline、
+    dialog `8`、product walkthrough `8`、BIDS UI matrix `10`、UI unit `2069`、real-data IO `31`
+    全數 PASS。
+  - Workspace Traceability PASS：tracked source clean；唯一 local change 是可見且未 stage 的
+    repo-root `settings.json`。
+  - automated handoff candidate 已可交給使用者做 Windows 真人 acceptance；尚不宣稱
+    product complete、interactive Windows 3D acceptance 或 real Phi-4 mid-generation teardown。
 
 ## 2026-07-19
 

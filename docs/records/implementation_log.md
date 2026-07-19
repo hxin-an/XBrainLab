@@ -1,6 +1,6 @@
 # XBrainLab Implementation Log
 
-最後更新：`2026-07-19`
+最後更新：`2026-07-20`
 
 ## 這份文件的用途
 
@@ -21,8 +21,8 @@
 
 - Backend、Data Import / BIDS epoch、training / saliency、Qt lifecycle、UI 與 local assistant
   已收斂在單一 integration candidate。
-- 完整 unit `9006 passed, 1 skipped`、integration `388 passed`；最新 fast dashboard 的實質
-  checks 全 PASS，overall 只因尚未 commit 的 branch traceability 標為 WARN。
+- 完整 unit `9006 passed, 1 skipped`、integration `388 passed`；commit `aaa47923cf5e` 的
+  fast dashboard 每個 check 與 overall 都是 PASS。
 - required multi-dataset matrix、strict cross-source `4/4`、human-like walkthrough `40/40`
   phases / 42 screenshots，以及真實 Phi-4 ChatPanel workflow 都已重跑。
 - Phi-4 workflow 的 post-close evidence 證明 runtime / dispatcher `closed`、controller released、
@@ -32,8 +32,8 @@
 
 - raw local-model accuracy 仍是 development `6/12`、anti-overfit `1/7`；host safety 不能冒充
   raw-model 或 thesis accuracy。
-- 獨立 agent/runtime 與 test-quality reviewer re-gate 已 PASS；尚需 commit / push 與
-  exact-commit dashboard，再交給使用者做 Windows 真人 click-through。
+- 獨立 agent/runtime 與 test-quality reviewer re-gate 已 PASS；候選 branch 已 commit / push，
+  下一步是使用者做 Windows 真人 click-through。
 - 仍不宣稱 full BIDS validator、signed installer、Windows DPI / dual-monitor acceptance、
   長時間 local-model session 或 product complete。
 

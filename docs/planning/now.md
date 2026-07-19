@@ -1,16 +1,16 @@
 # XBrainLab Now
 
-最後更新：`2026-07-19`
+最後更新：`2026-07-20`
 
 這頁只放下一輪施工焦點。
 
 ## 目前焦點
 
-**Close and publish the validated Desktop MVP integration candidate.**
+**Run Windows acceptance on the published Desktop MVP handoff candidate.**
 
 先前稽核列出的 product、scientific correctness、Qt lifecycle 與 agent host-safety blocker 已完成
-實作和 current dirty-tree 回歸，獨立 reviewer re-gate 也已 PASS。現在不再擴張功能；重點是
-clean commit / push、exact-commit dashboard，然後才進 Windows acceptance。
+實作、完整回歸、獨立 reviewer、commit / push 與 exact-commit dashboard 都已關閉。現在不再
+擴張功能；下一步是 Windows 真人 click-through，接受後才進 stabilization / main merge gate。
 
 ## 本輪 To-do
 
@@ -30,8 +30,8 @@ clean commit / push、exact-commit dashboard，然後才進 Windows acceptance�
 | Done | Scientific training correctness | validation-only checkpoint、final test evaluation、split provenance、undefined AUC、BIDS bounds/run mapping、overlapping-window leakage 與 saliency atomicity都有 regression。 |
 | Done | Non-blocking application view / shutdown | 原子 publication、non-blocking query、recovery path、background snapshot generation、owner-bound Qt receiver 與 native teardown regression 已通過。 |
 | Done | Agent verified host loop | strict envelope、repair context、turn guard、request admission、confirmation / UI handoff 與真 Phi-4 ChatPanel workflow 已完成；raw model accuracy 仍明確列為 research gap。 |
-| In progress | Candidate closure | canonical docs 已更新；完整 unit `9006`、integration `388`、靜態 / architecture / docs gate 與兩個獨立 reviewer re-gate 全數 PASS。剩餘 commit / push 與 exact-commit dashboard。 |
-| Pending | Windows user acceptance | 只在 candidate closure 完成後進行；不直接合併 `main`。 |
+| Done | Candidate closure | 完整 unit `9006`、integration `388`、靜態 / architecture / docs、多資料集、UI walkthrough、兩個獨立 reviewer 與 exact-commit dashboard 全數 PASS；branch 已 push。 |
+| Next | Windows user acceptance | 從已發佈候選 branch 做真人 click-through；通過前不直接合併 `main`。 |
 
 ## 2026-07-04 Rebaseline 結論
 

@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-07-19`
+最後更新：`2026-07-20`
 
 這頁只回答一件事：**現在能相信什麼，還不能宣稱什麼，下一步該做什麼。**
 完整階段安排看 [Roadmap](planning/roadmap.md)，下一輪施工看 [Now](planning/now.md)。
@@ -11,9 +11,9 @@
 application view、Qt shutdown lifecycle、strict agent envelope / recovery、BIDS event bounds 與
 run mapping、overlapping-window split protection、post-training saliency atomicity都已有 regression
 與跨資料集 evidence。完整 unit、integration、UI、多資料集及 human-like walkthrough 已通過。
-獨立 architecture / agent 與 test-quality reviewer re-gate 已通過。現在尚未完成的是 branch
-clean commit / push、exact-commit dashboard，以及 Windows 真人 click-through；前兩項關閉後
-才是可交付手測的 automated handoff candidate，Windows 手測通過前仍不能稱 product complete。
+獨立 architecture / agent 與 test-quality reviewer re-gate 已通過；候選 branch 已 commit /
+push，exact-commit dashboard 也已 PASS。這版現在是可交付手測的 automated handoff candidate；
+Windows 真人 click-through 尚未完成，因此仍不能稱 product complete 或合併 `main`。
 
 MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測試與 artifacts 只代表
 歷史探索或相容性證據，不再是 MVP、release candidate 或 thesis evidence 的必要路線。
@@ -33,14 +33,14 @@ MCP 已從 active product / thesis roadmap 拔掉。既有 MCP 程式碼、測�
 
 ## 下一個真正 blocker
 
-**把已驗證的 dirty integration candidate 收成可追蹤、可重跑的單一手測分支。**
+**從已發佈的單一候選分支完成 Windows 真人 acceptance。**
 
 目前優先順序：
 
-1. 更新 canonical docs，整理 artifact，將整合候選版 commit / push 到單一 stabilization 分支。
-2. 在 clean commit 上重跑 dashboard，確認 artifact 能追溯到 exact commit。
-3. 以上完成後交給使用者做 Windows 真人 acceptance；獨立 reviewer re-gate 已 PASS，不需再
-   沿用第一輪退件狀態。
+1. 從 `fix/nonblocking-state-shutdown-lifecycle` 啟動 Windows GUI，依手測清單走 Data Import、
+   preprocess / epoch、split / train、evaluation / visualization 與 assistant。
+2. 若發現問題，以目前候選 commit 為基底建立 focused repair，不把未驗證修復直接合併 `main`。
+3. Windows acceptance 通過後，才 fast-forward stabilization line 並準備 main merge gate。
 
 Rebaseline 後的工程入口：
 
@@ -92,7 +92,7 @@ Desktop MVP 前仍要先把 backend / UI 穩定化繼續收乾淨：
 | Gate | 最近結果 | 用途 |
 | --- | --- | --- |
 | `mkdocs build --strict` | PASS | 文件站可建。 |
-| fast quality dashboard | dirty candidate checks 全 PASS；overall 只因 worktree dirty 標為 WARN。 | commit 後仍要重跑，才能把 dashboard 綁到 exact commit。 |
+| fast quality dashboard | commit `aaa47923cf5e` overall PASS；`settings.json` 明確列為 protected local config。 | 支撐 automated handoff candidate；不等於 Windows 真人 acceptance。 |
 | Full unit / integration | `9006 passed, 1 skipped`；integration `388 passed`。 | 支撐目前 Python / Qt / backend / agent regression；不等於真人 UX acceptance。 |
 | Architecture / static quality | architecture compliance PASS；Ruff PASS；BasedPyright `0 errors / 0 warnings / 0 notes`。 | 守住已知 forbidden paths；不能證明所有 runtime 行為。 |
 | Required multi-dataset gate | Data Interpretation real lifecycle `20/20`、14 種 format paths、7 個 public cases / 5 source families、7 個 pinned fixture fact contracts、7 個 external placement contracts、4 個 internal profiles、固定 11 個 reviewed label/event cases；strict cross-source `4/4`（2 training + 2 IO/epoch-only）。 | 支撐列出的真實資料與格式邊界；SCCN `rt` / `square` 與 CNT marker 不是 protocol-grounded supervised classes，也不是 training evidence；不是 full BIDS validator 或任意 proprietary format claim。 |
