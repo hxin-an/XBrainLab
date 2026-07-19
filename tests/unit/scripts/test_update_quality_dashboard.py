@@ -405,6 +405,20 @@ def test_git_state_serializes_dirty_status_summary():
     }
 
 
+def test_git_output_preserves_porcelain_status_prefix(monkeypatch):
+    monkeypatch.setattr(dashboard.shutil, "which", lambda _name: "/usr/bin/git")
+    monkeypatch.setattr(
+        dashboard.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=" M settings.json\n",
+        ),
+    )
+
+    assert dashboard._git_output(["status", "--short"]) == " M settings.json"
+
+
 def test_workspace_traceability_warns_for_dirty_tree():
     result = workspace_traceability_check(
         GitState(

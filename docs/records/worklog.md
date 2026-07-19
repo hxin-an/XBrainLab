@@ -37,6 +37,19 @@
 
 ## 2026-07-19
 
+### 23:59 Dashboard protected-config traceability fix
+
+- 做了什麼：
+  - exact-commit dashboard 的所有實質 checks 通過，但 `settings.json` 被錯誤算成 unprotected
+    dirty path；以紅燈測試定位到 `_git_output().strip()` 破壞 Git porcelain status 第一欄。
+  - 改為只移除輸出換行，保留 `" M settings.json"` 的 leading status column；protected path
+    只豁免 repo-root `settings.json`，其他 dirty source 仍維持 WARN。
+- 結果：
+  - 新 regression 先紅燈、修復後 dashboard unit suite `25 passed`。
+  - commit `9c73c133` 上的 Ruff、BasedPyright、architecture、startup、7 個 UI baseline、
+    dialog `8`、product walkthrough `8`、BIDS UI matrix `10`、UI unit `2069`、real-data IO `31`
+    全數 PASS；需在 traceability 修復 commit 後重跑 dashboard 取得 overall PASS。
+
 ### 23:30 Final regression and reviewer re-gate
 
 - 做了什麼：

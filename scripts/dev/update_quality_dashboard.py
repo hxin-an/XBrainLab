@@ -148,7 +148,7 @@ def _git_output(args: list[str]) -> str:
     )
     if completed.returncode != 0:
         return "unknown"
-    return completed.stdout.strip() or "unknown"
+    return completed.stdout.rstrip("\r\n") or "unknown"
 
 
 def collect_git_state() -> GitState:
