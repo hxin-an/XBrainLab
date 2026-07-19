@@ -44,8 +44,13 @@
     dirty path；以紅燈測試定位到 `_git_output().strip()` 破壞 Git porcelain status 第一欄。
   - 改為只移除輸出換行，保留 `" M settings.json"` 的 leading status column；protected path
     只豁免 repo-root `settings.json`，其他 dirty source 仍維持 WARN。
+  - 第二次 dashboard 的 UI unit 子程序偶發停在 futex；只中斷本 agent 啟動的 dashboard
+    session，獨立重跑相同 UI suite 為 `2069 passed in 84.23s`。
+  - 每個 dashboard check 現有 300 秒獨立 timeout；超時只終止該 check 建立的 process group，
+    先 TERM、5 秒後才 KILL，避免單一 flake 掛住整個 dashboard 或影響無關程序。
 - 結果：
-  - 新 regression 先紅燈、修復後 dashboard unit suite `25 passed`。
+  - 兩個 regression 都先紅燈；修復後 dashboard unit suite `27 passed`，scoped Ruff /
+    formatter / BasedPyright clean。
   - commit `9c73c133` 上的 Ruff、BasedPyright、architecture、startup、7 個 UI baseline、
     dialog `8`、product walkthrough `8`、BIDS UI matrix `10`、UI unit `2069`、real-data IO `31`
     全數 PASS；需在 traceability 修復 commit 後重跑 dashboard 取得 overall PASS。

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -417,6 +419,46 @@ def test_git_output_preserves_porcelain_status_prefix(monkeypatch):
     )
 
     assert dashboard._git_output(["status", "--short"]) == " M settings.json"
+
+
+def test_run_check_reports_bounded_timeout(monkeypatch):
+    monkeypatch.setattr(
+        dashboard,
+        "_run_bounded_command",
+        lambda *_args, **_kwargs: (
+            subprocess.CompletedProcess(
+                args=["slow-check"],
+                returncode=124,
+                stdout="partial output",
+                stderr="",
+            ),
+            True,
+        ),
+    )
+
+    result = dashboard.run_check(
+        key="slow",
+        label="Slow check",
+        category="quality",
+        command="slow-check",
+        timeout_seconds=12,
+    )
+
+    assert result.status == "fail"
+    assert result.returncode == 124
+    assert result.summary == "Timed out after 12 seconds."
+    assert "partial output" in result.output_excerpt
+
+
+def test_bounded_command_terminates_timed_out_process():
+    completed, timed_out = dashboard._run_bounded_command(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        env=os.environ.copy(),
+        timeout_seconds=0,
+    )
+
+    assert timed_out is True
+    assert completed.returncode == 124
 
 
 def test_workspace_traceability_warns_for_dirty_tree():

@@ -10,6 +10,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -39,6 +40,8 @@ DEFAULT_FRESH_MINUTES = 60
 MAX_UI_MEAN_DIFF = 1.5
 MAX_UI_CHANGED_RATIO = 0.02
 PIXEL_DIFF_THRESHOLD = 12
+DEFAULT_CHECK_TIMEOUT_SECONDS = 300
+CHECK_TERMINATION_GRACE_SECONDS = 5
 RESOURCE_CALIBRATION_PATH = ROOT / "artifacts" / "resource_guard" / "calibration.json"
 PROTECTED_LOCAL_CONFIG_PATHS = frozenset({"settings.json"})
 
@@ -447,23 +450,24 @@ def run_check(
     command: str,
     ui: bool = False,
     validator=None,
+    timeout_seconds: int = DEFAULT_CHECK_TIMEOUT_SECONDS,
 ) -> CheckResult:
     """Run a command and normalize the result into dashboard format."""
     started = time.monotonic()
     env = configure_headless_env(ui=ui)
-    completed = subprocess.run(  # noqa: S603
+    completed, timed_out = _run_bounded_command(
         shlex.split(command),
-        cwd=ROOT,
         env=env,
-        check=False,
-        capture_output=True,
-        text=True,
+        timeout_seconds=timeout_seconds,
     )
     duration = time.monotonic() - started
     output = (completed.stdout or "") + (completed.stderr or "")
     excerpt = summarize_output(output)
 
-    if validator is not None:
+    if timed_out:
+        status = "fail"
+        summary = f"Timed out after {timeout_seconds} seconds."
+    elif validator is not None:
         status, summary = validator(completed.returncode, output)
     elif completed.returncode == 0:
         summary = (
@@ -489,6 +493,52 @@ def run_check(
         summary=summary,
         output_excerpt=excerpt,
     )
+
+
+def _run_bounded_command(
+    args: list[str],
+    *,
+    env: dict[str, str],
+    timeout_seconds: int,
+) -> tuple[subprocess.CompletedProcess[str], bool]:
+    """Run one check and terminate its process group when the bound expires."""
+    process = subprocess.Popen(  # noqa: S603
+        args,
+        cwd=ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=os.name == "posix",
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_seconds)
+        return (
+            subprocess.CompletedProcess(args, process.returncode, stdout, stderr),
+            False,
+        )
+    except subprocess.TimeoutExpired:
+        _terminate_check_process(process)
+        stdout, stderr = process.communicate()
+        return subprocess.CompletedProcess(args, 124, stdout, stderr), True
+
+
+def _terminate_check_process(process: subprocess.Popen[str]) -> None:
+    """Terminate only the timed-out check and descendants started with it."""
+    if process.poll() is not None:
+        return
+    if os.name == "posix":
+        os.killpg(process.pid, signal.SIGTERM)
+    else:
+        process.terminate()
+    try:
+        process.wait(timeout=CHECK_TERMINATION_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        if os.name == "posix":
+            os.killpg(process.pid, signal.SIGKILL)
+        else:
+            process.kill()
+        process.wait()
 
 
 def validate_startup(returncode: int, output: str) -> tuple[str, str]:
